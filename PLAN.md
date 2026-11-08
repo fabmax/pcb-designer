@@ -222,6 +222,13 @@ and level of detail for tiny primitives.
     updates O(1); it was 580 ms).
   - Delete all (30k objects incl. footprints): 0.42 s. `Store` removals shift the index
     map (O(n) each); revisit if bulk deletes matter.
+- **Panels** keep their width (scroll areas fill the panel instead of shrinking to their
+  content), so the canvases no longer jump when the selection changes.
+- **Key bindings** go through a `Keymap` (action → shortcuts, exact modifier matching,
+  JSON like `{"rotate": ["Space"]}` on top of the defaults, conflict detection). Menus
+  show the current bindings; Help → Keyboard shortcuts lists them.
+  `pcb-designer --keymap FILE.json` loads custom ones. A settings UI to edit and persist
+  them comes with M10.
 - **Deferred:** filled polygons in the renderer (zones/polygons draw as outlines),
   zone fill display (M9), text editing on canvas, the spike-based benchmark app mode
   (the `spike` crate is kept for `sync_bench`).

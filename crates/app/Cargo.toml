@@ -22,4 +22,6 @@ egui_tiles.workspace = true
 wgpu.workspace = true
 log.workspace = true
 rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 env_logger.workspace = true

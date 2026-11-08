@@ -5,13 +5,14 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use editor_core::Command;
-use egui::{Key, KeyboardShortcut, Modifiers, RichText, WidgetText};
+use egui::{RichText, WidgetText};
 use egui_tiles::{Behavior, SimplificationOptions, TileId, Tiles, Tree, UiResponse};
 use model::*;
 use render::gpu::Background;
 use view::{Document, Interaction, KeyAction, PointerInput, ViewKind};
 
 use crate::canvas::{Canvas, CanvasResources};
+use crate::keymap::{Action, Keymap};
 use crate::properties::Properties;
 use crate::theme;
 
@@ -29,7 +30,8 @@ pub struct Options {
     /// Frames to render before taking the screenshot.
     pub screenshot_frames: u32,
     /// Select everything in the schematic before the screenshot (shows highlights).
-    pub select_all: bool,
+    pub select: Option<String>,
+    pub keymap: Keymap,
 }
 
 const SCH_GRIDS: &[(f64, &str)] = &[(2.54, "2.54 mm"), (1.27, "1.27 mm"), (0.635, "0.635 mm")];
@@ -75,6 +77,8 @@ pub struct PcbApp {
     revision: u64,
     screenshot: Option<(String, u32)>,
     allow_close: bool,
+    keymap: Keymap,
+    show_keymap: bool,
 }
 
 impl PcbApp {
@@ -117,10 +121,22 @@ impl PcbApp {
             revision: u64::MAX,
             screenshot: opts.screenshot.map(|p| (p, opts.screenshot_frames)),
             allow_close: false,
+            keymap: opts.keymap,
+            show_keymap: false,
         };
-        if opts.select_all {
-            let pane = &mut app.panes[0];
-            pane.it.key(&mut app.doc, KeyAction::SelectAll);
+        // Development aid for screenshots: "all" or a reference designator.
+        match opts.select.as_deref() {
+            Some("all") => app.panes[0].it.key(&mut app.doc, KeyAction::SelectAll),
+            Some(refdes) => {
+                let p = app.doc.project();
+                let ids: Vec<ObjectId> = p
+                    .schematic
+                    .component_by_refdes(refdes)
+                    .map(|c| p.schematic.symbols_of(c.id).map(|s| ObjectId::Symbol(s.id)).collect())
+                    .unwrap_or_default();
+                app.panes[0].it.set_selection(&mut app.doc, ids);
+            }
+            None => {}
         }
         app
     }
@@ -279,57 +295,38 @@ impl PcbApp {
         }
     }
 
-    fn shortcuts(&mut self, ctx: &egui::Context) {
-        let cmd = |key| KeyboardShortcut::new(Modifiers::COMMAND, key);
-        let cmd_shift = |key| KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, key);
-        let consume = |s: KeyboardShortcut| ctx.input_mut(|i| i.consume_shortcut(&s));
-        // Shift variants first: consume_shortcut ignores extra shift.
-        if consume(cmd_shift(Key::Z)) || consume(cmd(Key::Y)) {
-            self.redo();
-        }
-        if consume(cmd(Key::Z)) {
-            self.undo();
-        }
-        if consume(cmd_shift(Key::S)) {
-            self.save(true);
-        }
-        if consume(cmd(Key::S)) {
-            self.save(false);
-        }
-        if consume(cmd(Key::O)) {
-            self.open();
-        }
-        if consume(cmd(Key::N)) {
-            self.new_document();
-        }
-        let select_all = consume(cmd(Key::A));
-        if ctx.egui_wants_keyboard_input() {
-            return;
-        }
-        let pressed = |k| ctx.input(|i| i.key_pressed(k) && i.modifiers.is_none());
-        let mut actions = Vec::new();
-        if select_all {
-            actions.push(KeyAction::SelectAll);
-        }
-        for (key, action) in [
-            (Key::R, KeyAction::Rotate),
-            (Key::X, KeyAction::Mirror),
-            (Key::F, KeyAction::Flip),
-            (Key::Delete, KeyAction::Delete),
-            (Key::Backspace, KeyAction::Delete),
-            (Key::Escape, KeyAction::Escape),
-        ] {
-            if pressed(key) {
-                actions.push(action);
+    fn run_action(&mut self, action: Action) {
+        let key_action = match action {
+            Action::New => return self.new_document(),
+            Action::Open => return self.open(),
+            Action::Save => {
+                self.save(false);
+                return;
             }
-        }
-        if pressed(Key::Home) || pressed(Key::V) {
-            self.pane(self.active).canvas.request_fit();
-        }
+            Action::SaveAs => {
+                self.save(true);
+                return;
+            }
+            Action::Undo => return self.undo(),
+            Action::Redo => return self.redo(),
+            Action::FitView => return self.pane(self.active).canvas.request_fit(),
+            Action::SelectAll => KeyAction::SelectAll,
+            Action::Rotate => KeyAction::Rotate,
+            Action::Mirror => KeyAction::Mirror,
+            Action::Flip => KeyAction::Flip,
+            Action::Delete => KeyAction::Delete,
+            Action::Cancel => KeyAction::Escape,
+        };
         let kind = self.active;
         let pane = &mut self.panes[kind as usize];
-        for a in actions {
-            pane.it.key(&mut self.doc, a);
+        pane.it.key(&mut self.doc, key_action);
+    }
+
+    /// Menu entry for `action`, showing its current shortcut.
+    fn menu_item(&mut self, ui: &mut egui::Ui, label: &str, action: Action, enabled: bool) {
+        let shortcut = self.keymap.menu_text(ui.ctx(), action);
+        if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(shortcut)).clicked() {
+            self.run_action(action);
         }
     }
 
@@ -339,22 +336,14 @@ impl PcbApp {
     fn menu(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
-                if ui.add(egui::Button::new("New").shortcut_text(sc(ui, Key::N, false))).clicked() {
-                    self.new_document();
-                }
-                if ui.add(egui::Button::new("Open…").shortcut_text(sc(ui, Key::O, false))).clicked() {
-                    self.open();
-                }
+                self.menu_item(ui, "New", Action::New, true);
+                self.menu_item(ui, "Open…", Action::Open, true);
                 if ui.button("Open demo project").clicked() && self.confirm_discard() {
                     self.replace_document(Document::new(view::demo::demo_project()));
                 }
                 ui.separator();
-                if ui.add(egui::Button::new("Save").shortcut_text(sc(ui, Key::S, false))).clicked() {
-                    self.save(false);
-                }
-                if ui.add(egui::Button::new("Save As…").shortcut_text(sc(ui, Key::S, true))).clicked() {
-                    self.save(true);
-                }
+                self.menu_item(ui, "Save", Action::Save, true);
+                self.menu_item(ui, "Save As…", Action::SaveAs, true);
                 ui.separator();
                 if ui.button("Quit").clicked() {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -364,37 +353,46 @@ impl PcbApp {
                 let h = self.doc.editor().history();
                 let undo = h.undo_label().map(|l| format!("Undo {l}"));
                 let redo = h.redo_label().map(|l| format!("Redo {l}"));
-                let b = egui::Button::new(undo.as_deref().unwrap_or("Undo")).shortcut_text(sc(ui, Key::Z, false));
-                if ui.add_enabled(undo.is_some(), b).clicked() {
-                    self.undo();
-                }
-                let b = egui::Button::new(redo.as_deref().unwrap_or("Redo")).shortcut_text(sc(ui, Key::Z, true));
-                if ui.add_enabled(redo.is_some(), b).clicked() {
-                    self.redo();
-                }
+                self.menu_item(ui, undo.as_deref().unwrap_or("Undo"), Action::Undo, undo.is_some());
+                self.menu_item(ui, redo.as_deref().unwrap_or("Redo"), Action::Redo, redo.is_some());
                 ui.separator();
-                let kind = self.active;
-                for (label, key, action) in [
-                    ("Select all", "⌘A", KeyAction::SelectAll),
-                    ("Rotate", "R", KeyAction::Rotate),
-                    ("Mirror", "X", KeyAction::Mirror),
-                    ("Flip side", "F", KeyAction::Flip),
-                    ("Delete", "Del", KeyAction::Delete),
-                ] {
-                    if ui.add(egui::Button::new(label).shortcut_text(key)).clicked() {
-                        let pane = &mut self.panes[kind as usize];
-                        pane.it.key(&mut self.doc, action);
-                    }
+                for action in [Action::SelectAll, Action::Rotate, Action::Mirror, Action::Flip, Action::Delete] {
+                    self.menu_item(ui, action.label(), action, true);
                 }
             });
             ui.menu_button("View", |ui| {
-                if ui.add(egui::Button::new("Fit all").shortcut_text("V")).clicked() {
-                    for p in &mut self.panes {
-                        p.canvas.request_fit();
-                    }
+                self.menu_item(ui, "Fit view", Action::FitView, true);
+            });
+            ui.menu_button("Help", |ui| {
+                if ui.button("Keyboard shortcuts").clicked() {
+                    self.show_keymap = true;
                 }
             });
         });
+    }
+
+    /// Read-only list of the current bindings (editing comes with the settings UI).
+    fn keymap_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.show_keymap;
+        egui::Window::new("Keyboard shortcuts").open(&mut open).resizable(false).collapsible(false).show(ctx, |ui| {
+            egui::Grid::new("keymap").num_columns(2).striped(true).spacing([24.0, 4.0]).show(ui, |ui| {
+                for &action in Action::ALL {
+                    ui.label(action.label());
+                    let keys: Vec<String> =
+                        self.keymap.shortcuts(action).iter().map(|s| ctx.format_shortcut(&s.to_egui())).collect();
+                    ui.monospace(keys.join("  "));
+                    ui.end_row();
+                }
+            });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.button("Copy as JSON").clicked() {
+                    ui.ctx().copy_text(self.keymap.to_json());
+                }
+                ui.label(RichText::new("Edit and load with --keymap FILE.json").color(theme::TEXT_DIM));
+            });
+        });
+        self.show_keymap = open;
     }
 
     fn left_panel(&mut self, ui: &mut egui::Ui) {
@@ -517,11 +515,6 @@ impl PcbApp {
     }
 }
 
-fn sc(ui: &egui::Ui, key: Key, shift: bool) -> String {
-    let m = if shift { Modifiers::COMMAND | Modifiers::SHIFT } else { Modifiers::COMMAND };
-    ui.ctx().format_shortcut(&KeyboardShortcut::new(m, key))
-}
-
 fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
     egui::CollapsingHeader::new(RichText::new(title).strong()).default_open(true).show(ui, add);
     ui.add_space(4.0);
@@ -622,16 +615,18 @@ impl eframe::App for PcbApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.handle_close(&ctx);
-        self.shortcuts(&ctx);
+        for action in self.keymap.triggered(&ctx) {
+            self.run_action(action);
+        }
 
         egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
         egui::Panel::left("library").resizable(true).default_size(230.0).show(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| self.left_panel(ui));
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.left_panel(ui));
         });
         egui::Panel::right("properties").resizable(true).default_size(280.0).show(ui, |ui| {
             ui.add_space(6.0);
-            egui::ScrollArea::vertical().show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 let kind = self.active;
                 let pane = &mut self.panes[kind as usize];
                 let selection = pane.it.selection.clone();
@@ -661,6 +656,7 @@ impl eframe::App for PcbApp {
                 pane.it.refresh(&mut self.doc);
             }
         }
+        self.keymap_window(&ctx);
         self.update_title(&ctx);
         self.screenshot_tick(&ctx);
     }

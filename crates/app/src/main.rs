@@ -1,12 +1,14 @@
 //! PCB Designer desktop application.
 //!
 //! Usage: pcb-designer [PROJECT_DIR | --demo | --new | --stress N] [--no-vsync]
-//!                     [--screenshot FILE.png [--frames N] [--select-all]]
+//!                     [--keymap FILE.json]
+//!                     [--screenshot FILE.png [--frames N] [--select all|REFDES]]
 //!
 //! Without arguments the demo project is opened.
 
 mod app;
 mod canvas;
+mod keymap;
 mod properties;
 mod theme;
 
@@ -14,7 +16,13 @@ use app::{Options, Startup};
 
 fn main() -> eframe::Result {
     env_logger::init();
-    let mut opts = Options { startup: Startup::Demo, screenshot: None, screenshot_frames: 30, select_all: false };
+    let mut opts = Options {
+        startup: Startup::Demo,
+        screenshot: None,
+        screenshot_frames: 30,
+        select: None,
+        keymap: keymap::Keymap::default(),
+    };
     let mut vsync = true;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -25,7 +33,22 @@ fn main() -> eframe::Result {
             "--no-vsync" => vsync = false,
             "--screenshot" => opts.screenshot = args.next(),
             "--frames" => opts.screenshot_frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(30),
-            "--select-all" => opts.select_all = true,
+            "--select" => opts.select = args.next(),
+            "--keymap" => {
+                let path = args.next().unwrap_or_default();
+                match std::fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|json| keymap::Keymap::from_json(&json).map_err(|e| e.to_string()))
+                {
+                    Ok(map) => {
+                        for (shortcut, actions) in map.conflicts() {
+                            eprintln!("keymap: {shortcut} is bound to several actions: {actions:?}");
+                        }
+                        opts.keymap = map;
+                    }
+                    Err(e) => eprintln!("keymap {path:?} not loaded: {e}"),
+                }
+            }
             other if !other.starts_with("--") => opts.startup = Startup::Open(other.into()),
             other => eprintln!("ignoring unknown argument {other:?}"),
         }
