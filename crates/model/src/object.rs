@@ -75,6 +75,14 @@ macro_rules! objects {
                 }
             }
 
+            /// Replace an existing object in place (keeping its index). Returns the index
+            /// and the old object; `None` (dropping `object`) if no object has its id.
+            pub fn replace(&mut self, object: Object) -> Option<(usize, Object)> {
+                match object {
+                    $( Object::$variant(o) => self.$($path).+.replace(o).map(|(n, old)| (n, Object::$variant(old))), )*
+                }
+            }
+
             /// Replace an existing object in place, or insert a new one at `index`
             /// (default: append).
             pub fn put(&mut self, object: Object, index: Option<usize>) {

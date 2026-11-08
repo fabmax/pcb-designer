@@ -330,3 +330,20 @@ fn project_folder_roundtrip() {
         assert_eq!(std::fs::read(path.join(f)).unwrap(), std::fs::read(again.join(f)).unwrap(), "{f}");
     }
 }
+
+#[test]
+fn grouped_moves_form_one_undo_step() {
+    let mut ed = editor_with_parts();
+    let c = place(&mut ed, PART_RESISTOR, 0.0, 0.0);
+    let before = files(ed.project());
+    let sym = ed.project().schematic.symbols_of(c).next().unwrap().id;
+    for _ in 0..10 {
+        let cmd = Command::Move { ids: vec![ObjectId::Symbol(sym)], delta: Point::mm(1.0, 0.0) };
+        ed.execute_grouped(cmd, Some(7)).unwrap();
+    }
+    ed.close_group();
+    assert_eq!(ed.project().schematic.symbols.get(sym).unwrap().pos, Point::mm(10.0, 0.0));
+    ed.undo();
+    assert_eq!(files(ed.project()), before);
+    assert_eq!(ed.history().undo_label(), Some("Place part"));
+}

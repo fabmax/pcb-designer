@@ -11,11 +11,17 @@ path = "src/main.rs"
 
 [dependencies]
 render.workspace = true
-spike.workspace = true
+view.workspace = true
+model.workspace = true
+editor-core.workspace = true
+rfd.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui-wgpu.workspace = true
 egui_tiles.workspace = true
 wgpu.workspace = true
 log.workspace = true
+rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 env_logger.workspace = true

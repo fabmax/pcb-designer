@@ -51,6 +51,13 @@ impl ChangeSet {
         self.ids().any(|id| id.kind().is_board())
     }
 
+    /// `self` followed by `next`, as one change set.
+    pub fn then(&self, next: ChangeSet) -> ChangeSet {
+        let mut all = self.changes.clone();
+        all.extend(next.changes);
+        ChangeSet::coalesce(all)
+    }
+
     /// Merge several changes of the same object into one (first `before`, last `after`),
     /// keeping first-occurrence order, and drop changes without net effect.
     fn coalesce(changes: Vec<Change>) -> ChangeSet {
@@ -88,8 +95,7 @@ pub(crate) fn apply_reverse(project: &mut Project, set: &ChangeSet) -> ChangeSet
                 done.push(Change { id: c.id, before: None, after: Some(old.clone()) });
             }
             (Some((_, old)), Some(_)) => {
-                let (index, current) = project.take(c.id).expect("undo: updated object exists");
-                project.put(old.clone(), Some(index));
+                let (index, current) = project.replace(old.clone()).expect("undo: updated object exists");
                 done.push(Change { id: c.id, before: Some((index, current)), after: Some(old.clone()) });
             }
             (None, None) => {}
@@ -112,8 +118,7 @@ pub(crate) fn apply_forward(project: &mut Project, set: &ChangeSet) -> ChangeSet
                 done.push(Change { id: c.id, before: Some(taken), after: None });
             }
             (Some(_), Some(new)) => {
-                let (index, current) = project.take(c.id).expect("redo: updated object exists");
-                project.put(new.clone(), Some(index));
+                let (index, current) = project.replace(new.clone()).expect("redo: updated object exists");
                 done.push(Change { id: c.id, before: Some((index, current)), after: Some(new.clone()) });
             }
             (None, None) => {}
@@ -175,8 +180,7 @@ impl<'p> Transaction<'p> {
     /// Replace an existing object (matched by id), keeping its position.
     pub fn replace(&mut self, object: Object) -> Result<(), CommandError> {
         let id = object.id();
-        let (index, old) = self.project.take(id).ok_or(CommandError::NotFound(id))?;
-        self.project.put(object.clone(), Some(index));
+        let (index, old) = self.project.replace(object.clone()).ok_or(CommandError::NotFound(id))?;
         self.changes.push(Change { id, before: Some((index, old)), after: Some(object) });
         Ok(())
     }

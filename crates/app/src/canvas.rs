@@ -1,4 +1,4 @@
-//! Canvas widget: hosts a GPU rendered [`Scene`] inside egui and handles pan/zoom.
+//! Canvas widget: hosts a GPU rendered [`Scene`] inside egui and handles navigation.
 
 use std::sync::{Arc, Mutex};
 
@@ -28,6 +28,7 @@ pub struct Canvas {
     fit_requested: bool,
     pub cursor_world: Option<[f64; 2]>,
     viewport: [f64; 2],
+    rect: egui::Rect,
 }
 
 impl Canvas {
@@ -40,6 +41,7 @@ impl Canvas {
             fit_requested: true,
             cursor_world: None,
             viewport: [1.0, 1.0],
+            rect: egui::Rect::NOTHING,
         }
     }
 
@@ -47,18 +49,26 @@ impl Canvas {
         self.fit_requested = true;
     }
 
-    pub fn viewport(&self) -> [f64; 2] {
-        self.viewport
-    }
-
     pub fn fit(&mut self, scene: &Scene) {
         if let Some(b) = scene.bounds() {
-            self.camera.fit(b, self.viewport, 24.0);
+            self.camera.fit(b, self.viewport, 32.0);
         }
     }
 
+    pub fn screen_to_world(&self, p: egui::Pos2) -> [f64; 2] {
+        self.camera.screen_to_world([(p.x - self.rect.min.x) as f64, (p.y - self.rect.min.y) as f64], self.viewport)
+    }
+
+    pub fn world_to_screen(&self, w: [f64; 2]) -> egui::Pos2 {
+        let [x, y] = self.camera.world_to_screen(w, self.viewport);
+        egui::pos2(self.rect.min.x + x as f32, self.rect.min.y + y as f32)
+    }
+
+    /// Draw the scene and handle navigation: middle/right drag and trackpad scroll pan,
+    /// mouse wheel and pinch zoom. The primary button is left to the editing tools.
     pub fn ui(&mut self, ui: &mut egui::Ui, scene: &mut Scene) -> egui::Response {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
+        self.rect = rect;
         self.viewport = [rect.width() as f64, rect.height() as f64];
         if self.fit_requested && rect.width() > 1.0 {
             self.fit(scene);
@@ -86,12 +96,11 @@ impl Canvas {
         let vp = self.viewport;
         let local = |p: egui::Pos2| [(p.x - rect.min.x) as f64, (p.y - rect.min.y) as f64];
 
-        // Drag with any button pans (there are no editing tools yet).
-        if response.dragged() {
+        if response.dragged_by(egui::PointerButton::Middle) || response.dragged_by(egui::PointerButton::Secondary) {
             let d = response.drag_delta();
             self.camera.pan_pixels([d.x as f64, d.y as f64]);
         }
-        if response.double_clicked() {
+        if response.double_clicked_by(egui::PointerButton::Middle) {
             self.fit_requested = true;
         }
 

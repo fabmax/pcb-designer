@@ -1,26 +1,55 @@
 //! PCB Designer desktop application.
 //!
-//! Usage: pcb-designer [--components N] [--no-vsync] [--animate] [--storm]
-//!                     [--screenshot FILE.png [--frames N]]
+//! Usage: pcb-designer [PROJECT_DIR | --demo | --new | --stress N] [--no-vsync]
+//!                     [--keymap FILE.json]
+//!                     [--screenshot FILE.png [--frames N] [--select all|REFDES]]
+//!
+//! Without arguments the demo project is opened.
 
 mod app;
 mod canvas;
+mod keymap;
+mod properties;
 mod theme;
+
+use app::{Options, Startup};
 
 fn main() -> eframe::Result {
     env_logger::init();
-    let mut opts =
-        app::Options { components: 2_000, screenshot: None, screenshot_frames: 30, animate: false, storm: false };
+    let mut opts = Options {
+        startup: Startup::Demo,
+        screenshot: None,
+        screenshot_frames: 30,
+        select: None,
+        keymap: keymap::Keymap::default(),
+    };
     let mut vsync = true;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--components" => opts.components = args.next().and_then(|v| v.parse().ok()).unwrap_or(opts.components),
+            "--demo" => opts.startup = Startup::Demo,
+            "--new" => opts.startup = Startup::Empty,
+            "--stress" => opts.startup = Startup::Stress(args.next().and_then(|v| v.parse().ok()).unwrap_or(2_000)),
             "--no-vsync" => vsync = false,
-            "--animate" => opts.animate = true,
-            "--storm" => opts.storm = true,
             "--screenshot" => opts.screenshot = args.next(),
             "--frames" => opts.screenshot_frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(30),
+            "--select" => opts.select = args.next(),
+            "--keymap" => {
+                let path = args.next().unwrap_or_default();
+                match std::fs::read_to_string(&path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|json| keymap::Keymap::from_json(&json).map_err(|e| e.to_string()))
+                {
+                    Ok(map) => {
+                        for (shortcut, actions) in map.conflicts() {
+                            eprintln!("keymap: {shortcut} is bound to several actions: {actions:?}");
+                        }
+                        opts.keymap = map;
+                    }
+                    Err(e) => eprintln!("keymap {path:?} not loaded: {e}"),
+                }
+            }
+            other if !other.starts_with("--") => opts.startup = Startup::Open(other.into()),
             other => eprintln!("ignoring unknown argument {other:?}"),
         }
     }

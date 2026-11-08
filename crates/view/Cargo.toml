@@ -1,0 +1,16 @@
+[package]
+name = "view"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Model -> render scenes, hit testing, selection and editing tools (GUI independent)"
+
+[dependencies]
+model.workspace = true
+editor-core.workspace = true
+render.workspace = true
+rstar.workspace = true
+rustc-hash.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

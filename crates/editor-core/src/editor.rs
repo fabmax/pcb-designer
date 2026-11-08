@@ -35,6 +35,13 @@ impl Editor {
 
     /// Run a command atomically: on error nothing changes.
     pub fn execute(&mut self, command: Command) -> Result<ChangeSet, CommandError> {
+        self.execute_grouped(command, None)
+    }
+
+    /// Like [`Editor::execute`], but consecutive commands with the same `group` (e.g. the
+    /// per-frame moves of one drag) become a single undo step. Call
+    /// [`Editor::close_group`] when the interaction ends.
+    pub fn execute_grouped(&mut self, command: Command, group: Option<u64>) -> Result<ChangeSet, CommandError> {
         let label = command.label();
         let mut tx = Transaction::new(&mut self.project);
         let result = command.apply(&mut tx).and_then(|()| sync_board(&mut tx));
@@ -42,7 +49,7 @@ impl Editor {
             Ok(()) => {
                 let changes = tx.finish();
                 if !changes.is_empty() {
-                    self.history.push(label, changes.clone());
+                    self.history.push_grouped(label, changes.clone(), group);
                 }
                 Ok(changes)
             }
@@ -71,6 +78,10 @@ impl Editor {
         let effective = apply_forward(&mut self.project, &entry.changes);
         self.history.push_undo(entry);
         Some(effective)
+    }
+
+    pub fn close_group(&mut self) {
+        self.history.close_group();
     }
 
     pub fn mark_saved(&mut self) {

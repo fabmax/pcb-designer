@@ -7,6 +7,8 @@ pub struct Entry {
     pub label: String,
     pub changes: ChangeSet,
     serial: u64,
+    /// Consecutive commands with the same group merge into one undo step.
+    group: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -27,8 +29,22 @@ impl Default for History {
 
 impl History {
     pub fn push(&mut self, label: String, changes: ChangeSet) {
+        self.push_grouped(label, changes, None);
+    }
+
+    /// Push, or merge into the top entry if it belongs to the same `group`.
+    pub fn push_grouped(&mut self, label: String, changes: ChangeSet, group: Option<u64>) {
+        if group.is_some()
+            && self.redo.is_empty()
+            && let Some(top) = self.undo.last_mut()
+            && top.group == group
+            && self.saved_at != Some(top.serial)
+        {
+            top.changes = top.changes.then(changes);
+            return;
+        }
         self.redo.clear();
-        self.undo.push(Entry { label, changes, serial: self.next_serial });
+        self.undo.push(Entry { label, changes, serial: self.next_serial, group });
         self.next_serial += 1;
         if self.undo.len() > self.limit {
             self.undo.remove(0);
@@ -42,7 +58,17 @@ impl History {
     }
 
     pub(crate) fn pop_undo(&mut self) -> Option<Entry> {
-        self.undo.pop()
+        let mut e = self.undo.pop()?;
+        // An undone group is closed: a later command with the same group starts fresh.
+        e.group = None;
+        Some(e)
+    }
+
+    /// Stop merging into the current top entry.
+    pub fn close_group(&mut self) {
+        if let Some(top) = self.undo.last_mut() {
+            top.group = None;
+        }
     }
 
     pub(crate) fn push_redo(&mut self, e: Entry) {
