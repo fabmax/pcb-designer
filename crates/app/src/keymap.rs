@@ -28,6 +28,12 @@ pub enum Action {
     Delete,
     Cancel,
     FitView,
+    ToolSelect,
+    ToolPin,
+    ToolLine,
+    ToolRect,
+    ToolCircle,
+    ToolText,
 }
 
 impl Action {
@@ -45,6 +51,12 @@ impl Action {
         Action::Delete,
         Action::Cancel,
         Action::FitView,
+        Action::ToolSelect,
+        Action::ToolPin,
+        Action::ToolLine,
+        Action::ToolRect,
+        Action::ToolCircle,
+        Action::ToolText,
     ];
 
     pub fn label(self) -> &'static str {
@@ -62,6 +74,12 @@ impl Action {
             Action::Delete => "Delete",
             Action::Cancel => "Cancel / clear selection",
             Action::FitView => "Fit view",
+            Action::ToolSelect => "Select tool",
+            Action::ToolPin => "Pin / pad tool",
+            Action::ToolLine => "Line tool",
+            Action::ToolRect => "Rectangle tool",
+            Action::ToolCircle => "Circle tool",
+            Action::ToolText => "Text tool",
         }
     }
 
@@ -185,6 +203,12 @@ impl Default for Keymap {
             (Action::Delete, vec![S::key(Key::Delete), S::key(Key::Backspace)]),
             (Action::Cancel, vec![S::key(Key::Escape)]),
             (Action::FitView, vec![S::key(Key::V), S::key(Key::Home)]),
+            (Action::ToolSelect, vec![S::key(Key::S)]),
+            (Action::ToolPin, vec![S::key(Key::P)]),
+            (Action::ToolLine, vec![S::key(Key::L)]),
+            (Action::ToolRect, vec![S::key(Key::B)]),
+            (Action::ToolCircle, vec![S::key(Key::C)]),
+            (Action::ToolText, vec![S::key(Key::T)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
     }

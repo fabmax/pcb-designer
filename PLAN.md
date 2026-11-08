@@ -268,3 +268,63 @@ and level of detail for tiny primitives.
 - **Next for MCP:** net/connectivity queries (M6/M7), DRC results (M9), library
   tools (M4/M5), headless `--mcp-stdio` mode (M10), and possibly an activity log panel
   listing agent edits.
+
+## Milestone 4 results (2026-11-08)
+
+- **Library documents:** a library file (`.pcblib`, JSON) is edited as an ordinary
+  `Document` whose project holds only the library (`view::LibraryDoc`). So symbol,
+  footprint and part edits are normal `insert`/`update`/`delete` commands with undo,
+  grouping and validation. Deleting a symbol or footprint that a part still uses is
+  refused. Save As names the library after the file. The starter library is always open
+  as a built-in library with no file; Save As turns it into a file.
+- **Generic editing reused:** `Interaction` (selection, box, drag with snapping,
+  rotate/mirror, delete) works on symbols and footprints through `ItemTarget` (elements:
+  pins, pads, graphics and texts by index). `SpatialIndex` is generic over its key.
+  `ItemView` draws one item with per-element hit testing (pins and pads first, then
+  outlines, then areas), hover/selection overlays and an origin cross. Hidden pin names
+  stay visible, dimmed, while editing.
+- **Tools (`view::tools::Placer`):** Pin/Pad, Line (chained, end on the last point or
+  Esc), Rectangle and Circle (two clicks) and Text, with a ghost preview. R rotates.
+  Names auto-increment (`A9` → `A10`, `007` → `008`). Tool settings (pin length and
+  type, pad shape/size/type/drill, layer, width, fill, text size) are in the right panel.
+  Shortcuts S/P/L/B/C/T are in the keymap.
+- **Part form:** name, prefix, default value, description; units (one symbol each);
+  footprint variants with a pin↔pad mapping grid. Mapping can be automatic: "Map by
+  name" (pad "1" ↔ pin "1") or "Map in order" (pin order ↔ pads in natural order:
+  1, 2, …, 10). The form also has a key/value properties editor and lists validation
+  problems for the part. Removing a unit renumbers the connections; changing a unit's
+  symbol drops its connections.
+- **Update from library:** `Command::UpdateParts` replaces a project's copy of parts by
+  the library version in one undo step. Components keep their variant (matched by id,
+  then by name, else the first). Symbols and footprints no longer used are removed. The
+  update is refused if placed units would disappear. `query::part_statuses` compares
+  content hashes (states: up to date / changed / library not open / removed from library /
+  local). The project's left panel lists every open library (Place, Edit) and the
+  project parts with per-part Update and Update all.
+- **App:** library tabs dock next to the schematic and can be closed (with an unsaved
+  changes prompt, also on quit). Focus is the project or a library tab, and the side
+  panels, shortcuts, undo and Save follow it. File menu: New/Open library, Open starter
+  library. Command-line options: `--library FILE` and `--show [part:|symbol:|footprint:]NAME`
+  (screenshots).
+- **Starter library:** added Diode (SOD-123), NPN (SOT-23) and OpAmp (SOIC-8, named pins
+  on numbered pads), 7 parts in total.
+- **MCP:** `list_library_parts` covers all open libraries and reports the state of each
+  project part. The new `update_parts` tool updates every changed part or the given ones.
+  Agents can still create parts directly in a project by inserting
+  `lib_symbol`/`lib_footprint`/`lib_part`.
+- **Tests:** `view/tests/part_editor.rs`:
+  - Build a part from scratch with the tools, map it and use it in a project.
+  - Drag and rotate a pad, then update the project.
+  - Mirror, delete and undo in a symbol.
+  - Create, duplicate and delete library objects.
+  - Natural-order mapping.
+  - Library file round trip.
+
+  Also `editor-core/tests/library_update.rs` (variant removal, refusal to drop units),
+  op amp pinout and MCP library tools.
+- **Not yet:**
+  - Arcs and polygons can only be edited numerically (no drawing tools yet).
+  - No pad arrays or footprint wizards (KiCad import in M5 covers most needs).
+  - Library editing over MCP.
+  - Library rename other than by Save As.
+  - A part preview in the part form.

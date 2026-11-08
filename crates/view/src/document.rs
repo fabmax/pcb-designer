@@ -99,6 +99,11 @@ impl Document {
         Ok(changes)
     }
 
+    /// See [`Editor::set_library_name`].
+    pub fn set_library_name(&mut self, name: String) {
+        self.editor.set_library_name(name);
+    }
+
     /// Mark the current state as saved (for documents saved by other means).
     pub fn mark_saved(&mut self) {
         self.editor.mark_saved();

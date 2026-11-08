@@ -1,19 +1,25 @@
-//! Main window: menu, library and layer panel, docked schematic and PCB editors,
-//! properties panel, status bar.
+//! Main window: menu, side panels, docked schematic / PCB / library editors, status bar.
+//!
+//! Focus is either a project view (schematic or PCB) or a library tab; the side panels,
+//! keyboard shortcuts and Save follow the focus.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use editor_core::Command;
+use editor_core::query::{PartState, part_statuses};
 use egui::{RichText, WidgetText};
-use egui_tiles::{Behavior, SimplificationOptions, TileId, Tiles, Tree, UiResponse};
+use egui_tiles::{Behavior, Container, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse};
 use model::*;
 use render::gpu::Background;
-use view::{Document, Interaction, KeyAction, PointerInput, ViewKind};
+use view::item::Item;
+use view::tools::Tool;
+use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
 
 use crate::agent::{self, Agent};
-use crate::canvas::{Canvas, CanvasResources};
+use crate::canvas::{self, Canvas, CanvasResources};
 use crate::keymap::{Action, Keymap};
+use crate::library::{LibEvent, LibraryEditor, Open};
 use crate::properties::Properties;
 use crate::theme;
 
@@ -35,11 +41,23 @@ pub struct Options {
     pub keymap: Keymap,
     /// Start the MCP server on this port.
     pub mcp: Option<u16>,
+    /// Library files to open.
+    pub library: Vec<PathBuf>,
+    /// Open this part, symbol or footprint (by name) of the last library.
+    pub show: Option<String>,
 }
 
 const SCH_GRIDS: &[(f64, &str)] = &[(2.54, "2.54 mm"), (1.27, "1.27 mm"), (0.635, "0.635 mm")];
 const BOARD_GRIDS: &[(f64, &str)] =
     &[(1.0, "1 mm"), (0.5, "0.5 mm"), (0.25, "0.25 mm"), (0.1, "0.1 mm"), (0.05, "0.05 mm"), (0.635, "25 mil")];
+
+/// Content of a dock tab.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Tab {
+    View(ViewKind),
+    /// Library editor, by [`LibraryEditor::key`].
+    Library(u64),
+}
 
 /// One editor pane: camera + interaction state for a view of the document.
 pub(crate) struct Pane {
@@ -67,14 +85,19 @@ impl Pane {
 }
 
 pub struct PcbApp {
-    tree: Tree<ViewKind>,
+    tree: Tree<Tab>,
     doc: Document,
     panes: [Pane; 2],
-    /// Pane receiving keyboard shortcuts and shown in the side panels.
+    /// Project pane receiving keyboard shortcuts when no library has focus.
     active: ViewKind,
+    /// Library tab with focus (`None`: the project has focus).
+    focus_lib: Option<u64>,
     hovered: Option<ViewKind>,
     properties: Properties,
-    starter: Library,
+    libraries: Vec<LibraryEditor>,
+    next_key: u64,
+    /// Library tabs whose close button was pressed.
+    close_requests: Vec<u64>,
     status: Option<(String, Instant)>,
     title: String,
     revision: u64,
@@ -92,9 +115,11 @@ impl PcbApp {
         CanvasResources::install(rs);
 
         let mut tiles = Tiles::default();
-        let sch = tiles.insert_pane(ViewKind::Schematic);
-        let pcb = tiles.insert_pane(ViewKind::Board);
-        let root = tiles.insert_horizontal_tile(vec![sch, pcb]);
+        let sch = tiles.insert_pane(Tab::View(ViewKind::Schematic));
+        let pcb = tiles.insert_pane(Tab::View(ViewKind::Board));
+        let left = tiles.insert_tab_tile(vec![sch]);
+        let right = tiles.insert_tab_tile(vec![pcb]);
+        let root = tiles.insert_horizontal_tile(vec![left, right]);
         let tree = Tree::new(egui::Id::unique("main_tree"), root, tiles);
 
         let mut status = None;
@@ -117,9 +142,12 @@ impl PcbApp {
             doc,
             panes: [Pane::new(ViewKind::Schematic), Pane::new(ViewKind::Board)],
             active: ViewKind::Schematic,
+            focus_lib: None,
             hovered: None,
             properties: Properties::default(),
-            starter: builtin::starter_library(),
+            libraries: Vec::new(),
+            next_key: 0,
+            close_requests: Vec::new(),
             status,
             title: String::new(),
             revision: u64::MAX,
@@ -129,6 +157,19 @@ impl PcbApp {
             show_keymap: false,
             agent: Agent::new(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
         };
+        // The starter library is always available (built in, saved only with "Save as").
+        app.add_library(LibraryDoc::new(builtin::starter_library()), false);
+        for path in &opts.library {
+            match LibraryDoc::open(path) {
+                Ok(lib) => {
+                    app.add_library(lib, false);
+                }
+                Err(e) => app.set_status(format!("Could not open library {}: {e}", path.display())),
+            }
+        }
+        if let Some(name) = &opts.show {
+            app.show_by_name(name);
+        }
         if opts.mcp.is_some() {
             app.agent.start(&cc.egui_ctx);
         }
@@ -158,11 +199,20 @@ impl PcbApp {
     }
 
     fn busy(&self) -> bool {
-        self.panes.iter().any(|p| !p.it.is_idle())
+        self.panes.iter().any(|p| !p.it.is_idle()) || self.libraries.iter().any(|l| !l.it.is_idle())
+    }
+
+    fn lib(&mut self, key: u64) -> Option<&mut LibraryEditor> {
+        self.libraries.iter_mut().find(|l| l.key == key)
+    }
+
+    fn focused_lib(&mut self) -> Option<&mut LibraryEditor> {
+        let key = self.focus_lib?;
+        self.lib(key)
     }
 
     // ------------------------------------------------------------------------------------
-    // Files
+    // Project files
 
     fn replace_document(&mut self, doc: Document) {
         self.doc = doc;
@@ -179,13 +229,7 @@ impl PcbApp {
         if !self.doc.is_modified() {
             return true;
         }
-        let answer = rfd::MessageDialog::new()
-            .set_level(rfd::MessageLevel::Warning)
-            .set_title("Unsaved changes")
-            .set_description(format!("Save changes to \"{}\"?", self.doc.project().name))
-            .set_buttons(rfd::MessageButtons::YesNoCancel)
-            .show();
-        match answer {
+        match ask_save(&format!("Save changes to \"{}\"?", self.doc.project().name)) {
             rfd::MessageDialogResult::Yes => self.save(false),
             rfd::MessageDialogResult::No => true,
             _ => false,
@@ -237,6 +281,168 @@ impl PcbApp {
     }
 
     // ------------------------------------------------------------------------------------
+    // Libraries
+
+    /// Add a library editor tab (next to the schematic) and optionally focus it.
+    fn add_library(&mut self, lib: LibraryDoc, focus: bool) -> u64 {
+        let key = self.next_key;
+        self.next_key += 1;
+        self.libraries.push(LibraryEditor::new(key, lib));
+        let tile = self.tree.tiles.insert_pane(Tab::Library(key));
+        let parent = self
+            .tree
+            .tiles
+            .find_pane(&Tab::View(ViewKind::Schematic))
+            .and_then(|sch| self.tree.tiles.parent_of(sch))
+            .or(self.tree.root);
+        if let Some(Tile::Container(c)) = parent.and_then(|p| self.tree.tiles.get_mut(p)) {
+            c.add_child(tile);
+            if focus && let Container::Tabs(tabs) = c {
+                tabs.set_active(tile);
+            }
+        }
+        if focus {
+            self.focus_lib = Some(key);
+        }
+        key
+    }
+
+    fn focus_library_tab(&mut self, key: u64) {
+        if let Some(tile) = self.tree.tiles.find_pane(&Tab::Library(key)) {
+            self.tree.make_active(|id, _| id == tile);
+        }
+        self.focus_lib = Some(key);
+    }
+
+    fn new_library(&mut self) {
+        let mut lib = LibraryDoc::new(Library::new("New library"));
+        lib.doc.mark_saved();
+        self.add_library(lib, true);
+    }
+
+    fn open_library(&mut self) {
+        let Some(path) =
+            rfd::FileDialog::new().set_title("Open library").add_filter("PCB library", &["pcblib"]).pick_file()
+        else {
+            return;
+        };
+        if let Some(l) = self.libraries.iter().find(|l| l.path() == Some(&path)) {
+            let key = l.key;
+            return self.focus_library_tab(key);
+        }
+        match LibraryDoc::open(&path) {
+            Ok(lib) => {
+                self.add_library(lib, true);
+                self.set_status(format!("Opened library {}", path.display()));
+            }
+            Err(e) => self.set_status(format!("Could not open library: {e}")),
+        }
+    }
+
+    fn save_library(&mut self, key: u64, choose: bool) -> bool {
+        let Some(l) = self.lib(key) else { return false };
+        let path = match (l.path().cloned(), choose) {
+            (Some(p), false) => p,
+            _ => {
+                let name = format!("{}.pcblib", l.lib.name());
+                match rfd::FileDialog::new()
+                    .set_title("Save library")
+                    .add_filter("PCB library", &["pcblib"])
+                    .set_file_name(name)
+                    .save_file()
+                {
+                    Some(p) => p,
+                    None => return false,
+                }
+            }
+        };
+        let result = l.lib.save_as(&path);
+        match result {
+            Ok(()) => {
+                self.set_status(format!("Saved library {}", path.display()));
+                true
+            }
+            Err(e) => {
+                self.set_status(format!("Save failed: {e}"));
+                false
+            }
+        }
+    }
+
+    fn confirm_discard_library(&mut self, key: u64) -> bool {
+        let Some(l) = self.lib(key) else { return true };
+        if !l.lib.is_modified() {
+            return true;
+        }
+        match ask_save(&format!("Save changes to library \"{}\"?", l.lib.name())) {
+            rfd::MessageDialogResult::Yes => self.save_library(key, false),
+            rfd::MessageDialogResult::No => true,
+            _ => false,
+        }
+    }
+
+    fn close_library(&mut self, key: u64) {
+        if !self.confirm_discard_library(key) {
+            return;
+        }
+        if let Some(tile) = self.tree.tiles.find_pane(&Tab::Library(key)) {
+            self.tree.remove_recursively(tile);
+        }
+        self.libraries.retain(|l| l.key != key);
+        if self.focus_lib == Some(key) {
+            self.focus_lib = None;
+        }
+    }
+
+    /// Open a part, symbol or footprint by name in the last library (development aid).
+    fn show_by_name(&mut self, name: &str) {
+        let Some(l) = self.libraries.last_mut() else { return };
+        let lib = l.lib.library();
+        // "symbol:NAME" / "footprint:NAME" / "part:NAME", or the first match of NAME.
+        let (kind, name) = name.split_once(':').unwrap_or(("", name));
+        let part = lib.parts.iter().find(|p| p.name == name).filter(|_| matches!(kind, "" | "part"));
+        let symbol = lib.symbols.iter().find(|s| s.name == name).filter(|_| matches!(kind, "" | "symbol"));
+        let footprint = lib.footprints.iter().find(|f| f.name == name).filter(|_| matches!(kind, "" | "footprint"));
+        let open = if let Some(p) = part {
+            Open::Part(p.id)
+        } else if let Some(s) = symbol {
+            Open::Item(Item::Symbol(s.id))
+        } else if let Some(f) = footprint {
+            Open::Item(Item::Footprint(f.id))
+        } else {
+            return;
+        };
+        l.show(open);
+        let key = l.key;
+        self.focus_library_tab(key);
+    }
+
+    fn library_refs(&self) -> Vec<&Library> {
+        self.libraries.iter().map(|l| l.lib.library()).collect()
+    }
+
+    /// Update project parts from their libraries (`(library index, part)`).
+    fn update_parts(&mut self, parts: &[(usize, Id)]) {
+        let mut by_lib: Vec<(usize, Vec<Id>)> = Vec::new();
+        for &(lib, part) in parts {
+            match by_lib.iter_mut().find(|(l, _)| *l == lib) {
+                Some((_, v)) => v.push(part),
+                None => by_lib.push((lib, vec![part])),
+            }
+        }
+        let mut updated = 0;
+        for (lib, parts) in by_lib {
+            let library = self.libraries[lib].lib.library().clone();
+            let n = parts.len();
+            match self.doc.execute(Command::UpdateParts { library, parts }) {
+                Ok(_) => updated += n,
+                Err(e) => return self.set_status(format!("Update failed: {e}")),
+            }
+        }
+        self.set_status(format!("Updated {updated} part(s) from library"));
+    }
+
+    // ------------------------------------------------------------------------------------
     // Editing
 
     fn undo(&mut self) {
@@ -265,13 +471,18 @@ impl PcbApp {
         }
     }
 
-    /// Place a part from the starter library at the center of the schematic view.
-    fn place_part(&mut self, part: Id) {
+    /// Place a part at the center of the schematic view, importing it from library
+    /// `lib_key` if the project doesn't have it yet.
+    fn place_part(&mut self, lib_key: u64, part: Id) {
         if !self.doc.project().library.parts.contains(part) {
-            let cmd = Command::ImportParts { library: self.starter.clone(), parts: vec![part] };
-            if let Err(e) = self.doc.execute(cmd) {
-                self.set_status(format!("Import failed: {e}"));
-                return;
+            let Some(l) = self.lib(lib_key) else { return };
+            let issues = l.lib.library().validate();
+            if !issues.is_empty() {
+                return self.set_status(format!("Library has problems: {}", issues[0]));
+            }
+            let library = l.lib.library().clone();
+            if let Err(e) = self.doc.execute(Command::ImportParts { library, parts: vec![part] }) {
+                return self.set_status(format!("Import failed: {e}"));
             }
         }
         let pane = self.pane(ViewKind::Schematic);
@@ -296,6 +507,10 @@ impl PcbApp {
                     .map(|c| c.id)
                     .collect();
                 self.active = ViewKind::Schematic;
+                self.focus_lib = None;
+                if let Some(tile) = self.tree.tiles.find_pane(&Tab::View(ViewKind::Schematic)) {
+                    self.tree.make_active(|id, _| id == tile);
+                }
                 let pane = &mut self.panes[0];
                 pane.it.set_selection(&mut self.doc.target(ViewKind::Schematic), symbols);
             }
@@ -304,6 +519,11 @@ impl PcbApp {
     }
 
     fn run_action(&mut self, action: Action) {
+        if let Some(key) = self.focus_lib
+            && self.lib_action(key, action)
+        {
+            return;
+        }
         let key_action = match action {
             Action::New => return self.new_document(),
             Action::Open => return self.open(),
@@ -324,10 +544,53 @@ impl PcbApp {
             Action::Flip => KeyAction::Flip,
             Action::Delete => KeyAction::Delete,
             Action::Cancel => KeyAction::Escape,
+            Action::ToolSelect
+            | Action::ToolPin
+            | Action::ToolLine
+            | Action::ToolRect
+            | Action::ToolCircle
+            | Action::ToolText => return,
         };
         let kind = self.active;
         let pane = &mut self.panes[kind as usize];
         pane.it.key(&mut self.doc.target(kind), key_action);
+    }
+
+    /// Handle an action for a focused library. Returns false for project-level actions.
+    fn lib_action(&mut self, key: u64, action: Action) -> bool {
+        match action {
+            Action::New | Action::Open => return false,
+            Action::Save | Action::SaveAs => {
+                self.save_library(key, action == Action::SaveAs);
+                return true;
+            }
+            _ => {}
+        }
+        let Some(l) = self.lib(key) else { return false };
+        let msg = match action {
+            Action::Undo => l.undo(),
+            Action::Redo => l.redo(),
+            Action::FitView => {
+                l.canvas.request_fit();
+                None
+            }
+            Action::SelectAll => key_msg(l, KeyAction::SelectAll),
+            Action::Rotate => key_msg(l, KeyAction::Rotate),
+            Action::Mirror | Action::Flip => key_msg(l, KeyAction::Mirror),
+            Action::Delete => key_msg(l, KeyAction::Delete),
+            Action::Cancel => key_msg(l, KeyAction::Escape),
+            Action::ToolSelect => tool_msg(l, Tool::Select),
+            Action::ToolPin => tool_msg(l, Tool::Pin),
+            Action::ToolLine => tool_msg(l, Tool::Line),
+            Action::ToolRect => tool_msg(l, Tool::Rect),
+            Action::ToolCircle => tool_msg(l, Tool::Circle),
+            Action::ToolText => tool_msg(l, Tool::Text),
+            Action::New | Action::Open | Action::Save | Action::SaveAs => None,
+        };
+        if let Some(m) = msg {
+            self.set_status(m);
+        }
+        true
     }
 
     /// Menu entry for `action`, showing its current shortcut.
@@ -344,21 +607,41 @@ impl PcbApp {
     fn menu(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
-                self.menu_item(ui, "New", Action::New, true);
-                self.menu_item(ui, "Open…", Action::Open, true);
+                let lib_focus = self.focus_lib.is_some();
+                self.menu_item(ui, "New project", Action::New, true);
+                self.menu_item(ui, "Open project…", Action::Open, true);
                 if ui.button("Open demo project").clicked() && self.confirm_discard() {
                     self.replace_document(Document::new(view::demo::demo_project()));
                 }
                 ui.separator();
-                self.menu_item(ui, "Save", Action::Save, true);
-                self.menu_item(ui, "Save As…", Action::SaveAs, true);
+                if ui.button("New library").clicked() {
+                    self.new_library();
+                }
+                if ui.button("Open library…").clicked() {
+                    self.open_library();
+                }
+                let starter_open = self.libraries.iter().any(|l| l.lib.library().id == Some(builtin::LIBRARY_ID));
+                if !starter_open && ui.button("Open starter library").clicked() {
+                    self.add_library(LibraryDoc::new(builtin::starter_library()), true);
+                }
+                ui.separator();
+                let (save, save_as) = if lib_focus {
+                    ("Save library", "Save library as…")
+                } else {
+                    ("Save project", "Save project as…")
+                };
+                self.menu_item(ui, save, Action::Save, true);
+                self.menu_item(ui, save_as, Action::SaveAs, true);
                 ui.separator();
                 if ui.button("Quit").clicked() {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             });
             ui.menu_button("Edit", |ui| {
-                let h = self.doc.editor().history();
+                let h = match self.focus_lib.and_then(|k| self.libraries.iter().find(|l| l.key == k)) {
+                    Some(l) => l.lib.doc.editor().history(),
+                    None => self.doc.editor().history(),
+                };
                 let undo = h.undo_label().map(|l| format!("Undo {l}"));
                 let redo = h.redo_label().map(|l| format!("Redo {l}"));
                 self.menu_item(ui, undo.as_deref().unwrap_or("Undo"), Action::Undo, undo.is_some());
@@ -436,21 +719,24 @@ impl PcbApp {
     }
 
     fn left_panel(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(6.0);
-        section(ui, "Library", |ui| {
-            ui.label(RichText::new(&self.starter.name).color(theme::TEXT_DIM));
-            let parts: Vec<(Id, String, String)> =
-                self.starter.parts.iter().map(|p| (p.id, p.name.clone(), p.description.clone())).collect();
-            for (id, name, description) in parts {
-                ui.horizontal(|ui| {
-                    let r = ui.button("Place");
-                    ui.label(RichText::new(&name).strong()).on_hover_text(&description);
-                    if r.clicked() {
-                        self.place_part(id);
-                    }
-                });
+        if let Some(key) = self.focus_lib {
+            let event = self.lib(key).and_then(|l| l.browser_ui(ui, true));
+            match event {
+                Some(LibEvent::Place(part)) => self.place_part(key, part),
+                Some(LibEvent::Save) => {
+                    self.save_library(key, false);
+                }
+                Some(LibEvent::SaveAs) => {
+                    self.save_library(key, true);
+                }
+                Some(LibEvent::Close) => self.close_requests.push(key),
+                None => {}
             }
-        });
+            return;
+        }
+        ui.add_space(6.0);
+        self.libraries_section(ui);
+        self.project_parts_section(ui);
 
         let kind = self.active;
         let pane = &mut self.panes[kind as usize];
@@ -482,19 +768,135 @@ impl PcbApp {
         });
     }
 
+    /// Parts of all open libraries, ready to place.
+    fn libraries_section(&mut self, ui: &mut egui::Ui) {
+        enum Act {
+            Place(u64, Id),
+            Edit(u64),
+            Open,
+            New,
+        }
+        let mut act = None;
+        section(ui, "Libraries", |ui| {
+            for l in &self.libraries {
+                let lib = l.lib.library();
+                let mut parts: Vec<&Part> = lib.parts.iter().collect();
+                parts.sort_by(|a, b| natural_cmp(&a.name, &b.name));
+                let id = ui.make_persistent_id(("lib_parts", l.key));
+                egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
+                    .show_header(ui, |ui| {
+                        ui.label(RichText::new(l.title()).color(theme::TEXT_DIM));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("Edit").on_hover_text("Open in the library editor").clicked() {
+                                act = Some(Act::Edit(l.key));
+                            }
+                        });
+                    })
+                    .body(|ui| {
+                        for part in parts {
+                            ui.horizontal(|ui| {
+                                if ui.small_button("Place").clicked() {
+                                    act = Some(Act::Place(l.key, part.id));
+                                }
+                                let r = ui.label(RichText::new(&part.name).strong());
+                                if !part.description.is_empty() {
+                                    r.on_hover_text(&part.description);
+                                }
+                            });
+                        }
+                    });
+            }
+            ui.horizontal(|ui| {
+                if ui.button("Open library…").clicked() {
+                    act = Some(Act::Open);
+                }
+                if ui.button("New library").clicked() {
+                    act = Some(Act::New);
+                }
+            });
+        });
+        match act {
+            Some(Act::Place(key, part)) => self.place_part(key, part),
+            Some(Act::Edit(key)) => self.focus_library_tab(key),
+            Some(Act::Open) => self.open_library(),
+            Some(Act::New) => self.new_library(),
+            None => {}
+        }
+    }
+
+    /// Parts embedded in the project and whether their library has a newer version.
+    fn project_parts_section(&mut self, ui: &mut egui::Ui) {
+        let statuses = part_statuses(self.doc.project(), &self.library_refs());
+        if statuses.is_empty() {
+            return;
+        }
+        let changed: Vec<(usize, Id)> = statuses
+            .iter()
+            .filter(|s| s.state == PartState::LibraryChanged)
+            .filter_map(|s| Some((s.library?, s.part)))
+            .collect();
+        let mut update = None;
+        section(ui, &format!("Project parts ({})", statuses.len()), |ui| {
+            for s in &statuses {
+                ui.horizontal(|ui| {
+                    let (text, color, tip) = match s.state {
+                        PartState::UpToDate => ("current", theme::TEXT_DIM, "Same as in the library"),
+                        PartState::LibraryChanged => ("changed", theme::WARN, "The library has a different version"),
+                        PartState::LibraryMissing => ("lib closed", theme::TEXT_DIM, "Its library is not open"),
+                        PartState::RemovedFromLibrary => {
+                            ("removed", theme::WARN, "The part no longer exists in its library")
+                        }
+                        PartState::Local => ("local", theme::TEXT_DIM, "Not from a library"),
+                    };
+                    ui.label(&s.name).on_hover_text(s.library_name.as_deref().unwrap_or(""));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if s.state == PartState::LibraryChanged
+                            && let Some(lib) = s.library
+                            && ui.small_button("Update").clicked()
+                        {
+                            update = Some(vec![(lib, s.part)]);
+                        }
+                        ui.label(RichText::new(text).color(color).small()).on_hover_text(tip);
+                    });
+                });
+            }
+            if !changed.is_empty() && ui.button(format!("Update all ({})", changed.len())).clicked() {
+                update = Some(changed.clone());
+            }
+        });
+        if let Some(parts) = update {
+            self.update_parts(&parts);
+        }
+    }
+
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            let pane = &self.panes[self.hovered.unwrap_or(self.active) as usize];
-            ui.label(RichText::new(pane.title()).color(theme::ACCENT));
-            match pane.canvas.cursor_world {
+            let lib = self.focus_lib.and_then(|k| self.libraries.iter().find(|l| l.key == k));
+            let (title, cursor, grid, selected) = match lib {
+                Some(l) => {
+                    let what = match l.open {
+                        Open::Item(Item::Symbol(_)) => "Symbol editor",
+                        Open::Item(Item::Footprint(_)) => "Footprint editor",
+                        Open::Part(_) => "Part",
+                        Open::None => "Library",
+                    };
+                    (format!("{what} · {}", l.lib.name()), l.canvas.cursor_world, l.it.grid, l.it.selection.len())
+                }
+                None => {
+                    let pane = &self.panes[self.hovered.unwrap_or(self.active) as usize];
+                    let sel = self.panes[self.active as usize].it.selection.len();
+                    (pane.title().to_string(), pane.canvas.cursor_world, pane.it.grid, sel)
+                }
+            };
+            ui.label(RichText::new(title).color(theme::ACCENT));
+            match cursor {
                 Some([x, y]) => ui.monospace(format!("X {x:>9.3}  Y {y:>9.3} mm")),
                 None => ui.monospace(" ".repeat(26)),
             };
             ui.separator();
-            ui.monospace(format!("grid {} mm", to_mm(pane.it.grid)));
+            ui.monospace(format!("grid {} mm", to_mm(grid)));
             ui.separator();
-            let sel = &self.panes[self.active as usize].it.selection;
-            ui.label(format!("{} selected", sel.len()));
+            ui.label(format!("{selected} selected"));
             let msg = self.panes.iter().find_map(|p| p.it.message.clone());
             let status = self.status.as_ref().filter(|(_, t)| t.elapsed() < Duration::from_secs(6));
             if let Some(m) = msg.as_deref().or(status.map(|s| s.0.as_str())) {
@@ -539,13 +941,24 @@ impl PcbApp {
     }
 
     fn handle_close(&mut self, ctx: &egui::Context) {
-        if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close && self.doc.is_modified() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            if self.confirm_discard() {
-                self.allow_close = true;
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        if !ctx.input(|i| i.viewport().close_requested()) || self.allow_close {
+            return;
+        }
+        let modified_libs: Vec<u64> = self.libraries.iter().filter(|l| l.lib.is_modified()).map(|l| l.key).collect();
+        if !self.doc.is_modified() && modified_libs.is_empty() {
+            return;
+        }
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        if !self.confirm_discard() {
+            return;
+        }
+        for key in modified_libs {
+            if !self.confirm_discard_library(key) {
+                return;
             }
         }
+        self.allow_close = true;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
 
     fn screenshot_tick(&mut self, ctx: &egui::Context) {
@@ -571,6 +984,25 @@ impl PcbApp {
     }
 }
 
+fn key_msg(l: &mut LibraryEditor, action: KeyAction) -> Option<String> {
+    l.key(action);
+    None
+}
+
+fn tool_msg(l: &mut LibraryEditor, tool: Tool) -> Option<String> {
+    l.set_tool(tool);
+    None
+}
+
+fn ask_save(question: &str) -> rfd::MessageDialogResult {
+    rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title("Unsaved changes")
+        .set_description(question)
+        .set_buttons(rfd::MessageButtons::YesNoCancel)
+        .show()
+}
+
 fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
     egui::CollapsingHeader::new(RichText::new(title).strong()).default_open(true).show(ui, add);
     ui.add_space(4.0);
@@ -579,43 +1011,15 @@ fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
 struct TreeBehavior<'a> {
     doc: &'a mut Document,
     panes: &'a mut [Pane; 2],
+    libraries: &'a mut [LibraryEditor],
     active: &'a mut ViewKind,
+    focus_lib: &'a mut Option<u64>,
     hovered: &'a mut Option<ViewKind>,
+    close_requests: &'a mut Vec<u64>,
 }
 
 impl TreeBehavior<'_> {
-    fn pointer_input(ui: &egui::Ui, response: &egui::Response, pane: &Pane) -> Option<PointerInput> {
-        let engaged = !pane.it.is_idle();
-        if !(response.hovered() || engaged || pane.it.hover.is_some()) {
-            return None;
-        }
-        let px_to_nm = |px: f64| (px / pane.canvas.camera.zoom * 1e6) as Coord;
-        Some(ui.input(|i| {
-            let pos = i.pointer.latest_pos().filter(|_| response.hovered() || engaged);
-            PointerInput {
-                world: pos.map(|p| {
-                    let [x, y] = pane.canvas.screen_to_world(p);
-                    Point::mm(x, y)
-                }),
-                pressed: response.hovered() && i.pointer.primary_pressed(),
-                released: i.pointer.primary_released(),
-                down: i.pointer.primary_down(),
-                shift: i.modifiers.shift,
-                command: i.modifiers.command,
-                tolerance: px_to_nm(5.0),
-                drag_threshold: px_to_nm(4.0),
-            }
-        }))
-    }
-}
-
-impl Behavior<ViewKind> for TreeBehavior<'_> {
-    fn tab_title_for_pane(&mut self, kind: &ViewKind) -> WidgetText {
-        self.panes[*kind as usize].title().into()
-    }
-
-    fn pane_ui(&mut self, ui: &mut egui::Ui, _tile_id: TileId, kind: &mut ViewKind) -> UiResponse {
-        let kind = *kind;
+    fn view_ui(&mut self, ui: &mut egui::Ui, kind: ViewKind) {
         let pane = &mut self.panes[kind as usize];
         let response = pane.canvas.ui(ui, &mut self.doc.view_mut(kind).scene);
         if response.hovered() {
@@ -623,8 +1027,10 @@ impl Behavior<ViewKind> for TreeBehavior<'_> {
         }
         if response.hovered() && ui.input(|i| i.pointer.any_pressed()) {
             *self.active = kind;
+            *self.focus_lib = None;
         }
-        if let Some(input) = Self::pointer_input(ui, &response, pane) {
+        let engaged = !pane.it.is_idle();
+        if let Some(input) = canvas::pointer_input(ui, &response, &pane.canvas, engaged, pane.it.hover.is_some()) {
             pane.it.pointer(&mut self.doc.target(kind), &input);
         }
         if pane.it.is_dragging() {
@@ -632,26 +1038,71 @@ impl Behavior<ViewKind> for TreeBehavior<'_> {
         } else if pane.it.hover.is_some() && response.hovered() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
-
-        // Box selection: solid blue for "inside", dashed green for "crossing".
         if let Some((r, crossing)) = pane.it.box_rect() {
-            let a = pane.canvas.world_to_screen(Point::new(r.min.x, r.min.y).to_mm());
-            let b = pane.canvas.world_to_screen(Point::new(r.max.x, r.max.y).to_mm());
-            let rect = egui::Rect::from_two_pos(a, b);
-            let color = if crossing { theme::SUCCESS } else { theme::ACCENT };
-            let painter = ui.painter_at(response.rect);
-            painter.rect_filled(rect, 0.0, color.gamma_multiply(0.12));
-            if crossing {
-                let pts = [rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom(), rect.left_top()];
-                painter.extend(egui::Shape::dashed_line(&pts, egui::Stroke::new(1.0, color), 6.0, 4.0));
-            } else {
-                painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Inside);
-            }
+            canvas::draw_box(ui, &pane.canvas, response.rect, r, crossing);
         }
         if !pane.it.is_idle() {
             ui.ctx().request_repaint();
         }
+    }
+
+    fn tab_of(tiles: &Tiles<Tab>, tile: TileId) -> Option<Tab> {
+        match tiles.get(tile) {
+            Some(Tile::Pane(tab)) => Some(*tab),
+            _ => None,
+        }
+    }
+}
+
+impl Behavior<Tab> for TreeBehavior<'_> {
+    fn tab_title_for_pane(&mut self, tab: &Tab) -> WidgetText {
+        match tab {
+            Tab::View(kind) => self.panes[*kind as usize].title().into(),
+            Tab::Library(key) => {
+                let title = self.libraries.iter().find(|l| l.key == *key).map_or("Library".into(), |l| l.title());
+                format!("Library: {title}").into()
+            }
+        }
+    }
+
+    fn pane_ui(&mut self, ui: &mut egui::Ui, _tile_id: TileId, tab: &mut Tab) -> UiResponse {
+        match *tab {
+            Tab::View(kind) => self.view_ui(ui, kind),
+            Tab::Library(key) => {
+                if let Some(l) = self.libraries.iter_mut().find(|l| l.key == key)
+                    && l.center_ui(ui)
+                {
+                    *self.focus_lib = Some(key);
+                }
+            }
+        }
         UiResponse::None
+    }
+
+    fn on_tab_button(&mut self, tiles: &mut Tiles<Tab>, tile_id: TileId, response: egui::Response) -> egui::Response {
+        if response.clicked() || response.drag_started() {
+            match Self::tab_of(tiles, tile_id) {
+                Some(Tab::Library(key)) => *self.focus_lib = Some(key),
+                Some(Tab::View(kind)) => {
+                    *self.active = kind;
+                    *self.focus_lib = None;
+                }
+                None => {}
+            }
+        }
+        response
+    }
+
+    fn is_tab_closable(&self, tiles: &Tiles<Tab>, tile_id: TileId) -> bool {
+        matches!(Self::tab_of(tiles, tile_id), Some(Tab::Library(_)))
+    }
+
+    fn on_tab_close(&mut self, tiles: &mut Tiles<Tab>, tile_id: TileId) -> bool {
+        if let Some(Tab::Library(key)) = Self::tab_of(tiles, tile_id) {
+            // Closed by the app after asking about unsaved changes.
+            self.close_requests.push(key);
+        }
+        false
     }
 
     fn simplification_options(&self) -> SimplificationOptions {
@@ -677,12 +1128,16 @@ impl eframe::App for PcbApp {
 
         egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
-        egui::Panel::left("library").resizable(true).default_size(230.0).show(ui, |ui| {
+        egui::Panel::left("library").resizable(true).default_size(240.0).show(ui, |ui| {
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.left_panel(ui));
         });
-        egui::Panel::right("properties").resizable(true).default_size(280.0).show(ui, |ui| {
+        egui::Panel::right("properties").resizable(true).default_size(300.0).show(ui, |ui| {
             ui.add_space(6.0);
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                if let Some(l) = self.focused_lib() {
+                    l.inspector_ui(ui);
+                    return;
+                }
                 let kind = self.active;
                 let pane = &mut self.panes[kind as usize];
                 let selection = pane.it.selection.clone();
@@ -699,15 +1154,26 @@ impl eframe::App for PcbApp {
             let mut behavior = TreeBehavior {
                 doc: &mut self.doc,
                 panes: &mut self.panes,
+                libraries: &mut self.libraries,
                 active: &mut self.active,
+                focus_lib: &mut self.focus_lib,
                 hovered: &mut self.hovered,
+                close_requests: &mut self.close_requests,
             };
             self.tree.ui(&mut behavior, ui);
         });
 
+        for key in std::mem::take(&mut self.close_requests) {
+            self.close_library(key);
+        }
+        if let Some(m) = self.libraries.iter_mut().find_map(|l| l.message.take()) {
+            self.set_status(m);
+        }
+
         // Agent requests are answered between user interactions.
         if !self.busy() {
-            self.agent.process(&ctx, &mut self.doc, &mut self.panes, &self.starter);
+            let libraries: Vec<&Library> = self.libraries.iter().map(|l| l.lib.library()).collect();
+            self.agent.process(&ctx, &mut self.doc, &mut self.panes, &libraries);
         }
 
         // Model changed (any source): drop stale selections, refresh highlights.

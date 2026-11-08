@@ -11,9 +11,14 @@ pub mod document;
 mod draw;
 pub mod index;
 pub mod interaction;
+pub mod item;
+pub mod library_doc;
 pub mod style;
+pub mod tools;
 pub mod view;
 
 pub use document::{Document, ProjectTarget};
 pub use interaction::{Edit, Interaction, KeyAction, PointerInput, Target};
+pub use item::{Elem, Item, ItemTarget, ItemView};
+pub use library_doc::LibraryDoc;
 pub use view::{View, ViewKind};

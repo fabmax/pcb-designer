@@ -15,6 +15,13 @@ pub enum Command {
         library: Library,
         parts: Vec<Id>,
     },
+    /// Replace the project's copies of parts (with their symbols and footprints) by the
+    /// current library versions. Components keep their footprint variant if it still
+    /// exists (matched by id, then by name), otherwise they get the first variant.
+    UpdateParts {
+        library: Library,
+        parts: Vec<Id>,
+    },
     /// Place a part from the project library: creates a component and its symbol. The
     /// footprint appears on the board automatically.
     PlacePart {
@@ -112,6 +119,7 @@ impl Command {
     pub fn label(&self) -> String {
         match self {
             Command::ImportParts { parts, .. } => format!("Import {} part(s)", parts.len()),
+            Command::UpdateParts { parts, .. } => format!("Update {} part(s) from library", parts.len()),
             Command::PlacePart { .. } => "Place part".into(),
             Command::AddWire { .. } => "Add wire".into(),
             Command::AddJunction { .. } => "Add junction".into(),
@@ -132,6 +140,7 @@ impl Command {
     pub(crate) fn apply(self, tx: &mut Transaction) -> Result<(), CommandError> {
         match self {
             Command::ImportParts { library, parts } => import_parts(tx, &library, &parts),
+            Command::UpdateParts { library, parts } => update_parts(tx, &library, &parts),
             Command::PlacePart { part, variant, sheet, pos, rotation, mirror, refdes, value } => {
                 place_part(tx, part, variant, sheet, pos, rotation, mirror, refdes, value)
             }
@@ -271,13 +280,7 @@ fn import_parts(tx: &mut Transaction, library: &Library, parts: &[Id]) -> Result
     for &part_id in parts {
         let (mut part, symbols, footprints) =
             library.extract_part(part_id).ok_or(CommandError::NotFound(ObjectId::LibPart(part_id)))?;
-        let hash = library.content_hash(part_id).unwrap_or_default();
-        part.source = library.id.map(|lib| PartSource {
-            library: lib,
-            library_name: library.name.clone(),
-            part: part_id,
-            content_hash: hash,
-        });
+        part.source = source_of(library, part_id);
         for s in symbols {
             insert_or_check(tx, Object::LibSymbol(s))?;
         }
@@ -287,6 +290,106 @@ fn import_parts(tx: &mut Transaction, library: &Library, parts: &[Id]) -> Result
         insert_or_check(tx, Object::LibPart(part))?;
     }
     Ok(())
+}
+
+fn source_of(library: &Library, part_id: Id) -> Option<PartSource> {
+    library.id.map(|lib| PartSource {
+        library: lib,
+        library_name: library.name.clone(),
+        part: part_id,
+        content_hash: library.content_hash(part_id).unwrap_or_default(),
+    })
+}
+
+fn update_parts(tx: &mut Transaction, library: &Library, parts: &[Id]) -> Result<(), CommandError> {
+    for &part_id in parts {
+        let (mut part, symbols, footprints) =
+            library.extract_part(part_id).ok_or(CommandError::NotFound(ObjectId::LibPart(part_id)))?;
+        let old = tx
+            .project()
+            .library
+            .parts
+            .get(part_id)
+            .cloned()
+            .ok_or(CommandError::NotFound(ObjectId::LibPart(part_id)))?;
+        part.source = source_of(library, part_id);
+
+        // Placed units must still exist.
+        let components: Vec<Component> =
+            tx.project().schematic.components.iter().filter(|c| c.part == part_id).cloned().collect();
+        for c in &components {
+            if let Some(s) = tx.project().schematic.symbols_of(c.id).find(|s| s.unit as usize >= part.units.len()) {
+                return Err(CommandError::Forbidden(format!(
+                    "{} has unit {} placed, but the library part now has {} unit(s)",
+                    c.refdes,
+                    s.unit + 1,
+                    part.units.len()
+                )));
+            }
+        }
+
+        for s in symbols {
+            upsert(tx, Object::LibSymbol(s))?;
+        }
+        for f in footprints {
+            upsert(tx, Object::LibFootprint(f))?;
+        }
+        let new_variants = part.variants.clone();
+        tx.replace(Object::LibPart(part))?;
+
+        // Keep components on a valid variant.
+        for c in components {
+            if new_variants.iter().any(|v| v.id == c.variant) {
+                continue;
+            }
+            let old_name = old.variant(c.variant).map(|v| v.name.as_str());
+            let Some(v) = new_variants.iter().find(|v| Some(v.name.as_str()) == old_name).or(new_variants.first())
+            else {
+                return Err(CommandError::Invalid(format!("library part {:?} has no footprint variant", old.name)));
+            };
+            let variant = v.id;
+            tx.update(ObjectId::Component(c.id), |o| {
+                let Object::Component(c) = o else { unreachable!() };
+                c.variant = variant;
+                Ok(())
+            })?;
+        }
+
+        // Drop symbols/footprints no longer used by any project part.
+        let lib = &tx.project().library;
+        let unused_symbols: Vec<Id> = old
+            .units
+            .iter()
+            .map(|u| u.symbol)
+            .filter(|&s| !lib.parts.iter().any(|p| p.units.iter().any(|u| u.symbol == s)))
+            .collect();
+        let unused_footprints: Vec<Id> = old
+            .variants
+            .iter()
+            .map(|v| v.footprint)
+            .filter(|&f| !lib.parts.iter().any(|p| p.variants.iter().any(|v| v.footprint == f)))
+            .collect();
+        for s in unused_symbols {
+            if tx.project().library.symbols.contains(s) {
+                tx.remove(ObjectId::LibSymbol(s))?;
+            }
+        }
+        for f in unused_footprints {
+            if tx.project().library.footprints.contains(f) {
+                tx.remove(ObjectId::LibFootprint(f))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Insert or replace a library object.
+fn upsert(tx: &mut Transaction, o: Object) -> Result<(), CommandError> {
+    match tx.project().get(o.id()) {
+        None => tx.insert(o).map(drop),
+        Some(existing) if existing == o => Ok(()),
+        Some(_) => tx.replace(o),
+    }
 }
 
 /// Insert a library object unless an identical copy is already present.

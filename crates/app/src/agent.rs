@@ -56,9 +56,9 @@ impl Agent {
     }
 
     /// Answer queued requests. Call once per frame when no interaction is in progress.
-    pub fn process(&mut self, ctx: &egui::Context, doc: &mut Document, panes: &mut [Pane; 2], library: &Library) {
+    pub fn process(&mut self, ctx: &egui::Context, doc: &mut Document, panes: &mut [Pane; 2], libraries: &[&Library]) {
         let Some((_, rx)) = &self.server else { return };
-        let mut host = AppHost { ctx, doc, panes, library, offscreen: &mut self.offscreen };
+        let mut host = AppHost { ctx, doc, panes, libraries, offscreen: &mut self.offscreen };
         while let Ok(call) = rx.try_recv() {
             self.calls += 1;
             let description = call.request.describe();
@@ -75,7 +75,7 @@ struct AppHost<'a> {
     ctx: &'a egui::Context,
     doc: &'a mut Document,
     panes: &'a mut [Pane; 2],
-    library: &'a Library,
+    libraries: &'a [&'a Library],
     offscreen: &'a mut Option<Offscreen>,
 }
 
@@ -84,8 +84,8 @@ impl Host for AppHost<'_> {
         self.doc
     }
 
-    fn library(&self) -> &Library {
-        self.library
+    fn libraries(&self) -> Vec<&Library> {
+        self.libraries.to_vec()
     }
 
     fn selection(&self, view: ViewKind) -> Vec<ObjectId> {

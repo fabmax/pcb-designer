@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use editor_core::query::{pad_positions, pin_pad_names, pin_positions};
+use editor_core::query::{PartState, pad_positions, part_statuses, pin_pad_names, pin_positions};
 use editor_core::{ChangeSet, Command};
 use model::*;
 use render::gpu::Background;
@@ -24,6 +24,10 @@ pub enum Request {
     Project,
     LibraryParts,
     ImportParts {
+        parts: Vec<Id>,
+    },
+    /// Update project parts from their libraries (empty: all that changed).
+    UpdateParts {
         parts: Vec<Id>,
     },
     ListObjects {
@@ -68,6 +72,8 @@ impl Request {
             Request::Project => "read project".into(),
             Request::LibraryParts => "list library parts".into(),
             Request::ImportParts { parts } => format!("import {} part(s)", parts.len()),
+            Request::UpdateParts { parts } if parts.is_empty() => "update parts".into(),
+            Request::UpdateParts { parts } => format!("update {} part(s)", parts.len()),
             Request::ListObjects { .. } => "list objects".into(),
             Request::GetObjects { ids } => format!("read {} object(s)", ids.len()),
             Request::Component { refdes } => format!("read {refdes}"),
@@ -90,6 +96,7 @@ impl Request {
         matches!(
             self,
             Request::ImportParts { .. }
+                | Request::UpdateParts { .. }
                 | Request::Execute { .. }
                 | Request::Undo
                 | Request::Redo
@@ -116,8 +123,8 @@ pub struct Call {
 /// What [`handle`] needs from the application.
 pub trait Host {
     fn document(&mut self) -> &mut Document;
-    /// Library that `import_parts` / `list_library_parts` draw from.
-    fn library(&self) -> &Library;
+    /// Open libraries that `import_parts` / `list_library_parts` / `update_parts` use.
+    fn libraries(&self) -> Vec<&Library>;
     fn selection(&self, view: ViewKind) -> Vec<ObjectId>;
     fn set_selection(&mut self, view: ViewKind, ids: Vec<ObjectId>);
     /// PNG of a view: everything (`fit`) or what the user currently sees.
@@ -142,15 +149,61 @@ pub fn handle(call: Call, host: &mut dyn Host) {
 fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
     let json = match request {
         Request::Project => project_summary(host.document()),
-        Request::LibraryParts => library_parts(host.library()),
+        Request::LibraryParts => {
+            let libraries: Vec<Value> = host.libraries().into_iter().map(library_parts).collect();
+            let libs = host.libraries().into_iter().cloned().collect::<Vec<_>>();
+            let refs: Vec<&Library> = libs.iter().collect();
+            let statuses = part_statuses(host.document().project(), &refs);
+            let project_parts: Vec<Value> = statuses
+                .iter()
+                .map(|s| json!({ "id": s.part, "name": s.name, "library": s.library_name, "state": format!("{:?}", s.state) }))
+                .collect();
+            json!({ "libraries": libraries, "project_parts": project_parts })
+        }
         Request::ImportParts { parts } => {
-            let library = host.library().clone();
-            for p in &parts {
-                if !library.parts.contains(*p) {
-                    return Err(format!("part {p} is not in library {:?}", library.name));
+            let mut commands: Vec<Command> = Vec::new();
+            let libraries: Vec<Library> = host.libraries().into_iter().cloned().collect();
+            let mut by_lib: Vec<(usize, Vec<Id>)> = Vec::new();
+            for p in parts {
+                let i = libraries
+                    .iter()
+                    .position(|l| l.parts.contains(p))
+                    .ok_or(format!("part {p} is in no open library"))?;
+                match by_lib.iter_mut().find(|(l, _)| *l == i) {
+                    Some((_, v)) => v.push(p),
+                    None => by_lib.push((i, vec![p])),
                 }
             }
-            execute(host.document(), vec![Command::ImportParts { library, parts }])?
+            for (i, parts) in by_lib {
+                commands.push(Command::ImportParts { library: libraries[i].clone(), parts });
+            }
+            execute(host.document(), commands)?
+        }
+        Request::UpdateParts { parts } => {
+            let libraries: Vec<Library> = host.libraries().into_iter().cloned().collect();
+            let refs: Vec<&Library> = libraries.iter().collect();
+            let statuses = part_statuses(host.document().project(), &refs);
+            let mut by_lib: Vec<(usize, Vec<Id>)> = Vec::new();
+            for s in statuses {
+                let wanted =
+                    if parts.is_empty() { s.state == PartState::LibraryChanged } else { parts.contains(&s.part) };
+                if !wanted {
+                    continue;
+                }
+                let i = s.library.ok_or(format!("the library of part {:?} is not open", s.name))?;
+                match by_lib.iter_mut().find(|(l, _)| *l == i) {
+                    Some((_, v)) => v.push(s.part),
+                    None => by_lib.push((i, vec![s.part])),
+                }
+            }
+            if by_lib.is_empty() {
+                return Ok(Reply::Json(json!({ "updated": 0 })));
+            }
+            let commands = by_lib
+                .into_iter()
+                .map(|(i, parts)| Command::UpdateParts { library: libraries[i].clone(), parts })
+                .collect();
+            execute(host.document(), commands)?
         }
         Request::ListObjects { kind, offset, limit } => list_objects(host.document().project(), kind, offset, limit),
         Request::GetObjects { ids } => {

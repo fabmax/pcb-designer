@@ -70,3 +70,58 @@ pub fn pin_pad_names(project: &Project, component: Id) -> Vec<(String, Vec<Strin
     }
     out
 }
+
+/// How a project part relates to the library it came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PartState {
+    /// Same content as the library part.
+    UpToDate,
+    /// The library part changed since it was copied.
+    LibraryChanged,
+    /// The source library is not open.
+    LibraryMissing,
+    /// The library no longer contains the part.
+    RemovedFromLibrary,
+    /// Not copied from a library (no provenance).
+    Local,
+}
+
+#[derive(Clone, Debug)]
+pub struct PartStatus {
+    pub part: Id,
+    pub name: String,
+    pub library_name: Option<String>,
+    pub state: PartState,
+    /// Index into `libraries` of the source library, if open.
+    pub library: Option<usize>,
+}
+
+/// Compare every project part with its source among `libraries`.
+pub fn part_statuses(project: &Project, libraries: &[&Library]) -> Vec<PartStatus> {
+    project
+        .library
+        .parts
+        .iter()
+        .map(|part| {
+            let mut status = PartStatus {
+                part: part.id,
+                name: part.name.clone(),
+                library_name: part.source.as_ref().map(|s| s.library_name.clone()),
+                state: PartState::Local,
+                library: None,
+            };
+            let Some(src) = &part.source else { return status };
+            let Some(index) = libraries.iter().position(|l| l.id == Some(src.library)) else {
+                status.state = PartState::LibraryMissing;
+                return status;
+            };
+            status.library = Some(index);
+            status.state = match libraries[index].content_hash(src.part) {
+                None => PartState::RemovedFromLibrary,
+                Some(h) if h == src.content_hash => PartState::UpToDate,
+                Some(_) => PartState::LibraryChanged,
+            };
+            status
+        })
+        .collect()
+}

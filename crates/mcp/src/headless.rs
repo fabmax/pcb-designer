@@ -34,8 +34,8 @@ impl Host for HeadlessHost {
         &mut self.doc
     }
 
-    fn library(&self) -> &Library {
-        &self.library
+    fn libraries(&self) -> Vec<&Library> {
+        vec![&self.library]
     }
 
     fn selection(&self, view: ViewKind) -> Vec<ObjectId> {
