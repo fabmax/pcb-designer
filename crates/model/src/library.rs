@@ -28,7 +28,7 @@ pub(crate) use has_id;
 // ---------------------------------------------------------------------------------------
 // Symbols
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PinKind {
     Input,
@@ -43,7 +43,7 @@ pub enum PinKind {
     NotConnected,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Pin {
     pub id: Id,
     pub name: String,
@@ -71,7 +71,7 @@ impl Pin {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Symbol {
     pub id: Id,
     pub name: String,
@@ -85,7 +85,7 @@ pub struct Symbol {
 // ---------------------------------------------------------------------------------------
 // Footprints
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PadShape {
     Circle,
@@ -101,7 +101,7 @@ pub enum PadShape {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PadKind {
     /// Surface mount pad on the footprint's side.
@@ -112,7 +112,7 @@ pub enum PadKind {
     NonPlatedHole { drill: Coord },
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Pad {
     pub id: Id,
     /// Pad number/name as printed in datasheets ("1", "A3", "EP").
@@ -127,7 +127,7 @@ pub struct Pad {
 
 /// Layers available inside a footprint (defined on the top side; mirrored when placed on
 /// the bottom).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FootprintLayer {
     Copper,
@@ -138,19 +138,19 @@ pub enum FootprintLayer {
     Courtyard,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FootprintGraphic {
     pub layer: FootprintLayer,
     pub shape: Shape,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FootprintText {
     pub layer: FootprintLayer,
     pub text: Text,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Footprint {
     pub id: Id,
     pub name: String,
@@ -166,21 +166,21 @@ pub struct Footprint {
 // ---------------------------------------------------------------------------------------
 // Parts
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PartUnit {
     pub name: String,
     pub symbol: Id,
 }
 
 /// Connects a footprint pad to a pin of one of the part's units.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PadConnection {
     pub pad: Id,
     pub unit: u32,
     pub pin: Id,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PartVariant {
     pub id: Id,
     pub name: String,
@@ -189,7 +189,7 @@ pub struct PartVariant {
 }
 
 /// Where an embedded part came from; used by "update from library".
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct PartSource {
     pub library: Id,
     pub library_name: String,
@@ -198,7 +198,7 @@ pub struct PartSource {
     pub content_hash: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Part {
     pub id: Id,
     pub name: String,
@@ -226,7 +226,7 @@ has_id!(Pin, Symbol, Pad, Footprint, Part);
 
 /// A collection of symbols, footprints and parts. Used both for library files and for the
 /// copies embedded in a project.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Library {
     pub id: Option<Id>,
     #[serde(default)]

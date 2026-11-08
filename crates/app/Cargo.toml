@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 render.workspace = true
 view.workspace = true
+mcp.workspace = true
 model.workspace = true
 editor-core.workspace = true
 rfd.workspace = true

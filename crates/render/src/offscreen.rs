@@ -42,11 +42,10 @@ impl Offscreen {
         })
     }
 
-    pub fn render(&self, scene: &mut Scene, camera: &Camera, bg: &Background, width: u32, height: u32) -> Image {
+    pub fn render(&self, scene: &Scene, camera: &Camera, bg: &Background, width: u32, height: u32) -> Image {
         let device = &self.device;
         let mut gpu = GpuScene::new(device, &self.renderer);
-        scene.invalidate_gpu();
-        gpu.upload(device, &self.queue, &scene.take_upload());
+        gpu.upload(device, &self.queue, &scene.snapshot());
         gpu.set_view(&self.queue, &ViewUniform::new(camera, [width as f32, height as f32], 1.0, bg));
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -121,6 +120,18 @@ impl Offscreen {
 }
 
 impl Image {
+    /// PNG file contents.
+    pub fn encode_png(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        let mut enc = png::Encoder::new(&mut out, self.width, self.height);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut writer = enc.write_header().expect("png header to memory");
+        writer.write_image_data(&self.rgba).expect("png data to memory");
+        drop(writer);
+        out
+    }
+
     pub fn save_png(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
         let file = std::io::BufWriter::new(std::fs::File::create(path)?);
         let mut enc = png::Encoder::new(file, self.width, self.height);

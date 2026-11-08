@@ -8,7 +8,7 @@ use crate::library::{FootprintLayer, has_id};
 use crate::store::Store;
 use crate::units::{Coord, mm};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Side {
     #[default]
@@ -27,7 +27,7 @@ impl Side {
 
 /// Layer id. Copper layers are numbered from the top: 0 = top, `COPPER_BOTTOM` = bottom,
 /// 1… = inner layers. Non-copper layers have fixed ids ≥ 100.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(transparent)]
 pub struct LayerId(pub u16);
 
@@ -105,7 +105,7 @@ impl LayerId {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LayerFunction {
     Copper,
@@ -117,7 +117,7 @@ pub enum LayerFunction {
     Outline,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BoardLayer {
     pub id: LayerId,
     pub name: String,
@@ -126,7 +126,7 @@ pub struct BoardLayer {
 
 /// Physical placement of a schematic component. The footprint itself comes from the
 /// component's part variant.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FootprintInstance {
     pub id: Id,
     pub component: Id,
@@ -146,7 +146,7 @@ impl FootprintInstance {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Track {
     pub id: Id,
     pub layer: LayerId,
@@ -155,7 +155,7 @@ pub struct Track {
     pub width: Coord,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Via {
     pub id: Id,
     pub pos: Point,
@@ -166,7 +166,7 @@ pub struct Via {
     pub to: LayerId,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Zone {
     pub id: Id,
     pub layer: LayerId,
@@ -180,14 +180,14 @@ pub struct Zone {
     pub clearance: Option<Coord>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BoardGraphic {
     pub id: Id,
     pub layer: LayerId,
     pub shape: Shape,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BoardText {
     pub id: Id,
     pub layer: LayerId,
@@ -196,7 +196,7 @@ pub struct BoardText {
 
 has_id!(FootprintInstance, Track, Via, Zone, BoardGraphic, BoardText);
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DesignRules {
     pub clearance: Coord,
     pub track_width: Coord,
@@ -219,7 +219,7 @@ impl Default for DesignRules {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Board {
     pub layers: Vec<BoardLayer>,
     #[serde(default)]

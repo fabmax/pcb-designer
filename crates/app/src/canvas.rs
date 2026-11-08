@@ -49,6 +49,11 @@ impl Canvas {
         self.fit_requested = true;
     }
 
+    /// Canvas size in points.
+    pub fn viewport(&self) -> [f64; 2] {
+        self.viewport
+    }
+
     pub fn fit(&mut self, scene: &Scene) {
         if let Some(b) = scene.bounds() {
             self.camera.fit(b, self.viewport, 32.0);

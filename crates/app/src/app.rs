@@ -11,6 +11,7 @@ use model::*;
 use render::gpu::Background;
 use view::{Document, Interaction, KeyAction, PointerInput, ViewKind};
 
+use crate::agent::{self, Agent};
 use crate::canvas::{Canvas, CanvasResources};
 use crate::keymap::{Action, Keymap};
 use crate::properties::Properties;
@@ -32,6 +33,8 @@ pub struct Options {
     /// Select everything in the schematic before the screenshot (shows highlights).
     pub select: Option<String>,
     pub keymap: Keymap,
+    /// Start the MCP server on this port.
+    pub mcp: Option<u16>,
 }
 
 const SCH_GRIDS: &[(f64, &str)] = &[(2.54, "2.54 mm"), (1.27, "1.27 mm"), (0.635, "0.635 mm")];
@@ -39,10 +42,10 @@ const BOARD_GRIDS: &[(f64, &str)] =
     &[(1.0, "1 mm"), (0.5, "0.5 mm"), (0.25, "0.25 mm"), (0.1, "0.1 mm"), (0.05, "0.05 mm"), (0.635, "25 mil")];
 
 /// One editor pane: camera + interaction state for a view of the document.
-struct Pane {
-    kind: ViewKind,
-    canvas: Canvas,
-    it: Interaction,
+pub(crate) struct Pane {
+    pub kind: ViewKind,
+    pub canvas: Canvas,
+    pub it: Interaction,
 }
 
 impl Pane {
@@ -79,6 +82,7 @@ pub struct PcbApp {
     allow_close: bool,
     keymap: Keymap,
     show_keymap: bool,
+    agent: Agent,
 }
 
 impl PcbApp {
@@ -123,7 +127,11 @@ impl PcbApp {
             allow_close: false,
             keymap: opts.keymap,
             show_keymap: false,
+            agent: Agent::new(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
         };
+        if opts.mcp.is_some() {
+            app.agent.start(&cc.egui_ctx);
+        }
         // Development aid for screenshots: "all" or a reference designator.
         match opts.select.as_deref() {
             Some("all") => app.panes[0].it.key(&mut app.doc, KeyAction::SelectAll),
@@ -363,12 +371,44 @@ impl PcbApp {
             ui.menu_button("View", |ui| {
                 self.menu_item(ui, "Fit view", Action::FitView, true);
             });
+            ui.menu_button("Tools", |ui| self.agent_menu(ui));
             ui.menu_button("Help", |ui| {
                 if ui.button("Keyboard shortcuts").clicked() {
                     self.show_keymap = true;
                 }
             });
         });
+    }
+
+    fn agent_menu(&mut self, ui: &mut egui::Ui) {
+        let mut on = self.agent.is_running();
+        if ui.checkbox(&mut on, "Agent access (MCP server)").changed() {
+            if on {
+                self.agent.start(ui.ctx());
+            } else {
+                self.agent.stop();
+            }
+        }
+        if let Some(e) = &self.agent.error {
+            ui.label(RichText::new(e).color(theme::WARN));
+        }
+        if let Some(url) = self.agent.url() {
+            ui.label(RichText::new(&url).monospace().color(theme::TEXT_DIM));
+            if ui.button("Copy URL").clicked() {
+                ui.ctx().copy_text(url.clone());
+            }
+            if ui.button("Copy Claude Code command").clicked() {
+                ui.ctx().copy_text(format!("claude mcp add --transport http pcb-designer {url}"));
+            }
+            if ui.button("Copy JSON config").clicked() {
+                let cfg = format!(
+                    "{{\n  \"mcpServers\": {{\n    \"pcb-designer\": {{ \"type\": \"http\", \"url\": \"{url}\" }}\n  }}\n}}"
+                );
+                ui.ctx().copy_text(cfg);
+            }
+        } else {
+            ui.label(RichText::new(format!("Listens on 127.0.0.1:{} only", self.agent.port)).color(theme::TEXT_DIM));
+        }
     }
 
     /// Read-only list of the current bindings (editing comes with the settings UI).
@@ -462,6 +502,22 @@ impl PcbApp {
                 ui.label(RichText::new(m).color(theme::WARN));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if let Some(url) = self.agent.url() {
+                    let recent = self.agent.last.as_ref().filter(|(_, t)| t.elapsed() < Duration::from_secs(4));
+                    let text = match recent {
+                        Some((what, _)) => format!("Agent: {what}"),
+                        None => "MCP".to_string(),
+                    };
+                    let tip = format!("{url}\n{} requests", self.agent.calls);
+                    ui.label(RichText::new(text).color(theme::SUCCESS)).on_hover_text(&tip);
+                    // Right-to-left layout: the dot ends up left of the text.
+                    let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                    ui.painter().circle_filled(dot.center(), 3.5, theme::SUCCESS);
+                    if recent.is_some() {
+                        ui.ctx().request_repaint_after(Duration::from_millis(500));
+                    }
+                    ui.separator();
+                }
                 ui.label(
                     RichText::new("Drag: move · Box: select · Middle/right drag: pan · Wheel: zoom · V: fit")
                         .color(theme::TEXT_DIM),
@@ -648,6 +704,11 @@ impl eframe::App for PcbApp {
             };
             self.tree.ui(&mut behavior, ui);
         });
+
+        // Agent requests are answered between user interactions.
+        if !self.busy() {
+            self.agent.process(&ctx, &mut self.doc, &mut self.panes, &self.starter);
+        }
 
         // Model changed (any source): drop stale selections, refresh highlights.
         if self.doc.revision != self.revision {

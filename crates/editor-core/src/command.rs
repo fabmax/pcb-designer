@@ -7,7 +7,7 @@ use model::*;
 use crate::CommandError;
 use crate::transaction::Transaction;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "command", rename_all = "snake_case")]
 pub enum Command {
     /// Copy parts (with their symbols and footprints) from a library into the project.

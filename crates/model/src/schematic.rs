@@ -13,14 +13,14 @@ use crate::id::Id;
 use crate::library::has_id;
 use crate::store::Store;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Sheet {
     pub id: Id,
     pub name: String,
 }
 
 /// A part used in the design. Its footprint on the board follows automatically.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Component {
     pub id: Id,
     /// Part in the project's embedded library.
@@ -35,7 +35,7 @@ pub struct Component {
 }
 
 /// Placement of one unit of a component on a sheet.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SymbolInstance {
     pub id: Id,
     pub sheet: Id,
@@ -56,7 +56,7 @@ impl SymbolInstance {
 }
 
 /// Straight wire segment.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Wire {
     pub id: Id,
     pub sheet: Id,
@@ -65,14 +65,14 @@ pub struct Wire {
 }
 
 /// Explicit connection dot where wires cross.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Junction {
     pub id: Id,
     pub sheet: Id,
     pub pos: Point,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LabelKind {
     /// Connects to same-named labels.
@@ -82,7 +82,7 @@ pub enum LabelKind {
     Power,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct NetLabel {
     pub id: Id,
     pub sheet: Id,
@@ -95,7 +95,7 @@ pub struct NetLabel {
 }
 
 /// Free text on a sheet.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SchText {
     pub id: Id,
     pub sheet: Id,
@@ -104,7 +104,7 @@ pub struct SchText {
 
 has_id!(Sheet, Component, SymbolInstance, Wire, Junction, NetLabel, SchText);
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Schematic {
     pub sheets: Store<Sheet>,
     #[serde(default)]

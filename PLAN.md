@@ -77,8 +77,8 @@ effect on the board.
 
 ## MCP interface
 
-- The running app hosts an **MCP server (Streamable HTTP on 127.0.0.1, opt-in in the
-  settings)** using the official Rust SDK (`rmcp`). Agents operate on the open project,
+- The running app hosts an **MCP server (Streamable HTTP on 127.0.0.1, opt-in via the
+  Tools menu or `--mcp`)** using the official Rust SDK (`rmcp`). Agents operate on the open project,
   and the user watches the changes live.
 - A headless mode (`pcb-designer --mcp-stdio project.pcbproj`) for agents without a GUI is
   added later.
@@ -232,3 +232,39 @@ and level of detail for tiny primitives.
 - **Deferred:** filled polygons in the renderer (zones/polygons draw as outlines),
   zone fill display (M9), text editing on canvas, the spike-based benchmark app mode
   (the `spike` crate is kept for `sync_bench`).
+
+## Milestone 3 results (2026-11-08)
+
+- **`mcp` crate:** rmcp 3.9 Streamable HTTP server on its own thread (tokio, 2 workers),
+  bound to 127.0.0.1. `Host` validation (loopback only, rmcp default) and Origin
+  validation (any browser Origin is rejected) are on; both are covered by a test.
+- **Bridge:** each tool call becomes a `Call` on a std channel and wakes the GUI
+  (`request_repaint`). The app answers queued calls between frames, but not during a
+  drag or box selection. Replies go back through a oneshot channel, and the tool times
+  out after 60 s (for example while a modal file dialog is open).
+- **`Host` trait:** what the tools need from the application (document, library,
+  selection per view, view rendering, window screenshot). It is implemented by the GUI
+  app and by `HeadlessHost` (tests now; headless mode in M10).
+- **Tools:** `get_project`, `list_library_parts`, `import_parts`, `list_objects`
+  (paginated), `get_objects`, `get_component` (pin/pad world positions,
+  pin↔pad map), `execute` (batch of editor commands, one undo step, all-or-nothing;
+  returns created objects), `undo`, `redo`, `get_selection`, `set_selection`,
+  `screenshot` (schematic/board via offscreen render, fit or the user's current view;
+  or the whole window via egui), `save_project`. Server instructions explain units,
+  workflow and the schematic↔board link.
+- **Schemas:** all model types and `Command` derive `JsonSchema`, so `execute`
+  advertises the full command schema (about 22 KB) to agents.
+- **Fixes found along the way:**
+  - `Object`/`ObjectId` JSON now use a `"type"` tag. With `"kind"`, labels (which have
+    their own `kind` field) produced duplicate keys. A test round-trips every object
+    kind.
+  - `Offscreen::render` no longer consumes the scene's incremental upload state
+    (`Scene::snapshot`).
+- **Verification:**
+  - End-to-end test with rmcp's HTTP client against a headless host: list tools, read,
+    place, failing batch rolls back, select, screenshot, undo.
+  - Driving the live GUI with the `mcp_call` example: batch edits appear instantly in
+    both views, window capture works.
+- **Next for MCP:** net/connectivity queries (M6/M7), DRC results (M9), library
+  tools (M4/M5), headless `--mcp-stdio` mode (M10), and possibly an activity log panel
+  listing agent edits.
