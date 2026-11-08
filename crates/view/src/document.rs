@@ -3,9 +3,10 @@
 use std::path::{Path, PathBuf};
 
 use editor_core::{ChangeSet, Command, CommandError, Editor};
-use model::Project;
 use model::io::{FileError, load_project, save_project};
+use model::{Coord, ObjectId, Point, Project, Rect};
 
+use crate::interaction::{Edit, Target, reference_point};
 use crate::view::{View, ViewKind};
 
 pub struct Document {
@@ -98,6 +99,16 @@ impl Document {
         Ok(changes)
     }
 
+    /// See [`Editor::set_library_name`].
+    pub fn set_library_name(&mut self, name: String) {
+        self.editor.set_library_name(name);
+    }
+
+    /// Mark the current state as saved (for documents saved by other means).
+    pub fn mark_saved(&mut self) {
+        self.editor.mark_saved();
+    }
+
     pub fn close_group(&mut self) {
         self.editor.close_group();
     }
@@ -122,5 +133,96 @@ impl Document {
         let project = self.editor.project();
         self.schematic.apply(project, changes);
         self.board.apply(project, changes);
+    }
+}
+
+/// A schematic or board view of a document, as an interaction [`Target`].
+pub struct ProjectTarget<'a> {
+    pub doc: &'a mut Document,
+    pub kind: ViewKind,
+}
+
+impl Document {
+    pub fn target(&mut self, kind: ViewKind) -> ProjectTarget<'_> {
+        ProjectTarget { doc: self, kind }
+    }
+}
+
+impl ProjectTarget<'_> {
+    fn run(&mut self, cmd: Command, group: Option<u64>) -> Result<(), String> {
+        self.doc.execute_grouped(cmd, group).map(drop).map_err(|e| e.to_string())
+    }
+}
+
+impl Target for ProjectTarget<'_> {
+    type Id = ObjectId;
+
+    fn hit(&self, p: Point, tol: Coord) -> Option<ObjectId> {
+        self.doc.view(self.kind).hit(self.doc.project(), p, tol)
+    }
+
+    fn in_rect(&self, r: Rect, crossing: bool) -> Vec<ObjectId> {
+        self.doc.view(self.kind).select_rect(r, crossing)
+    }
+
+    fn all(&self) -> Vec<ObjectId> {
+        self.doc.view(self.kind).index.ids()
+    }
+
+    fn bounds(&self, id: ObjectId) -> Option<Rect> {
+        self.doc.view(self.kind).index.bounds(id)
+    }
+
+    fn exists(&self, id: ObjectId) -> bool {
+        self.doc.project().contains(id)
+    }
+
+    fn anchor(&self, id: ObjectId) -> Option<Point> {
+        let project = self.doc.project();
+        match id {
+            ObjectId::Footprint(f) if project.board.footprints.get(f).is_some_and(|f| f.locked) => None,
+            _ => reference_point(project, id),
+        }
+    }
+
+    fn edit(&mut self, edit: Edit<ObjectId>, group: Option<u64>) -> Result<Option<String>, String> {
+        let is_fp = |id: &ObjectId| matches!(id, ObjectId::Footprint(_));
+        match edit {
+            Edit::Move { ids, delta } => self.run(Command::Move { ids, delta }, group)?,
+            Edit::Rotate { ids, center, angle } => self.run(Command::Rotate { ids, center, angle }, group)?,
+            Edit::Mirror { ids, axis_x } | Edit::Flip { ids, axis_x } => match self.kind {
+                ViewKind::Schematic => self.run(Command::Mirror { ids, axis_x }, group)?,
+                ViewKind::Board => {
+                    let ids: Vec<ObjectId> = ids.into_iter().filter(is_fp).collect();
+                    if ids.is_empty() {
+                        return Err("Only footprints can be flipped".into());
+                    }
+                    self.run(Command::FlipSide { ids, axis_x }, group)?
+                }
+            },
+            Edit::Delete { ids } => {
+                let (footprints, ids): (Vec<ObjectId>, Vec<ObjectId>) = ids.into_iter().partition(is_fp);
+                if !ids.is_empty() {
+                    self.run(Command::Delete { ids }, group)?;
+                }
+                if !footprints.is_empty() {
+                    return Ok(Some("Footprints follow the schematic: delete the component there".into()));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    fn close_group(&mut self) {
+        self.doc.close_group();
+    }
+
+    fn undo(&mut self) {
+        self.doc.undo();
+    }
+
+    fn highlight(&mut self, selection: &[ObjectId], hover: Option<ObjectId>) {
+        let (project, view) = self.doc.project_and_view(self.kind);
+        view.set_highlight(project, selection, hover);
     }
 }

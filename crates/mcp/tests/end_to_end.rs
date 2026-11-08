@@ -68,6 +68,14 @@ async fn agent_session() {
     assert_eq!(project["name"], "Demo");
     assert_eq!(project["counts"]["component"], 5);
 
+    // Libraries and project part states.
+    let libs = ok_json(call("list_library_parts", Value::Null).await);
+    assert_eq!(libs["libraries"][0]["library"], "Starter");
+    let states = libs["project_parts"].as_array().unwrap();
+    assert!(!states.is_empty() && states.iter().all(|p| p["state"] == "UpToDate"), "{states:?}");
+    let r = ok_json(call("update_parts", json!({})).await);
+    assert_eq!(r["updated"], 0, "nothing changed");
+
     // Place a resistor; its footprint follows.
     let r = ok_json(
         call(

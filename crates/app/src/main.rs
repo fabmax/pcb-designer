@@ -2,14 +2,21 @@
 //!
 //! Usage: pcb-designer [PROJECT_DIR | --demo | --new | --stress N] [--no-vsync]
 //!                     [--keymap FILE.json] [--mcp] [--mcp-port PORT]
+//!                     [--library FILE.pcblib]... [--show [part:|symbol:|footprint:]NAME]...
 //!                     [--screenshot FILE.png [--frames N] [--select all|REFDES]]
+//!
+//! `--show NAME` opens a part, symbol or footprint of the last opened (or starter)
+//! library in its editor tab; repeat it to navigate several steps.
 //!
 //! Without arguments the demo project is opened.
 
 mod agent;
 mod app;
 mod canvas;
+mod fields;
 mod keymap;
+mod library;
+mod part_form;
 mod properties;
 mod theme;
 
@@ -24,6 +31,8 @@ fn main() -> eframe::Result {
         select: None,
         keymap: keymap::Keymap::default(),
         mcp: None,
+        library: Vec::new(),
+        show: Vec::new(),
     };
     let mut vsync = true;
     let mut args = std::env::args().skip(1);
@@ -36,6 +45,8 @@ fn main() -> eframe::Result {
             "--screenshot" => opts.screenshot = args.next(),
             "--frames" => opts.screenshot_frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(30),
             "--select" => opts.select = args.next(),
+            "--library" => opts.library.extend(args.next().map(Into::into)),
+            "--show" => opts.show.extend(args.next()),
             "--mcp" => opts.mcp = Some(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
             "--mcp-port" => opts.mcp = args.next().and_then(|v| v.parse().ok()).or(Some(agent::DEFAULT_PORT)),
             "--keymap" => {

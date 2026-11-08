@@ -4,11 +4,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use editor_core::Command;
 use model::*;
-
-use crate::document::Document;
-use crate::view::ViewKind;
 
 /// Pointer state for one frame, in world coordinates.
 #[derive(Clone, Copy, Debug, Default)]
@@ -40,16 +36,64 @@ pub enum KeyAction {
     SelectAll,
 }
 
+/// An edit requested by the interaction, applied by the [`Target`].
 #[derive(Clone, Debug, PartialEq)]
-enum State {
+pub enum Edit<I> {
+    Move {
+        ids: Vec<I>,
+        delta: Point,
+    },
+    Rotate {
+        ids: Vec<I>,
+        center: Point,
+        angle: Angle,
+    },
+    Mirror {
+        ids: Vec<I>,
+        axis_x: Coord,
+    },
+    /// Board side flip (footprints); targets without sides may treat it like `Mirror`.
+    Flip {
+        ids: Vec<I>,
+        axis_x: Coord,
+    },
+    Delete {
+        ids: Vec<I>,
+    },
+}
+
+/// Something editable on a canvas: a schematic or board view of a project, a symbol, a
+/// footprint. [`Interaction`] implements the generic behavior on top of it.
+pub trait Target {
+    type Id: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug;
+
+    /// Topmost item at `p` (within `tol`).
+    fn hit(&self, p: Point, tol: Coord) -> Option<Self::Id>;
+    /// Items inside `r` (fully, or touching when `crossing`).
+    fn in_rect(&self, r: Rect, crossing: bool) -> Vec<Self::Id>;
+    fn all(&self) -> Vec<Self::Id>;
+    fn bounds(&self, id: Self::Id) -> Option<Rect>;
+    fn exists(&self, id: Self::Id) -> bool;
+    /// Point that snaps to the grid when the item is dragged; `None` if it can't move.
+    fn anchor(&self, id: Self::Id) -> Option<Point>;
+    /// Apply an edit, as part of undo group `group` if given. `Ok(Some(note))`: applied,
+    /// with a remark for the user (e.g. some items were skipped).
+    fn edit(&mut self, edit: Edit<Self::Id>, group: Option<u64>) -> Result<Option<String>, String>;
+    fn close_group(&mut self);
+    fn undo(&mut self);
+    fn highlight(&mut self, selection: &[Self::Id], hover: Option<Self::Id>);
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum State<I> {
     Idle,
     /// Primary button down, not moved far enough to be a drag yet.
     Pressed {
         start: Point,
-        hit: Option<ObjectId>,
+        hit: Option<I>,
         was_selected: bool,
     },
-    Dragging(Drag),
+    Dragging(Drag<I>),
     Boxing {
         start: Point,
         current: Point,
@@ -57,10 +101,10 @@ enum State {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Drag {
-    ids: Vec<ObjectId>,
+struct Drag<I> {
+    ids: Vec<I>,
     start: Point,
-    /// Reference point of the grabbed object; it is snapped to the grid.
+    /// Reference point of the grabbed item; it is snapped to the grid.
     anchor: Point,
     /// Total offset applied so far.
     moved: Point,
@@ -71,25 +115,25 @@ struct Drag {
 
 static NEXT_GROUP: AtomicU64 = AtomicU64::new(1);
 
-/// A fresh undo group id (see [`Document::execute_grouped`]).
+/// A fresh undo group id (see [`Document::execute_grouped`](crate::Document::execute_grouped)).
 pub fn new_group() -> u64 {
     NEXT_GROUP.fetch_add(1, Ordering::Relaxed)
 }
 
-pub struct Interaction {
-    pub kind: ViewKind,
-    pub selection: Vec<ObjectId>,
-    pub hover: Option<ObjectId>,
+/// Selection state and pointer/keyboard handling for one canvas.
+pub struct Interaction<I> {
+    pub selection: Vec<I>,
+    pub hover: Option<I>,
     /// Snap grid in nm (0 disables snapping).
     pub grid: Coord,
-    state: State,
-    /// Last error from a command (e.g. moving a locked footprint), for the status bar.
+    state: State<I>,
+    /// Last error or remark from an edit (e.g. moving a locked footprint), for the status bar.
     pub message: Option<String>,
 }
 
-impl Interaction {
-    pub fn new(kind: ViewKind, grid: Coord) -> Self {
-        Interaction { kind, selection: Vec::new(), hover: None, grid, state: State::Idle, message: None }
+impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
+    pub fn new(grid: Coord) -> Self {
+        Interaction { selection: Vec::new(), hover: None, grid, state: State::Idle, message: None }
     }
 
     pub fn snap(&self, p: Point) -> Point {
@@ -118,27 +162,34 @@ impl Interaction {
         }
     }
 
-    pub fn set_selection(&mut self, doc: &mut Document, ids: Vec<ObjectId>) {
+    pub fn set_selection<T: Target<Id = I>>(&mut self, t: &mut T, ids: Vec<I>) {
         self.selection = ids;
-        self.refresh(doc);
+        self.refresh(t);
     }
 
-    /// Drop stale ids (after undo, delete, file reload) and push highlights to the view.
-    pub fn refresh(&mut self, doc: &mut Document) {
-        let (project, view) = doc.project_and_view(self.kind);
-        self.selection.retain(|id| project.contains(*id));
-        if self.hover.is_some_and(|h| !project.contains(h)) {
+    /// Forget selection and any gesture in progress (e.g. when the target is replaced).
+    pub fn reset(&mut self) {
+        self.selection.clear();
+        self.hover = None;
+        self.state = State::Idle;
+        self.message = None;
+    }
+
+    /// Drop stale ids (after undo, delete, file reload) and push highlights to the target.
+    pub fn refresh<T: Target<Id = I>>(&mut self, t: &mut T) {
+        self.selection.retain(|&id| t.exists(id));
+        if self.hover.is_some_and(|h| !t.exists(h)) {
             self.hover = None;
         }
         let hover = if matches!(self.state, State::Idle) { self.hover } else { None };
-        view.set_highlight(project, &self.selection, hover);
+        t.highlight(&self.selection, hover);
     }
 
-    pub fn pointer(&mut self, doc: &mut Document, input: &PointerInput) {
+    pub fn pointer<T: Target<Id = I>>(&mut self, t: &mut T, input: &PointerInput) {
         let state = std::mem::replace(&mut self.state, State::Idle);
         self.state = match (state, input.world) {
             (State::Idle, Some(p)) => {
-                self.hover = doc.view(self.kind).hit(doc.project(), p, input.tolerance);
+                self.hover = t.hit(p, input.tolerance);
                 if input.pressed {
                     let hit = self.hover;
                     let was_selected = hit.is_some_and(|h| self.selection.contains(&h));
@@ -173,7 +224,7 @@ impl Interaction {
                     State::Idle
                 } else if (p - start).length() > input.drag_threshold as f64 {
                     match hit {
-                        Some(h) => self.start_drag(doc, start, h).map_or(State::Idle, State::Dragging),
+                        Some(h) => self.start_drag(t, start, h).map_or(State::Idle, State::Dragging),
                         None => State::Boxing { start, current: p },
                     }
                 } else {
@@ -182,10 +233,10 @@ impl Interaction {
             }
             (State::Dragging(mut drag), p) => {
                 if let Some(p) = p {
-                    self.drag_to(doc, &mut drag, p);
+                    self.drag_to(t, &mut drag, p);
                 }
                 if input.released || !input.down {
-                    doc.close_group();
+                    t.close_group();
                     State::Idle
                 } else {
                     State::Dragging(drag)
@@ -195,7 +246,8 @@ impl Interaction {
                 let current = p.unwrap_or(current);
                 if input.released || !input.down {
                     let crossing = current.x < start.x;
-                    let found = doc.view(self.kind).select_rect(Rect::from_points(start, current), crossing);
+                    let mut found = t.in_rect(Rect::from_points(start, current), crossing);
+                    found.sort();
                     if !(input.shift || input.command) {
                         self.selection.clear();
                     }
@@ -210,134 +262,109 @@ impl Interaction {
                 }
             }
         };
-        self.refresh(doc);
+        self.refresh(t);
     }
 
-    fn start_drag(&mut self, doc: &Document, start: Point, grabbed: ObjectId) -> Option<Drag> {
-        let project = doc.project();
-        let ids: Vec<ObjectId> = self.selection.iter().copied().filter(|&id| movable(project, id)).collect();
+    fn start_drag<T: Target<Id = I>>(&mut self, t: &T, start: Point, grabbed: I) -> Option<Drag<I>> {
+        let ids: Vec<I> = self.selection.iter().copied().filter(|&id| t.anchor(id).is_some()).collect();
         if ids.is_empty() {
-            self.message = Some("Nothing movable selected (locked footprints stay in place)".into());
+            self.message = Some("Nothing movable selected (locked items stay in place)".into());
             return None;
         }
-        let anchor = reference_point(project, grabbed).unwrap_or(start);
-        let group = new_group();
-        Some(Drag { ids, start, anchor, moved: Point::ZERO, group, executed: false })
+        let anchor = t.anchor(grabbed).unwrap_or(start);
+        Some(Drag { ids, start, anchor, moved: Point::ZERO, group: new_group(), executed: false })
     }
 
-    fn drag_to(&mut self, doc: &mut Document, drag: &mut Drag, p: Point) {
+    fn drag_to<T: Target<Id = I>>(&mut self, t: &mut T, drag: &mut Drag<I>, p: Point) {
         let target = self.snap(drag.anchor + (p - drag.start)) - drag.anchor;
         let step = target - drag.moved;
         if step == Point::ZERO {
             return;
         }
-        let cmd = Command::Move { ids: drag.ids.clone(), delta: step };
-        match doc.execute_grouped(cmd, Some(drag.group)) {
-            Ok(_) => {
+        match t.edit(Edit::Move { ids: drag.ids.clone(), delta: step }, Some(drag.group)) {
+            Ok(note) => {
                 drag.moved = target;
                 drag.executed = true;
+                if note.is_some() {
+                    self.message = note;
+                }
             }
-            Err(e) => self.message = Some(e.to_string()),
+            Err(e) => self.message = Some(e),
         }
     }
 
-    /// Keyboard actions. `cursor` is the pointer position, used as pivot when nothing is
-    /// being dragged and the selection is a single object.
-    pub fn key(&mut self, doc: &mut Document, action: KeyAction) {
+    pub fn key<T: Target<Id = I>>(&mut self, t: &mut T, action: KeyAction) {
         self.message = None;
         match action {
             KeyAction::Escape => match std::mem::replace(&mut self.state, State::Idle) {
                 State::Dragging(drag) => {
-                    doc.close_group();
+                    t.close_group();
                     if drag.executed {
-                        doc.undo();
+                        t.undo();
                     }
                 }
                 State::Boxing { .. } | State::Pressed { .. } => {}
                 State::Idle => self.selection.clear(),
             },
             KeyAction::SelectAll => {
-                let mut ids = doc.view(self.kind).index.ids();
+                let mut ids = t.all();
                 ids.sort();
                 self.selection = ids;
             }
             KeyAction::Delete => {
-                if self.is_dragging() {
-                    return;
-                }
-                let (ids, footprints): (Vec<ObjectId>, Vec<ObjectId>) =
-                    self.selection.iter().partition(|id| !matches!(id, ObjectId::Footprint(_)));
-                if !footprints.is_empty() {
-                    self.message = Some("Footprints follow the schematic: delete the component there".into());
-                }
-                if !ids.is_empty() {
-                    self.run(doc, Command::Delete { ids });
+                if !self.is_dragging() && !self.selection.is_empty() {
+                    let ids = self.selection.clone();
+                    self.run(t, Edit::Delete { ids }, None);
                 }
             }
             KeyAction::Rotate => {
                 let angle = Angle::DEG90;
                 if let State::Dragging(drag) = &mut self.state {
                     let center = drag.anchor + drag.moved;
-                    let cmd = Command::Rotate { ids: drag.ids.clone(), center, angle };
-                    match doc.execute_grouped(cmd, Some(drag.group)) {
+                    let edit = Edit::Rotate { ids: drag.ids.clone(), center, angle };
+                    match t.edit(edit, Some(drag.group)) {
                         Ok(_) => drag.executed = true,
-                        Err(e) => self.message = Some(e.to_string()),
+                        Err(e) => self.message = Some(e),
                     }
-                } else if let Some(center) = self.pivot(doc) {
+                } else if let Some(center) = self.pivot(t) {
                     let ids = self.selection.clone();
-                    self.run(doc, Command::Rotate { ids, center, angle });
+                    self.run(t, Edit::Rotate { ids, center, angle }, None);
                 }
             }
             KeyAction::Mirror | KeyAction::Flip => {
                 if self.is_dragging() {
                     return;
                 }
-                let Some(center) = self.pivot(doc) else { return };
-                match self.kind {
-                    ViewKind::Schematic => {
-                        let ids = self.selection.clone();
-                        self.run(doc, Command::Mirror { ids, axis_x: center.x });
-                    }
-                    ViewKind::Board => {
-                        let ids: Vec<ObjectId> =
-                            self.selection.iter().copied().filter(|id| matches!(id, ObjectId::Footprint(_))).collect();
-                        if ids.is_empty() {
-                            self.message = Some("Only footprints can be flipped".into());
-                        } else {
-                            self.run(doc, Command::FlipSide { ids, axis_x: center.x });
-                        }
-                    }
-                }
+                let Some(center) = self.pivot(t) else { return };
+                let ids = self.selection.clone();
+                let edit = if action == KeyAction::Mirror {
+                    Edit::Mirror { ids, axis_x: center.x }
+                } else {
+                    Edit::Flip { ids, axis_x: center.x }
+                };
+                self.run(t, edit, None);
             }
         }
-        self.refresh(doc);
+        self.refresh(t);
     }
 
-    fn run(&mut self, doc: &mut Document, cmd: Command) {
-        if let Err(e) = doc.execute(cmd) {
-            self.message = Some(e.to_string());
+    fn run<T: Target<Id = I>>(&mut self, t: &mut T, edit: Edit<I>, group: Option<u64>) {
+        match t.edit(edit, group) {
+            Ok(note) => self.message = note,
+            Err(e) => self.message = Some(e),
         }
     }
 
-    /// Rotation/mirror pivot: the reference point of a single object, otherwise the
-    /// snapped center of the selection bounds.
-    fn pivot(&self, doc: &Document) -> Option<Point> {
+    /// Rotation/mirror pivot: the anchor of a single item, otherwise the snapped center of
+    /// the selection bounds.
+    fn pivot<T: Target<Id = I>>(&self, t: &T) -> Option<Point> {
         if let [id] = self.selection[..]
-            && let Some(p) = reference_point(doc.project(), id)
+            && let Some(p) = t.anchor(id)
         {
             return Some(p);
         }
-        let view = doc.view(self.kind);
-        let bounds = Rect::union_all(self.selection.iter().filter_map(|&id| view.index.bounds(id)))?;
+        let bounds = Rect::union_all(self.selection.iter().filter_map(|&id| t.bounds(id)))?;
         Some(self.snap(bounds.center()))
-    }
-}
-
-/// Can `id` be moved interactively?
-fn movable(project: &Project, id: ObjectId) -> bool {
-    match id {
-        ObjectId::Footprint(f) => project.board.footprints.get(f).is_some_and(|f| !f.locked),
-        _ => reference_point(project, id).is_some(),
     }
 }
 

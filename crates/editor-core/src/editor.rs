@@ -84,6 +84,12 @@ impl Editor {
         self.history.close_group();
     }
 
+    /// Rename the project's library. Metadata, not an undoable edit (library files take the
+    /// name of the file they are saved to).
+    pub fn set_library_name(&mut self, name: String) {
+        self.project.library.name = name;
+    }
+
     pub fn mark_saved(&mut self) {
         self.history.mark_saved();
     }

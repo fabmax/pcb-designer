@@ -224,6 +224,36 @@ impl Part {
 
 has_id!(Pin, Symbol, Pad, Footprint, Part);
 
+/// Compare names so that embedded numbers sort by value ("2" < "10", "A2" < "A10").
+pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    fn chunks(s: &str) -> Vec<(bool, &str)> {
+        let mut out = Vec::new();
+        let mut start = 0;
+        let bytes = s.as_bytes();
+        for i in 1..=bytes.len() {
+            if i == bytes.len() || bytes[i].is_ascii_digit() != bytes[start].is_ascii_digit() {
+                out.push((bytes[start].is_ascii_digit(), &s[start..i]));
+                start = i;
+            }
+        }
+        out
+    }
+    let (ca, cb) = (chunks(a), chunks(b));
+    for (x, y) in ca.iter().zip(&cb) {
+        let o = match (x, y) {
+            ((true, x), (true, y)) => {
+                let (x, y) = (x.trim_start_matches('0'), y.trim_start_matches('0'));
+                x.len().cmp(&y.len()).then_with(|| x.cmp(y))
+            }
+            ((_, x), (_, y)) => x.to_lowercase().cmp(&y.to_lowercase()),
+        };
+        if o.is_ne() {
+            return o;
+        }
+    }
+    ca.len().cmp(&cb.len()).then_with(|| a.cmp(b))
+}
+
 /// A collection of symbols, footprints and parts. Used both for library files and for the
 /// copies embedded in a project.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -281,6 +311,33 @@ impl Library {
             h = h.wrapping_mul(0x0000_0100_0000_01b3);
         }
         Some(format!("{h:016x}"))
+    }
+
+    /// Connect pads to pins of the same name (case-insensitive), e.g. pad "1" ↔ pin "1".
+    /// Pins are searched unit by unit; each pad maps to at most one pin.
+    pub fn map_by_name(&self, units: &[PartUnit], footprint: Id) -> Vec<PadConnection> {
+        let Some(fp) = self.footprints.get(footprint) else { return Vec::new() };
+        let mut out = Vec::new();
+        for pad in fp.pads.iter() {
+            let found = units.iter().enumerate().find_map(|(u, unit)| {
+                let sym = self.symbols.get(unit.symbol)?;
+                let pin = sym.pins.iter().find(|p| p.name.eq_ignore_ascii_case(&pad.name))?;
+                Some(PadConnection { pad: pad.id, unit: u as u32, pin: pin.id })
+            });
+            out.extend(found);
+        }
+        out
+    }
+
+    /// Connect pins (in unit and drawing order) to pads (in natural name order: 1, 2, …, 10).
+    pub fn map_in_order(&self, units: &[PartUnit], footprint: Id) -> Vec<PadConnection> {
+        let Some(fp) = self.footprints.get(footprint) else { return Vec::new() };
+        let mut pads: Vec<&Pad> = fp.pads.iter().collect();
+        pads.sort_by(|a, b| natural_cmp(&a.name, &b.name));
+        let pins = units.iter().enumerate().flat_map(|(u, unit)| {
+            self.symbols.get(unit.symbol).into_iter().flat_map(move |s| s.pins.iter().map(move |p| (u as u32, p.id)))
+        });
+        pads.into_iter().zip(pins).map(|(pad, (unit, pin))| PadConnection { pad: pad.id, unit, pin }).collect()
     }
 
     /// Consistency problems (dangling references, bad pad mappings).

@@ -37,7 +37,8 @@ angles are degrees, counter-clockwise; Y points up.
 
 Typical workflow:
 1. get_project for an overview (components, layers, design rules, outline).
-2. list_library_parts, then import_parts to copy parts into the project.
+2. list_library_parts, then import_parts to copy parts into the project. New parts can also be \
+   created directly in the project with insert of lib_symbol, lib_footprint and lib_part objects.
 3. execute commands (place_part, add_wire, add_label, add_track, move, rotate, ...). Several \
    commands in one call form a single undo step and are applied all-or-nothing.
 4. screenshot the schematic or board to check the result visually.
@@ -76,6 +77,13 @@ pub enum ScreenshotTarget {
 pub struct ImportPartsParams {
     /// Part ids from list_library_parts.
     pub parts: Vec<Id>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UpdatePartsParams {
+    /// Project part ids; omit to update all parts whose library changed.
+    #[serde(default)]
+    pub parts: Option<Vec<Id>>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -191,7 +199,9 @@ impl PcbTools {
         self.call(Request::Project).await
     }
 
-    #[tool(description = "Parts available for import: ids, pin names per unit and footprint variants.")]
+    #[tool(description = "Parts of all open libraries (ids, pin names per unit, footprint variants), \
+        plus the parts already in the project and whether their library has a newer version \
+        (state LibraryChanged: use update_parts).")]
     async fn list_library_parts(&self) -> Result<CallToolResult, ErrorData> {
         self.call(Request::LibraryParts).await
     }
@@ -200,6 +210,13 @@ impl PcbTools {
         the place_part command. Already imported parts are skipped.")]
     async fn import_parts(&self, Parameters(p): Parameters<ImportPartsParams>) -> Result<CallToolResult, ErrorData> {
         self.call(Request::ImportParts { parts: p.parts }).await
+    }
+
+    #[tool(description = "Replace project parts by their current library version (symbols, \
+        footprints, pin-pad mapping). Components keep their variant when it still exists. \
+        Without part ids, every part whose library changed is updated.")]
+    async fn update_parts(&self, Parameters(p): Parameters<UpdatePartsParams>) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::UpdateParts { parts: p.parts.unwrap_or_default() }).await
     }
 
     #[tool(description = "List project objects (optionally of one kind), paginated. Objects are \

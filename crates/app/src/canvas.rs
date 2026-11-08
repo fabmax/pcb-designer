@@ -191,3 +191,54 @@ impl CallbackTrait for CanvasCallback {
         }
     }
 }
+
+/// Primary-button pointer state over a canvas, in world coordinates, for the editing
+/// interaction. `engaged`: an interaction is in progress (keeps receiving input when the
+/// pointer leaves the canvas). `None` when there is nothing to report.
+pub fn pointer_input(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    canvas: &Canvas,
+    engaged: bool,
+    hovering: bool,
+) -> Option<view::PointerInput> {
+    use model::{Coord, Point};
+    if !(response.hovered() || engaged || hovering) {
+        return None;
+    }
+    let px_to_nm = |px: f64| (px / canvas.camera.zoom * 1e6) as Coord;
+    Some(ui.input(|i| {
+        let pos = i.pointer.latest_pos().filter(|_| response.hovered() || engaged);
+        view::PointerInput {
+            world: pos.map(|p| {
+                let [x, y] = canvas.screen_to_world(p);
+                Point::mm(x, y)
+            }),
+            pressed: response.hovered() && i.pointer.primary_pressed(),
+            released: i.pointer.primary_released(),
+            down: i.pointer.primary_down(),
+            shift: i.modifiers.shift,
+            command: i.modifiers.command,
+            tolerance: px_to_nm(5.0),
+            drag_threshold: px_to_nm(4.0),
+        }
+    }))
+}
+
+/// Draw the interaction's selection box: solid blue for "inside", dashed green for
+/// "crossing".
+pub fn draw_box(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, r: model::Rect, crossing: bool) {
+    use crate::theme;
+    let a = canvas.world_to_screen(r.min.to_mm());
+    let b = canvas.world_to_screen(r.max.to_mm());
+    let rect = egui::Rect::from_two_pos(a, b);
+    let color = if crossing { theme::SUCCESS } else { theme::ACCENT };
+    let painter = ui.painter_at(clip);
+    painter.rect_filled(rect, 0.0, color.gamma_multiply(0.12));
+    if crossing {
+        let pts = [rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom(), rect.left_top()];
+        painter.extend(egui::Shape::dashed_line(&pts, egui::Stroke::new(1.0, color), 6.0, 4.0));
+    } else {
+        painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Inside);
+    }
+}
