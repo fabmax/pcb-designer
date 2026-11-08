@@ -137,11 +137,7 @@ impl Project {
     fn pin_nodes(&self, id: u32) -> Vec<NodeDesc> {
         let c = self.sch.components.get(id).unwrap();
         (0..self.lib[c.part as usize].pins.len())
-            .map(|p| NodeDesc::Pin {
-                comp: id,
-                pin: p as u16,
-                pos: self.pin_pos(c, p),
-            })
+            .map(|p| NodeDesc::Pin { comp: id, pin: p as u16, pos: self.pin_pos(c, p) })
             .collect()
     }
 
@@ -264,9 +260,7 @@ impl Project {
         let area: f64 = order
             .iter()
             .map(|&id| {
-                let bp = p.lib[p.sch.components.get(id).unwrap().part as usize]
-                    .board_pitch
-                    .to_mm64();
+                let bp = p.lib[p.sch.components.get(id).unwrap().part as usize].board_pitch.to_mm64();
                 bp[0] * bp[1]
             })
             .sum();
@@ -279,13 +273,7 @@ impl Project {
                 y -= row_h;
                 row_h = 0;
             }
-            p.board.footprints.insert(
-                id,
-                BoardFootprint {
-                    pos: Pt::new(x + bp.x / 2, y - bp.y / 2),
-                    rot: 0,
-                },
-            );
+            p.board.footprints.insert(id, BoardFootprint { pos: Pt::new(x + bp.x / 2, y - bp.y / 2), rot: 0 });
             x += bp.x;
             row_h = row_h.max(bp.y);
         }
@@ -304,11 +292,7 @@ impl Project {
             nodes.push(NodeDesc::Wire { id, a: w.a, b: w.b });
         }
         for (id, l) in p.sch.labels.iter() {
-            nodes.push(NodeDesc::Label {
-                id,
-                pos: l.pos,
-                name: l.name.clone(),
-            });
+            nodes.push(NodeDesc::Label { id, pos: l.pos, name: l.name.clone() });
         }
         let pins = nodes.iter().filter(|n| matches!(n, NodeDesc::Pin { .. })).count();
         let (conn, _) = Connectivity::build(nodes);
@@ -316,23 +300,15 @@ impl Project {
         let t_connectivity = t1.elapsed();
 
         // Tracks for small nets, so some ratsnest lines are already routed.
-        let small_nets: Vec<Vec<(u32, u16)>> = p
-            .conn
-            .nets()
-            .filter(|(_, n)| (2..=4).contains(&n.pins.len()))
-            .map(|(_, n)| n.pins.clone())
-            .collect();
+        let small_nets: Vec<Vec<(u32, u16)>> =
+            p.conn.nets().filter(|(_, n)| (2..=4).contains(&n.pins.len())).map(|(_, n)| n.pins.clone()).collect();
         for pins in small_nets {
             if !p.rng.chance(0.6) {
                 continue;
             }
             let mut pads: Vec<((u32, u16), Pt)> = pins.iter().map(|&(c, pin)| ((c, pin), p.pad_pos(c, pin))).collect();
             pads.sort_by_key(|(_, pos)| (pos.x, pos.y));
-            let layer = if p.rng.chance(0.8) {
-                CopperLayer::Top
-            } else {
-                CopperLayer::Bottom
-            };
+            let layer = if p.rng.chance(0.8) { CopperLayer::Top } else { CopperLayer::Bottom };
             // Pads joined by consecutive routed segments share a copper island.
             let mut island = p.new_island();
             p.set_island(pads[0].0, island);
@@ -350,25 +326,11 @@ impl Project {
                     Pt::new(a.x, b.y - dy.signum() * dx.abs())
                 };
                 let width = Pt::mm(0.2, 0.0).x;
-                p.board.tracks.insert(Track {
-                    a,
-                    b: corner,
-                    width,
-                    layer,
-                });
-                p.board.tracks.insert(Track {
-                    a: corner,
-                    b,
-                    width,
-                    layer,
-                });
+                p.board.tracks.insert(Track { a, b: corner, width, layer });
+                p.board.tracks.insert(Track { a: corner, b, width, layer });
                 if layer == CopperLayer::Bottom {
                     for pos in [a, b] {
-                        p.board.vias.insert(Via {
-                            pos,
-                            diameter: Pt::mm(0.6, 0.0).x,
-                            drill: Pt::mm(0.3, 0.0).x,
-                        });
+                        p.board.vias.insert(Via { pos, diameter: Pt::mm(0.6, 0.0).x, drill: Pt::mm(0.3, 0.0).x });
                     }
                 }
                 p.set_island(w[1].0, island);
@@ -477,12 +439,7 @@ impl Project {
         prims.clear();
         for (a, b) in &lines {
             let (pa, pb) = (pts[*a], pts[*b]);
-            draw::ratsnest_line(
-                [pa[0] as f32, pa[1] as f32],
-                [pb[0] as f32, pb[1] as f32],
-                &self.pl,
-                prims,
-            );
+            draw::ratsnest_line([pa[0] as f32, pa[1] as f32], [pb[0] as f32, pb[1] as f32], &self.pl, prims);
         }
         if prims.is_empty() {
             self.pcb_scene.remove_item(item);
@@ -510,16 +467,10 @@ impl Project {
                         break b;
                     }
                 };
-                let (ca, cb) = (
-                    self.sch.components.get(a_id).unwrap(),
-                    self.sch.components.get(b_id).unwrap(),
-                );
+                let (ca, cb) = (self.sch.components.get(a_id).unwrap(), self.sch.components.get(b_id).unwrap());
                 let pa = self.rng.below(self.lib[ca.part as usize].pins.len() as u64) as usize;
                 let pb = self.rng.below(self.lib[cb.part as usize].pins.len() as u64) as usize;
-                Edit::AddWire {
-                    a: self.pin_pos(ca, pa),
-                    b: self.pin_pos(cb, pb),
-                }
+                Edit::AddWire { a: self.pin_pos(ca, pa), b: self.pin_pos(cb, pb) }
             }
             1 => loop {
                 let id = self.rng.below(self.sch.wires.capacity_ids() as u64) as u32;
@@ -531,10 +482,7 @@ impl Project {
                 let id = pick_comp(self);
                 let c = self.sch.components.get(id).unwrap();
                 let pin = self.rng.below(self.lib[c.part as usize].pins.len() as u64) as usize;
-                Edit::AddLabel {
-                    pos: self.pin_pos(c, pin),
-                    name: "GND".into(),
-                }
+                Edit::AddLabel { pos: self.pin_pos(c, pin), name: "GND".into() }
             }
             3 => {
                 let other = loop {
@@ -543,16 +491,10 @@ impl Project {
                         break l.name.clone();
                     }
                 };
-                Edit::AddComponent {
-                    part: library::PART_R,
-                    labels: ["GND".into(), other],
-                }
+                Edit::AddComponent { part: library::PART_R, labels: ["GND".into(), other] }
             }
             4 => Edit::RemoveComponent(pick_comp(self)),
-            _ => Edit::MoveComponent {
-                id: pick_comp(self),
-                delta: Pt::mm(0.0, 2.54),
-            },
+            _ => Edit::MoveComponent { id: pick_comp(self), delta: Pt::mm(0.0, 2.54) },
         }
     }
 
@@ -581,10 +523,7 @@ impl Project {
                 }
             }
             Edit::AddLabel { pos, name } => {
-                let lab = Label {
-                    pos,
-                    name: name.clone(),
-                };
+                let lab = Label { pos, name: name.clone() };
                 let id = self.sch.labels.insert(lab.clone());
                 draw::sch_label(&lab, &self.sl, &mut prims);
                 self.sch_scene.set_item(ids::label(id), prims.drain(..));
@@ -594,30 +533,18 @@ impl Project {
                 let refdes = self.next_refdes(part);
                 let pos = self.sch_staging;
                 self.sch_staging.x += Pt::mm(20.32, 0.0).x;
-                let id = self.sch.components.insert(SchComponent {
-                    part,
-                    refdes,
-                    pos,
-                    rot: 0,
-                });
+                let id = self.sch.components.insert(SchComponent { part, refdes, pos, rot: 0 });
                 let c = self.sch.components.get(id).unwrap();
                 draw::sch_component(&self.lib[part as usize], c, &self.sl, &mut prims);
                 self.sch_scene.set_item(ids::component(id), prims.drain(..));
                 added.extend(self.pin_nodes(id));
                 for (pin, name) in labels.into_iter().enumerate() {
                     let lpos = self.pin_pos(self.sch.components.get(id).unwrap(), pin);
-                    let lab = Label {
-                        pos: lpos,
-                        name: name.clone(),
-                    };
+                    let lab = Label { pos: lpos, name: name.clone() };
                     let lid = self.sch.labels.insert(lab.clone());
                     draw::sch_label(&lab, &self.sl, &mut prims);
                     self.sch_scene.set_item(ids::label(lid), prims.drain(..));
-                    added.push(NodeDesc::Label {
-                        id: lid,
-                        pos: lpos,
-                        name,
-                    });
+                    added.push(NodeDesc::Label { id: lid, pos: lpos, name });
                 }
                 comps_added.push(id);
             }
@@ -654,24 +581,15 @@ impl Project {
             self.sch.components.remove(id);
         }
         for &id in &comps_added {
-            self.board.footprints.insert(
-                id,
-                BoardFootprint {
-                    pos: self.pcb_staging,
-                    rot: 0,
-                },
-            );
+            self.board.footprints.insert(id, BoardFootprint { pos: self.pcb_staging, rot: 0 });
             self.pcb_staging.y -= Pt::mm(3.0, 0.0).x;
             self.draw_footprint(id, &mut prims);
         }
         let t3 = Instant::now();
 
         // Ratsnest for affected nets only.
-        let added_keys: FxHashSet<u64> = changes
-            .added
-            .iter()
-            .map(|&id| key_hash(&self.conn.net(id).unwrap().key))
-            .collect();
+        let added_keys: FxHashSet<u64> =
+            changes.added.iter().map(|&id| key_hash(&self.conn.net(id).unwrap().key)).collect();
         for key in &changes.removed {
             let h = key_hash(key);
             if !added_keys.contains(&h) {
@@ -724,11 +642,7 @@ mod tests {
             nodes.push(NodeDesc::Wire { id, a: w.a, b: w.b });
         }
         for (id, l) in p.sch.labels.iter() {
-            nodes.push(NodeDesc::Label {
-                id,
-                pos: l.pos,
-                name: l.name.clone(),
-            });
+            nodes.push(NodeDesc::Label { id, pos: l.pos, name: l.name.clone() });
         }
         let (full, _) = Connectivity::build(nodes);
         assert_eq!(p.conn.partition(), full.partition());

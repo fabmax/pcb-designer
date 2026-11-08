@@ -80,11 +80,7 @@ pub enum VAlign {
 /// Width of `text` in world units for the given cap height.
 pub fn text_width(text: &str, height: f32) -> f32 {
     let n = text.chars().count() as f32;
-    if n == 0.0 {
-        0.0
-    } else {
-        (n * ADVANCE_UNITS - 1.0) * height / CAP_UNITS
-    }
+    if n == 0.0 { 0.0 } else { (n * ADVANCE_UNITS - 1.0) * height / CAP_UNITS }
 }
 
 /// Line segments for `text` with cap `height`, anchored at `origin`, rotated by

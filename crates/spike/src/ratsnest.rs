@@ -69,10 +69,7 @@ pub fn mst(points: &[[f64; 2]], island: &[u32]) -> Vec<(usize, usize)> {
                 seen[i] = true;
             }
             for i in (0..k).filter(|&i| !seen[i]) {
-                if let Some(j) = (0..k)
-                    .filter(|&j| j != i)
-                    .min_by(|&a, &b| d2(i, a).total_cmp(&d2(i, b)))
-                {
+                if let Some(j) = (0..k).filter(|&j| j != i).min_by(|&a, &b| d2(i, a).total_cmp(&d2(i, b))) {
                     edges.push((d2(i, j), i as u32, j as u32));
                 }
             }

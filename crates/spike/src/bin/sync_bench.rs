@@ -16,10 +16,7 @@ fn pct(sorted: &[f64], p: f64) -> f64 {
 }
 
 fn main() {
-    let args: Vec<usize> = std::env::args()
-        .skip(1)
-        .map(|a| a.parse().expect("numeric argument"))
-        .collect();
+    let args: Vec<usize> = std::env::args().skip(1).map(|a| a.parse().expect("numeric argument")).collect();
     let n = args.first().copied().unwrap_or(10_000);
     let edits = args.get(1).copied().unwrap_or(600);
     let seed = args.get(2).copied().unwrap_or(1) as u64;
@@ -30,10 +27,7 @@ fn main() {
         "components {}  pins {}  wires {}  labels {}  nets {}  tracks {}  vias {}",
         s.components, s.pins, s.wires, s.labels, s.nets, s.tracks, s.vias
     );
-    println!(
-        "render instances: schematic {}  pcb {}",
-        s.sch_instances, s.pcb_instances
-    );
+    println!("render instances: schematic {}  pcb {}", s.sch_instances, s.pcb_instances);
     println!(
         "initial build: generate {:.1} ms, connectivity {:.1} ms, scenes {:.1} ms, ratsnest {:.1} ms",
         ms(s.t_generate),

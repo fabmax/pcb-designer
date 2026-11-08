@@ -10,6 +10,8 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 render = { path = "crates/render" }
 spike = { path = "crates/spike" }
+model = { path = "crates/model" }
+editor-core = { path = "crates/editor-core" }
 
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11", "accesskit", "clipboard"] }
 egui = "0.37"
@@ -23,6 +25,12 @@ rustc-hash = "2"
 delaunator = "1"
 smallvec = "1"
 log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+indexmap = { version = "2", features = ["serde"] }
+thiserror = "2"
+tempfile = "3"
 env_logger = "0.11"
 
 [profile.dev.package."*"]

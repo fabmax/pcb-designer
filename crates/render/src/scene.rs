@@ -129,11 +129,7 @@ impl Scene {
 
     pub fn add_layer(&mut self, name: impl Into<String>) -> LayerId {
         self.layers.push(Layer {
-            desc: LayerDesc {
-                name: name.into(),
-                visible: true,
-                min_zoom: 0.0,
-            },
+            desc: LayerDesc { name: name.into(), visible: true, min_zoom: 0.0 },
             instances: Vec::new(),
             garbage: 0,
             dirty: Vec::new(),
@@ -157,10 +153,7 @@ impl Scene {
 
     /// Which layers should be drawn at the given zoom.
     pub fn visible_layers(&self, zoom: f64) -> Vec<bool> {
-        self.layers
-            .iter()
-            .map(|l| l.desc.visible && zoom >= l.desc.min_zoom as f64)
-            .collect()
+        self.layers.iter().map(|l| l.desc.visible && zoom >= l.desc.min_zoom as f64).collect()
     }
 
     /// Number of live (non-empty) instances.
@@ -200,9 +193,7 @@ impl Scene {
             let group = &new[i..j];
             let layer = &mut self.layers[layer_id as usize];
 
-            let reuse = old
-                .iter()
-                .position(|a| a.layer == layer_id && a.len as usize >= group.len());
+            let reuse = old.iter().position(|a| a.layer == layer_id && a.len as usize >= group.len());
             if let Some(pos) = reuse {
                 let a = old.swap_remove(pos);
                 let start = a.start as usize;
@@ -218,11 +209,7 @@ impl Scene {
                 let start = layer.instances.len();
                 layer.instances.extend(group.iter().map(|(_, inst)| *inst));
                 layer.mark_dirty(start, layer.instances.len());
-                allocs.push(Alloc {
-                    layer: layer_id,
-                    start: start as u32,
-                    len: group.len() as u32,
-                });
+                allocs.push(Alloc { layer: layer_id, start: start as u32, len: group.len() as u32 });
             }
             i = j;
         }
@@ -312,18 +299,10 @@ impl Scene {
                     let capacity = (len + len / 2).max(1024);
                     layer.gpu_capacity = capacity;
                     layer.dirty.clear();
-                    LayerData::Full {
-                        capacity,
-                        instances: layer.instances.clone(),
-                    }
+                    LayerData::Full { capacity, instances: layer.instances.clone() }
                 } else if !layer.dirty.is_empty() {
                     let ranges = layer.take_ranges();
-                    LayerData::Partial(
-                        ranges
-                            .into_iter()
-                            .map(|(s, e)| (s, layer.instances[s..e].to_vec()))
-                            .collect(),
-                    )
+                    LayerData::Partial(ranges.into_iter().map(|(s, e)| (s, layer.instances[s..e].to_vec())).collect())
                 } else {
                     LayerData::Unchanged
                 };
@@ -352,12 +331,7 @@ mod tests {
     }
 
     fn live(scene: &Scene, layer: LayerId) -> Vec<f32> {
-        scene.layers[layer as usize]
-            .instances
-            .iter()
-            .filter(|i| i.kind != kind::EMPTY)
-            .map(|i| i.p0[0])
-            .collect()
+        scene.layers[layer as usize].instances.iter().filter(|i| i.kind != kind::EMPTY).map(|i| i.p0[0]).collect()
     }
 
     #[test]

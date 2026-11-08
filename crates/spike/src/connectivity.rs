@@ -256,10 +256,7 @@ impl Connectivity {
     /// Other labels sharing the name of label `id`.
     fn same_name(&self, id: u32) -> impl Iterator<Item = Node> + '_ {
         let name = self.label_names.get(&id).copied();
-        name.into_iter()
-            .flat_map(move |n| self.by_name[&n].iter().copied())
-            .filter(move |l| *l != id)
-            .map(Node::Label)
+        name.into_iter().flat_map(move |n| self.by_name[&n].iter().copied()).filter(move |l| *l != id).map(Node::Label)
     }
 
     /// Build all nets from scratch.
@@ -271,13 +268,7 @@ impl Connectivity {
             seeds.push(d.node());
         }
         let added = c.flood(seeds);
-        (
-            c,
-            NetChanges {
-                removed: Vec::new(),
-                added,
-            },
-        )
+        (c, NetChanges { removed: Vec::new(), added })
     }
 
     /// Apply removals and additions. A moved node is removed and added again.
@@ -320,11 +311,7 @@ impl Connectivity {
             self.index_remove(n);
         }
         for &net in seeds_by_net.keys() {
-            self.nets
-                .get_mut(net)
-                .unwrap()
-                .nodes
-                .retain(|m| !removed_set.contains(m));
+            self.nets.get_mut(net).unwrap().nodes.retain(|m| !removed_set.contains(m));
         }
         // Index additions now so that split checks see the final geometry. Added nodes are
         // unassigned (no net) and therefore ignored by the split search.
@@ -377,11 +364,7 @@ impl Connectivity {
             }
             let target = match touched.iter().max_by_key(|&&id| self.nets.get(id).unwrap().nodes.len()) {
                 Some(&t) => t,
-                None => self.nets.insert(Net {
-                    key: NetKey::Anon(start),
-                    nodes: Vec::new(),
-                    pins: Vec::new(),
-                }),
+                None => self.nets.insert(Net { key: NetKey::Anon(start), nodes: Vec::new(), pins: Vec::new() }),
             };
             for &other in touched.iter().filter(|&&t| t != target) {
                 let net = self.nets.remove(other).unwrap();
@@ -422,10 +405,7 @@ impl Connectivity {
             self.refresh(id);
             added_ids.push(id);
         }
-        NetChanges {
-            removed: removed_keys,
-            added: added_ids,
-        }
+        NetChanges { removed: removed_keys, added: added_ids }
     }
 
     /// Interleaved search from `seeds` (all in `net`). Parts that turn out disconnected
@@ -467,11 +447,8 @@ impl Connectivity {
                 let Some(n) = frontier[i].pop() else {
                     // Exhausted: this group is a separate component.
                     let nodes = std::mem::take(&mut members[i]);
-                    let new_id = self.nets.insert(Net {
-                        key: NetKey::Anon(nodes[0]),
-                        nodes: Vec::new(),
-                        pins: Vec::new(),
-                    });
+                    let new_id =
+                        self.nets.insert(Net { key: NetKey::Anon(nodes[0]), nodes: Vec::new(), pins: Vec::new() });
                     let moved: FxHashSet<Node> = nodes.iter().copied().collect();
                     for &m in &nodes {
                         self.net_of.insert(m, new_id);
@@ -525,22 +502,13 @@ impl Connectivity {
     /// Recompute key and pin list of a net from its nodes.
     fn refresh(&mut self, id: u32) {
         let net = self.nets.get(id).unwrap();
-        let mut pins: Vec<(u32, u16)> = net
-            .nodes
-            .iter()
-            .filter_map(|n| if let Node::Pin(c, p) = n { Some((*c, *p)) } else { None })
-            .collect();
+        let mut pins: Vec<(u32, u16)> =
+            net.nodes.iter().filter_map(|n| if let Node::Pin(c, p) = n { Some((*c, *p)) } else { None }).collect();
         pins.sort_unstable();
         let name = net
             .nodes
             .iter()
-            .filter_map(|n| {
-                if let Node::Label(l) = n {
-                    self.label_names.get(l)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|n| if let Node::Label(l) = n { self.label_names.get(l) } else { None })
             .map(|&name_id| &self.names[name_id as usize])
             .min();
         let key = match (name, pins.first()) {
@@ -563,11 +531,7 @@ impl Connectivity {
             if self.net_of.contains_key(&seed) || !self.geom.contains_key(&seed) {
                 continue;
             }
-            let net_id = self.nets.insert(Net {
-                key: NetKey::Anon(seed),
-                nodes: Vec::new(),
-                pins: Vec::new(),
-            });
+            let net_id = self.nets.insert(Net { key: NetKey::Anon(seed), nodes: Vec::new(), pins: Vec::new() });
             let mut nodes = Vec::new();
             self.net_of.insert(seed, net_id);
             stack.push(seed);
@@ -617,19 +581,11 @@ mod tests {
     use super::*;
 
     fn pin(comp: u32, x: f64, y: f64) -> NodeDesc {
-        NodeDesc::Pin {
-            comp,
-            pin: 0,
-            pos: Pt::mm(x, y),
-        }
+        NodeDesc::Pin { comp, pin: 0, pos: Pt::mm(x, y) }
     }
 
     fn wire(id: u32, a: (f64, f64), b: (f64, f64)) -> NodeDesc {
-        NodeDesc::Wire {
-            id,
-            a: Pt::mm(a.0, a.1),
-            b: Pt::mm(b.0, b.1),
-        }
+        NodeDesc::Wire { id, a: Pt::mm(a.0, a.1), b: Pt::mm(b.0, b.1) }
     }
 
     #[test]
@@ -652,17 +608,9 @@ mod tests {
     fn labels_join_by_name() {
         let (c, _) = Connectivity::build([
             pin(0, 0.0, 0.0),
-            NodeDesc::Label {
-                id: 0,
-                pos: Pt::mm(0.0, 0.0),
-                name: "GND".into(),
-            },
+            NodeDesc::Label { id: 0, pos: Pt::mm(0.0, 0.0), name: "GND".into() },
             pin(1, 50.0, 50.0),
-            NodeDesc::Label {
-                id: 1,
-                pos: Pt::mm(50.0, 50.0),
-                name: "GND".into(),
-            },
+            NodeDesc::Label { id: 1, pos: Pt::mm(50.0, 50.0), name: "GND".into() },
         ]);
         let net = c.net(c.net_of(Node::Pin(0, 0)).unwrap()).unwrap();
         assert_eq!(net.key, NetKey::Named("GND".into()));

@@ -80,20 +80,8 @@ impl PcbApp {
             project,
             stats,
             components,
-            sch: Canvas::new(
-                1,
-                Background {
-                    grid: 2.54,
-                    ..Default::default()
-                },
-            ),
-            pcb: Canvas::new(
-                2,
-                Background {
-                    grid: 0.5,
-                    ..Default::default()
-                },
-            ),
+            sch: Canvas::new(1, Background { grid: 2.54, ..Default::default() }),
+            pcb: Canvas::new(2, Background { grid: 0.5, ..Default::default() }),
             hovered: None,
             storm: opts.storm,
             storm_per_frame: 1,
@@ -134,10 +122,7 @@ impl PcbApp {
     fn animate_cameras(&mut self, dt: f64) {
         self.anim_t += dt;
         let t = self.anim_t;
-        let canvases = [
-            (&mut self.sch, &self.project.sch_scene),
-            (&mut self.pcb, &self.project.pcb_scene),
-        ];
+        let canvases = [(&mut self.sch, &self.project.sch_scene), (&mut self.pcb, &self.project.pcb_scene)];
         for (i, (canvas, scene)) in canvases.into_iter().enumerate() {
             let b = *self.bounds[i].get_or_insert_with(|| scene.bounds().unwrap_or([0.0, 0.0, 1.0, 1.0]));
             canvas.camera.fit(b, canvas.viewport(), 24.0);
@@ -186,28 +171,21 @@ impl PcbApp {
                 }
             });
             let s = &self.stats;
-            egui::Grid::new("stats")
-                .num_columns(2)
-                .spacing([16.0, 2.0])
-                .show(ui, |ui| {
-                    let row = |ui: &mut egui::Ui, k: &str, v: String| {
-                        ui.label(RichText::new(k).color(theme::TEXT_DIM));
-                        ui.label(v);
-                        ui.end_row();
-                    };
-                    row(ui, "Components", self.project.sch.components.len().to_string());
-                    row(
-                        ui,
-                        "Pins / wires",
-                        format!("{} / {}", s.pins, self.project.sch.wires.len()),
-                    );
-                    row(ui, "Labels", self.project.sch.labels.len().to_string());
-                    row(ui, "Nets", self.project.conn.net_count().to_string());
-                    row(ui, "Tracks / vias", format!("{} / {}", s.tracks, s.vias));
-                    row(ui, "Schematic prims", fmt_k(self.project.sch_scene.instance_count()));
-                    row(ui, "PCB prims", fmt_k(self.project.pcb_scene.instance_count()));
-                    row(ui, "Generated in", format!("{:.0} ms", ms(self.regen_time)));
-                });
+            egui::Grid::new("stats").num_columns(2).spacing([16.0, 2.0]).show(ui, |ui| {
+                let row = |ui: &mut egui::Ui, k: &str, v: String| {
+                    ui.label(RichText::new(k).color(theme::TEXT_DIM));
+                    ui.label(v);
+                    ui.end_row();
+                };
+                row(ui, "Components", self.project.sch.components.len().to_string());
+                row(ui, "Pins / wires", format!("{} / {}", s.pins, self.project.sch.wires.len()));
+                row(ui, "Labels", self.project.sch.labels.len().to_string());
+                row(ui, "Nets", self.project.conn.net_count().to_string());
+                row(ui, "Tracks / vias", format!("{} / {}", s.tracks, s.vias));
+                row(ui, "Schematic prims", fmt_k(self.project.sch_scene.instance_count()));
+                row(ui, "PCB prims", fmt_k(self.project.pcb_scene.instance_count()));
+                row(ui, "Generated in", format!("{:.0} ms", ms(self.regen_time)));
+            });
         });
 
         section(ui, "Live sync", |ui| {
@@ -218,9 +196,7 @@ impl PcbApp {
                 ui.toggle_value(&mut self.storm, "Edit storm");
                 ui.add_enabled(
                     self.storm,
-                    egui::DragValue::new(&mut self.storm_per_frame)
-                        .range(1..=50)
-                        .suffix(" /frame"),
+                    egui::DragValue::new(&mut self.storm_per_frame).range(1..=50).suffix(" /frame"),
                 );
             });
             if let Some(r) = self.reports.back() {
@@ -230,22 +206,19 @@ impl PcbApp {
                 let n = self.reports.len() as f32;
                 let avg = |f: fn(&SyncReport) -> Duration| self.reports.iter().map(|r| ms(f(r))).sum::<f32>() / n;
                 let max = self.reports.iter().map(|r| ms(r.total)).fold(0.0, f32::max);
-                egui::Grid::new("sync")
-                    .num_columns(2)
-                    .spacing([16.0, 2.0])
-                    .show(ui, |ui| {
-                        let row = |ui: &mut egui::Ui, k: &str, v: f32| {
-                            ui.label(RichText::new(k).color(theme::TEXT_DIM));
-                            ui.label(format!("{v:.3} ms"));
-                            ui.end_row();
-                        };
-                        row(ui, "Total (avg)", avg(|r| r.total));
-                        row(ui, "Total (max)", max);
-                        row(ui, "Schematic", avg(|r| r.schematic));
-                        row(ui, "Connectivity", avg(|r| r.connectivity));
-                        row(ui, "Board", avg(|r| r.board));
-                        row(ui, "Ratsnest", avg(|r| r.ratsnest));
-                    });
+                egui::Grid::new("sync").num_columns(2).spacing([16.0, 2.0]).show(ui, |ui| {
+                    let row = |ui: &mut egui::Ui, k: &str, v: f32| {
+                        ui.label(RichText::new(k).color(theme::TEXT_DIM));
+                        ui.label(format!("{v:.3} ms"));
+                        ui.end_row();
+                    };
+                    row(ui, "Total (avg)", avg(|r| r.total));
+                    row(ui, "Total (max)", max);
+                    row(ui, "Schematic", avg(|r| r.schematic));
+                    row(ui, "Connectivity", avg(|r| r.connectivity));
+                    row(ui, "Board", avg(|r| r.board));
+                    row(ui, "Ratsnest", avg(|r| r.ratsnest));
+                });
                 ui.label(RichText::new(format!("over last {} edits", self.reports.len())).color(theme::TEXT_DIM));
             }
         });
@@ -253,12 +226,7 @@ impl PcbApp {
         section(ui, "Rendering", |ui| {
             ui.toggle_value(&mut self.animate, "Animate cameras (benchmark)");
             let (avg, max) = frame_stats(&self.frame_times);
-            ui.label(format!(
-                "{:.0} fps · frame {:.1} ms avg / {:.1} ms max",
-                1000.0 / avg.max(0.001),
-                avg,
-                max
-            ));
+            ui.label(format!("{:.0} fps · frame {:.1} ms avg / {:.1} ms max", 1000.0 / avg.max(0.001), avg, max));
             if let Some(cpu) = cpu {
                 ui.label(format!("CPU per frame: {:.2} ms", cpu * 1000.0));
             }
@@ -266,9 +234,7 @@ impl PcbApp {
         });
 
         section(ui, "PCB layers", |ui| layer_toggles(ui, &mut self.project.pcb_scene));
-        section(ui, "Schematic layers", |ui| {
-            layer_toggles(ui, &mut self.project.sch_scene)
-        });
+        section(ui, "Schematic layers", |ui| layer_toggles(ui, &mut self.project.sch_scene));
     }
 
     fn status_bar(&self, ui: &mut egui::Ui) {
@@ -329,21 +295,15 @@ impl PcbApp {
         }
         let path = path.clone();
         self.screenshot = None;
-        ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(
-            move |img| {
-                let rgba = img.pixels.iter().flat_map(|c| c.to_srgba_unmultiplied()).collect();
-                let image = render::offscreen::Image {
-                    width: img.size[0] as u32,
-                    height: img.size[1] as u32,
-                    rgba,
-                };
-                match image.save_png(&path) {
-                    Ok(()) => println!("screenshot saved to {path}"),
-                    Err(e) => eprintln!("screenshot failed: {e}"),
-                }
-                std::process::exit(0);
-            },
-        )));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(move |img| {
+            let rgba = img.pixels.iter().flat_map(|c| c.to_srgba_unmultiplied()).collect();
+            let image = render::offscreen::Image { width: img.size[0] as u32, height: img.size[1] as u32, rgba };
+            match image.save_png(&path) {
+                Ok(()) => println!("screenshot saved to {path}"),
+                Err(e) => eprintln!("screenshot failed: {e}"),
+            }
+            std::process::exit(0);
+        })));
     }
 }
 
@@ -367,9 +327,7 @@ fn frame_stats(times: &VecDeque<f32>) -> (f32, f32) {
 }
 
 fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
-    egui::CollapsingHeader::new(RichText::new(title).strong())
-        .default_open(true)
-        .show(ui, add);
+    egui::CollapsingHeader::new(RichText::new(title).strong()).default_open(true).show(ui, add);
     ui.add_space(4.0);
 }
 
@@ -408,10 +366,7 @@ impl Behavior<Pane> for TreeBehavior<'_> {
     }
 
     fn simplification_options(&self) -> SimplificationOptions {
-        SimplificationOptions {
-            all_panes_must_have_tabs: true,
-            ..Default::default()
-        }
+        SimplificationOptions { all_panes_must_have_tabs: true, ..Default::default() }
     }
 
     fn gap_width(&self, _style: &egui::Style) -> f32 {
@@ -457,12 +412,9 @@ impl eframe::App for PcbApp {
 
         let cpu = frame.info().cpu_usage;
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
-        egui::Panel::left("side")
-            .resizable(true)
-            .default_size(290.0)
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| self.side_panel(ui, cpu));
-            });
+        egui::Panel::left("side").resizable(true).default_size(290.0).show(ui, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| self.side_panel(ui, cpu));
+        });
 
         self.hovered = None;
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {

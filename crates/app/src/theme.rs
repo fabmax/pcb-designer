@@ -13,10 +13,7 @@ pub fn apply(ctx: &egui::Context) {
     v.window_fill = PANEL;
     v.extreme_bg_color = PANEL_DARK;
     v.faint_bg_color = Color32::from_rgb(0x23, 0x27, 0x2e);
-    v.selection = Selection {
-        bg_fill: ACCENT.gamma_multiply(0.45),
-        stroke: Stroke::new(1.0, ACCENT),
-    };
+    v.selection = Selection { bg_fill: ACCENT.gamma_multiply(0.45), stroke: Stroke::new(1.0, ACCENT) };
     v.hyperlink_color = ACCENT;
     v.window_corner_radius = CornerRadius::same(8);
     v.menu_corner_radius = CornerRadius::same(6);
