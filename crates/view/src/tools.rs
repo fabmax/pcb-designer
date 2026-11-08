@@ -220,6 +220,7 @@ impl Placer {
             Tool::Pin => Ghost::Pin(Pin {
                 id: Id::new(),
                 name: s.name.clone(),
+                number: String::new(),
                 pos: p,
                 direction: s.rotation,
                 length: s.pin_length,

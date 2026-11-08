@@ -1,0 +1,15 @@
+[package]
+name = "kicad"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Import of KiCad symbol and footprint libraries"
+
+[dependencies]
+model.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+view.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

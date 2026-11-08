@@ -802,6 +802,12 @@ impl LibraryEditor {
                         changed = Some(false);
                     }
                     ui.end_row();
+                    label(ui, "Number");
+                    if let Some(n) = f.text(ui, ("pin_number", id), &pin.number) {
+                        pin.number = n.trim().to_string();
+                        changed = Some(false);
+                    }
+                    ui.end_row();
                     label(ui, "Type");
                     if let Some(k) = pin_kind_combo(ui, "pin_kind", pin.kind) {
                         pin.kind = k;

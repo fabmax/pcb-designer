@@ -3,10 +3,16 @@
 //! Usage: pcb-designer [PROJECT_DIR | --demo | --new | --stress N] [--no-vsync]
 //!                     [--keymap FILE.json] [--mcp] [--mcp-port PORT]
 //!                     [--library FILE.pcblib]... [--show [part:|symbol:|footprint:]NAME]...
+//!                     [--kicad DIR]... [--kicad-pick [footprint:]LIB:NAME]... [--kicad-import]
+//!                     [--kicad-search [footprint:]TEXT]
 //!                     [--screenshot FILE.png [--frames N] [--select all|REFDES]]
 //!
 //! `--show NAME` opens a part, symbol or footprint of the last opened (or starter)
 //! library in its editor tab; repeat it to navigate several steps.
+//!
+//! `--kicad DIR` sets the KiCad library folders (default: the KiCad installation);
+//! `--kicad-pick` adds symbols/footprints to the KiCad import window, `--kicad-import`
+//! imports them right away into a new library.
 //!
 //! Without arguments the demo project is opened.
 
@@ -15,6 +21,7 @@ mod app;
 mod canvas;
 mod fields;
 mod keymap;
+mod kicad_import;
 mod library;
 mod part_form;
 mod properties;
@@ -33,6 +40,10 @@ fn main() -> eframe::Result {
         mcp: None,
         library: Vec::new(),
         show: Vec::new(),
+        kicad_paths: Vec::new(),
+        kicad_pick: Vec::new(),
+        kicad_import: false,
+        kicad_query: None,
     };
     let mut vsync = true;
     let mut args = std::env::args().skip(1);
@@ -47,6 +58,10 @@ fn main() -> eframe::Result {
             "--select" => opts.select = args.next(),
             "--library" => opts.library.extend(args.next().map(Into::into)),
             "--show" => opts.show.extend(args.next()),
+            "--kicad" => opts.kicad_paths.extend(args.next().map(Into::into)),
+            "--kicad-pick" => opts.kicad_pick.extend(args.next()),
+            "--kicad-import" => opts.kicad_import = true,
+            "--kicad-search" => opts.kicad_query = args.next(),
             "--mcp" => opts.mcp = Some(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
             "--mcp-port" => opts.mcp = args.next().and_then(|v| v.parse().ok()).or(Some(agent::DEFAULT_PORT)),
             "--keymap" => {

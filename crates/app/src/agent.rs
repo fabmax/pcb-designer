@@ -4,13 +4,15 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use mcp::host::{Responder, render_png};
+use mcp::host::{KicadImport as KicadJob, Responder, render_png};
 use mcp::{Call, Host, McpServer, Reply};
 use model::{Library, ObjectId};
 use render::offscreen::Offscreen;
+use serde_json::{Value, json};
 use view::{Document, ViewKind};
 
 use crate::app::Pane;
+use crate::kicad_import::KicadImport;
 
 pub const DEFAULT_PORT: u16 = 7340;
 
@@ -56,9 +58,18 @@ impl Agent {
     }
 
     /// Answer queued requests. Call once per frame when no interaction is in progress.
-    pub fn process(&mut self, ctx: &egui::Context, doc: &mut Document, panes: &mut [Pane; 2], libraries: &[&Library]) {
-        let Some((_, rx)) = &self.server else { return };
-        let mut host = AppHost { ctx, doc, panes, libraries, offscreen: &mut self.offscreen };
+    /// KiCad imports are returned for the app to run (they change the open libraries).
+    pub fn process(
+        &mut self,
+        ctx: &egui::Context,
+        doc: &mut Document,
+        panes: &mut [Pane; 2],
+        libraries: &[&Library],
+        kicad: &mut KicadImport,
+    ) -> Vec<(KicadJob, Responder)> {
+        let Some((_, rx)) = &self.server else { return Vec::new() };
+        let mut jobs = Vec::new();
+        let mut host = AppHost { ctx, doc, panes, libraries, offscreen: &mut self.offscreen, kicad, jobs: &mut jobs };
         while let Ok(call) = rx.try_recv() {
             self.calls += 1;
             let description = call.request.describe();
@@ -68,6 +79,7 @@ impl Agent {
             }
             mcp::handle(call, &mut host);
         }
+        jobs
     }
 }
 
@@ -77,6 +89,8 @@ struct AppHost<'a> {
     panes: &'a mut [Pane; 2],
     libraries: &'a [&'a Library],
     offscreen: &'a mut Option<Offscreen>,
+    kicad: &'a mut KicadImport,
+    jobs: &'a mut Vec<(KicadJob, Responder)>,
 }
 
 impl Host for AppHost<'_> {
@@ -106,6 +120,18 @@ impl Host for AppHost<'_> {
             cam
         });
         render_png(self.offscreen, &self.doc.view(view).scene, camera, &canvas.background, width, height)
+    }
+
+    fn kicad_search(&mut self, query: &str, footprints: bool, limit: usize) -> Result<Value, String> {
+        let (results, symbols, fps) = self.kicad.search(query, footprints, limit);
+        if symbols + fps == 0 {
+            return Err("no KiCad libraries found; add their folders in File > Import from KiCad".into());
+        }
+        Ok(json!({ "results": results, "truncated": results.len() >= limit }))
+    }
+
+    fn kicad_import(&mut self, request: KicadJob, reply: Responder) {
+        self.jobs.push((request, reply));
     }
 
     fn window_screenshot(&mut self, reply: Responder) {

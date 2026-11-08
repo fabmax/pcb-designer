@@ -80,6 +80,42 @@ pub struct ImportPartsParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct SearchKicadParams {
+    /// Words that must all occur in "Library:Name", case-insensitive (e.g. "lm358",
+    /// "device r", "soic-8 3.9x4.9").
+    pub query: String,
+    /// Search footprints instead of symbols.
+    #[serde(default)]
+    pub footprints: bool,
+    /// Maximum number of results (default 50, at most 500).
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct KicadSymbolPick {
+    /// "Library:Name" from search_kicad, e.g. "Amplifier_Operational:LM358".
+    pub symbol: String,
+    /// Footprints ("Library:Name"), one part variant each. Omit for the symbol's default
+    /// (or best matching) footprint; an empty list imports the symbol only.
+    #[serde(default)]
+    pub footprints: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ImportKicadParams {
+    #[serde(default)]
+    pub symbols: Vec<KicadSymbolPick>,
+    /// Lone footprints ("Library:Name").
+    #[serde(default)]
+    pub footprints: Vec<String>,
+    /// Name of the open library to import into (default: a library named "KiCad import",
+    /// created if needed).
+    #[serde(default)]
+    pub library: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct UpdatePartsParams {
     /// Project part ids; omit to update all parts whose library changed.
     #[serde(default)]
@@ -217,6 +253,27 @@ impl PcbTools {
         Without part ids, every part whose library changed is updated.")]
     async fn update_parts(&self, Parameters(p): Parameters<UpdatePartsParams>) -> Result<CallToolResult, ErrorData> {
         self.call(Request::UpdateParts { parts: p.parts.unwrap_or_default() }).await
+    }
+
+    #[tool(description = "Search the KiCad symbol (or footprint) libraries installed on this \
+        computer by name. Returns \"Library:Name\" entries for import_kicad.")]
+    async fn search_kicad(&self, Parameters(p): Parameters<SearchKicadParams>) -> Result<CallToolResult, ErrorData> {
+        let limit = p.limit.unwrap_or(50).clamp(1, 500);
+        self.call(Request::KicadSearch { query: p.query, footprints: p.footprints, limit }).await
+    }
+
+    #[tool(description = "Import KiCad symbols and footprints into an open library. Each symbol \
+        becomes a part with one variant per footprint (pads mapped to pins by number; power \
+        symbols like GND are skipped, use net labels). Returns the new part ids (for \
+        import_parts), the chosen footprints and conversion notes. Re-importing updates \
+        the library objects in place.")]
+    async fn import_kicad(&self, Parameters(p): Parameters<ImportKicadParams>) -> Result<CallToolResult, ErrorData> {
+        let request = crate::host::KicadImport {
+            symbols: p.symbols.into_iter().map(|s| (s.symbol, s.footprints)).collect(),
+            footprints: p.footprints,
+            library: p.library,
+        };
+        self.call(Request::KicadImport(request)).await
     }
 
     #[tool(description = "List project objects (optionally of one kind), paginated. Objects are \

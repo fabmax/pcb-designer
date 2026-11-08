@@ -83,8 +83,14 @@ impl Painter {
                     }
                 }
             }
-            Shape::Polygon { points, width, .. } => {
-                // Filled polygons are drawn as outlines until the renderer supports them.
+            Shape::Polygon { points, width, fill } => {
+                if *fill {
+                    let (l, c) = fill_layer.unwrap_or((layer, color));
+                    let pts: Vec<[f32; 2]> = points.iter().map(|&q| mmf(q)).collect();
+                    for inst in render::tess::fill_polygon(&pts, c) {
+                        self.push(l, inst);
+                    }
+                }
                 for i in 0..points.len() {
                     let (a, b) = (points[i], points[(i + 1) % points.len()]);
                     self.push(layer, Instance::line(mmf(a), mmf(b), len(*width), color));
@@ -92,6 +98,14 @@ impl Painter {
             }
         }
         self.grow(shape.bounds());
+    }
+
+    /// Filled polygon without outline.
+    pub fn fill(&mut self, layer: LayerId, points: impl IntoIterator<Item = Point>, color: Color) {
+        let pts: Vec<[f32; 2]> = points.into_iter().map(mmf).collect();
+        for inst in render::tess::fill_polygon(&pts, color) {
+            self.push(layer, inst);
+        }
     }
 
     /// Draw text. `subst` replaces `${REF}`-style variables.

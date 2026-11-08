@@ -4,6 +4,7 @@
 //! ordinary editor commands (`insert` / `update` / `delete` of `lib_symbol`, `lib_footprint`
 //! and `lib_part` objects) with the same undo, grouping and validation as project edits.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use editor_core::Command;
@@ -190,6 +191,72 @@ impl LibraryDoc {
     /// Replace a part (after editing it in the part form).
     pub fn update_part(&mut self, part: Part) -> Result<(), String> {
         self.execute_all(vec![Command::Update { objects: vec![Object::LibPart(part)] }])
+    }
+
+    /// Add or replace objects as one undo step (used by imports). Objects whose id already
+    /// exists replace the old version; new ones get a unique name. Returns
+    /// (added, replaced) counts.
+    pub fn upsert(
+        &mut self,
+        symbols: Vec<Symbol>,
+        footprints: Vec<Footprint>,
+        parts: Vec<Part>,
+    ) -> Result<(usize, usize), String> {
+        let lib = self.library();
+        let (mut added, mut replaced) = (0, 0);
+        let mut taken: HashSet<(ObjectKind, String)> = HashSet::new();
+        taken.extend(lib.symbols.iter().map(|s| (ObjectKind::LibSymbol, s.name.clone())));
+        taken.extend(lib.footprints.iter().map(|f| (ObjectKind::LibFootprint, f.name.clone())));
+        taken.extend(lib.parts.iter().map(|p| (ObjectKind::LibPart, p.name.clone())));
+        let mut unique = |kind: ObjectKind, name: &mut String| {
+            if taken.contains(&(kind, name.clone())) {
+                let n = (2..).map(|i| format!("{name} {i}")).find(|n| !taken.contains(&(kind, n.clone()))).unwrap();
+                *name = n;
+            }
+            taken.insert((kind, name.clone()));
+        };
+        // Commands in dependency order: symbols and footprints before the parts using them.
+        let mut new = [Vec::new(), Vec::new(), Vec::new()];
+        let mut existing = [Vec::new(), Vec::new(), Vec::new()];
+        for mut s in symbols {
+            if lib.symbols.contains(s.id) {
+                existing[0].push(Object::LibSymbol(s));
+            } else {
+                unique(ObjectKind::LibSymbol, &mut s.name);
+                new[0].push(Object::LibSymbol(s));
+            }
+        }
+        for mut f in footprints {
+            if lib.footprints.contains(f.id) {
+                existing[1].push(Object::LibFootprint(f));
+            } else {
+                unique(ObjectKind::LibFootprint, &mut f.name);
+                new[1].push(Object::LibFootprint(f));
+            }
+        }
+        for mut p in parts {
+            if let Some(old) = lib.parts.get(p.id) {
+                p.name = old.name.clone();
+                existing[2].push(Object::LibPart(p));
+            } else {
+                unique(ObjectKind::LibPart, &mut p.name);
+                new[2].push(Object::LibPart(p));
+            }
+        }
+        let mut commands = Vec::new();
+        for i in 0..3 {
+            added += new[i].len();
+            replaced += existing[i].len();
+            for (objects, insert) in [(std::mem::take(&mut new[i]), true), (std::mem::take(&mut existing[i]), false)] {
+                if !objects.is_empty() {
+                    commands.push(if insert { Command::Insert { objects } } else { Command::Update { objects } });
+                }
+            }
+        }
+        if !commands.is_empty() {
+            self.execute_all(commands)?;
+        }
+        Ok((added, replaced))
     }
 }
 
