@@ -16,7 +16,7 @@ Living document. Requirements are in [pcb-designer.md](pcb-designer.md).
 | KiCad import | In scope (symbols `.kicad_sym`, footprints `.kicad_mod`) |
 | MCP interface | In scope (see below) |
 | Theme | Dark first |
-| Files | JSON (serde), pretty-printed, stable ordering, integer coordinates, `format_version` + migrations |
+| Files | JSON (serde), pretty-printed, stable ordering, integer coordinates, `format`/`version` header + migrations. **A project is a folder** (`<name>.pcbproj/` with `project.json`, `library.json`, `schematic.json`, `board.json`); a library is a single `*.pcblib` file |
 
 ## Architecture (Cargo workspace)
 
@@ -147,3 +147,45 @@ and level of detail for tiny primitives.
   copper connectivity (M7).
 - The placeholder stroke font needs replacing (M2).
 - Same-layer transparency (render each layer to a texture, then composite) is still open.
+
+## Milestone 1 design notes (2026-11-08)
+
+- **`model` crate**
+  - Integer-nanometer `Point`/`Size`, which serialize as `[x, y]`.
+  - `Angle` in degrees, normalized; multiples of 90° rotate exactly.
+  - `Transform` applies mirror, then rotation, then translation.
+  - `Shape` and stroke-font `Text`.
+  - Every object has a UUID `Id`.
+  - `Store<T>` is an insertion-ordered map, saved as a JSON array. Removing an object and
+    re-inserting it at its old index restores the order exactly.
+- **Library**
+  - `Symbol` pins have names. `Footprint` pads have numbers.
+  - `Part` = units (one symbol per unit) + variants (footprint + pad → `(unit, pin)`
+    mapping). A pin can have several pads.
+  - Embedded parts keep `source` provenance (library id, part id, content hash) for
+    "update from library".
+- **Schematic**
+  - Design-wide `Component`s (refdes, value, part, variant).
+  - Each unit is placed as a `SymbolInstance`. Every graphical object carries its sheet
+    id, so multi-sheet support only needs more sheets.
+- **Board**
+  - `FootprintInstance` stores only the placement of a component. The footprint is
+    derived from the component's variant, so swapping the variant needs no board edit.
+  - Layer ids: copper 0 (top) … 63 (bottom), technical layers from 100.
+- **`editor-core` crate**
+  - Serializable `Command`s (JSON with a `"command"` tag) are the only way to modify a
+    project. The same commands will back the GUI tools and MCP.
+  - Each command runs in a `Transaction` that records object-level before/after
+    snapshots. Commands are atomic: on error the transaction rolls back.
+  - Schematic → board sync runs inside the same transaction, so one undo step reverts
+    both. Undo/redo replays the change sets; tests check byte-identical files after
+    undo all / redo all.
+  - The returned `ChangeSet` tells consumers what changed (input for incremental
+    connectivity and render updates).
+- **Built-in starter library** (fixed ids): resistor (0603/0805), capacitor, LED
+  (pins A/K → pads 2/1), 1x4 header.
+- **Deferred:**
+  - Multi-unit placement (only unit 0 is placed).
+  - Flagging tracks whose net changed: needs board connectivity (M7).
+  - Performance of linear scans (refdes numbering, sync lookups): fine for now, revisit
+    with 10k-part projects.

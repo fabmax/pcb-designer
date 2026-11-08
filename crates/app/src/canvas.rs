@@ -15,10 +15,7 @@ pub struct CanvasResources {
 impl CanvasResources {
     pub fn install(rs: &egui_wgpu::RenderState) {
         let renderer = Renderer::new(&rs.device, rs.target_format);
-        rs.renderer.write().callback_resources.insert(CanvasResources {
-            renderer,
-            scenes: Vec::new(),
-        });
+        rs.renderer.write().callback_resources.insert(CanvasResources { renderer, scenes: Vec::new() });
     }
 }
 
@@ -81,8 +78,7 @@ impl Canvas {
             pending: self.pending.clone(),
             visible: scene.visible_layers(self.camera.zoom),
         };
-        ui.painter()
-            .add(egui_wgpu::Callback::new_paint_callback(rect, callback));
+        ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, callback));
         response
     }
 
@@ -106,14 +102,7 @@ impl Canvas {
 
         ui.input(|i| {
             for e in &i.events {
-                if let egui::Event::MouseWheel {
-                    unit,
-                    delta,
-                    source,
-                    modifiers,
-                    ..
-                } = e
-                {
+                if let egui::Event::MouseWheel { unit, delta, source, modifiers, .. } = e {
                     if modifiers.command || modifiers.ctrl {
                         continue; // handled as zoom_delta by egui
                     }

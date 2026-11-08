@@ -51,11 +51,7 @@ impl ViewUniform {
     /// `pixels_per_point` converts to physical pixels for anti-aliasing.
     pub fn new(camera: &Camera, viewport: [f32; 2], pixels_per_point: f32, bg: &Background) -> Self {
         let zoom = camera.zoom as f32;
-        let grid = if bg.show_grid {
-            adaptive_grid(bg.grid, zoom, bg.min_grid_px)
-        } else {
-            0.0
-        };
+        let grid = if bg.show_grid { adaptive_grid(bg.grid, zoom, bg.min_grid_px) } else { 0.0 };
         Self {
             center: [camera.center[0] as f32, camera.center[1] as f32],
             ndc_scale: [2.0 * zoom / viewport[0].max(1.0), 2.0 * zoom / viewport[1].max(1.0)],
@@ -147,10 +143,7 @@ impl Renderer {
                     attributes: &instance_attrs,
                 })],
             },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..Default::default()
-            },
+            primitive: wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleStrip, ..Default::default() },
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
@@ -179,21 +172,13 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("fs_grid"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &[Some(wgpu::ColorTargetState { format, blend: None, write_mask: wgpu::ColorWrites::ALL })],
             }),
             multiview_mask: None,
             cache: None,
         });
 
-        Self {
-            prim_pipeline,
-            grid_pipeline,
-            bind_group_layout,
-        }
+        Self { prim_pipeline, grid_pipeline, bind_group_layout }
     }
 }
 
@@ -221,27 +206,16 @@ impl GpuScene {
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("canvas view"),
             layout: &renderer.bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: uniform.as_entire_binding(),
-            }],
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() }],
         });
-        Self {
-            layers: Vec::new(),
-            uniform,
-            bind_group,
-        }
+        Self { layers: Vec::new(), uniform, bind_group }
     }
 
     pub fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, upload: &SceneUpload) {
         // A replaced scene may have fewer layers.
         self.layers.truncate(upload.layers.len());
         if self.layers.len() < upload.layers.len() {
-            self.layers.resize_with(upload.layers.len(), || GpuLayer {
-                buffer: None,
-                capacity: 0,
-                len: 0,
-            });
+            self.layers.resize_with(upload.layers.len(), || GpuLayer { buffer: None, capacity: 0, len: 0 });
         }
         for (layer, up) in self.layers.iter_mut().zip(&upload.layers) {
             match &up.data {

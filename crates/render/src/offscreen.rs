@@ -38,11 +38,7 @@ impl Offscreen {
                 .await
                 .map_err(|e| format!("no GPU device: {e}"))?;
             let renderer = Renderer::new(&device, FORMAT);
-            Ok(Self {
-                device,
-                queue,
-                renderer,
-            })
+            Ok(Self { device, queue, renderer })
         })
     }
 
@@ -51,18 +47,11 @@ impl Offscreen {
         let mut gpu = GpuScene::new(device, &self.renderer);
         scene.invalidate_gpu();
         gpu.upload(device, &self.queue, &scene.take_upload());
-        gpu.set_view(
-            &self.queue,
-            &ViewUniform::new(camera, [width as f32, height as f32], 1.0, bg),
-        );
+        gpu.set_view(&self.queue, &ViewUniform::new(camera, [width as f32, height as f32], 1.0, bg));
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("offscreen target"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -112,11 +101,7 @@ impl Offscreen {
                     rows_per_image: Some(height),
                 },
             },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         );
         self.queue.submit([encoder.finish()]);
 

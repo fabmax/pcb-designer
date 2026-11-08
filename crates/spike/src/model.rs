@@ -20,10 +20,7 @@ impl Pt {
     }
 
     pub fn mm(x: f64, y: f64) -> Self {
-        Self {
-            x: (x * MM as f64).round() as Nm,
-            y: (y * MM as f64).round() as Nm,
-        }
+        Self { x: (x * MM as f64).round() as Nm, y: (y * MM as f64).round() as Nm }
     }
 
     pub fn to_mm(self) -> [f32; 2] {
@@ -69,11 +66,7 @@ pub struct Slab<T> {
 
 impl<T> Default for Slab<T> {
     fn default() -> Self {
-        Self {
-            items: Vec::new(),
-            free: Vec::new(),
-            len: 0,
-        }
+        Self { items: Vec::new(), free: Vec::new(), len: 0 }
     }
 }
 
@@ -120,10 +113,7 @@ impl<T> Slab<T> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (u32, &T)> {
-        self.items
-            .iter()
-            .enumerate()
-            .filter_map(|(i, t)| t.as_ref().map(|t| (i as u32, t)))
+        self.items.iter().enumerate().filter_map(|(i, t)| t.as_ref().map(|t| (i as u32, t)))
     }
 }
 

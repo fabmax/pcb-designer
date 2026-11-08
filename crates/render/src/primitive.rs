@@ -54,48 +54,21 @@ pub struct Instance {
 }
 
 impl Instance {
-    pub const EMPTY: Instance = Instance {
-        p0: [0.0; 2],
-        p1: [0.0; 2],
-        r: 0.0,
-        r2: 0.0,
-        kind: kind::EMPTY,
-        color: Color([0; 4]),
-    };
+    pub const EMPTY: Instance =
+        Instance { p0: [0.0; 2], p1: [0.0; 2], r: 0.0, r2: 0.0, kind: kind::EMPTY, color: Color([0; 4]) };
 
     /// Line from `a` to `b` with total `width`.
     pub fn line(a: [f32; 2], b: [f32; 2], width: f32, color: Color) -> Self {
-        Self {
-            p0: a,
-            p1: b,
-            r: width * 0.5,
-            r2: 0.0,
-            kind: kind::CAPSULE,
-            color,
-        }
+        Self { p0: a, p1: b, r: width * 0.5, r2: 0.0, kind: kind::CAPSULE, color }
     }
 
     pub fn circle(center: [f32; 2], radius: f32, color: Color) -> Self {
-        Self {
-            p0: center,
-            p1: [0.0; 2],
-            r: radius,
-            r2: 0.0,
-            kind: kind::CIRCLE,
-            color,
-        }
+        Self { p0: center, p1: [0.0; 2], r: radius, r2: 0.0, kind: kind::CIRCLE, color }
     }
 
     /// Annulus with outer and inner radius.
     pub fn ring(center: [f32; 2], outer: f32, inner: f32, color: Color) -> Self {
-        Self {
-            p0: center,
-            p1: [0.0; 2],
-            r: outer,
-            r2: inner,
-            kind: kind::CIRCLE,
-            color,
-        }
+        Self { p0: center, p1: [0.0; 2], r: outer, r2: inner, kind: kind::CIRCLE, color }
     }
 
     /// Circle outline with stroke `width` centered on `radius`.
@@ -105,26 +78,12 @@ impl Instance {
 
     /// Rounded rectangle centered at `center` with full `size`.
     pub fn rect(center: [f32; 2], size: [f32; 2], corner: f32, rotation: f32, color: Color) -> Self {
-        Self {
-            p0: center,
-            p1: [size[0] * 0.5, size[1] * 0.5],
-            r: corner,
-            r2: rotation,
-            kind: kind::RECT,
-            color,
-        }
+        Self { p0: center, p1: [size[0] * 0.5, size[1] * 0.5], r: corner, r2: rotation, kind: kind::RECT, color }
     }
 
     /// Arc stroke around `center`. Angles in radians, counterclockwise.
     pub fn arc(center: [f32; 2], radius: f32, start: f32, sweep: f32, width: f32, color: Color) -> Self {
-        Self {
-            p0: center,
-            p1: [start, sweep],
-            r: width * 0.5,
-            r2: radius,
-            kind: kind::ARC,
-            color,
-        }
+        Self { p0: center, p1: [start, sweep], r: width * 0.5, r2: radius, kind: kind::ARC, color }
     }
 
     /// Axis aligned bounding box `[min_x, min_y, max_x, max_y]`, or `None` for empty slots.
@@ -133,12 +92,7 @@ impl Instance {
         match self.kind {
             kind::CAPSULE => {
                 let [x1, y1] = self.p1;
-                Some([
-                    x0.min(x1) - self.r,
-                    y0.min(y1) - self.r,
-                    x0.max(x1) + self.r,
-                    y0.max(y1) + self.r,
-                ])
+                Some([x0.min(x1) - self.r, y0.min(y1) - self.r, x0.max(x1) + self.r, y0.max(y1) + self.r])
             }
             kind::CIRCLE => Some([x0 - self.r, y0 - self.r, x0 + self.r, y0 + self.r]),
             kind::RECT => {

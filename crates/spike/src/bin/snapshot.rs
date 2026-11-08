@@ -33,10 +33,7 @@ fn main() {
             let half = [w as f64 * 0.5 / z, h as f64 * 0.5 / z];
             cam.center = [b[0] + half[0], b[3] - half[1]];
         }
-        let bg = Background {
-            grid: if sch { 2.54 } else { 1.0 },
-            ..Default::default()
-        };
+        let bg = Background { grid: if sch { 2.54 } else { 1.0 }, ..Default::default() };
         let img = off.render(scene, &cam, &bg, w, h);
         let path = format!("{out}/{name}.png");
         img.save_png(&path).unwrap();

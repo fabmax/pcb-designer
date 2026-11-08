@@ -9,12 +9,7 @@ fn mm(v: f64) -> Nm {
 }
 
 fn rect_lines(min: (f64, f64), max: (f64, f64)) -> Vec<(Pt, Pt)> {
-    let (a, b, c, d) = (
-        Pt::mm(min.0, min.1),
-        Pt::mm(max.0, min.1),
-        Pt::mm(max.0, max.1),
-        Pt::mm(min.0, max.1),
-    );
+    let (a, b, c, d) = (Pt::mm(min.0, min.1), Pt::mm(max.0, min.1), Pt::mm(max.0, max.1), Pt::mm(min.0, max.1));
     vec![(a, b), (b, c), (c, d), (d, a)]
 }
 
@@ -25,14 +20,8 @@ fn passive(name: &str, prefix: &str) -> PartDef {
         prefix: prefix.into(),
         body: (Pt::mm(-G, -0.9), Pt::mm(G, 0.9)),
         pins: vec![
-            PinDef {
-                pos: Pt::mm(-2.0 * G, 0.0),
-                inner: Pt::mm(-G, 0.0),
-            },
-            PinDef {
-                pos: Pt::mm(2.0 * G, 0.0),
-                inner: Pt::mm(G, 0.0),
-            },
+            PinDef { pos: Pt::mm(-2.0 * G, 0.0), inner: Pt::mm(-G, 0.0) },
+            PinDef { pos: Pt::mm(2.0 * G, 0.0), inner: Pt::mm(G, 0.0) },
         ],
         pads: [-0.8, 0.8]
             .iter()
@@ -43,10 +32,7 @@ fn passive(name: &str, prefix: &str) -> PartDef {
                 drill: 0,
             })
             .collect(),
-        silk: vec![
-            (Pt::mm(-0.2, 0.75), Pt::mm(0.2, 0.75)),
-            (Pt::mm(-0.2, -0.75), Pt::mm(0.2, -0.75)),
-        ],
+        silk: vec![(Pt::mm(-0.2, 0.75), Pt::mm(0.2, 0.75)), (Pt::mm(-0.2, -0.75), Pt::mm(0.2, -0.75))],
         silk_dots: vec![],
         pin_to_pad: vec![0, 1],
         board_pitch: Pt::mm(3.4, 2.6),
@@ -61,17 +47,11 @@ fn dual_symbol(n: usize) -> (Vec<PinDef>, (Pt, Pt)) {
     let mut pins = Vec::with_capacity(n);
     for i in 0..per_side {
         let y = top - i as f64 * G;
-        pins.push(PinDef {
-            pos: Pt::mm(-body_x - G, y),
-            inner: Pt::mm(-body_x, y),
-        });
+        pins.push(PinDef { pos: Pt::mm(-body_x - G, y), inner: Pt::mm(-body_x, y) });
     }
     for i in 0..per_side {
         let y = -top + i as f64 * G;
-        pins.push(PinDef {
-            pos: Pt::mm(body_x + G, y),
-            inner: Pt::mm(body_x, y),
-        });
+        pins.push(PinDef { pos: Pt::mm(body_x + G, y), inner: Pt::mm(body_x, y) });
     }
     (pins, (Pt::mm(-body_x, -top - G), Pt::mm(body_x, top + G)))
 }
@@ -148,10 +128,7 @@ fn header10() -> PartDef {
     let pins = (0..n)
         .map(|i| {
             let y = top - i as f64 * G;
-            PinDef {
-                pos: Pt::mm(-2.0 * G, y),
-                inner: Pt::mm(-G, y),
-            }
+            PinDef { pos: Pt::mm(-2.0 * G, y), inner: Pt::mm(-G, y) }
         })
         .collect();
     let pads = (0..n)
@@ -182,11 +159,5 @@ pub const PART_QFP48: u16 = 3;
 pub const PART_HDR10: u16 = 4;
 
 pub fn standard_parts() -> Vec<PartDef> {
-    vec![
-        passive("R_0603", "R"),
-        passive("C_0603", "C"),
-        soic8(),
-        qfp48(),
-        header10(),
-    ]
+    vec![passive("R_0603", "R"), passive("C_0603", "C"), soic8(), qfp48(), header10()]
 }

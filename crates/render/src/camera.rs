@@ -10,10 +10,7 @@ pub struct Camera {
 
 impl Default for Camera {
     fn default() -> Self {
-        Self {
-            center: [0.0, 0.0],
-            zoom: 4.0,
-        }
+        Self { center: [0.0, 0.0], zoom: 4.0 }
     }
 }
 
@@ -66,12 +63,7 @@ impl Camera {
     pub fn visible_world(&self, viewport: [f64; 2]) -> [f64; 4] {
         let hw = viewport[0] * 0.5 / self.zoom;
         let hh = viewport[1] * 0.5 / self.zoom;
-        [
-            self.center[0] - hw,
-            self.center[1] - hh,
-            self.center[0] + hw,
-            self.center[1] + hh,
-        ]
+        [self.center[0] - hw, self.center[1] - hh, self.center[0] + hw, self.center[1] + hh]
     }
 }
 
@@ -81,10 +73,7 @@ mod tests {
 
     #[test]
     fn screen_world_roundtrip() {
-        let cam = Camera {
-            center: [10.0, -5.0],
-            zoom: 3.0,
-        };
+        let cam = Camera { center: [10.0, -5.0], zoom: 3.0 };
         let vp = [800.0, 600.0];
         let w = cam.screen_to_world([123.0, 456.0], vp);
         let s = cam.world_to_screen(w, vp);
@@ -93,10 +82,7 @@ mod tests {
 
     #[test]
     fn zoom_keeps_anchor_fixed() {
-        let mut cam = Camera {
-            center: [0.0, 0.0],
-            zoom: 2.0,
-        };
+        let mut cam = Camera { center: [0.0, 0.0], zoom: 2.0 };
         let vp = [800.0, 600.0];
         let anchor = [100.0, 50.0];
         let before = cam.screen_to_world(anchor, vp);

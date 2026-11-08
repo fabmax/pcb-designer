@@ -9,13 +9,8 @@ mod theme;
 
 fn main() -> eframe::Result {
     env_logger::init();
-    let mut opts = app::Options {
-        components: 2_000,
-        screenshot: None,
-        screenshot_frames: 30,
-        animate: false,
-        storm: false,
-    };
+    let mut opts =
+        app::Options { components: 2_000, screenshot: None, screenshot_frames: 30, animate: false, storm: false };
     let mut vsync = true;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
@@ -43,9 +38,5 @@ fn main() -> eframe::Result {
         wgpu_options,
         ..Default::default()
     };
-    eframe::run_native(
-        "PCB Designer",
-        options,
-        Box::new(move |cc| Ok(Box::new(app::PcbApp::new(cc, opts)))),
-    )
+    eframe::run_native("PCB Designer", options, Box::new(move |cc| Ok(Box::new(app::PcbApp::new(cc, opts)))))
 }

@@ -1,0 +1,324 @@
+//! Library content: symbols, footprints and parts.
+//!
+//! A [`Part`] combines one symbol per unit with one or more footprint variants. Each variant
+//! maps footprint pads to symbol pins, so symbol and footprint can be designed
+//! independently and connected afterwards. A pin may map to several pads (e.g. GND), a pad
+//! to at most one pin. Pads without a pin are not connected.
+
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+
+use crate::geom::{Angle, Point, Shape, Size, Text};
+use crate::id::Id;
+use crate::store::Store;
+use crate::units::Coord;
+
+macro_rules! has_id {
+    ($($t:ty),*) => {$(
+        impl $crate::store::HasId for $t {
+            fn id(&self) -> $crate::id::Id {
+                self.id
+            }
+        }
+    )*};
+}
+pub(crate) use has_id;
+
+// ---------------------------------------------------------------------------------------
+// Symbols
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PinKind {
+    Input,
+    Output,
+    Bidirectional,
+    TriState,
+    #[default]
+    Passive,
+    PowerIn,
+    PowerOut,
+    OpenCollector,
+    NotConnected,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Pin {
+    pub id: Id,
+    pub name: String,
+    /// Connection point (outer end of the pin).
+    pub pos: Point,
+    /// Direction from the connection point toward the symbol body.
+    pub direction: Angle,
+    pub length: Coord,
+    #[serde(default)]
+    pub kind: PinKind,
+    #[serde(default = "yes")]
+    pub show_name: bool,
+    #[serde(default = "yes")]
+    pub show_number: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl Pin {
+    /// Where the pin meets the symbol body.
+    pub fn inner_end(&self) -> Point {
+        self.pos + Point::new(self.length, 0).rotated(self.direction)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Symbol {
+    pub id: Id,
+    pub name: String,
+    #[serde(default)]
+    pub graphics: Vec<Shape>,
+    #[serde(default)]
+    pub texts: Vec<Text>,
+    pub pins: Store<Pin>,
+}
+
+// ---------------------------------------------------------------------------------------
+// Footprints
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PadShape {
+    Circle,
+    Rect,
+    /// Corner radius as a fraction of the shorter side (0 … 0.5).
+    RoundRect {
+        ratio: f64,
+    },
+    Oval,
+    /// Custom outline relative to the pad origin.
+    Polygon {
+        points: Vec<Point>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PadKind {
+    /// Surface mount pad on the footprint's side.
+    Smd,
+    /// Plated through hole on all copper layers.
+    ThroughHole { drill: Coord },
+    /// Non-plated hole (mounting holes).
+    NonPlatedHole { drill: Coord },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Pad {
+    pub id: Id,
+    /// Pad number/name as printed in datasheets ("1", "A3", "EP").
+    pub name: String,
+    pub pos: Point,
+    #[serde(default)]
+    pub rotation: Angle,
+    pub size: Size,
+    pub shape: PadShape,
+    pub kind: PadKind,
+}
+
+/// Layers available inside a footprint (defined on the top side; mirrored when placed on
+/// the bottom).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FootprintLayer {
+    Copper,
+    Silkscreen,
+    SolderMask,
+    SolderPaste,
+    Fabrication,
+    Courtyard,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FootprintGraphic {
+    pub layer: FootprintLayer,
+    pub shape: Shape,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FootprintText {
+    pub layer: FootprintLayer,
+    pub text: Text,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Footprint {
+    pub id: Id,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    pub pads: Store<Pad>,
+    #[serde(default)]
+    pub graphics: Vec<FootprintGraphic>,
+    #[serde(default)]
+    pub texts: Vec<FootprintText>,
+}
+
+// ---------------------------------------------------------------------------------------
+// Parts
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PartUnit {
+    pub name: String,
+    pub symbol: Id,
+}
+
+/// Connects a footprint pad to a pin of one of the part's units.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PadConnection {
+    pub pad: Id,
+    pub unit: u32,
+    pub pin: Id,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PartVariant {
+    pub id: Id,
+    pub name: String,
+    pub footprint: Id,
+    pub connections: Vec<PadConnection>,
+}
+
+/// Where an embedded part came from; used by "update from library".
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PartSource {
+    pub library: Id,
+    pub library_name: String,
+    pub part: Id,
+    /// Hash of the source part content when it was copied.
+    pub content_hash: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Part {
+    pub id: Id,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Reference designator prefix ("R", "U", …).
+    pub prefix: String,
+    #[serde(default)]
+    pub default_value: String,
+    pub units: Vec<PartUnit>,
+    pub variants: Vec<PartVariant>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub properties: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<PartSource>,
+}
+
+impl Part {
+    pub fn variant(&self, id: Id) -> Option<&PartVariant> {
+        self.variants.iter().find(|v| v.id == id)
+    }
+}
+
+has_id!(Pin, Symbol, Pad, Footprint, Part);
+
+/// A collection of symbols, footprints and parts. Used both for library files and for the
+/// copies embedded in a project.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Library {
+    pub id: Option<Id>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub symbols: Store<Symbol>,
+    #[serde(default)]
+    pub footprints: Store<Footprint>,
+    #[serde(default)]
+    pub parts: Store<Part>,
+}
+
+impl Library {
+    pub fn new(name: impl Into<String>) -> Self {
+        Library { id: Some(Id::new()), name: name.into(), ..Default::default() }
+    }
+
+    /// Footprint of a part variant.
+    pub fn footprint_of(&self, part: Id, variant: Id) -> Option<&Footprint> {
+        let v = self.parts.get(part)?.variant(variant)?;
+        self.footprints.get(v.footprint)
+    }
+
+    /// A part together with the symbols and footprints it references.
+    pub fn extract_part(&self, part: Id) -> Option<(Part, Vec<Symbol>, Vec<Footprint>)> {
+        let p = self.parts.get(part)?.clone();
+        let mut symbols: Vec<Symbol> = Vec::new();
+        for u in &p.units {
+            if !symbols.iter().any(|s| s.id == u.symbol) {
+                symbols.push(self.symbols.get(u.symbol)?.clone());
+            }
+        }
+        let mut footprints: Vec<Footprint> = Vec::new();
+        for v in &p.variants {
+            if !footprints.iter().any(|f| f.id == v.footprint) {
+                footprints.push(self.footprints.get(v.footprint)?.clone());
+            }
+        }
+        Some((p, symbols, footprints))
+    }
+
+    /// Stable hash of a part's content (part, symbols, footprints; excluding provenance).
+    /// Used to detect library changes for "update from library".
+    pub fn content_hash(&self, part: Id) -> Option<String> {
+        let (mut p, symbols, footprints) = self.extract_part(part)?;
+        p.source = None;
+        let json = serde_json::to_string(&(p, symbols, footprints)).ok()?;
+        // FNV-1a, 64 bit: stable across platforms and Rust versions.
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in json.bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        Some(format!("{h:016x}"))
+    }
+
+    /// Consistency problems (dangling references, bad pad mappings).
+    pub fn validate(&self) -> Vec<String> {
+        let mut issues = Vec::new();
+        for part in self.parts.iter() {
+            for (i, u) in part.units.iter().enumerate() {
+                if !self.symbols.contains(u.symbol) {
+                    issues.push(format!("part {:?}: unit {i} references missing symbol", part.name));
+                }
+            }
+            if part.variants.is_empty() {
+                issues.push(format!("part {:?} has no variant", part.name));
+            }
+            for v in &part.variants {
+                let Some(fp) = self.footprints.get(v.footprint) else {
+                    issues.push(format!("part {:?} variant {:?}: missing footprint", part.name, v.name));
+                    continue;
+                };
+                let mut seen = std::collections::HashSet::new();
+                for c in &v.connections {
+                    if !fp.pads.contains(c.pad) {
+                        issues.push(format!("part {:?} variant {:?}: unknown pad", part.name, v.name));
+                    }
+                    if !seen.insert(c.pad) {
+                        issues.push(format!("part {:?} variant {:?}: pad mapped twice", part.name, v.name));
+                    }
+                    let pin_ok = part
+                        .units
+                        .get(c.unit as usize)
+                        .and_then(|u| self.symbols.get(u.symbol))
+                        .is_some_and(|s| s.pins.contains(c.pin));
+                    if !pin_ok {
+                        issues.push(format!("part {:?} variant {:?}: unknown pin", part.name, v.name));
+                    }
+                }
+            }
+        }
+        issues
+    }
+}

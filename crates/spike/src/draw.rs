@@ -112,9 +112,7 @@ pub mod ids {
 #[allow(clippy::too_many_arguments)] // spike-only helper
 fn text(out: &mut Prims, layer: LayerId, s: &str, at: [f32; 2], height: f32, h: HAlign, v: VAlign, color: Color) {
     let w = height * 0.14;
-    font::text_segments(s, at, height, 0.0, h, v, |a, b| {
-        out.push((layer, Instance::line(a, b, w, color)))
-    });
+    font::text_segments(s, at, height, 0.0, h, v, |a, b| out.push((layer, Instance::line(a, b, w, color))));
 }
 
 const SCH_LINE: f32 = 0.15;
@@ -125,55 +123,25 @@ pub fn sch_component(part: &PartDef, c: &SchComponent, l: &SchLayers, out: &mut 
     let corners = [lo, Pt::new(hi.x, lo.y), hi, Pt::new(lo.x, hi.y)].map(xf);
     let center = xf(Pt::new((lo.x + hi.x) / 2, (lo.y + hi.y) / 2));
     let size = (hi - lo).rotated(c.rot).to_mm();
-    out.push((
-        l.body_fill,
-        Instance::rect(center, [size[0].abs(), size[1].abs()], 0.0, 0.0, colors::SCH_BODY_FILL),
-    ));
+    out.push((l.body_fill, Instance::rect(center, [size[0].abs(), size[1].abs()], 0.0, 0.0, colors::SCH_BODY_FILL)));
     for i in 0..4 {
-        out.push((
-            l.body,
-            Instance::line(corners[i], corners[(i + 1) % 4], 0.2, colors::SCH_BODY),
-        ));
+        out.push((l.body, Instance::line(corners[i], corners[(i + 1) % 4], 0.2, colors::SCH_BODY)));
     }
     for pin in &part.pins {
-        out.push((
-            l.pins,
-            Instance::line(xf(pin.inner), xf(pin.pos), SCH_LINE, colors::SCH_PIN),
-        ));
+        out.push((l.pins, Instance::line(xf(pin.inner), xf(pin.pos), SCH_LINE, colors::SCH_PIN)));
     }
     let top = corners.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
-    text(
-        out,
-        l.text,
-        &c.refdes,
-        [center[0], top + 0.6],
-        1.5,
-        HAlign::Center,
-        VAlign::Bottom,
-        colors::SCH_TEXT,
-    );
+    text(out, l.text, &c.refdes, [center[0], top + 0.6], 1.5, HAlign::Center, VAlign::Bottom, colors::SCH_TEXT);
 }
 
 pub fn sch_wire(w: &Wire, l: &SchLayers, out: &mut Prims) {
-    out.push((
-        l.wires,
-        Instance::line(w.a.to_mm(), w.b.to_mm(), SCH_LINE, colors::SCH_WIRE),
-    ));
+    out.push((l.wires, Instance::line(w.a.to_mm(), w.b.to_mm(), SCH_LINE, colors::SCH_WIRE)));
 }
 
 pub fn sch_label(lab: &Label, l: &SchLayers, out: &mut Prims) {
     let p = lab.pos.to_mm();
     out.push((l.wires, Instance::circle(p, 0.25, colors::SCH_LABEL)));
-    text(
-        out,
-        l.labels,
-        &lab.name,
-        [p[0] + 0.5, p[1] + 0.3],
-        1.27,
-        HAlign::Left,
-        VAlign::Bottom,
-        colors::SCH_LABEL,
-    );
+    text(out, l.labels, &lab.name, [p[0] + 0.5, p[1] + 0.3], 1.27, HAlign::Left, VAlign::Bottom, colors::SCH_LABEL);
 }
 
 pub fn pcb_footprint(part: &PartDef, fp: &BoardFootprint, refdes: &str, l: &PcbLayers, out: &mut Prims) {
@@ -197,10 +165,7 @@ pub fn pcb_footprint(part: &PartDef, fp: &BoardFootprint, refdes: &str, l: &PcbL
         push(l.f_cu, colors::F_CU);
         if pad.drill > 0 {
             push(l.b_cu, colors::B_CU);
-            out.push((
-                l.holes,
-                Instance::circle(center, pad.drill as f32 * 0.5e-6, colors::HOLE),
-            ));
+            out.push((l.holes, Instance::circle(center, pad.drill as f32 * 0.5e-6, colors::HOLE)));
         }
     }
     for (a, b) in &part.silk {
@@ -212,16 +177,7 @@ pub fn pcb_footprint(part: &PartDef, fp: &BoardFootprint, refdes: &str, l: &PcbL
         out.push((l.silk, Instance::circle(xf(*p), *r as f32 * 1e-6, colors::SILK)));
     }
     let c = fp.pos.to_mm();
-    text(
-        out,
-        l.silk_text,
-        refdes,
-        [c[0], top + 0.3],
-        0.8,
-        HAlign::Center,
-        VAlign::Bottom,
-        colors::SILK,
-    );
+    text(out, l.silk_text, refdes, [c[0], top + 0.3], 0.8, HAlign::Center, VAlign::Bottom, colors::SILK);
 }
 
 pub fn pcb_track(t: &Track, l: &PcbLayers, out: &mut Prims) {
@@ -229,10 +185,7 @@ pub fn pcb_track(t: &Track, l: &PcbLayers, out: &mut Prims) {
         CopperLayer::Top => (l.f_cu, colors::F_CU),
         CopperLayer::Bottom => (l.b_cu, colors::B_CU),
     };
-    out.push((
-        layer,
-        Instance::line(t.a.to_mm(), t.b.to_mm(), t.width as f32 * 1e-6, color),
-    ));
+    out.push((layer, Instance::line(t.a.to_mm(), t.b.to_mm(), t.width as f32 * 1e-6, color)));
 }
 
 pub fn pcb_via(v: &Via, l: &PcbLayers, out: &mut Prims) {
