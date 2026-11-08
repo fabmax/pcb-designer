@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use model::*;
 use view::demo::stress_project;
-use view::{Document, Interaction, KeyAction, PointerInput, ProjectTarget, ViewKind};
+use view::{Document, Interaction, KeyAction, PointerInput, ViewKind};
 
 fn main() {
     let n: usize = std::env::args().nth(1).and_then(|v| v.parse().ok()).unwrap_or(10_000);
