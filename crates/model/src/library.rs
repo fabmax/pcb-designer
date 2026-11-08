@@ -47,6 +47,10 @@ pub enum PinKind {
 pub struct Pin {
     pub id: Id,
     pub name: String,
+    /// Pin number from the datasheet ("1", "A3"); optional. Pads are connected to pins
+    /// through the part's mapping, and "map by name" matches pad names against it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub number: String,
     /// Connection point (outer end of the pin).
     pub pos: Point,
     /// Direction from the connection point toward the symbol body.
@@ -65,6 +69,11 @@ fn yes() -> bool {
 }
 
 impl Pin {
+    /// The name pads are matched against: the number if there is one, else the name.
+    pub fn key(&self) -> &str {
+        if self.number.is_empty() { &self.name } else { &self.number }
+    }
+
     /// Where the pin meets the symbol body.
     pub fn inner_end(&self) -> Point {
         self.pos + Point::new(self.length, 0).rotated(self.direction)
@@ -313,7 +322,8 @@ impl Library {
         Some(format!("{h:016x}"))
     }
 
-    /// Connect pads to pins of the same name (case-insensitive), e.g. pad "1" ↔ pin "1".
+    /// Connect pads to pins with the same number (or name, for pins without a number),
+    /// case-insensitive: pad "1" ↔ pin number "1", pad "GND" ↔ pin "GND".
     /// Pins are searched unit by unit; each pad maps to at most one pin.
     pub fn map_by_name(&self, units: &[PartUnit], footprint: Id) -> Vec<PadConnection> {
         let Some(fp) = self.footprints.get(footprint) else { return Vec::new() };
@@ -321,7 +331,7 @@ impl Library {
         for pad in fp.pads.iter() {
             let found = units.iter().enumerate().find_map(|(u, unit)| {
                 let sym = self.symbols.get(unit.symbol)?;
-                let pin = sym.pins.iter().find(|p| p.name.eq_ignore_ascii_case(&pad.name))?;
+                let pin = sym.pins.iter().find(|p| p.key().eq_ignore_ascii_case(&pad.name))?;
                 Some(PadConnection { pad: pad.id, unit: u as u32, pin: pin.id })
             });
             out.extend(found);

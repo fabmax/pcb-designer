@@ -63,6 +63,26 @@ pub enum Request {
     Save {
         path: Option<PathBuf>,
     },
+    /// Search KiCad's symbol (or footprint) libraries by name.
+    KicadSearch {
+        query: String,
+        footprints: bool,
+        limit: usize,
+    },
+    /// Import KiCad symbols (as parts) and footprints into an open library.
+    KicadImport(KicadImport),
+}
+
+/// A KiCad import requested by an agent.
+#[derive(Clone, Debug, Default)]
+pub struct KicadImport {
+    /// `Lib:Name` of each symbol, with the footprints to make a part with (`None`: the
+    /// symbol's default or best matching footprint; empty: symbol only).
+    pub symbols: Vec<(String, Option<Vec<String>>)>,
+    /// Lone footprints (`Lib:Name`).
+    pub footprints: Vec<String>,
+    /// Name of the open library to import into; a new library if none is given or found.
+    pub library: Option<String>,
 }
 
 impl Request {
@@ -88,6 +108,8 @@ impl Request {
             Request::Screenshot { target: Some(v), .. } => format!("screenshot {v:?}"),
             Request::Screenshot { target: None, .. } => "screenshot window".into(),
             Request::Save { .. } => "save".into(),
+            Request::KicadSearch { query, .. } => format!("search KiCad for {query:?}"),
+            Request::KicadImport(k) => format!("import {} item(s) from KiCad", k.symbols.len() + k.footprints.len()),
         }
     }
 
@@ -101,6 +123,7 @@ impl Request {
                 | Request::Undo
                 | Request::Redo
                 | Request::Save { .. }
+                | Request::KicadImport(_)
         )
     }
 }
@@ -133,15 +156,24 @@ pub trait Host {
     fn window_screenshot(&mut self, reply: Responder) {
         let _ = reply.send(Err("this host has no window; screenshot a view instead".into()));
     }
+    /// `Lib:Name`s of KiCad symbols or footprints matching `query`.
+    fn kicad_search(&mut self, _query: &str, _footprints: bool, _limit: usize) -> Result<Value, String> {
+        Err("KiCad libraries are not available in this host".into())
+    }
+    /// Import from KiCad; the host may answer later (it may need to open a library).
+    fn kicad_import(&mut self, _request: KicadImport, reply: Responder) {
+        let _ = reply.send(Err("KiCad libraries are not available in this host".into()));
+    }
 }
 
 /// Answer one call. Window screenshots may be answered later by the host.
 pub fn handle(call: Call, host: &mut dyn Host) {
     let Call { request, reply } = call;
-    if let Request::Screenshot { target: None, .. } = request {
-        host.window_screenshot(reply);
-        return;
-    }
+    let request = match request {
+        Request::Screenshot { target: None, .. } => return host.window_screenshot(reply),
+        Request::KicadImport(k) => return host.kicad_import(k, reply),
+        r => r,
+    };
     let result = respond(request, host);
     let _ = reply.send(result);
 }
@@ -211,6 +243,8 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             json!(ids.iter().map(|&id| p.get(id)).collect::<Vec<_>>())
         }
         Request::Component { refdes } => component(host.document().project(), &refdes)?,
+        Request::KicadSearch { query, footprints, limit } => host.kicad_search(&query, footprints, limit)?,
+        Request::KicadImport(_) => unreachable!("answered by the host"),
         Request::Execute { commands } => execute(host.document(), commands)?,
         Request::Undo => {
             let doc = host.document();

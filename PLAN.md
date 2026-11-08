@@ -328,3 +328,89 @@ and level of detail for tiny primitives.
   - Library editing over MCP.
   - Library rename other than by Save As.
   - A part preview in the part form.
+
+## Milestone 5 results (2026-11-09)
+
+- **New crate `kicad`:** a small S-expression parser plus converters for the formats of
+  KiCad 6–10:
+  - `.kicad_sym` libraries (many symbols per file);
+  - `.kicad_symdir` folders (KiCad 10, one file per symbol; file names may differ in case
+    from the symbol name);
+  - `.pretty` folders of `.kicad_mod` footprints (also the legacy `module` head).
+  Both flag spellings (bare `hide` and `(hide yes)`) are accepted.
+- **Symbols:**
+  - Sub-symbols `NAME_U_C` become one symbol per unit (named "LM358 A", …). Pins shared
+    by all units go to unit A. The De Morgan body style is skipped with a note.
+  - `extends` takes the parent's graphics and pins and merges the properties.
+  - Power symbols are not imported (net labels play that role here).
+  - Pins keep their KiCad number (new `Pin::number`; `Pin::key()` = number or name).
+    Unnamed pins ("~") show their number only.
+  - Graphics: rectangles, circles, arcs (three points), polylines and Béziers, filled or
+    not. Symbol texts use tenths of a degree. Visible Reference and Value fields become
+    `${REF}`/`${VALUE}` texts.
+- **Footprints:**
+  - y is flipped (KiCad footprints are y-down). Angles keep their value: both are
+    counterclockwise on screen.
+  - Only front layers (F.Cu/SilkS/Fab/CrtYd/Mask/Paste) are imported. Back-side and
+    inner-layer graphics and keepout zones are skipped with notes.
+  - Pad shapes: roundrect, chamfered (as a polygon), trapezoid (as a polygon), oval,
+    circle, rect.
+  - Custom pads: a single polygon that contains the anchor becomes a polygon pad.
+    Otherwise the anchor is the pad and the primitives become copper graphics.
+  - Holes: oval drills become round (minimum size). Drill offsets are ignored.
+  - Aperture-only pads become filled paste/mask graphics.
+  - Back-side copies of exposed pads (thermal-via footprints) are dropped; back-only pads
+    move to the front.
+- **Deterministic ids:** an FNV hash of library, name and element. Re-importing updates
+  library objects in place, so "update from library" works for projects that use them.
+- **Catalog:**
+  - Indexes names only, about 0.1 s for all KiCad libraries. Parses lazily and caches
+    whole-library files.
+  - Searches by words in "Lib:Name".
+  - Finds KiCad: `KICADn_SYMBOL_DIR`/`KICADn_FOOTPRINT_DIR`, the macOS app bundle,
+    /usr/share/kicad and Program Files.
+  - Footprint suggestion uses the symbol's default footprint if it exists. Otherwise it
+    picks among `ki_fp_filters` matches: first all pin numbers present and the same pad
+    count, then filter order, fewest extra pads, and common packages (0603, SOT-23,
+    SOIC…).
+- **Parts:**
+  - One variant per chosen footprint. Pads connect to pins with the same number; several
+    pads may share a pin (split thermal pads).
+  - Properties: KiCad symbol, Datasheet, Keywords.
+- **Renderer:** filled polygons. There is a new TRIANGLE primitive (three vertices in the
+  existing 32-byte instance) plus ear-clipping triangulation (`render::tess`). Outline
+  edges are anti-aliased; inner edges are hard, so no seams. Used for filled symbol
+  bodies, filled silkscreen and polygon pads (and later zones).
+- **Library upsert:** `LibraryDoc::upsert` adds and replaces objects in one undo step.
+  New objects that clash with existing names get "NAME 2".
+- **App:** File › Import from KiCad… (also in the Libraries panel) opens a window with:
+  - symbol/footprint search;
+  - a list of picks, each with a footprint picker (suggestion plus filter matches; a
+    footprint search result can be assigned with Use);
+  - the target library (new or open);
+  - a report with notes.
+  The import opens the first part in the library editor. Command line: `--kicad DIR`,
+  `--kicad-pick [footprint:]LIB:NAME`, `--kicad-import`, `--kicad-search TEXT`.
+- **MCP:** `search_kicad` and `import_kicad` (symbols with optional footprints, lone
+  footprints, target library by name). The import returns part ids for `import_parts`.
+  Verified live: search NE555, import, import_parts, place_part.
+- **Verification against the official libraries** (`kicad/tests/corpus.rs`, enabled by
+  `KICAD_SYMBOL_DIR`/`KICAD_FOOTPRINT_DIR`):
+  - KiCad 10.0 (22,911 symbols in `.kicad_symdir`) and 9.0 (22,583 symbols in
+    `.kicad_sym`) with 15,468 footprints: everything parses and converts, with JSON
+    round trips.
+  - All symbols with a suggested footprint become valid parts (21,583), and the library
+    validates.
+  - Spot checks: Device:R → R_0603 with both pads; LM2904 → 3 units on SOIC-8, 8/8
+    pads.
+  - 3.6% of parts have a pin without a pad. They come from KiCad's own data: filters
+    that name the wrong package (74LS20: `DIP?12*`) or default footprints numbered
+    differently. The part form shows these as "Pins without a pad".
+  - Unit tests have handwritten KiCad 6- and 10-style fixtures. `library_import.rs` covers
+    both symbol formats on disk, re-import, undo and name clashes.
+- **Not yet:**
+  - Back-side footprint content.
+  - Text boxes, De Morgan bodies, alternate pin functions.
+  - Oval drills (approximated).
+  - 3D models.
+  - Symbol and footprint preview inside the import window (the editor shows the result).

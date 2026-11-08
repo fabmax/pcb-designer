@@ -28,7 +28,17 @@ const LINE: Coord = 254_000; // 0.254 mm symbol line width
 const G: f64 = 2.54;
 
 fn pin(id: Id, name: &str, pos: Point, direction: Angle, length: Coord) -> Pin {
-    Pin { id, name: name.into(), pos, direction, length, kind: PinKind::Passive, show_name: false, show_number: true }
+    Pin {
+        id,
+        name: name.into(),
+        number: String::new(),
+        pos,
+        direction,
+        length,
+        kind: PinKind::Passive,
+        show_name: false,
+        show_number: true,
+    }
 }
 
 fn ref_value_texts(top: f64, bottom: f64) -> Vec<Text> {

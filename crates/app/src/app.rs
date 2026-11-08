@@ -19,6 +19,7 @@ use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
 use crate::agent::{self, Agent};
 use crate::canvas::{self, Canvas, CanvasResources};
 use crate::keymap::{Action, Keymap};
+use crate::kicad_import::{ImportAction, KicadImport};
 use crate::library::{LibEvent, LibraryEditor, Open};
 use crate::properties::Properties;
 use crate::theme;
@@ -45,6 +46,14 @@ pub struct Options {
     pub library: Vec<PathBuf>,
     /// Open this part, symbol or footprint (by name) of the last library.
     pub show: Vec<String>,
+    /// KiCad library folders (default: the KiCad installation).
+    pub kicad_paths: Vec<PathBuf>,
+    /// KiCad symbols (`Lib:Name`) and footprints (`footprint:Lib:Name`) to pick for import.
+    pub kicad_pick: Vec<String>,
+    /// Import the picks at startup (otherwise the import window opens with them).
+    pub kicad_import: bool,
+    /// Open the import window with this search.
+    pub kicad_query: Option<String>,
 }
 
 const SCH_GRIDS: &[(f64, &str)] = &[(2.54, "2.54 mm"), (1.27, "1.27 mm"), (0.635, "0.635 mm")];
@@ -106,6 +115,7 @@ pub struct PcbApp {
     keymap: Keymap,
     show_keymap: bool,
     agent: Agent,
+    kicad: KicadImport,
 }
 
 impl PcbApp {
@@ -156,6 +166,7 @@ impl PcbApp {
             keymap: opts.keymap,
             show_keymap: false,
             agent: Agent::new(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
+            kicad: KicadImport::new(opts.kicad_paths.clone()),
         };
         // The starter library is always available (built in, saved only with "Save as").
         app.add_library(LibraryDoc::new(builtin::starter_library()), false);
@@ -165,6 +176,25 @@ impl PcbApp {
                     app.add_library(lib, false);
                 }
                 Err(e) => app.set_status(format!("Could not open library {}: {e}", path.display())),
+            }
+        }
+        for name in &opts.kicad_pick {
+            match name.strip_prefix("footprint:") {
+                Some(f) => app.kicad.pick_footprint(f),
+                None => app.kicad.pick_symbol(name),
+            }
+        }
+        if let Some(q) = &opts.kicad_query {
+            let (fp, q) = q.strip_prefix("footprint:").map_or((false, q.as_str()), |q| (true, q));
+            app.kicad.set_query(q, fp);
+            app.kicad.open = true;
+        }
+        if app.kicad.has_picks() {
+            if opts.kicad_import {
+                let req = app.kicad.pending_request();
+                app.run_kicad_import(None, req);
+            } else {
+                app.kicad.open = true;
             }
         }
         for name in &opts.show {
@@ -417,6 +447,110 @@ impl PcbApp {
         self.focus_library_tab(key);
     }
 
+    /// Import from KiCad into library `target` (or a new library named `new_name`).
+    /// Returns the library key, what was imported and the (added, replaced) counts.
+    fn kicad_import_into(
+        &mut self,
+        target: Option<u64>,
+        new_name: &str,
+        req: &kicad::Request,
+    ) -> Result<(u64, kicad::Imported, usize, usize), String> {
+        let imported = self.kicad.import(req);
+        if imported.symbols.is_empty() && imported.footprints.is_empty() {
+            return Err(if imported.errors.is_empty() {
+                "nothing to import".into()
+            } else {
+                imported.errors.join("; ")
+            });
+        }
+        let key = match target.filter(|k| self.libraries.iter().any(|l| l.key == *k)) {
+            Some(k) => k,
+            None => {
+                let taken = |n: &str| self.libraries.iter().any(|l| l.lib.name() == n);
+                let name = std::iter::once(new_name.to_string())
+                    .chain((2..).map(|i| format!("{new_name} {i}")))
+                    .find(|n| !taken(n))
+                    .unwrap();
+                let mut lib = LibraryDoc::new(Library::new(name));
+                lib.doc.mark_saved();
+                self.add_library(lib, false)
+            }
+        };
+        let first = if let Some(p) = imported.parts.first() {
+            Open::Part(p.id)
+        } else if let Some(s) = imported.symbols.first() {
+            Open::Item(Item::Symbol(s.id))
+        } else if let Some(f) = imported.footprints.first() {
+            Open::Item(Item::Footprint(f.id))
+        } else {
+            Open::None
+        };
+        let l = self.lib(key).ok_or("library closed")?;
+        let (added, replaced) =
+            l.lib.upsert(imported.symbols.clone(), imported.footprints.clone(), imported.parts.clone())?;
+        l.refresh();
+        if first != Open::None {
+            l.show(first);
+        }
+        Ok((key, imported, added, replaced))
+    }
+
+    /// Import from the KiCad window.
+    fn run_kicad_import(&mut self, target: Option<u64>, req: kicad::Request) {
+        match self.kicad_import_into(target, "KiCad import", &req) {
+            Ok((key, imported, added, replaced)) => {
+                let name = self.lib(key).map(|l| l.lib.name().to_string()).unwrap_or_default();
+                self.kicad.target = Some(key);
+                self.kicad.finish(&imported, &name, added, replaced);
+                self.set_status(format!("Imported from KiCad into {name}"));
+                self.focus_library_tab(key);
+            }
+            Err(e) => self.kicad.fail(e),
+        }
+    }
+
+    /// Answer an agent's KiCad import.
+    fn agent_kicad_import(&mut self, job: mcp::host::KicadImport) -> Result<serde_json::Value, String> {
+        let mut req = kicad::Request { symbols: Vec::new(), footprints: job.footprints };
+        for (symbol, fps) in job.symbols {
+            let fps = match fps {
+                Some(f) => f,
+                None => self.kicad.suggested(&symbol)?,
+            };
+            req.symbols.push((symbol, fps));
+        }
+        let target =
+            job.library.as_deref().and_then(|n| self.libraries.iter().find(|l| l.lib.name() == n)).map(|l| l.key);
+        let target = target.or_else(|| self.libraries.iter().find(|l| l.lib.name() == "KiCad import").map(|l| l.key));
+        let new_name = job.library.as_deref().unwrap_or("KiCad import");
+        let (key, imported, added, replaced) = self.kicad_import_into(target, new_name, &req)?;
+        let library = self.lib(key).map(|l| l.lib.name().to_string()).unwrap_or_default();
+        let parts: Vec<serde_json::Value> = imported
+            .parts
+            .iter()
+            .map(|p| {
+                let variants: Vec<serde_json::Value> = p
+                    .variants
+                    .iter()
+                    .map(|v| serde_json::json!({ "id": v.id, "footprint": v.name, "connected_pads": v.connections.len() }))
+                    .collect();
+                serde_json::json!({ "id": p.id, "name": p.name, "units": p.units.len(), "variants": variants })
+            })
+            .collect();
+        let footprints: Vec<&str> = imported.footprints.iter().map(|f| f.name.as_str()).collect();
+        let symbols_only: Vec<&str> = req.symbols.iter().filter(|s| s.1.is_empty()).map(|s| s.0.as_str()).collect();
+        Ok(serde_json::json!({
+            "library": library,
+            "added": added,
+            "updated": replaced,
+            "parts": parts,
+            "footprints": footprints,
+            "symbols_without_part": symbols_only,
+            "notes": imported.warnings,
+            "errors": imported.errors,
+        }))
+    }
+
     fn library_refs(&self) -> Vec<&Library> {
         self.libraries.iter().map(|l| l.lib.library()).collect()
     }
@@ -638,6 +772,9 @@ impl PcbApp {
                 if !starter_open && ui.button("Open starter library").clicked() {
                     self.add_library(LibraryDoc::new(builtin::starter_library()), true);
                 }
+                if ui.button("Import from KiCad…").clicked() {
+                    self.kicad.open = true;
+                }
                 ui.separator();
                 let (save, save_as) = if lib_focus {
                     ("Save library", "Save library as…")
@@ -794,6 +931,7 @@ impl PcbApp {
             Edit(u64),
             Open,
             New,
+            Kicad,
         }
         let mut act = None;
         section(ui, "Libraries", |ui| {
@@ -833,12 +971,16 @@ impl PcbApp {
                     act = Some(Act::New);
                 }
             });
+            if ui.button("Import from KiCad…").clicked() {
+                act = Some(Act::Kicad);
+            }
         });
         match act {
             Some(Act::Place(key, part)) => self.place_part(key, part),
             Some(Act::Edit(key)) => self.focus_library_tab(key),
             Some(Act::Open) => self.open_library(),
             Some(Act::New) => self.new_library(),
+            Some(Act::Kicad) => self.kicad.open = true,
             None => {}
         }
     }
@@ -1192,7 +1334,11 @@ impl eframe::App for PcbApp {
         // Agent requests are answered between user interactions.
         if !self.busy() {
             let libraries: Vec<&Library> = self.libraries.iter().map(|l| l.lib.library()).collect();
-            self.agent.process(&ctx, &mut self.doc, &mut self.panes, &libraries);
+            let jobs = self.agent.process(&ctx, &mut self.doc, &mut self.panes, &libraries, &mut self.kicad);
+            for (job, reply) in jobs {
+                let result = self.agent_kicad_import(job).map(mcp::Reply::Json);
+                let _ = reply.send(result);
+            }
         }
 
         // Model changed (any source): drop stale selections, refresh highlights.
@@ -1203,6 +1349,10 @@ impl eframe::App for PcbApp {
             }
         }
         self.keymap_window(&ctx);
+        let libs: Vec<(u64, String)> = self.libraries.iter().map(|l| (l.key, l.lib.name().to_string())).collect();
+        if let Some(ImportAction::Import(target, req)) = self.kicad.ui(&ctx, &libs) {
+            self.run_kicad_import(target, req);
+        }
         self.update_title(&ctx);
         self.screenshot_tick(&ctx);
     }

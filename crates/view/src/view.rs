@@ -615,11 +615,7 @@ fn draw_footprint(project: &Project, inst: &FootprintInstance, l: &BoardLayers, 
                 }
                 PadShape::Oval => p.push(rl, Instance::rect(c, [w, h], 0.5 * w.min(h), rot, color)),
                 PadShape::Polygon { points } => {
-                    let pt = |q: Point| t.point(pad.pos + q.rotated(pad.rotation));
-                    for i in 0..points.len() {
-                        let (a, b) = (pt(points[i]), pt(points[(i + 1) % points.len()]));
-                        p.push(rl, Instance::line(mmf(a), mmf(b), 0.1, color));
-                    }
+                    p.fill(rl, points.iter().map(|&q| t.point(pad.pos + q.rotated(pad.rotation))), color);
                 }
             }
         }

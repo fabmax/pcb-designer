@@ -56,7 +56,16 @@ async fn agent_session() {
     // Tools and their schemas.
     let tools = client.list_all_tools().await.unwrap();
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
-    for expected in ["get_project", "execute", "screenshot", "undo", "get_component", "set_selection"] {
+    for expected in [
+        "get_project",
+        "execute",
+        "screenshot",
+        "undo",
+        "get_component",
+        "set_selection",
+        "search_kicad",
+        "import_kicad",
+    ] {
         assert!(names.contains(&expected), "missing tool {expected}: {names:?}");
     }
     let execute = tools.iter().find(|t| t.name == "execute").unwrap();
@@ -73,6 +82,12 @@ async fn agent_session() {
     assert_eq!(libs["libraries"][0]["library"], "Starter");
     let states = libs["project_parts"].as_array().unwrap();
     assert!(!states.is_empty() && states.iter().all(|p| p["state"] == "UpToDate"), "{states:?}");
+    // The headless host has no KiCad libraries: a clear error, not a hang.
+    let r = call("search_kicad", json!({ "query": "lm358" })).await;
+    assert_eq!(r.is_error, Some(true));
+    assert!(text(&r).contains("KiCad"), "{}", text(&r));
+    let r = call("import_kicad", json!({ "symbols": [{ "symbol": "Device:R" }] })).await;
+    assert_eq!(r.is_error, Some(true));
     let r = ok_json(call("update_parts", json!({})).await);
     assert_eq!(r["updated"], 0, "nothing changed");
 

@@ -643,11 +643,14 @@ fn draw_pin(l: &Layers, pin: &Pin, p: &mut Painter, color: Option<Color>) {
             .aligned(if inward { HAlign::Left } else { HAlign::Right }, VAlign::Center);
         t.rotation = rotation;
         p.text(l.names, &t, color.unwrap_or(SCH_BODY), &|s| s.to_string(), false);
-    } else {
-        // Hidden names are still shown (dimmed) while editing, along the pin.
+    }
+    // Along the pin: the number, or the hidden name (dimmed) so it can be identified.
+    let along =
+        if !pin.number.is_empty() { Some(pin.number.clone()) } else { (!pin.show_name).then(|| pin.name.clone()) };
+    if let Some(text) = along {
         let mid = Point::new((a.x + b.x) / 2, (a.y + b.y) / 2);
         let pos = if horizontal { mid + Point::new(0, 250_000) } else { mid - Point::new(250_000, 0) };
-        let mut t = Text::new(pin.name.clone(), pos, 1_000_000).aligned(HAlign::Center, VAlign::Bottom);
+        let mut t = Text::new(text, pos, 1_000_000).aligned(HAlign::Center, VAlign::Bottom);
         t.rotation = rotation;
         p.text(l.names, &t, color.unwrap_or(NAME_DIM), &|s| s.to_string(), false);
     }
@@ -668,11 +671,7 @@ fn draw_pad(l: &Layers, pad: &Pad, p: &mut Painter, color: Option<Color>) {
             }
             PadShape::Oval => p.push(l.copper, Instance::rect(c, [w, h], 0.5 * w.min(h), rot, copper)),
             PadShape::Polygon { points } => {
-                for i in 0..points.len() {
-                    let a = pad.pos + points[i].rotated(pad.rotation);
-                    let b = pad.pos + points[(i + 1) % points.len()].rotated(pad.rotation);
-                    p.push(l.copper, Instance::line(mmf(a), mmf(b), 0.1, copper));
-                }
+                p.fill(l.copper, points.iter().map(|q| pad.pos + q.rotated(pad.rotation)), copper)
             }
         }
     }

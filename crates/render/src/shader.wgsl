@@ -85,6 +85,7 @@ const KIND_CAPSULE: u32 = 0u;
 const KIND_CIRCLE: u32 = 1u;
 const KIND_RECT: u32 = 2u;
 const KIND_ARC: u32 = 3u;
+const KIND_TRIANGLE: u32 = 4u;
 
 fn rotate(v: vec2<f32>, a: f32) -> vec2<f32> {
     let c = cos(a);
@@ -106,7 +107,7 @@ fn vs_prim(@builtin(vertex_index) vi: u32, inst: InstanceIn) -> PrimOut {
     out.color = inst.color;
     var world = vec2<f32>(0.0);
 
-    switch inst.kind {
+    switch inst.kind & 0xffu {
         case KIND_CAPSULE: {
             let d = inst.p1 - inst.p0;
             let len = length(d);
@@ -147,6 +148,16 @@ fn vs_prim(@builtin(vertex_index) vi: u32, inst: InstanceIn) -> PrimOut {
             let ta = min(abs(inst.p1.y) * 0.5, 3.1415927);
             out.params = vec4<f32>(sin(ta), cos(ta), inst.r2, hw);
         }
+        case KIND_TRIANGLE: {
+            // Bounding box of the three vertices plus the AA margin; local coordinates are
+            // relative to the first vertex, the other two go to the fragment shader.
+            let p2 = vec2<f32>(inst.r, inst.r2);
+            let lo = min(inst.p0, min(inst.p1, p2)) - vec2<f32>(m);
+            let hi = max(inst.p0, max(inst.p1, p2)) + vec2<f32>(m);
+            world = select(lo, hi, c > vec2<f32>(0.0));
+            out.local = world - inst.p0;
+            out.params = vec4<f32>(inst.p1 - inst.p0, p2 - inst.p0);
+        }
         default: {
             // Empty slot: degenerate quad, no fragments.
             out.pos = vec4<f32>(2.0, 2.0, 0.0, 1.0);
@@ -163,7 +174,7 @@ fn vs_prim(@builtin(vertex_index) vi: u32, inst: InstanceIn) -> PrimOut {
 @fragment
 fn fs_prim(in: PrimOut) -> @location(0) vec4<f32> {
     var d = 0.0;
-    switch in.kind {
+    switch in.kind & 0xffu {
         case KIND_CAPSULE: {
             let u = in.local.x - clamp(in.local.x, 0.0, in.params.x);
             d = length(vec2<f32>(u, in.local.y)) - in.params.y;
@@ -191,6 +202,33 @@ fn fs_prim(in: PrimOut) -> @location(0) vec4<f32> {
                 d = abs(length(p) - ra);
             }
             d = d - in.params.w;
+        }
+        case KIND_TRIANGLE: {
+            // Signed distance to each edge line (positive outside). Outer edges give the
+            // anti-aliased distance; inner edges cut hard at the pixel center.
+            let v = array<vec2<f32>, 3>(vec2<f32>(0.0), in.params.xy, in.params.zw);
+            let ccw = (v[1].x * v[2].y - v[1].y * v[2].x) >= 0.0;
+            d = -1e30;
+            for (var i = 0u; i < 3u; i++) {
+                let a = v[i];
+                let e = v[(i + 1u) % 3u] - a;
+                let l = length(e);
+                if (l < 1e-12) {
+                    continue;
+                }
+                var s = (e.x * (in.local.y - a.y) - e.y * (in.local.x - a.x)) / l;
+                if (ccw) {
+                    s = -s;
+                }
+                if ((in.kind & (256u << i)) != 0u) {
+                    d = max(d, s);
+                } else if (s > 0.0) {
+                    discard;
+                }
+            }
+            if (d < -1e29) {
+                d = -1.0;
+            }
         }
         default: {
             discard;

@@ -12,6 +12,7 @@ pub mod gpu;
 pub mod offscreen;
 pub mod primitive;
 pub mod scene;
+pub mod tess;
 
 pub use camera::Camera;
 pub use primitive::{Color, Instance};

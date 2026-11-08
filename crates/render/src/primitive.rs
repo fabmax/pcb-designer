@@ -37,6 +37,12 @@ pub mod kind {
     /// Arc around center `p0`, `p1 = (start angle, sweep)` in radians, half width `r`,
     /// radius `r2`.
     pub const ARC: u32 = 3;
+    /// Filled triangle with vertices `p0`, `p1` and `(r, r2)`. Bits 8, 9 and 10 mark the
+    /// edges p0-p1, p1-p2 and p2-p0 as outer edges, which are anti-aliased; inner edges
+    /// (shared with another triangle of the same polygon) are hard so that no seams show.
+    pub const TRIANGLE: u32 = 4;
+    /// Mask of the shape kind without flags.
+    pub const MASK: u32 = 0xff;
     /// Placeholder for freed slots. Produces no fragments.
     pub const EMPTY: u32 = 255;
 }
@@ -86,10 +92,16 @@ impl Instance {
         Self { p0: center, p1: [start, sweep], r: width * 0.5, r2: radius, kind: kind::ARC, color }
     }
 
+    /// Filled triangle. `outer` flags the edges a-b, b-c and c-a as polygon outline edges.
+    pub fn triangle(a: [f32; 2], b: [f32; 2], c: [f32; 2], outer: [bool; 3], color: Color) -> Self {
+        let flags = outer.iter().enumerate().fold(0, |f, (i, &o)| f | ((o as u32) << (8 + i)));
+        Self { p0: a, p1: b, r: c[0], r2: c[1], kind: kind::TRIANGLE | flags, color }
+    }
+
     /// Axis aligned bounding box `[min_x, min_y, max_x, max_y]`, or `None` for empty slots.
     pub fn bounds(&self) -> Option<[f32; 4]> {
         let [x0, y0] = self.p0;
-        match self.kind {
+        match self.kind & kind::MASK {
             kind::CAPSULE => {
                 let [x1, y1] = self.p1;
                 Some([x0.min(x1) - self.r, y0.min(y1) - self.r, x0.max(x1) + self.r, y0.max(y1) + self.r])
@@ -105,6 +117,11 @@ impl Instance {
             kind::ARC => {
                 let e = self.r2 + self.r;
                 Some([x0 - e, y0 - e, x0 + e, y0 + e])
+            }
+            kind::TRIANGLE => {
+                let [x1, y1] = self.p1;
+                let (x2, y2) = (self.r, self.r2);
+                Some([x0.min(x1).min(x2), y0.min(y1).min(y2), x0.max(x1).max(x2), y0.max(y1).max(y2)])
             }
             _ => None,
         }

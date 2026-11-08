@@ -25,7 +25,12 @@ fn pin_options(lib: &Library, part: &Part) -> Vec<(Option<(u32, Id)>, String)> {
         let mut pins: Vec<&Pin> = sym.pins.iter().collect();
         pins.sort_by(|a, b| natural_cmp(&a.name, &b.name));
         for pin in pins {
-            let label = if multi { format!("{}: {}", unit.name, pin.name) } else { pin.name.clone() };
+            let pin_label = match pin.number.as_str() {
+                "" => pin.name.clone(),
+                n if n == pin.name => pin.name.clone(),
+                n => format!("{n} {}", pin.name),
+            };
+            let label = if multi { format!("{}: {pin_label}", unit.name) } else { pin_label };
             out.push((Some((u as u32, pin.id)), label));
         }
     }
@@ -252,7 +257,11 @@ fn mapping_ui(
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(format!("{connected} of {} pads connected", pads.len())).color(theme::TEXT_DIM));
         {
-            if ui.button("Map by name").on_hover_text("Pad \"1\" to pin \"1\", pad \"GND\" to pin \"GND\"").clicked() {
+            if ui
+                .button("Map by name")
+                .on_hover_text("Pad \"1\" to pin number 1 (or a pin named \"1\"), pad \"GND\" to pin \"GND\"")
+                .clicked()
+            {
                 variant.connections = lib.map_by_name(units, variant.footprint);
             }
             if ui.button("Map in order").on_hover_text("Pins in drawing order to pads 1, 2, 3, …").clicked() {
