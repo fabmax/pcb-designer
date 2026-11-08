@@ -313,6 +313,21 @@ impl Scene {
         SceneUpload { layers }
     }
 
+    /// A full upload of the current contents that leaves the incremental upload state
+    /// alone (for rendering the same scene into a second, independent GPU copy).
+    pub fn snapshot(&self) -> SceneUpload {
+        let layers = self
+            .layers
+            .iter()
+            .map(|layer| {
+                let len = layer.instances.len();
+                let capacity = len.max(1);
+                LayerUpload { len, data: LayerData::Full { capacity, instances: layer.instances.clone() } }
+            })
+            .collect();
+        SceneUpload { layers }
+    }
+
     /// Forget GPU state so the next upload is a full one (e.g. after recreating the GPU scene).
     pub fn invalidate_gpu(&mut self) {
         for layer in &mut self.layers {

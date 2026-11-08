@@ -1,11 +1,12 @@
 //! PCB Designer desktop application.
 //!
 //! Usage: pcb-designer [PROJECT_DIR | --demo | --new | --stress N] [--no-vsync]
-//!                     [--keymap FILE.json]
+//!                     [--keymap FILE.json] [--mcp] [--mcp-port PORT]
 //!                     [--screenshot FILE.png [--frames N] [--select all|REFDES]]
 //!
 //! Without arguments the demo project is opened.
 
+mod agent;
 mod app;
 mod canvas;
 mod keymap;
@@ -22,6 +23,7 @@ fn main() -> eframe::Result {
         screenshot_frames: 30,
         select: None,
         keymap: keymap::Keymap::default(),
+        mcp: None,
     };
     let mut vsync = true;
     let mut args = std::env::args().skip(1);
@@ -34,6 +36,8 @@ fn main() -> eframe::Result {
             "--screenshot" => opts.screenshot = args.next(),
             "--frames" => opts.screenshot_frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(30),
             "--select" => opts.select = args.next(),
+            "--mcp" => opts.mcp = Some(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
+            "--mcp-port" => opts.mcp = args.next().and_then(|v| v.parse().ok()).or(Some(agent::DEFAULT_PORT)),
             "--keymap" => {
                 let path = args.next().unwrap_or_default();
                 match std::fs::read_to_string(&path)

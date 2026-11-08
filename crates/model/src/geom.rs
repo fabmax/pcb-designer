@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 use crate::units::{Coord, mm};
 
 /// A point (or vector) in nanometers. World Y points up. Serialized as `[x, y]`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(from = "[Coord; 2]", into = "[Coord; 2]")]
 pub struct Point {
     pub x: Coord,
@@ -84,7 +86,7 @@ impl Neg for Point {
 }
 
 /// Width/height in nanometers. Serialized as `[w, h]`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(from = "[Coord; 2]", into = "[Coord; 2]")]
 pub struct Size {
     pub w: Coord,
@@ -114,7 +116,7 @@ impl Size {
 }
 
 /// Angle in degrees, counterclockwise, normalized to `[0, 360)`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(transparent)]
 pub struct Angle(f64);
 
@@ -161,7 +163,7 @@ impl Angle {
 }
 
 /// Mirror (across the Y axis), then rotate, then translate.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Transform {
     pub offset: Point,
     pub rotation: Angle,
@@ -198,7 +200,7 @@ impl Transform {
 }
 
 /// Axis aligned rectangle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Rect {
     pub min: Point,
     pub max: Point,
@@ -243,7 +245,7 @@ impl Rect {
 }
 
 /// Stroked or filled geometric shape. `width` is the stroke width (0 = hairline/filled).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Shape {
     Line {
@@ -337,7 +339,7 @@ fn grow(r: Rect, d: Coord) -> Rect {
     Rect { min: Point::new(r.min.x - d, r.min.y - d), max: Point::new(r.max.x + d, r.max.y + d) }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HAlign {
     #[default]
@@ -346,7 +348,7 @@ pub enum HAlign {
     Right,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum VAlign {
     #[default]
@@ -356,7 +358,7 @@ pub enum VAlign {
 }
 
 /// Stroke-font text.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Text {
     pub text: String,
     pub pos: Point,

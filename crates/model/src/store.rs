@@ -118,11 +118,22 @@ impl<'de, T: Deserialize<'de> + HasId> Deserialize<'de> for Store<T> {
     }
 }
 
+/// A store is serialized as a plain array of its items.
+impl<T: HasId + schemars::JsonSchema> schemars::JsonSchema for Store<T> {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        format!("Array_of_{}", T::schema_name()).into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <Vec<T>>::json_schema(generator)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+    #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
     struct Item {
         id: Id,
         v: u32,

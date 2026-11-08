@@ -14,23 +14,27 @@ use crate::schematic::{Component, Junction, NetLabel, SchText, Sheet, SymbolInst
 macro_rules! objects {
     ($( $variant:ident ( $ty:ty ) => $($path:ident).+ ;)*) => {
         /// Any editable object.
-        #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-        #[serde(tag = "kind", rename_all = "snake_case")]
+        #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+        #[serde(tag = "type", rename_all = "snake_case")]
         pub enum Object {
             $( $variant($ty), )*
         }
 
-        /// Typed reference to an object. Serialized as `{"kind": "...", "id": "..."}`.
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-        #[serde(tag = "kind", content = "id", rename_all = "snake_case")]
+        /// Typed reference to an object. Serialized as `{"type": "...", "id": "..."}`.
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema)]
+        #[serde(tag = "type", content = "id", rename_all = "snake_case")]
         pub enum ObjectId {
             $( $variant(Id), )*
         }
 
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
         #[serde(rename_all = "snake_case")]
         pub enum ObjectKind {
             $( $variant, )*
+        }
+
+        impl ObjectKind {
+            pub const ALL: &'static [ObjectKind] = &[$( ObjectKind::$variant, )*];
         }
 
         impl Object {
@@ -56,6 +60,19 @@ macro_rules! objects {
         }
 
         impl Project {
+            /// All objects of one kind, in stored order.
+            pub fn objects(&self, kind: ObjectKind) -> Box<dyn Iterator<Item = Object> + '_> {
+                match kind {
+                    $( ObjectKind::$variant => Box::new(self.$($path).+.iter().cloned().map(Object::$variant)), )*
+                }
+            }
+
+            pub fn count(&self, kind: ObjectKind) -> usize {
+                match kind {
+                    $( ObjectKind::$variant => self.$($path).+.len(), )*
+                }
+            }
+
             pub fn get(&self, id: ObjectId) -> Option<Object> {
                 match id {
                     $( ObjectId::$variant(i) => self.$($path).+.get(i).cloned().map(Object::$variant), )*
@@ -175,7 +192,7 @@ mod tests {
     fn object_id_json_shape() {
         let id = ObjectId::Wire(Id::from_u128(1));
         let json = serde_json::to_string(&id).unwrap();
-        assert_eq!(json, r#"{"kind":"wire","id":"00000000-0000-0000-0000-000000000001"}"#);
+        assert_eq!(json, r#"{"type":"wire","id":"00000000-0000-0000-0000-000000000001"}"#);
         assert_eq!(serde_json::from_str::<ObjectId>(&json).unwrap(), id);
     }
 }

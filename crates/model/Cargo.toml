@@ -7,6 +7,7 @@ description = "Document model: libraries, schematic, board, project files"
 
 [dependencies]
 serde.workspace = true
+schemars.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 indexmap.workspace = true
