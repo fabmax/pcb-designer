@@ -313,9 +313,10 @@ impl Connectivity {
         }
         for &n in removed {
             if let Some(net) = self.net_of.remove(&n)
-                && changed.insert(net) {
-                    old_keys.insert(net, self.nets.get(net).unwrap().key.clone());
-                }
+                && changed.insert(net)
+            {
+                old_keys.insert(net, self.nets.get(net).unwrap().key.clone());
+            }
             self.index_remove(n);
         }
         for &net in seeds_by_net.keys() {
@@ -397,12 +398,13 @@ impl Connectivity {
             for &m in &group {
                 self.net_of.insert(m, target);
             }
-            if changed.insert(target) && !old_keys.contains_key(&target)
+            if changed.insert(target)
+                && !old_keys.contains_key(&target)
                 && let Some(net) = self.nets.get(target)
-                    && !net.nodes.is_empty()
-                {
-                    old_keys.insert(target, net.key.clone());
-                }
+                && !net.nodes.is_empty()
+            {
+                old_keys.insert(target, net.key.clone());
+            }
             self.nets.get_mut(target).unwrap().nodes.extend(group);
         }
 

@@ -47,7 +47,9 @@ pub struct ViewUniform {
 }
 
 impl ViewUniform {
-    pub fn new(camera: &Camera, viewport_px: [f32; 2], bg: &Background) -> Self {
+    /// `viewport` is in logical points (the camera zoom is points per world unit);
+    /// `pixels_per_point` converts to physical pixels for anti-aliasing.
+    pub fn new(camera: &Camera, viewport: [f32; 2], pixels_per_point: f32, bg: &Background) -> Self {
         let zoom = camera.zoom as f32;
         let grid = if bg.show_grid {
             adaptive_grid(bg.grid, zoom, bg.min_grid_px)
@@ -56,11 +58,8 @@ impl ViewUniform {
         };
         Self {
             center: [camera.center[0] as f32, camera.center[1] as f32],
-            ndc_scale: [
-                2.0 * zoom / viewport_px[0].max(1.0),
-                2.0 * zoom / viewport_px[1].max(1.0),
-            ],
-            px: 1.0 / zoom,
+            ndc_scale: [2.0 * zoom / viewport[0].max(1.0), 2.0 * zoom / viewport[1].max(1.0)],
+            px: 1.0 / (zoom * pixels_per_point),
             grid,
             grid_major: 10.0,
             _pad: 0.0,
@@ -235,6 +234,8 @@ impl GpuScene {
     }
 
     pub fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, upload: &SceneUpload) {
+        // A replaced scene may have fewer layers.
+        self.layers.truncate(upload.layers.len());
         if self.layers.len() < upload.layers.len() {
             self.layers.resize_with(upload.layers.len(), || GpuLayer {
                 buffer: None,

@@ -53,7 +53,7 @@ impl Offscreen {
         gpu.upload(device, &self.queue, &scene.take_upload());
         gpu.set_view(
             &self.queue,
-            &ViewUniform::new(camera, [width as f32, height as f32], bg),
+            &ViewUniform::new(camera, [width as f32, height as f32], 1.0, bg),
         );
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
