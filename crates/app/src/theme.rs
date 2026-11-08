@@ -5,6 +5,8 @@ use egui::{Color32, CornerRadius, Stroke, Visuals, style::Selection};
 pub const ACCENT: Color32 = Color32::from_rgb(0x4c, 0x9a, 0xff);
 pub const PANEL: Color32 = Color32::from_rgb(0x1e, 0x21, 0x27);
 pub const PANEL_DARK: Color32 = Color32::from_rgb(0x17, 0x19, 0x1e);
+pub const WARN: Color32 = Color32::from_rgb(0xf0, 0xb4, 0x5a);
+pub const SUCCESS: Color32 = Color32::from_rgb(0x5f, 0xd3, 0xa0);
 pub const TEXT_DIM: Color32 = Color32::from_rgb(0x8a, 0x92, 0xa3);
 
 pub fn apply(ctx: &egui::Context) {

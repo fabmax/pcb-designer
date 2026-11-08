@@ -39,6 +39,12 @@ impl<T: HasId> Store<T> {
         }
     }
 
+    /// Replace an existing item in place (O(1)), returning its index and the old item.
+    pub fn replace(&mut self, item: T) -> Option<(usize, T)> {
+        let (index, _, slot) = self.items.get_full_mut(&item.id())?;
+        Some((index, std::mem::replace(slot, item)))
+    }
+
     /// Remove, returning the item and its former index.
     pub fn remove(&mut self, id: Id) -> Option<(usize, T)> {
         self.items.shift_remove_full(&id).map(|(i, _, t)| (i, t))

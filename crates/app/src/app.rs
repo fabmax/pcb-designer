@@ -1,287 +1,497 @@
-//! Main window: menu, side panel with milestone-0 spike controls, docked schematic and PCB
-//! canvases, status bar.
+//! Main window: menu, library and layer panel, docked schematic and PCB editors,
+//! properties panel, status bar.
 
-use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use egui::{RichText, WidgetText};
+use editor_core::Command;
+use egui::{Key, KeyboardShortcut, Modifiers, RichText, WidgetText};
 use egui_tiles::{Behavior, SimplificationOptions, TileId, Tiles, Tree, UiResponse};
+use model::*;
 use render::gpu::Background;
-use spike::{GenStats, Project, SyncReport};
+use view::{Document, Interaction, KeyAction, PointerInput, ViewKind};
 
 use crate::canvas::{Canvas, CanvasResources};
+use crate::properties::Properties;
 use crate::theme;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Pane {
-    Schematic,
-    Pcb,
+pub enum Startup {
+    Open(PathBuf),
+    Demo,
+    Empty,
+    Stress(usize),
 }
 
 pub struct Options {
-    pub components: usize,
+    pub startup: Startup,
     /// Save a screenshot of the whole window to this file and exit (development aid).
     pub screenshot: Option<String>,
     /// Frames to render before taking the screenshot.
     pub screenshot_frames: u32,
-    /// Start with animated cameras / continuous random edits (benchmarking).
-    pub animate: bool,
-    pub storm: bool,
+    /// Select everything in the schematic before the screenshot (shows highlights).
+    pub select_all: bool,
+}
+
+const SCH_GRIDS: &[(f64, &str)] = &[(2.54, "2.54 mm"), (1.27, "1.27 mm"), (0.635, "0.635 mm")];
+const BOARD_GRIDS: &[(f64, &str)] =
+    &[(1.0, "1 mm"), (0.5, "0.5 mm"), (0.25, "0.25 mm"), (0.1, "0.1 mm"), (0.05, "0.05 mm"), (0.635, "25 mil")];
+
+/// One editor pane: camera + interaction state for a view of the document.
+struct Pane {
+    kind: ViewKind,
+    canvas: Canvas,
+    it: Interaction,
+}
+
+impl Pane {
+    fn new(kind: ViewKind) -> Self {
+        let (id, grid) = match kind {
+            ViewKind::Schematic => (1, 1.27),
+            ViewKind::Board => (2, 0.5),
+        };
+        let canvas = Canvas::new(id, Background { grid: grid as f32, ..Default::default() });
+        Pane { kind, canvas, it: Interaction::new(kind, mm(grid)) }
+    }
+
+    fn title(&self) -> &'static str {
+        match self.kind {
+            ViewKind::Schematic => "Schematic",
+            ViewKind::Board => "PCB",
+        }
+    }
 }
 
 pub struct PcbApp {
-    tree: Tree<Pane>,
+    tree: Tree<ViewKind>,
+    doc: Document,
+    panes: [Pane; 2],
+    /// Pane receiving keyboard shortcuts and shown in the side panels.
+    active: ViewKind,
+    hovered: Option<ViewKind>,
+    properties: Properties,
+    starter: Library,
+    status: Option<(String, Instant)>,
+    title: String,
+    revision: u64,
     screenshot: Option<(String, u32)>,
-    project: Project,
-    stats: GenStats,
-    components: usize,
-    sch: Canvas,
-    pcb: Canvas,
-    hovered: Option<Pane>,
-    // Live sync
-    storm: bool,
-    storm_per_frame: usize,
-    reports: VecDeque<SyncReport>,
-    // Rendering performance
-    animate: bool,
-    anim_t: f64,
-    frame_times: VecDeque<f32>,
-    last_frame: Option<Instant>,
-    regen_time: Duration,
-    last_log: Option<Instant>,
-    /// Scene bounds at generation time (for the camera animation).
-    bounds: [Option<[f64; 4]>; 2],
-}
-
-fn ms(d: Duration) -> f32 {
-    d.as_secs_f32() * 1000.0
+    allow_close: bool,
 }
 
 impl PcbApp {
     pub fn new(cc: &eframe::CreationContext<'_>, opts: Options) -> Self {
-        let components = opts.components;
         theme::apply(&cc.egui_ctx);
         let rs = cc.wgpu_render_state.as_ref().expect("wgpu renderer");
         CanvasResources::install(rs);
 
         let mut tiles = Tiles::default();
-        let sch = tiles.insert_pane(Pane::Schematic);
-        let pcb = tiles.insert_pane(Pane::Pcb);
+        let sch = tiles.insert_pane(ViewKind::Schematic);
+        let pcb = tiles.insert_pane(ViewKind::Board);
         let root = tiles.insert_horizontal_tile(vec![sch, pcb]);
         let tree = Tree::new(egui::Id::unique("main_tree"), root, tiles);
 
-        let t = Instant::now();
-        let (project, stats) = Project::generate(components, 1);
-        let regen_time = t.elapsed();
-
-        Self {
+        let mut status = None;
+        let doc = match opts.startup {
+            Startup::Open(path) => Document::open(&path).unwrap_or_else(|e| {
+                status = Some((format!("Could not open {}: {e}", path.display()), Instant::now()));
+                Document::new(Project::new("Untitled"))
+            }),
+            Startup::Demo => Document::new(view::demo::demo_project()),
+            Startup::Empty => Document::new(Project::new("Untitled")),
+            Startup::Stress(n) => {
+                let t = Instant::now();
+                let doc = Document::new(view::demo::stress_project(n));
+                log::info!("generated {n} components in {:?}", t.elapsed());
+                doc
+            }
+        };
+        let mut app = Self {
             tree,
-            screenshot: opts.screenshot.map(|p| (p, opts.screenshot_frames)),
-            project,
-            stats,
-            components,
-            sch: Canvas::new(1, Background { grid: 2.54, ..Default::default() }),
-            pcb: Canvas::new(2, Background { grid: 0.5, ..Default::default() }),
+            doc,
+            panes: [Pane::new(ViewKind::Schematic), Pane::new(ViewKind::Board)],
+            active: ViewKind::Schematic,
             hovered: None,
-            storm: opts.storm,
-            storm_per_frame: 1,
-            reports: VecDeque::new(),
-            animate: opts.animate,
-            anim_t: 0.0,
-            frame_times: VecDeque::new(),
-            last_frame: None,
-            regen_time,
-            last_log: None,
-            bounds: [None; 2],
+            properties: Properties::default(),
+            starter: builtin::starter_library(),
+            status,
+            title: String::new(),
+            revision: u64::MAX,
+            screenshot: opts.screenshot.map(|p| (p, opts.screenshot_frames)),
+            allow_close: false,
+        };
+        if opts.select_all {
+            let pane = &mut app.panes[0];
+            pane.it.key(&mut app.doc, KeyAction::SelectAll);
+        }
+        app
+    }
+
+    fn pane(&mut self, kind: ViewKind) -> &mut Pane {
+        &mut self.panes[kind as usize]
+    }
+
+    fn set_status(&mut self, msg: impl Into<String>) {
+        self.status = Some((msg.into(), Instant::now()));
+    }
+
+    fn busy(&self) -> bool {
+        self.panes.iter().any(|p| !p.it.is_idle())
+    }
+
+    // ------------------------------------------------------------------------------------
+    // Files
+
+    fn replace_document(&mut self, doc: Document) {
+        self.doc = doc;
+        for kind in [ViewKind::Schematic, ViewKind::Board] {
+            let pane = self.pane(kind);
+            pane.it = Interaction::new(kind, pane.it.grid);
+            pane.canvas.request_fit();
+        }
+        self.properties = Properties::default();
+    }
+
+    /// Ask to save unsaved changes. Returns false if the user cancelled.
+    fn confirm_discard(&mut self) -> bool {
+        if !self.doc.is_modified() {
+            return true;
+        }
+        let answer = rfd::MessageDialog::new()
+            .set_level(rfd::MessageLevel::Warning)
+            .set_title("Unsaved changes")
+            .set_description(format!("Save changes to \"{}\"?", self.doc.project().name))
+            .set_buttons(rfd::MessageButtons::YesNoCancel)
+            .show();
+        match answer {
+            rfd::MessageDialogResult::Yes => self.save(false),
+            rfd::MessageDialogResult::No => true,
+            _ => false,
         }
     }
 
-    fn regenerate(&mut self) {
-        let t = Instant::now();
-        let (project, stats) = Project::generate(self.components, 1);
-        self.regen_time = t.elapsed();
-        self.project = project;
-        self.stats = stats;
-        self.reports.clear();
-        self.bounds = [None; 2];
-        self.sch.request_fit();
-        self.pcb.request_fit();
+    fn new_document(&mut self) {
+        if self.confirm_discard() {
+            self.replace_document(Document::new(Project::new("Untitled")));
+        }
     }
 
-    fn apply_random_edits(&mut self, n: usize) {
-        for _ in 0..n {
-            let e = self.project.random_edit();
-            let r = self.project.apply(e);
-            self.reports.push_back(r);
-            if self.reports.len() > 240 {
-                self.reports.pop_front();
+    fn open(&mut self) {
+        if !self.confirm_discard() {
+            return;
+        }
+        let Some(dir) = rfd::FileDialog::new().set_title("Open project folder").pick_folder() else { return };
+        match Document::open(&dir) {
+            Ok(doc) => {
+                self.replace_document(doc);
+                self.set_status(format!("Opened {}", dir.display()));
+            }
+            Err(e) => self.set_status(format!("Open failed: {e}")),
+        }
+    }
+
+    /// Save (or Save As when `choose` or the document has no folder yet).
+    fn save(&mut self, choose: bool) -> bool {
+        let path = match (&self.doc.path, choose) {
+            (Some(p), false) => p.clone(),
+            _ => {
+                let name = format!("{}.pcbproj", self.doc.project().name);
+                match rfd::FileDialog::new().set_title("Save project folder").set_file_name(name).save_file() {
+                    Some(p) => p,
+                    None => return false,
+                }
+            }
+        };
+        match self.doc.save_as(&path) {
+            Ok(()) => {
+                self.set_status(format!("Saved {}", path.display()));
+                true
+            }
+            Err(e) => {
+                self.set_status(format!("Save failed: {e}"));
+                false
             }
         }
     }
 
-    fn animate_cameras(&mut self, dt: f64) {
-        self.anim_t += dt;
-        let t = self.anim_t;
-        let canvases = [(&mut self.sch, &self.project.sch_scene), (&mut self.pcb, &self.project.pcb_scene)];
-        for (i, (canvas, scene)) in canvases.into_iter().enumerate() {
-            let b = *self.bounds[i].get_or_insert_with(|| scene.bounds().unwrap_or([0.0, 0.0, 1.0, 1.0]));
-            canvas.camera.fit(b, canvas.viewport(), 24.0);
-            let zoom = canvas.camera.zoom * 2f64.powf((1.0 - (t * 0.6).cos()) * 2.5);
-            canvas.camera.zoom = zoom;
-            canvas.camera.center = [
-                b[0] + (b[2] - b[0]) * (0.5 + 0.4 * (t * 0.23).sin()),
-                b[1] + (b[3] - b[1]) * (0.5 + 0.4 * (t * 0.17).cos()),
-            ];
+    // ------------------------------------------------------------------------------------
+    // Editing
+
+    fn undo(&mut self) {
+        if self.busy() {
+            return;
+        }
+        match self.doc.editor().history().undo_label().map(str::to_string) {
+            Some(label) => {
+                self.doc.undo();
+                self.set_status(format!("Undo: {label}"));
+            }
+            None => self.set_status("Nothing to undo"),
         }
     }
 
-    fn record_frame(&mut self) -> f64 {
-        let now = Instant::now();
-        let dt = self.last_frame.map(|l| (now - l).as_secs_f64()).unwrap_or(0.0);
-        self.last_frame = Some(now);
-        if dt > 0.0 {
-            self.frame_times.push_back(dt as f32);
-            if self.frame_times.len() > 120 {
-                self.frame_times.pop_front();
+    fn redo(&mut self) {
+        if self.busy() {
+            return;
+        }
+        match self.doc.editor().history().redo_label().map(str::to_string) {
+            Some(label) => {
+                self.doc.redo();
+                self.set_status(format!("Redo: {label}"));
+            }
+            None => self.set_status("Nothing to redo"),
+        }
+    }
+
+    /// Place a part from the starter library at the center of the schematic view.
+    fn place_part(&mut self, part: Id) {
+        if !self.doc.project().library.parts.contains(part) {
+            let cmd = Command::ImportParts { library: self.starter.clone(), parts: vec![part] };
+            if let Err(e) = self.doc.execute(cmd) {
+                self.set_status(format!("Import failed: {e}"));
+                return;
             }
         }
-        dt
+        let pane = self.pane(ViewKind::Schematic);
+        let c = pane.canvas.camera.center;
+        let pos = pane.it.snap(Point::mm(c[0], c[1]));
+        let cmd = Command::PlacePart {
+            part,
+            variant: None,
+            sheet: None,
+            pos,
+            rotation: Angle::ZERO,
+            mirror: false,
+            refdes: None,
+            value: None,
+        };
+        match self.doc.execute(cmd) {
+            Ok(changes) => {
+                let symbols: Vec<ObjectId> = changes
+                    .changes
+                    .iter()
+                    .filter(|c| c.is_insert() && matches!(c.id, ObjectId::Symbol(_)))
+                    .map(|c| c.id)
+                    .collect();
+                self.active = ViewKind::Schematic;
+                let pane = &mut self.panes[0];
+                pane.it.set_selection(&mut self.doc, symbols);
+            }
+            Err(e) => self.set_status(format!("Place failed: {e}")),
+        }
     }
 
-    fn side_panel(&mut self, ui: &mut egui::Ui, cpu: Option<f32>) {
-        ui.add_space(6.0);
-        ui.label(RichText::new("Milestone 0 · performance spike").strong().size(15.0));
-        ui.label(RichText::new("Synthetic project, live schematic -> PCB sync").color(theme::TEXT_DIM));
-        ui.separator();
+    fn shortcuts(&mut self, ctx: &egui::Context) {
+        let cmd = |key| KeyboardShortcut::new(Modifiers::COMMAND, key);
+        let cmd_shift = |key| KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, key);
+        let consume = |s: KeyboardShortcut| ctx.input_mut(|i| i.consume_shortcut(&s));
+        // Shift variants first: consume_shortcut ignores extra shift.
+        if consume(cmd_shift(Key::Z)) || consume(cmd(Key::Y)) {
+            self.redo();
+        }
+        if consume(cmd(Key::Z)) {
+            self.undo();
+        }
+        if consume(cmd_shift(Key::S)) {
+            self.save(true);
+        }
+        if consume(cmd(Key::S)) {
+            self.save(false);
+        }
+        if consume(cmd(Key::O)) {
+            self.open();
+        }
+        if consume(cmd(Key::N)) {
+            self.new_document();
+        }
+        let select_all = consume(cmd(Key::A));
+        if ctx.egui_wants_keyboard_input() {
+            return;
+        }
+        let pressed = |k| ctx.input(|i| i.key_pressed(k) && i.modifiers.is_none());
+        let mut actions = Vec::new();
+        if select_all {
+            actions.push(KeyAction::SelectAll);
+        }
+        for (key, action) in [
+            (Key::R, KeyAction::Rotate),
+            (Key::X, KeyAction::Mirror),
+            (Key::F, KeyAction::Flip),
+            (Key::Delete, KeyAction::Delete),
+            (Key::Backspace, KeyAction::Delete),
+            (Key::Escape, KeyAction::Escape),
+        ] {
+            if pressed(key) {
+                actions.push(action);
+            }
+        }
+        if pressed(Key::Home) || pressed(Key::V) {
+            self.pane(self.active).canvas.request_fit();
+        }
+        let kind = self.active;
+        let pane = &mut self.panes[kind as usize];
+        for a in actions {
+            pane.it.key(&mut self.doc, a);
+        }
+    }
 
-        section(ui, "Synthetic project", |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Components");
-                ui.add(egui::DragValue::new(&mut self.components).range(10..=100_000).speed(50));
+    // ------------------------------------------------------------------------------------
+    // Panels
+
+    fn menu(&mut self, ui: &mut egui::Ui) {
+        egui::MenuBar::new().ui(ui, |ui| {
+            ui.menu_button("File", |ui| {
+                if ui.add(egui::Button::new("New").shortcut_text(sc(ui, Key::N, false))).clicked() {
+                    self.new_document();
+                }
+                if ui.add(egui::Button::new("Open…").shortcut_text(sc(ui, Key::O, false))).clicked() {
+                    self.open();
+                }
+                if ui.button("Open demo project").clicked() && self.confirm_discard() {
+                    self.replace_document(Document::new(view::demo::demo_project()));
+                }
+                ui.separator();
+                if ui.add(egui::Button::new("Save").shortcut_text(sc(ui, Key::S, false))).clicked() {
+                    self.save(false);
+                }
+                if ui.add(egui::Button::new("Save As…").shortcut_text(sc(ui, Key::S, true))).clicked() {
+                    self.save(true);
+                }
+                ui.separator();
+                if ui.button("Quit").clicked() {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                }
             });
-            ui.horizontal(|ui| {
-                for n in [1_000, 10_000, 20_000] {
-                    if ui.button(format!("{}k", n / 1000)).clicked() {
-                        self.components = n;
-                        self.regenerate();
+            ui.menu_button("Edit", |ui| {
+                let h = self.doc.editor().history();
+                let undo = h.undo_label().map(|l| format!("Undo {l}"));
+                let redo = h.redo_label().map(|l| format!("Redo {l}"));
+                let b = egui::Button::new(undo.as_deref().unwrap_or("Undo")).shortcut_text(sc(ui, Key::Z, false));
+                if ui.add_enabled(undo.is_some(), b).clicked() {
+                    self.undo();
+                }
+                let b = egui::Button::new(redo.as_deref().unwrap_or("Redo")).shortcut_text(sc(ui, Key::Z, true));
+                if ui.add_enabled(redo.is_some(), b).clicked() {
+                    self.redo();
+                }
+                ui.separator();
+                let kind = self.active;
+                for (label, key, action) in [
+                    ("Select all", "⌘A", KeyAction::SelectAll),
+                    ("Rotate", "R", KeyAction::Rotate),
+                    ("Mirror", "X", KeyAction::Mirror),
+                    ("Flip side", "F", KeyAction::Flip),
+                    ("Delete", "Del", KeyAction::Delete),
+                ] {
+                    if ui.add(egui::Button::new(label).shortcut_text(key)).clicked() {
+                        let pane = &mut self.panes[kind as usize];
+                        pane.it.key(&mut self.doc, action);
                     }
                 }
-                if ui.button("Regenerate").clicked() {
-                    self.regenerate();
+            });
+            ui.menu_button("View", |ui| {
+                if ui.add(egui::Button::new("Fit all").shortcut_text("V")).clicked() {
+                    for p in &mut self.panes {
+                        p.canvas.request_fit();
+                    }
                 }
             });
-            let s = &self.stats;
-            egui::Grid::new("stats").num_columns(2).spacing([16.0, 2.0]).show(ui, |ui| {
-                let row = |ui: &mut egui::Ui, k: &str, v: String| {
-                    ui.label(RichText::new(k).color(theme::TEXT_DIM));
-                    ui.label(v);
-                    ui.end_row();
-                };
-                row(ui, "Components", self.project.sch.components.len().to_string());
-                row(ui, "Pins / wires", format!("{} / {}", s.pins, self.project.sch.wires.len()));
-                row(ui, "Labels", self.project.sch.labels.len().to_string());
-                row(ui, "Nets", self.project.conn.net_count().to_string());
-                row(ui, "Tracks / vias", format!("{} / {}", s.tracks, s.vias));
-                row(ui, "Schematic prims", fmt_k(self.project.sch_scene.instance_count()));
-                row(ui, "PCB prims", fmt_k(self.project.pcb_scene.instance_count()));
-                row(ui, "Generated in", format!("{:.0} ms", ms(self.regen_time)));
-            });
         });
-
-        section(ui, "Live sync", |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("Random edit").clicked() {
-                    self.apply_random_edits(1);
-                }
-                ui.toggle_value(&mut self.storm, "Edit storm");
-                ui.add_enabled(
-                    self.storm,
-                    egui::DragValue::new(&mut self.storm_per_frame).range(1..=50).suffix(" /frame"),
-                );
-            });
-            if let Some(r) = self.reports.back() {
-                ui.label(format!("Last: {} — {:.2} ms", r.kind, ms(r.total)));
-            }
-            if !self.reports.is_empty() {
-                let n = self.reports.len() as f32;
-                let avg = |f: fn(&SyncReport) -> Duration| self.reports.iter().map(|r| ms(f(r))).sum::<f32>() / n;
-                let max = self.reports.iter().map(|r| ms(r.total)).fold(0.0, f32::max);
-                egui::Grid::new("sync").num_columns(2).spacing([16.0, 2.0]).show(ui, |ui| {
-                    let row = |ui: &mut egui::Ui, k: &str, v: f32| {
-                        ui.label(RichText::new(k).color(theme::TEXT_DIM));
-                        ui.label(format!("{v:.3} ms"));
-                        ui.end_row();
-                    };
-                    row(ui, "Total (avg)", avg(|r| r.total));
-                    row(ui, "Total (max)", max);
-                    row(ui, "Schematic", avg(|r| r.schematic));
-                    row(ui, "Connectivity", avg(|r| r.connectivity));
-                    row(ui, "Board", avg(|r| r.board));
-                    row(ui, "Ratsnest", avg(|r| r.ratsnest));
-                });
-                ui.label(RichText::new(format!("over last {} edits", self.reports.len())).color(theme::TEXT_DIM));
-            }
-        });
-
-        section(ui, "Rendering", |ui| {
-            ui.toggle_value(&mut self.animate, "Animate cameras (benchmark)");
-            let (avg, max) = frame_stats(&self.frame_times);
-            ui.label(format!("{:.0} fps · frame {:.1} ms avg / {:.1} ms max", 1000.0 / avg.max(0.001), avg, max));
-            if let Some(cpu) = cpu {
-                ui.label(format!("CPU per frame: {:.2} ms", cpu * 1000.0));
-            }
-            ui.label(RichText::new("Run with --no-vsync to measure uncapped fps.").color(theme::TEXT_DIM));
-        });
-
-        section(ui, "PCB layers", |ui| layer_toggles(ui, &mut self.project.pcb_scene));
-        section(ui, "Schematic layers", |ui| layer_toggles(ui, &mut self.project.sch_scene));
     }
 
-    fn status_bar(&self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            let (name, canvas) = match self.hovered {
-                Some(Pane::Schematic) => ("Schematic", Some(&self.sch)),
-                Some(Pane::Pcb) => ("PCB", Some(&self.pcb)),
-                None => ("", None),
-            };
-            if let Some(c) = canvas {
-                if let Some([x, y]) = c.cursor_world {
-                    ui.monospace(format!("{name}  X {x:>9.3} mm  Y {y:>9.3} mm"));
+    fn left_panel(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(6.0);
+        section(ui, "Library", |ui| {
+            ui.label(RichText::new(&self.starter.name).color(theme::TEXT_DIM));
+            let parts: Vec<(Id, String, String)> =
+                self.starter.parts.iter().map(|p| (p.id, p.name.clone(), p.description.clone())).collect();
+            for (id, name, description) in parts {
+                ui.horizontal(|ui| {
+                    let r = ui.button("Place");
+                    ui.label(RichText::new(&name).strong()).on_hover_text(&description);
+                    if r.clicked() {
+                        self.place_part(id);
+                    }
+                });
+            }
+        });
+
+        let kind = self.active;
+        let pane = &mut self.panes[kind as usize];
+        section(ui, "Grid", |ui| {
+            let grids = if kind == ViewKind::Schematic { SCH_GRIDS } else { BOARD_GRIDS };
+            let current = to_mm(pane.it.grid);
+            let label =
+                grids.iter().find(|g| (g.0 - current).abs() < 1e-9).map_or(format!("{current} mm"), |g| g.1.into());
+            egui::ComboBox::from_id_salt("grid").selected_text(label).show_ui(ui, |ui| {
+                for &(g, name) in grids {
+                    if ui.selectable_label((g - current).abs() < 1e-9, name).clicked() {
+                        pane.it.grid = mm(g);
+                        pane.canvas.background.grid = g as f32;
+                    }
                 }
+            });
+            ui.checkbox(&mut pane.canvas.background.show_grid, "Show grid");
+        });
+
+        let title = format!("{} layers", pane.title());
+        section(ui, &title, |ui| {
+            let range = self.doc.view(kind).user_layers();
+            let scene = &mut self.doc.view_mut(kind).scene;
+            for id in range {
+                let layer = scene.layer_mut(id);
+                let name = layer.name.clone();
+                ui.checkbox(&mut layer.visible, name);
+            }
+        });
+    }
+
+    fn status_bar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            let pane = &self.panes[self.hovered.unwrap_or(self.active) as usize];
+            ui.label(RichText::new(pane.title()).color(theme::ACCENT));
+            match pane.canvas.cursor_world {
+                Some([x, y]) => ui.monospace(format!("X {x:>9.3}  Y {y:>9.3} mm")),
+                None => ui.monospace(" ".repeat(26)),
+            };
+            ui.separator();
+            ui.monospace(format!("grid {} mm", to_mm(pane.it.grid)));
+            ui.separator();
+            let sel = &self.panes[self.active as usize].it.selection;
+            ui.label(format!("{} selected", sel.len()));
+            let msg = self.panes.iter().find_map(|p| p.it.message.clone());
+            let status = self.status.as_ref().filter(|(_, t)| t.elapsed() < Duration::from_secs(6));
+            if let Some(m) = msg.as_deref().or(status.map(|s| s.0.as_str())) {
                 ui.separator();
-                ui.monospace(format!("zoom {:.2} px/mm", c.camera.zoom));
+                ui.label(RichText::new(m).color(theme::WARN));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let (avg, _) = frame_stats(&self.frame_times);
-                ui.monospace(format!("{:.0} fps", 1000.0 / avg.max(0.001)));
-                ui.separator();
-                ui.label(RichText::new("Drag: pan · Wheel/pinch: zoom · Double-click/F: fit").color(theme::TEXT_DIM));
+                ui.label(
+                    RichText::new("Drag: move · Box: select · Middle/right drag: pan · Wheel: zoom · V: fit")
+                        .color(theme::TEXT_DIM),
+                );
             });
         });
     }
-}
 
-impl PcbApp {
-    /// Print frame and sync statistics every two seconds while benchmarking.
-    fn log_perf(&mut self) {
-        if !(self.animate || self.storm) {
-            return;
+    fn update_title(&mut self, ctx: &egui::Context) {
+        let name = match &self.doc.path {
+            Some(p) => p.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned()),
+            None => self.doc.project().name.clone(),
+        };
+        let title = format!("{}{} — PCB Designer", name, if self.doc.is_modified() { " •" } else { "" });
+        if title != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.title = title;
         }
-        let now = Instant::now();
-        if self.last_log.is_some_and(|t| now - t < Duration::from_secs(2)) {
-            return;
+    }
+
+    fn handle_close(&mut self, ctx: &egui::Context) {
+        if ctx.input(|i| i.viewport().close_requested()) && !self.allow_close && self.doc.is_modified() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            if self.confirm_discard() {
+                self.allow_close = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         }
-        self.last_log = Some(now);
-        let (avg, max) = frame_stats(&self.frame_times);
-        let sync_max = self.reports.iter().map(|r| ms(r.total)).fold(0.0, f32::max);
-        println!(
-            "fps {:.0}  frame avg {:.2} ms  max {:.2} ms  | sync max {:.2} ms (last {} edits)",
-            1000.0 / avg.max(0.001),
-            avg,
-            max,
-            sync_max,
-            self.reports.len()
-        );
     }
 
     fn screenshot_tick(&mut self, ctx: &egui::Context) {
@@ -307,23 +517,9 @@ impl PcbApp {
     }
 }
 
-fn fmt_k(n: usize) -> String {
-    if n >= 1_000_000 {
-        format!("{:.2} M", n as f64 / 1e6)
-    } else if n >= 1_000 {
-        format!("{:.1} k", n as f64 / 1e3)
-    } else {
-        n.to_string()
-    }
-}
-
-fn frame_stats(times: &VecDeque<f32>) -> (f32, f32) {
-    if times.is_empty() {
-        return (0.0, 0.0);
-    }
-    let avg = times.iter().sum::<f32>() / times.len() as f32 * 1000.0;
-    let max = times.iter().copied().fold(0.0, f32::max) * 1000.0;
-    (avg, max)
+fn sc(ui: &egui::Ui, key: Key, shift: bool) -> String {
+    let m = if shift { Modifiers::COMMAND | Modifiers::SHIFT } else { Modifiers::COMMAND };
+    ui.ctx().format_shortcut(&KeyboardShortcut::new(m, key))
 }
 
 fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
@@ -331,36 +527,80 @@ fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.add_space(4.0);
 }
 
-fn layer_toggles(ui: &mut egui::Ui, scene: &mut render::Scene) {
-    for id in 0..scene.layer_count() as u16 {
-        let layer = scene.layer_mut(id);
-        let name = layer.name.clone();
-        ui.checkbox(&mut layer.visible, name);
-    }
-}
-
 struct TreeBehavior<'a> {
-    project: &'a mut Project,
-    sch: &'a mut Canvas,
-    pcb: &'a mut Canvas,
-    hovered: &'a mut Option<Pane>,
+    doc: &'a mut Document,
+    panes: &'a mut [Pane; 2],
+    active: &'a mut ViewKind,
+    hovered: &'a mut Option<ViewKind>,
 }
 
-impl Behavior<Pane> for TreeBehavior<'_> {
-    fn tab_title_for_pane(&mut self, pane: &Pane) -> WidgetText {
-        match pane {
-            Pane::Schematic => "Schematic".into(),
-            Pane::Pcb => "PCB".into(),
+impl TreeBehavior<'_> {
+    fn pointer_input(ui: &egui::Ui, response: &egui::Response, pane: &Pane) -> Option<PointerInput> {
+        let engaged = !pane.it.is_idle();
+        if !(response.hovered() || engaged || pane.it.hover.is_some()) {
+            return None;
         }
+        let px_to_nm = |px: f64| (px / pane.canvas.camera.zoom * 1e6) as Coord;
+        Some(ui.input(|i| {
+            let pos = i.pointer.latest_pos().filter(|_| response.hovered() || engaged);
+            PointerInput {
+                world: pos.map(|p| {
+                    let [x, y] = pane.canvas.screen_to_world(p);
+                    Point::mm(x, y)
+                }),
+                pressed: response.hovered() && i.pointer.primary_pressed(),
+                released: i.pointer.primary_released(),
+                down: i.pointer.primary_down(),
+                shift: i.modifiers.shift,
+                command: i.modifiers.command,
+                tolerance: px_to_nm(5.0),
+                drag_threshold: px_to_nm(4.0),
+            }
+        }))
+    }
+}
+
+impl Behavior<ViewKind> for TreeBehavior<'_> {
+    fn tab_title_for_pane(&mut self, kind: &ViewKind) -> WidgetText {
+        self.panes[*kind as usize].title().into()
     }
 
-    fn pane_ui(&mut self, ui: &mut egui::Ui, _tile_id: TileId, pane: &mut Pane) -> UiResponse {
-        let response = match pane {
-            Pane::Schematic => self.sch.ui(ui, &mut self.project.sch_scene),
-            Pane::Pcb => self.pcb.ui(ui, &mut self.project.pcb_scene),
-        };
+    fn pane_ui(&mut self, ui: &mut egui::Ui, _tile_id: TileId, kind: &mut ViewKind) -> UiResponse {
+        let kind = *kind;
+        let pane = &mut self.panes[kind as usize];
+        let response = pane.canvas.ui(ui, &mut self.doc.view_mut(kind).scene);
         if response.hovered() {
-            *self.hovered = Some(*pane);
+            *self.hovered = Some(kind);
+        }
+        if response.hovered() && ui.input(|i| i.pointer.any_pressed()) {
+            *self.active = kind;
+        }
+        if let Some(input) = Self::pointer_input(ui, &response, pane) {
+            pane.it.pointer(self.doc, &input);
+        }
+        if pane.it.is_dragging() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        } else if pane.it.hover.is_some() && response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+
+        // Box selection: solid blue for "inside", dashed green for "crossing".
+        if let Some((r, crossing)) = pane.it.box_rect() {
+            let a = pane.canvas.world_to_screen(Point::new(r.min.x, r.min.y).to_mm());
+            let b = pane.canvas.world_to_screen(Point::new(r.max.x, r.max.y).to_mm());
+            let rect = egui::Rect::from_two_pos(a, b);
+            let color = if crossing { theme::SUCCESS } else { theme::ACCENT };
+            let painter = ui.painter_at(response.rect);
+            painter.rect_filled(rect, 0.0, color.gamma_multiply(0.12));
+            if crossing {
+                let pts = [rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom(), rect.left_top()];
+                painter.extend(egui::Shape::dashed_line(&pts, egui::Stroke::new(1.0, color), 6.0, 4.0));
+            } else {
+                painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Inside);
+            }
+        }
+        if !pane.it.is_idle() {
+            ui.ctx().request_repaint();
         }
         UiResponse::None
     }
@@ -379,58 +619,49 @@ impl Behavior<Pane> for TreeBehavior<'_> {
 }
 
 impl eframe::App for PcbApp {
-    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        let dt = self.record_frame();
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.handle_close(&ctx);
+        self.shortcuts(&ctx);
 
-        if self.storm {
-            self.apply_random_edits(self.storm_per_frame);
-        }
-        if self.animate {
-            self.animate_cameras(dt.min(0.1));
-        }
-        if ctx.input(|i| i.key_pressed(egui::Key::F)) && !ctx.egui_wants_keyboard_input() {
-            self.sch.request_fit();
-            self.pcb.request_fit();
-        }
-
-        egui::Panel::top("menu").show(ui, |ui| {
-            egui::MenuBar::new().ui(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("Quit").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                });
-                ui.menu_button("View", |ui| {
-                    if ui.button("Fit all (F)").clicked() {
-                        self.sch.request_fit();
-                        self.pcb.request_fit();
-                    }
-                });
-            });
-        });
-
-        let cpu = frame.info().cpu_usage;
+        egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
-        egui::Panel::left("side").resizable(true).default_size(290.0).show(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| self.side_panel(ui, cpu));
+        egui::Panel::left("library").resizable(true).default_size(230.0).show(ui, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| self.left_panel(ui));
+        });
+        egui::Panel::right("properties").resizable(true).default_size(280.0).show(ui, |ui| {
+            ui.add_space(6.0);
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                let kind = self.active;
+                let pane = &mut self.panes[kind as usize];
+                let selection = pane.it.selection.clone();
+                let mut message = None;
+                self.properties.ui(ui, &mut self.doc, &selection, &mut message);
+                if let Some(m) = message {
+                    self.status = Some((m, Instant::now()));
+                }
+            });
         });
 
         self.hovered = None;
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
             let mut behavior = TreeBehavior {
-                project: &mut self.project,
-                sch: &mut self.sch,
-                pcb: &mut self.pcb,
+                doc: &mut self.doc,
+                panes: &mut self.panes,
+                active: &mut self.active,
                 hovered: &mut self.hovered,
             };
             self.tree.ui(&mut behavior, ui);
         });
 
-        if self.storm || self.animate {
-            ctx.request_repaint();
+        // Model changed (any source): drop stale selections, refresh highlights.
+        if self.doc.revision != self.revision {
+            self.revision = self.doc.revision;
+            for pane in &mut self.panes {
+                pane.it.refresh(&mut self.doc);
+            }
         }
+        self.update_title(&ctx);
         self.screenshot_tick(&ctx);
-        self.log_perf();
     }
 }

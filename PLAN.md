@@ -27,8 +27,11 @@ crates/
   netlist/      Connectivity schematic → nets (incremental), ratsnest (per-net MST)
   editor-core/  Commands (serializable), undo/redo, selection, tools as state machines,
                 query API. GUI-agnostic, testable headless.
-  render/       wgpu canvas renderer: camera, layers, instanced primitives, picking,
+  render/       wgpu canvas renderer: camera, layers, instanced primitives,
                 offscreen render-to-PNG
+  view/         Model → scene drawing (incremental), spatial index + hit testing,
+                Document (editor + views), Interaction (selection/drag/box/keys).
+                GUI-toolkit independent and unit tested.
   mcp/          MCP server exposing editor-core commands + queries
   kicad-import/ S-expression parser + converters for KiCad symbols/footprints
   app/          egui shell: docking, menus, panels, dialogs
@@ -145,7 +148,7 @@ and level of detail for tiny primitives.
 **Open items from the spike**
 - The spike's copper islands are known by construction. The real board needs geometric
   copper connectivity (M7).
-- The placeholder stroke font needs replacing (M2).
+- The placeholder stroke font needs replacing (moved to M10; it is readable enough until then).
 - Same-layer transparency (render each layer to a texture, then composite) is still open.
 
 ## Milestone 1 design notes (2026-11-08)
@@ -189,3 +192,36 @@ and level of detail for tiny primitives.
   - Flagging tracks whose net changed: needs board connectivity (M7).
   - Performance of linear scans (refdes numbering, sync lookups): fine for now, revisit
     with 10k-part projects.
+
+## Milestone 2 results (2026-11-08)
+
+- **`view` crate**
+  - `View`: draws the schematic or board into a render `Scene` and updates it per
+    `ChangeSet`. Component edits redraw their symbols/footprint; library edits rebuild.
+    Selection/hover overlays are separate scene items. An R*-tree over object bounds
+    does hit testing (thin objects beat bodies, smaller bodies beat larger ones) and box
+    selection.
+  - `Document`: editor + folder path + both views, kept in sync on execute/undo/redo.
+  - `Interaction`: click / shift / cmd selection, box select (left→right inside,
+    right→left crossing), hover, drag with grid snapping of the grabbed object's
+    reference point (one undo step per drag; R rotates while dragging; Esc cancels it),
+    rotate / mirror / flip / delete / select all. Locked footprints don't move;
+    deleting footprints is explained (they follow the schematic).
+  - Demo project and `stress_project(n)` generators.
+- **App** now edits real projects: File New / Open / Save / Save As (project folders),
+  unsaved-changes prompt (also on window close), undo/redo with labels, library panel
+  with Place, properties panel (refdes, value, footprint variant, position, rotation,
+  mirror, side, locked, track width/layer, via sizes, labels, zones, texts; grouped
+  undo for drags), per-view layer toggles and grid presets, status bar.
+  `pcb-designer [DIR | --demo | --new | --stress N]`.
+- **Performance** (`cargo run -p view --release --example edit_bench`, 10k components,
+  0.58 M primitives per view):
+  - Generate + build both views: 0.42 s.
+  - Dragging a symbol: 0.035 ms per frame (command + both views). Hit test: 0.2 µs.
+  - Rotate all 20k schematic objects: 73 ms (editor 7.5 ms after making in-place
+    updates O(1); it was 580 ms).
+  - Delete all (30k objects incl. footprints): 0.42 s. `Store` removals shift the index
+    map (O(n) each); revisit if bulk deletes matter.
+- **Deferred:** filled polygons in the renderer (zones/polygons draw as outlines),
+  zone fill display (M9), text editing on canvas, the spike-based benchmark app mode
+  (the `spike` crate is kept for `sync_bench`).
