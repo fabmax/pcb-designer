@@ -34,6 +34,8 @@ pub enum Action {
     ToolRect,
     ToolCircle,
     ToolText,
+    NavigateBack,
+    NavigateForward,
 }
 
 impl Action {
@@ -57,6 +59,8 @@ impl Action {
         Action::ToolRect,
         Action::ToolCircle,
         Action::ToolText,
+        Action::NavigateBack,
+        Action::NavigateForward,
     ];
 
     pub fn label(self) -> &'static str {
@@ -80,6 +84,8 @@ impl Action {
             Action::ToolRect => "Rectangle tool",
             Action::ToolCircle => "Circle tool",
             Action::ToolText => "Text tool",
+            Action::NavigateBack => "Back (library editor)",
+            Action::NavigateForward => "Forward (library editor)",
         }
     }
 
@@ -110,6 +116,10 @@ impl Shortcut {
 
     pub const fn cmd(key: Key) -> Self {
         Shortcut { command: true, shift: false, alt: false, key }
+    }
+
+    pub const fn alt(key: Key) -> Self {
+        Shortcut { command: false, shift: false, alt: true, key }
     }
 
     pub const fn cmd_shift(key: Key) -> Self {
@@ -209,6 +219,8 @@ impl Default for Keymap {
             (Action::ToolRect, vec![S::key(Key::B)]),
             (Action::ToolCircle, vec![S::key(Key::C)]),
             (Action::ToolText, vec![S::key(Key::T)]),
+            (Action::NavigateBack, vec![S::alt(Key::ArrowLeft), S::cmd(Key::OpenBracket)]),
+            (Action::NavigateForward, vec![S::alt(Key::ArrowRight), S::cmd(Key::CloseBracket)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
     }

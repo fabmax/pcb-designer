@@ -44,7 +44,7 @@ pub struct Options {
     /// Library files to open.
     pub library: Vec<PathBuf>,
     /// Open this part, symbol or footprint (by name) of the last library.
-    pub show: Option<String>,
+    pub show: Vec<String>,
 }
 
 const SCH_GRIDS: &[(f64, &str)] = &[(2.54, "2.54 mm"), (1.27, "1.27 mm"), (0.635, "0.635 mm")];
@@ -167,7 +167,7 @@ impl PcbApp {
                 Err(e) => app.set_status(format!("Could not open library {}: {e}", path.display())),
             }
         }
-        if let Some(name) = &opts.show {
+        for name in &opts.show {
             app.show_by_name(name);
         }
         if opts.mcp.is_some() {
@@ -549,7 +549,9 @@ impl PcbApp {
             | Action::ToolLine
             | Action::ToolRect
             | Action::ToolCircle
-            | Action::ToolText => return,
+            | Action::ToolText
+            | Action::NavigateBack
+            | Action::NavigateForward => return,
         };
         let kind = self.active;
         let pane = &mut self.panes[kind as usize];
@@ -585,6 +587,18 @@ impl PcbApp {
             Action::ToolRect => tool_msg(l, Tool::Rect),
             Action::ToolCircle => tool_msg(l, Tool::Circle),
             Action::ToolText => tool_msg(l, Tool::Text),
+            Action::NavigateBack => {
+                if !l.busy() {
+                    l.go_back();
+                }
+                None
+            }
+            Action::NavigateForward => {
+                if !l.busy() {
+                    l.go_forward();
+                }
+                None
+            }
             Action::New | Action::Open | Action::Save | Action::SaveAs => None,
         };
         if let Some(m) = msg {
@@ -653,6 +667,11 @@ impl PcbApp {
             });
             ui.menu_button("View", |ui| {
                 self.menu_item(ui, "Fit view", Action::FitView, true);
+                let lib = self.focus_lib.and_then(|k| self.libraries.iter().find(|l| l.key == k));
+                let (back, forward) = lib.map_or((false, false), |l| (l.can_go_back(), l.can_go_forward()));
+                ui.separator();
+                self.menu_item(ui, "Back", Action::NavigateBack, back);
+                self.menu_item(ui, "Forward", Action::NavigateForward, forward);
             });
             ui.menu_button("Tools", |ui| self.agent_menu(ui));
             ui.menu_button("Help", |ui| {
