@@ -45,7 +45,7 @@ const BOARD_GRIDS: &[(f64, &str)] =
 pub(crate) struct Pane {
     pub kind: ViewKind,
     pub canvas: Canvas,
-    pub it: Interaction,
+    pub it: Interaction<ObjectId>,
 }
 
 impl Pane {
@@ -55,7 +55,7 @@ impl Pane {
             ViewKind::Board => (2, 0.5),
         };
         let canvas = Canvas::new(id, Background { grid: grid as f32, ..Default::default() });
-        Pane { kind, canvas, it: Interaction::new(kind, mm(grid)) }
+        Pane { kind, canvas, it: Interaction::new(mm(grid)) }
     }
 
     fn title(&self) -> &'static str {
@@ -134,7 +134,7 @@ impl PcbApp {
         }
         // Development aid for screenshots: "all" or a reference designator.
         match opts.select.as_deref() {
-            Some("all") => app.panes[0].it.key(&mut app.doc, KeyAction::SelectAll),
+            Some("all") => app.panes[0].it.key(&mut app.doc.target(ViewKind::Schematic), KeyAction::SelectAll),
             Some(refdes) => {
                 let p = app.doc.project();
                 let ids: Vec<ObjectId> = p
@@ -142,7 +142,7 @@ impl PcbApp {
                     .component_by_refdes(refdes)
                     .map(|c| p.schematic.symbols_of(c.id).map(|s| ObjectId::Symbol(s.id)).collect())
                     .unwrap_or_default();
-                app.panes[0].it.set_selection(&mut app.doc, ids);
+                app.panes[0].it.set_selection(&mut app.doc.target(ViewKind::Schematic), ids);
             }
             None => {}
         }
@@ -168,7 +168,7 @@ impl PcbApp {
         self.doc = doc;
         for kind in [ViewKind::Schematic, ViewKind::Board] {
             let pane = self.pane(kind);
-            pane.it = Interaction::new(kind, pane.it.grid);
+            pane.it = Interaction::new(pane.it.grid);
             pane.canvas.request_fit();
         }
         self.properties = Properties::default();
@@ -297,7 +297,7 @@ impl PcbApp {
                     .collect();
                 self.active = ViewKind::Schematic;
                 let pane = &mut self.panes[0];
-                pane.it.set_selection(&mut self.doc, symbols);
+                pane.it.set_selection(&mut self.doc.target(ViewKind::Schematic), symbols);
             }
             Err(e) => self.set_status(format!("Place failed: {e}")),
         }
@@ -327,7 +327,7 @@ impl PcbApp {
         };
         let kind = self.active;
         let pane = &mut self.panes[kind as usize];
-        pane.it.key(&mut self.doc, key_action);
+        pane.it.key(&mut self.doc.target(kind), key_action);
     }
 
     /// Menu entry for `action`, showing its current shortcut.
@@ -625,7 +625,7 @@ impl Behavior<ViewKind> for TreeBehavior<'_> {
             *self.active = kind;
         }
         if let Some(input) = Self::pointer_input(ui, &response, pane) {
-            pane.it.pointer(self.doc, &input);
+            pane.it.pointer(&mut self.doc.target(kind), &input);
         }
         if pane.it.is_dragging() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -714,7 +714,7 @@ impl eframe::App for PcbApp {
         if self.doc.revision != self.revision {
             self.revision = self.doc.revision;
             for pane in &mut self.panes {
-                pane.it.refresh(&mut self.doc);
+                pane.it.refresh(&mut self.doc.target(pane.kind));
             }
         }
         self.keymap_window(&ctx);

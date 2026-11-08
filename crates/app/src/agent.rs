@@ -93,7 +93,7 @@ impl Host for AppHost<'_> {
     }
 
     fn set_selection(&mut self, view: ViewKind, ids: Vec<ObjectId>) {
-        self.panes[view as usize].it.set_selection(self.doc, ids);
+        self.panes[view as usize].it.set_selection(&mut self.doc.target(view), ids);
     }
 
     fn render_view(&mut self, view: ViewKind, fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String> {

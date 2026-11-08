@@ -14,6 +14,6 @@ pub mod interaction;
 pub mod style;
 pub mod view;
 
-pub use document::Document;
-pub use interaction::{Interaction, KeyAction, PointerInput};
+pub use document::{Document, ProjectTarget};
+pub use interaction::{Edit, Interaction, KeyAction, PointerInput, Target};
 pub use view::{View, ViewKind};

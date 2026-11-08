@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use model::*;
 use view::demo::stress_project;
-use view::{Document, Interaction, KeyAction, PointerInput, ViewKind};
+use view::{Document, Interaction, KeyAction, PointerInput, ProjectTarget, ViewKind};
 
 fn main() {
     let n: usize = std::env::args().nth(1).and_then(|v| v.parse().ok()).unwrap_or(10_000);
@@ -18,7 +18,7 @@ fn main() {
         doc.board.scene.instance_count()
     );
 
-    let mut it = Interaction::new(ViewKind::Schematic, mm(1.27));
+    let mut it = Interaction::new(mm(1.27));
     let sym = doc.project().schematic.symbols.iter().nth(n / 2).unwrap().clone();
     let input = |p: Point, pressed, down, released| PointerInput {
         world: Some(p),
@@ -29,15 +29,15 @@ fn main() {
         drag_threshold: mm(0.5),
         ..Default::default()
     };
-    it.pointer(&mut doc, &input(sym.pos, true, true, false));
+    it.pointer(&mut doc.target(ViewKind::Schematic), &input(sym.pos, true, true, false));
     let mut times = Vec::new();
     for i in 1..=200 {
         let p = sym.pos + Point::mm(i as f64 * 0.7, (i % 7) as f64);
         let t = Instant::now();
-        it.pointer(&mut doc, &input(p, false, true, false));
+        it.pointer(&mut doc.target(ViewKind::Schematic), &input(p, false, true, false));
         times.push(t.elapsed().as_secs_f64() * 1e3);
     }
-    it.pointer(&mut doc, &input(sym.pos, false, false, true));
+    it.pointer(&mut doc.target(ViewKind::Schematic), &input(sym.pos, false, false, true));
     times.sort_by(f64::total_cmp);
     println!(
         "drag one symbol (per frame): p50 {:.3} ms  p95 {:.3} ms  max {:.3} ms",
@@ -56,21 +56,21 @@ fn main() {
 
     for (label, action) in [("select all", KeyAction::SelectAll), ("rotate all", KeyAction::Rotate)] {
         let t = Instant::now();
-        it.key(&mut doc, action);
+        it.key(&mut doc.target(ViewKind::Schematic), action);
         println!("{label}: {:?}", t.elapsed());
     }
     let t = Instant::now();
     doc.undo();
-    it.refresh(&mut doc);
+    it.refresh(&mut doc.target(ViewKind::Schematic));
     println!("undo rotate all: {:?}", t.elapsed());
 
     let t = Instant::now();
-    it.key(&mut doc, KeyAction::Delete);
+    it.key(&mut doc.target(ViewKind::Schematic), KeyAction::Delete);
     println!("delete all: {:?}", t.elapsed());
     let t = Instant::now();
     doc.undo();
     println!("undo delete all: {:?}", t.elapsed());
-    it.key(&mut doc, KeyAction::SelectAll);
+    it.key(&mut doc.target(ViewKind::Schematic), KeyAction::SelectAll);
 
     // Where does a bulk edit spend its time?
     let ids = it.selection.clone();
