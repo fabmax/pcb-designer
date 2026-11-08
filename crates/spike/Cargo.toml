@@ -1,0 +1,12 @@
+[package]
+name = "spike"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Milestone-0 performance spike: synthetic project and live sync"
+
+[dependencies]
+render.workspace = true
+rustc-hash.workspace = true
+smallvec.workspace = true
+delaunator.workspace = true

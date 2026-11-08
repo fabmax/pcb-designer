@@ -1,0 +1,32 @@
+[workspace]
+resolver = "3"
+members = ["crates/render", "crates/spike"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+render = { path = "crates/render" }
+spike = { path = "crates/spike" }
+
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "wayland", "x11", "accesskit", "clipboard"] }
+egui = "0.37"
+egui-wgpu = "0.37"
+egui_tiles = "0.18"
+wgpu = "30"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "1"
+png = "0.18"
+rustc-hash = "2"
+delaunator = "1"
+smallvec = "1"
+log = "0.4"
+env_logger = "0.11"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+debug = "line-tables-only"
