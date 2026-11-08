@@ -113,3 +113,37 @@ effect on the board.
 
 **Later:** multi-sheet/hierarchical schematics, buses, multi-unit parts, Gerber export,
 autoplacement, autorouting, simulation.
+
+## Milestone 0 results (2026-11-08, Apple M4, release build)
+
+Synthetic project: 10,000 components, 88k pins, 67k wires, 47k labels, 31.8k nets
+(largest: GND with 7,110 pins), 25k tracks, 5k vias → 2.5 M schematic and 0.5 M PCB
+render primitives.
+
+**Live sync** (`cargo run --release -p spike --bin sync_bench`), schematic edit → nets →
+footprints → ratsnest → scene diff:
+
+| | p50 | p95 | max |
+|---|---|---|---|
+| All edit kinds (600 random edits) | 2.5 ms | 2.9 ms | 3.6 ms |
+| Edits not touching GND | 0.01–0.2 ms | | |
+| GPU diff per edit | 0.005 ms | 0.11 ms | 0.46 ms (≤ 2.3 MB) |
+
+- Connectivity is incremental. Additions merge nets (smaller into larger). Removals run an
+  interleaved split search, so cost depends on the smaller side. Edits touching GND
+  dropped from 8 ms (re-flood) to about 0.2 ms.
+- The worst case is now the ratsnest of the 7k-pad GND net (Delaunay + Kruskal, about
+  2.3 ms). Options for later: incremental MST, or computing very large nets on a worker
+  thread.
+- **Conclusion: always-live sync works with a comfortable margin.**
+
+**Rendering** (`pcb-designer --components 10000 --no-vsync --animate`): both canvases
+animated at once (about 3 M primitives), 90–170 fps uncapped. There is no culling yet;
+fully zoomed-out views are the slowest. Possible improvements: per-chunk viewport culling
+and level of detail for tiny primitives.
+
+**Open items from the spike**
+- The spike's copper islands are known by construction. The real board needs geometric
+  copper connectivity (M7).
+- The placeholder stroke font needs replacing (M2).
+- Same-layer transparency (render each layer to a texture, then composite) is still open.
