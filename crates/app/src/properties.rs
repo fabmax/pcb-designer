@@ -97,11 +97,15 @@ impl Properties {
                     row(ui, "Start", fmt_point(w.a));
                     row(ui, "End", fmt_point(w.b));
                     row(ui, "Length", format!("{:.3} mm", (w.b - w.a).length() * 1e-6));
+                    net_rows(ui, cx.doc, id);
                 });
             }
             Object::Junction(j) => {
                 heading(ui, "Junction", "");
-                grid(ui, |ui| row(ui, "Position", fmt_point(j.pos)));
+                grid(ui, |ui| {
+                    row(ui, "Position", fmt_point(j.pos));
+                    net_rows(ui, cx.doc, id);
+                });
             }
             Object::Label(mut l) => {
                 heading(ui, "Net label", "");
@@ -124,6 +128,7 @@ impl Properties {
                     }
                     ui.end_row();
                     row(ui, "Position", fmt_point(l.pos));
+                    net_rows(ui, cx.doc, id);
                 });
             }
             Object::SchText(mut t) => {
@@ -293,7 +298,7 @@ impl Properties {
             }
             ui.end_row();
         });
-        pin_table(ui, cx.doc.project(), c.id);
+        pin_table(ui, cx.doc, Some(s.id), c.id);
     }
 
     fn footprint(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, mut f: FootprintInstance) {
@@ -341,7 +346,7 @@ impl Properties {
             }
             ui.end_row();
         });
-        pin_table(ui, cx.doc.project(), c.id);
+        pin_table(ui, cx.doc, None, c.id);
     }
 }
 
@@ -406,8 +411,58 @@ fn shape_name(s: &Shape) -> &'static str {
     }
 }
 
-fn pin_table(ui: &mut egui::Ui, project: &Project, component: Id) {
-    let pins = pin_pad_names(project, component);
+/// Net name and the pins on it.
+fn net_rows(ui: &mut egui::Ui, doc: &Document, id: ObjectId) {
+    let Some(net) = doc.connectivity().net_of(id) else { return };
+    row(ui, "Net", net.name.clone());
+    const MAX: usize = 12;
+    let mut pins: Vec<String> = net.pins.iter().take(MAX).map(|p| p.label()).collect();
+    if net.pins.len() > MAX {
+        pins.push(format!("… {} more", net.pins.len() - MAX));
+    }
+    label(ui, "Pins");
+    let text = if pins.is_empty() { "none".to_string() } else { pins.join(" ") };
+    ui.add(egui::Label::new(RichText::new(text).monospace()).wrap());
+    ui.end_row();
+}
+
+/// Pins of a placed symbol (or all pins of the component) with their pads and nets.
+fn pin_table(ui: &mut egui::Ui, doc: &Document, symbol: Option<Id>, component: Id) {
+    let conn = doc.connectivity();
+    let mut pins: Vec<(&str, String, &str)> = conn
+        .nets
+        .iter()
+        .flat_map(|n| n.pins.iter().map(move |p| (n, p)))
+        .filter(|(_, p)| p.component == component && symbol.is_none_or(|s| p.symbol == s))
+        .map(|(n, p)| (p.pin_name.as_str(), p.pads.join(", "), n.name.as_str()))
+        .collect();
+    if pins.is_empty() {
+        // Connectivity not computed yet: pads only.
+        let names = pin_pad_names(doc.project(), component);
+        return simple_pin_table(ui, &names);
+    }
+    pins.sort_by(|a, b| natural_cmp(&a.1, &b.1).then_with(|| natural_cmp(a.0, b.0)));
+    ui.add_space(6.0);
+    egui::CollapsingHeader::new(RichText::new(format!("Pins ({})", pins.len())).strong()).default_open(false).show(
+        ui,
+        |ui| {
+            egui::Grid::new("pins").num_columns(3).striped(true).spacing([12.0, 2.0]).show(ui, |ui| {
+                label(ui, "Pin");
+                label(ui, "Pad");
+                label(ui, "Net");
+                ui.end_row();
+                for (pin, pads, net) in pins {
+                    ui.monospace(pin);
+                    ui.monospace(pads);
+                    ui.monospace(net);
+                    ui.end_row();
+                }
+            });
+        },
+    );
+}
+
+fn simple_pin_table(ui: &mut egui::Ui, pins: &[(String, Vec<String>)]) {
     if pins.is_empty() {
         return;
     }
@@ -458,6 +513,9 @@ fn project_summary(ui: &mut egui::Ui, doc: &Document) {
         row(ui, "Components", p.schematic.components.len().to_string());
         row(ui, "Wires", p.schematic.wires.len().to_string());
         row(ui, "Labels", p.schematic.labels.len().to_string());
+        let conn = doc.connectivity();
+        row(ui, "Nets", conn.netlist().filter(|n| n.pins.len() > 1 || n.named).count().to_string());
+        row(ui, "Unconnected pins", conn.unconnected.len().to_string());
         row(ui, "Copper layers", p.board.copper_layers().count().to_string());
         row(ui, "Tracks", p.board.tracks.len().to_string());
         row(ui, "Vias", p.board.vias.len().to_string());

@@ -150,15 +150,20 @@ fn rotate_and_mirror_move_pins_correctly() {
     let pins = |ed: &Editor| -> Vec<Point> { pin_positions(ed.project(), sym).into_iter().map(|p| p.2).collect() };
     assert_eq!(pins(&ed), vec![Point::mm(4.92, 0.0), Point::mm(15.08, 0.0)]);
 
-    ed.execute(Command::Rotate { ids: vec![ObjectId::Symbol(sym)], center: Point::mm(10.0, 0.0), angle: Angle::DEG90 })
-        .unwrap();
+    ed.execute(Command::Rotate {
+        ids: vec![ObjectId::Symbol(sym)],
+        center: Point::mm(10.0, 0.0),
+        angle: Angle::DEG90,
+        keep_connected: false,
+    })
+    .unwrap();
     assert_eq!(pins(&ed), vec![Point::mm(10.0, -5.08), Point::mm(10.0, 5.08)]);
 
     // Mirror across x = 0: symbol moves to x = -10, pins stay vertical.
-    ed.execute(Command::Mirror { ids: vec![ObjectId::Symbol(sym)], axis_x: 0 }).unwrap();
+    ed.execute(Command::Mirror { ids: vec![ObjectId::Symbol(sym)], axis_x: 0, keep_connected: false }).unwrap();
     assert_eq!(pins(&ed), vec![Point::mm(-10.0, -5.08), Point::mm(-10.0, 5.08)]);
     // Mirroring twice is the identity.
-    ed.execute(Command::Mirror { ids: vec![ObjectId::Symbol(sym)], axis_x: 0 }).unwrap();
+    ed.execute(Command::Mirror { ids: vec![ObjectId::Symbol(sym)], axis_x: 0, keep_connected: false }).unwrap();
     assert_eq!(pins(&ed), vec![Point::mm(10.0, -5.08), Point::mm(10.0, 5.08)]);
 }
 
@@ -214,7 +219,7 @@ fn commands_roundtrip_through_json() {
     assert_eq!(ed.project().board.tracks.len(), 2);
     assert!(ed.execute_json(r#"{"command": "add_track", "layer": 100, "points": [[0, 0], [1, 0]]}"#).is_err());
     // Every command serializes and parses back unchanged.
-    let cmd = Command::Move { ids: vec![ObjectId::Wire(Id::new())], delta: Point::mm(1.0, 2.0) };
+    let cmd = Command::Move { ids: vec![ObjectId::Wire(Id::new())], delta: Point::mm(1.0, 2.0), keep_connected: false };
     let text = serde_json::to_string(&cmd).unwrap();
     assert_eq!(serde_json::from_str::<Command>(&text).unwrap(), cmd);
 }
@@ -269,9 +274,11 @@ fn random_command_sequences_undo_and_redo_exactly() {
                     value: None,
                 },
                 2 => Command::AddWire { sheet: None, points: vec![pt(&mut rng), pt(&mut rng), pt(&mut rng)] },
-                3 if !symbols.is_empty() => {
-                    Command::Move { ids: vec![ObjectId::Symbol(symbols[rng.next(symbols.len())])], delta: pt(&mut rng) }
-                }
+                3 if !symbols.is_empty() => Command::Move {
+                    ids: vec![ObjectId::Symbol(symbols[rng.next(symbols.len())])],
+                    delta: pt(&mut rng),
+                    keep_connected: true,
+                },
                 4 if !symbols.is_empty() || !wires.is_empty() => {
                     let mut ids = Vec::new();
                     if !symbols.is_empty() {
@@ -286,8 +293,15 @@ fn random_command_sequences_undo_and_redo_exactly() {
                     ids: vec![ObjectId::Footprint(footprints[rng.next(footprints.len())])],
                     center: pt(&mut rng),
                     angle: Angle::DEG90,
+                    keep_connected: false,
                 },
-                _ => Command::AddLabel { sheet: None, pos: pt(&mut rng), name: "GND".into(), kind: LabelKind::Power },
+                _ => Command::AddLabel {
+                    sheet: None,
+                    pos: pt(&mut rng),
+                    name: "GND".into(),
+                    kind: LabelKind::Power,
+                    rotation: Angle::ZERO,
+                },
             };
             if ed.execute(cmd).is_ok() {
                 applied += 1;
@@ -338,7 +352,7 @@ fn grouped_moves_form_one_undo_step() {
     let before = files(ed.project());
     let sym = ed.project().schematic.symbols_of(c).next().unwrap().id;
     for _ in 0..10 {
-        let cmd = Command::Move { ids: vec![ObjectId::Symbol(sym)], delta: Point::mm(1.0, 0.0) };
+        let cmd = Command::Move { ids: vec![ObjectId::Symbol(sym)], delta: Point::mm(1.0, 0.0), keep_connected: false };
         ed.execute_grouped(cmd, Some(7)).unwrap();
     }
     ed.close_group();

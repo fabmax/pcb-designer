@@ -40,6 +40,18 @@ pub enum Command {
         #[serde(default)]
         value: Option<String>,
     },
+    /// Place another unit of a multi-unit component (e.g. the second gate of a 74HC00).
+    PlaceUnit {
+        component: Id,
+        unit: u32,
+        #[serde(default)]
+        sheet: Option<Id>,
+        pos: Point,
+        #[serde(default)]
+        rotation: Angle,
+        #[serde(default)]
+        mirror: bool,
+    },
     /// Polyline of wire segments.
     AddWire {
         #[serde(default)]
@@ -58,6 +70,8 @@ pub enum Command {
         name: String,
         #[serde(default)]
         kind: LabelKind,
+        #[serde(default)]
+        rotation: Angle,
     },
     SetComponent {
         id: Id,
@@ -82,19 +96,31 @@ pub enum Command {
         #[serde(default)]
         drill: Option<Coord>,
     },
+    /// Move objects. With `keep_connected`, schematic wires attached to moved pins,
+    /// wire ends, labels and junctions follow: horizontal and vertical wires stay so by
+    /// shifting sideways (stretching the wires at their other end, or adding a short
+    /// wire there if needed); other wires stretch.
     Move {
         ids: Vec<ObjectId>,
         delta: Point,
+        #[serde(default)]
+        keep_connected: bool,
     },
     Rotate {
         ids: Vec<ObjectId>,
         center: Point,
         angle: Angle,
+        /// Attached schematic wires stretch to stay connected.
+        #[serde(default)]
+        keep_connected: bool,
     },
     /// Mirror schematic objects across the vertical line `x = axis_x`.
     Mirror {
         ids: Vec<ObjectId>,
         axis_x: Coord,
+        /// Attached schematic wires stretch to stay connected.
+        #[serde(default)]
+        keep_connected: bool,
     },
     /// Move footprints to the other board side, mirrored across `x = axis_x`.
     FlipSide {
@@ -121,6 +147,7 @@ impl Command {
             Command::ImportParts { parts, .. } => format!("Import {} part(s)", parts.len()),
             Command::UpdateParts { parts, .. } => format!("Update {} part(s) from library", parts.len()),
             Command::PlacePart { .. } => "Place part".into(),
+            Command::PlaceUnit { .. } => "Place unit".into(),
             Command::AddWire { .. } => "Add wire".into(),
             Command::AddJunction { .. } => "Add junction".into(),
             Command::AddLabel { name, .. } => format!("Add label {name}"),
@@ -144,6 +171,26 @@ impl Command {
             Command::PlacePart { part, variant, sheet, pos, rotation, mirror, refdes, value } => {
                 place_part(tx, part, variant, sheet, pos, rotation, mirror, refdes, value)
             }
+            Command::PlaceUnit { component, unit, sheet, pos, rotation, mirror } => {
+                let sheet = resolve_sheet(tx, sheet)?;
+                let p = tx.project();
+                let c = p
+                    .schematic
+                    .components
+                    .get(component)
+                    .ok_or(CommandError::NotFound(ObjectId::Component(component)))?;
+                let units = p.library.parts.get(c.part).map_or(0, |part| part.units.len());
+                if unit as usize >= units {
+                    return Err(CommandError::Invalid(format!(
+                        "the part has {units} unit(s); unit {unit} does not exist"
+                    )));
+                }
+                if p.schematic.symbols_of(component).any(|s| s.unit == unit) {
+                    return Err(CommandError::Invalid(format!("unit {unit} of {} is already placed", c.refdes)));
+                }
+                let symbol = SymbolInstance { id: Id::new(), sheet, component, unit, pos, rotation, mirror };
+                tx.insert(Object::Symbol(symbol)).map(drop)
+            }
             Command::AddWire { sheet, points } => {
                 let sheet = resolve_sheet(tx, sheet)?;
                 let segments: Vec<_> = points.windows(2).filter(|w| w[0] != w[1]).collect();
@@ -159,12 +206,12 @@ impl Command {
                 let sheet = resolve_sheet(tx, sheet)?;
                 tx.insert(Object::Junction(Junction { id: Id::new(), sheet, pos })).map(drop)
             }
-            Command::AddLabel { sheet, pos, name, kind } => {
+            Command::AddLabel { sheet, pos, name, kind, rotation } => {
                 if name.trim().is_empty() {
                     return Err(CommandError::Invalid("label name must not be empty".into()));
                 }
                 let sheet = resolve_sheet(tx, sheet)?;
-                let label = NetLabel { id: Id::new(), sheet, pos, name, kind, rotation: Angle::ZERO };
+                let label = NetLabel { id: Id::new(), sheet, pos, name, kind, rotation };
                 tx.insert(Object::Label(label)).map(drop)
             }
             Command::SetComponent { id, refdes, value, variant } => {
@@ -219,16 +266,17 @@ impl Command {
                 }
                 tx.insert(Object::Via(via)).map(drop)
             }
-            Command::Move { ids, delta } => {
-                transform_objects(tx, &ids, Transform::new(delta, Angle::ZERO, false), Edit::Transform)
+            Command::Move { ids, delta, keep_connected } => {
+                let t = Transform::new(delta, Angle::ZERO, false);
+                transform_connected(tx, &ids, t, Edit::Transform, keep_connected)
             }
-            Command::Rotate { ids, center, angle } => {
+            Command::Rotate { ids, center, angle, keep_connected } => {
                 let offset = center - center.rotated(angle);
-                transform_objects(tx, &ids, Transform::new(offset, angle, false), Edit::Transform)
+                transform_connected(tx, &ids, Transform::new(offset, angle, false), Edit::Transform, keep_connected)
             }
-            Command::Mirror { ids, axis_x } => {
+            Command::Mirror { ids, axis_x, keep_connected } => {
                 let t = Transform::new(Point::new(2 * axis_x, 0), Angle::ZERO, true);
-                transform_objects(tx, &ids, t, Edit::Mirror)
+                transform_connected(tx, &ids, t, Edit::Mirror, keep_connected)
             }
             Command::FlipSide { ids, axis_x } => {
                 if let Some(bad) = ids.iter().find(|id| !matches!(id, ObjectId::Footprint(_))) {
@@ -464,6 +512,43 @@ enum Edit {
     Transform,
     Mirror,
     Flip,
+}
+
+fn transform_connected(
+    tx: &mut Transaction,
+    ids: &[ObjectId],
+    t: Transform,
+    edit: Edit,
+    keep_connected: bool,
+) -> Result<(), CommandError> {
+    if !keep_connected {
+        return transform_objects(tx, ids, t, edit);
+    }
+    let moved = connection_points(tx.project(), ids);
+    transform_objects(tx, ids, t, edit)?;
+    crate::rubber_band::follow(tx, ids, &moved, &t)
+}
+
+/// Connection points of schematic objects: (sheet, point).
+fn connection_points(p: &Project, ids: &[ObjectId]) -> Vec<(Id, Point)> {
+    let s = &p.schematic;
+    let mut out = Vec::new();
+    for &id in ids {
+        match id {
+            ObjectId::Symbol(i) => {
+                if let Some(inst) = s.symbols.get(i) {
+                    out.extend(crate::query::pin_positions(p, i).into_iter().map(|(_, _, pt)| (inst.sheet, pt)));
+                }
+            }
+            ObjectId::Wire(i) => out.extend(s.wires.get(i).into_iter().flat_map(|w| [(w.sheet, w.a), (w.sheet, w.b)])),
+            ObjectId::Label(i) => out.extend(s.labels.get(i).map(|l| (l.sheet, l.pos))),
+            ObjectId::Junction(i) => out.extend(s.junctions.get(i).map(|j| (j.sheet, j.pos))),
+            _ => {}
+        }
+    }
+    out.sort_by_key(|&(s, p)| (s, p.x, p.y));
+    out.dedup();
+    out
 }
 
 fn transform_objects(tx: &mut Transaction, ids: &[ObjectId], t: Transform, edit: Edit) -> Result<(), CommandError> {

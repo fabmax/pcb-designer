@@ -13,15 +13,18 @@ use egui_tiles::{Behavior, Container, SimplificationOptions, Tile, TileId, Tiles
 use model::*;
 use render::gpu::Background;
 use view::item::Item;
+use view::sch_tools::{SchPlacer, SchTool};
 use view::tools::Tool;
 use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
 
 use crate::agent::{self, Agent};
 use crate::canvas::{self, Canvas, CanvasResources};
-use crate::keymap::{Action, Keymap};
+use crate::keymap::{Action, Context, Keymap};
 use crate::kicad_import::{ImportAction, KicadImport};
 use crate::library::{LibEvent, LibraryEditor, Open};
 use crate::properties::Properties;
+use crate::sch_ui;
+use crate::script::Script;
 use crate::theme;
 
 pub enum Startup {
@@ -54,6 +57,8 @@ pub struct Options {
     pub kicad_import: bool,
     /// Open the import window with this search.
     pub kicad_query: Option<String>,
+    /// Scripted input, see [`crate::script`].
+    pub script: Option<String>,
 }
 
 const SCH_GRIDS: &[(f64, &str)] = &[(2.54, "2.54 mm"), (1.27, "1.27 mm"), (0.635, "0.635 mm")];
@@ -116,6 +121,9 @@ pub struct PcbApp {
     show_keymap: bool,
     agent: Agent,
     kicad: KicadImport,
+    /// Schematic creation tools.
+    sch: SchPlacer,
+    script: Option<Script>,
 }
 
 impl PcbApp {
@@ -167,7 +175,14 @@ impl PcbApp {
             show_keymap: false,
             agent: Agent::new(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
             kicad: KicadImport::new(opts.kicad_paths.clone()),
+            sch: SchPlacer::default(),
+            script: None,
         };
+        match opts.script.as_deref().map(Script::parse) {
+            Some(Ok(s)) => app.script = Some(s),
+            Some(Err(e)) => eprintln!("script: {e}"),
+            None => {}
+        }
         // The starter library is always available (built in, saved only with "Save as").
         app.add_library(LibraryDoc::new(builtin::starter_library()), false);
         for path in &opts.library {
@@ -252,6 +267,7 @@ impl PcbApp {
             pane.canvas.request_fit();
         }
         self.properties = Properties::default();
+        self.sch.set_tool(SchTool::Select);
     }
 
     /// Ask to save unsaved changes. Returns false if the user cancelled.
@@ -605,8 +621,8 @@ impl PcbApp {
         }
     }
 
-    /// Place a part at the center of the schematic view, importing it from library
-    /// `lib_key` if the project doesn't have it yet.
+    /// Start placing a part in the schematic (it follows the cursor until clicked),
+    /// importing it from library `lib_key` if the project doesn't have it yet.
     fn place_part(&mut self, lib_key: u64, part: Id) {
         if !self.doc.project().library.parts.contains(part) {
             let Some(l) = self.lib(lib_key) else { return };
@@ -619,43 +635,76 @@ impl PcbApp {
                 return self.set_status(format!("Import failed: {e}"));
             }
         }
-        let pane = self.pane(ViewKind::Schematic);
-        let c = pane.canvas.camera.center;
-        let pos = pane.it.snap(Point::mm(c[0], c[1]));
-        let cmd = Command::PlacePart {
-            part,
-            variant: None,
-            sheet: None,
-            pos,
-            rotation: Angle::ZERO,
-            mirror: false,
-            refdes: None,
-            value: None,
-        };
-        match self.doc.execute(cmd) {
-            Ok(changes) => {
-                let symbols: Vec<ObjectId> = changes
-                    .changes
-                    .iter()
-                    .filter(|c| c.is_insert() && matches!(c.id, ObjectId::Symbol(_)))
-                    .map(|c| c.id)
-                    .collect();
-                self.active = ViewKind::Schematic;
-                self.focus_lib = None;
-                if let Some(tile) = self.tree.tiles.find_pane(&Tab::View(ViewKind::Schematic)) {
-                    self.tree.make_active(|id, _| id == tile);
-                }
-                let pane = &mut self.panes[0];
-                pane.it.set_selection(&mut self.doc.target(ViewKind::Schematic), symbols);
-            }
-            Err(e) => self.set_status(format!("Place failed: {e}")),
+        self.focus_schematic();
+        self.set_sch_tool(SchTool::Place);
+        self.sch.place(part);
+    }
+
+    /// Give the schematic tab keyboard focus and bring it to the front.
+    fn focus_schematic(&mut self) {
+        self.active = ViewKind::Schematic;
+        self.focus_lib = None;
+        if let Some(tile) = self.tree.tiles.find_pane(&Tab::View(ViewKind::Schematic)) {
+            self.tree.make_active(|id, _| id == tile);
         }
+    }
+
+    fn set_sch_tool(&mut self, tool: SchTool) {
+        let pane = &mut self.panes[ViewKind::Schematic as usize];
+        if tool != SchTool::Select {
+            pane.it.reset();
+            pane.it.refresh(&mut self.doc.target(ViewKind::Schematic));
+        }
+        self.sch.set_tool(tool);
+    }
+
+    /// Where keyboard shortcuts go.
+    fn context(&self) -> Context {
+        match (self.focus_lib, self.active) {
+            (Some(_), _) => Context::Library,
+            (None, ViewKind::Schematic) => Context::Schematic,
+            (None, ViewKind::Board) => Context::Board,
+        }
+    }
+
+    /// Schematic tool shortcuts. Returns true if handled.
+    fn sch_action(&mut self, action: Action) -> bool {
+        let tool = match action {
+            Action::SchWire => SchTool::Wire,
+            Action::SchLabel => SchTool::Label,
+            Action::SchPower => SchTool::Power,
+            Action::SchJunction => SchTool::Junction,
+            Action::ToolSelect => SchTool::Select,
+            Action::SchPosture => {
+                self.sch.toggle_posture();
+                return true;
+            }
+            _ if !self.sch.is_placing() => return false,
+            Action::Rotate => {
+                self.sch.rotate();
+                return true;
+            }
+            Action::Mirror => {
+                self.sch.mirror();
+                return true;
+            }
+            Action::Cancel => {
+                self.sch.escape();
+                return true;
+            }
+            _ => return false,
+        };
+        self.set_sch_tool(tool);
+        true
     }
 
     fn run_action(&mut self, action: Action) {
         if let Some(key) = self.focus_lib
             && self.lib_action(key, action)
         {
+            return;
+        }
+        if self.context() == Context::Schematic && self.sch_action(action) {
             return;
         }
         let key_action = match action {
@@ -685,7 +734,12 @@ impl PcbApp {
             | Action::ToolCircle
             | Action::ToolText
             | Action::NavigateBack
-            | Action::NavigateForward => return,
+            | Action::NavigateForward
+            | Action::SchWire
+            | Action::SchLabel
+            | Action::SchPower
+            | Action::SchJunction
+            | Action::SchPosture => return,
         };
         let kind = self.active;
         let pane = &mut self.panes[kind as usize];
@@ -734,6 +788,7 @@ impl PcbApp {
                 None
             }
             Action::New | Action::Open | Action::Save | Action::SaveAs => None,
+            Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction | Action::SchPosture => None,
         };
         if let Some(m) = msg {
             self.set_status(m);
@@ -1123,6 +1178,12 @@ impl PcbApp {
     }
 
     fn screenshot_tick(&mut self, ctx: &egui::Context) {
+        if self.script.is_some() {
+            ctx.request_repaint();
+        }
+        if self.script.as_ref().is_some_and(|s| !s.is_done()) {
+            return;
+        }
         let Some((path, frames)) = &mut self.screenshot else {
             return;
         };
@@ -1177,12 +1238,31 @@ struct TreeBehavior<'a> {
     focus_lib: &'a mut Option<u64>,
     hovered: &'a mut Option<ViewKind>,
     close_requests: &'a mut Vec<u64>,
+    sch: &'a mut SchPlacer,
+    status: &'a mut Option<(String, Instant)>,
 }
 
 impl TreeBehavior<'_> {
     fn view_ui(&mut self, ui: &mut egui::Ui, kind: ViewKind) {
+        let full = ui.max_rect();
+        if kind == ViewKind::Schematic
+            && let Some(tool) = sch_ui::toolbar(ui, self.sch)
+        {
+            let pane = &mut self.panes[kind as usize];
+            if tool != SchTool::Select {
+                pane.it.reset();
+                pane.it.refresh(&mut self.doc.target(kind));
+            }
+            self.sch.set_tool(tool);
+            *self.active = kind;
+            *self.focus_lib = None;
+        }
+        // The canvas fills the rest of the tab.
+        let rect = egui::Rect::from_min_max(egui::pos2(full.left(), ui.cursor().top()), full.max);
         let pane = &mut self.panes[kind as usize];
-        let response = pane.canvas.ui(ui, &mut self.doc.view_mut(kind).scene);
+        let scene = &mut self.doc.view_mut(kind).scene;
+        let canvas = &mut pane.canvas;
+        let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
         if response.hovered() {
             *self.hovered = Some(kind);
         }
@@ -1190,17 +1270,41 @@ impl TreeBehavior<'_> {
             *self.active = kind;
             *self.focus_lib = None;
         }
-        let engaged = !pane.it.is_idle();
-        if let Some(input) = canvas::pointer_input(ui, &response, &pane.canvas, engaged, pane.it.hover.is_some()) {
-            pane.it.pointer(&mut self.doc.target(kind), &input);
+        if kind == ViewKind::Schematic && self.sch.is_placing() {
+            let world = response.hover_pos().map(|p| {
+                let [x, y] = pane.canvas.screen_to_world(p);
+                pane.it.snap(Point::mm(x, y))
+            });
+            self.sch.hover(self.doc, world);
+            if let Some(p) = world
+                && response.hovered()
+                && ui.input(|i| i.pointer.primary_pressed())
+                && let Err(e) = self.sch.click(self.doc, p)
+            {
+                *self.status = Some((e, Instant::now()));
+            }
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            }
+        } else {
+            let engaged = !pane.it.is_idle();
+            if let Some(input) = canvas::pointer_input(ui, &response, &pane.canvas, engaged, pane.it.hover.is_some()) {
+                pane.it.pointer(&mut self.doc.target(kind), &input);
+            }
+            if pane.it.is_dragging() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            } else if pane.it.hover.is_some() && response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if let Some((r, crossing)) = pane.it.box_rect() {
+                canvas::draw_box(ui, &pane.canvas, response.rect, r, crossing);
+            }
         }
-        if pane.it.is_dragging() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-        } else if pane.it.hover.is_some() && response.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        if let Some((r, crossing)) = pane.it.box_rect() {
-            canvas::draw_box(ui, &pane.canvas, response.rect, r, crossing);
+        if kind == ViewKind::Schematic
+            && let Some(ghosts) = self.sch.take_preview()
+        {
+            let (project, view) = self.doc.project_and_view(kind);
+            view.set_preview(project, &ghosts);
         }
         if !pane.it.is_idle() {
             ui.ctx().request_repaint();
@@ -1280,10 +1384,17 @@ impl Behavior<Tab> for TreeBehavior<'_> {
 }
 
 impl eframe::App for PcbApp {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        if let Some(script) = &mut self.script {
+            let canvas = &self.panes[ViewKind::Schematic as usize].canvas;
+            raw.events.extend(script.events(|w| canvas.world_to_screen(w)));
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.handle_close(&ctx);
-        for action in self.keymap.triggered(&ctx) {
+        for action in self.keymap.triggered(&ctx, self.context()) {
             self.run_action(action);
         }
 
@@ -1300,6 +1411,10 @@ impl eframe::App for PcbApp {
                     return;
                 }
                 let kind = self.active;
+                if kind == ViewKind::Schematic && self.sch.is_placing() {
+                    sch_ui::settings(ui, &mut self.sch, &self.doc);
+                    return;
+                }
                 let pane = &mut self.panes[kind as usize];
                 let selection = pane.it.selection.clone();
                 let mut message = None;
@@ -1320,6 +1435,8 @@ impl eframe::App for PcbApp {
                 focus_lib: &mut self.focus_lib,
                 hovered: &mut self.hovered,
                 close_requests: &mut self.close_requests,
+                sch: &mut self.sch,
+                status: &mut self.status,
             };
             self.tree.ui(&mut behavior, ui);
         });
@@ -1339,6 +1456,12 @@ impl eframe::App for PcbApp {
                 let result = self.agent_kicad_import(job).map(mcp::Reply::Json);
                 let _ = reply.send(result);
             }
+        }
+
+        // Junction dots and unconnected pins follow the schematic.
+        let busy = self.panes.iter().any(|p| !p.it.is_idle());
+        if self.doc.update_connectivity(busy) {
+            ctx.request_repaint();
         }
 
         // Model changed (any source): drop stale selections, refresh highlights.

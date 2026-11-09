@@ -5,9 +5,11 @@
 //! replay them, and the same change sets tell views what to update.
 
 pub mod command;
+pub mod connectivity;
 pub mod editor;
 pub mod history;
 pub mod query;
+mod rubber_band;
 mod sync;
 pub mod transaction;
 

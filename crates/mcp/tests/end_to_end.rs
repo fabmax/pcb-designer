@@ -65,6 +65,7 @@ async fn agent_session() {
         "set_selection",
         "search_kicad",
         "import_kicad",
+        "get_netlist",
     ] {
         assert!(names.contains(&expected), "missing tool {expected}: {names:?}");
     }
@@ -109,6 +110,29 @@ async fn agent_session() {
     let info = ok_json(call("get_component", json!({ "refdes": refdes })).await);
     assert_eq!(info["symbols"][0]["pins"].as_array().unwrap().len(), 2);
     assert_eq!(info["footprint"]["pads"].as_array().unwrap().len(), 2);
+
+    // Wire it up with labels; the netlist follows.
+    let pins = info["symbols"][0]["pins"].as_array().unwrap().clone();
+    let r = ok_json(
+        call(
+            "execute",
+            json!({ "commands": [
+                { "command": "add_label", "pos": pins[0]["pos"], "name": "TEST_A" },
+                { "command": "add_label", "pos": pins[1]["pos"], "name": "+5V", "kind": "power" }
+            ]}),
+        )
+        .await,
+    );
+    assert_eq!(r["created"].as_array().unwrap().len(), 2);
+    let netlist = ok_json(call("get_netlist", Value::Null).await);
+    let nets = netlist["nets"].as_array().unwrap();
+    let net = |name: &str| nets.iter().find(|n| n["name"] == name).cloned();
+    let a = net("TEST_A").expect("labelled net");
+    assert_eq!(a["pins"].as_array().unwrap().len(), 1);
+    assert_eq!(a["pins"][0]["ref"], refdes.as_str());
+    assert!(net("+5V").unwrap()["pins"].as_array().unwrap().iter().any(|p| p["ref"] == refdes.as_str()));
+    assert!(netlist["unconnected_pins"].is_array());
+    ok_json(call("undo", Value::Null).await);
 
     // A failing batch changes nothing.
     let r = call(

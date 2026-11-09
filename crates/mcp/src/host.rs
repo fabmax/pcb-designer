@@ -41,6 +41,8 @@ pub enum Request {
     Component {
         refdes: String,
     },
+    /// Nets of the schematic.
+    Netlist,
     Execute {
         commands: Vec<Command>,
     },
@@ -97,6 +99,7 @@ impl Request {
             Request::ListObjects { .. } => "list objects".into(),
             Request::GetObjects { ids } => format!("read {} object(s)", ids.len()),
             Request::Component { refdes } => format!("read {refdes}"),
+            Request::Netlist => "read netlist".into(),
             Request::Execute { commands } => match &commands[..] {
                 [one] => one.label(),
                 many => format!("{} commands", many.len()),
@@ -243,6 +246,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             json!(ids.iter().map(|&id| p.get(id)).collect::<Vec<_>>())
         }
         Request::Component { refdes } => component(host.document().project(), &refdes)?,
+        Request::Netlist => netlist(host.document().current_connectivity()),
         Request::KicadSearch { query, footprints, limit } => host.kicad_search(&query, footprints, limit)?,
         Request::KicadImport(_) => unreachable!("answered by the host"),
         Request::Execute { commands } => execute(host.document(), commands)?,
@@ -477,4 +481,23 @@ pub fn render_png(
         cam
     });
     Ok(renderer.render(scene, &camera, background, width, height).encode_png())
+}
+
+fn netlist(c: &editor_core::connectivity::Connectivity) -> Value {
+    let nets: Vec<Value> = c
+        .netlist()
+        .filter(|n| n.pins.len() > 1 || n.named)
+        .map(|n| {
+            let pins: Vec<Value> = n
+                .pins
+                .iter()
+                .map(|p| json!({ "ref": p.refdes, "pin": p.pin_name, "pads": p.pads, "pos": p.pos }))
+                .collect();
+            json!({ "name": n.name, "pins": pins })
+        })
+        .collect();
+    let open: std::collections::HashSet<(Id, Id)> = c.unconnected.iter().map(|&(s, p, _)| (s, p)).collect();
+    let unconnected: Vec<String> =
+        c.nets.iter().flat_map(|n| &n.pins).filter(|p| open.contains(&(p.symbol, p.pin))).map(|p| p.label()).collect();
+    json!({ "nets": nets, "unconnected_pins": unconnected, "problems": c.problems })
 }

@@ -13,6 +13,7 @@ pub mod index;
 pub mod interaction;
 pub mod item;
 pub mod library_doc;
+pub mod sch_tools;
 pub mod style;
 pub mod tools;
 pub mod view;

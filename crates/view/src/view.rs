@@ -9,6 +9,7 @@ use std::hash::{Hash, Hasher};
 
 use crate::draw::{Painter, mmf, substitute};
 use crate::index::SpatialIndex;
+use crate::sch_tools::SchGhost;
 use crate::style::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -72,6 +73,11 @@ fn item(id: ObjectId) -> u64 {
     id.hash(&mut h);
     h.finish() & !(3 << 62)
 }
+
+/// Scene item of the connectivity markers (junction dots, unconnected pins).
+const CONNECTIVITY_ITEM: u64 = 3 << 62;
+/// Scene item of the creation tool preview.
+const PREVIEW_ITEM: u64 = (3 << 62) | 1;
 
 fn overlay_item(id: ObjectId, hover: bool) -> u64 {
     item(id) | if hover { 2 << 62 } else { 1 << 62 }
@@ -277,6 +283,63 @@ impl View {
         if self.hover == Some(id) {
             self.draw_overlay(project, id, true);
         }
+    }
+
+    /// Draw automatic junction dots and unconnected pin markers (schematic only).
+    pub fn set_connectivity(&mut self, c: &editor_core::connectivity::Connectivity) {
+        let Layers::Sch(l) = &self.layers else { return };
+        let mut out = Vec::with_capacity(c.dots.len() + c.unconnected.len());
+        for &(_, p) in &c.dots {
+            out.push((l.wires, Instance::circle(mmf(p), JUNCTION_RADIUS, SCH_JUNCTION)));
+        }
+        for &(_, _, p) in &c.unconnected {
+            out.push((l.pins, Instance::circle_outline(mmf(p), 0.4, 0.12, SCH_PIN)));
+        }
+        self.scene.set_item(CONNECTIVITY_ITEM, out);
+    }
+
+    /// Show what a schematic creation tool would add (empty slice clears).
+    pub fn set_preview(&mut self, project: &Project, ghosts: &[SchGhost]) {
+        let Layers::Sch(l) = &self.layers else { return };
+        if ghosts.is_empty() {
+            self.scene.remove_item(PREVIEW_ITEM);
+            return;
+        }
+        let mut p = Painter::default();
+        for g in ghosts {
+            match g {
+                SchGhost::Wire(a, b) => p.line(l.wires, *a, *b, WIRE_WIDTH, SCH_WIRE),
+                SchGhost::Junction(pos) => p.circle(l.wires, *pos, 450_000, SCH_JUNCTION),
+                SchGhost::Target(pos) => {
+                    p.push(l.wires, Instance::circle_outline(mmf(*pos), 0.6, 0.12, HOVER.with_alpha(0xc0)))
+                }
+                SchGhost::Label(lab) => draw_label(lab, l, &mut p),
+                SchGhost::Symbol { part, component, unit, transform } => {
+                    let Some(part) = project.library.parts.get(*part) else { continue };
+                    let Some(sym) = part.units.get(*unit as usize).and_then(|u| project.library.symbols.get(u.symbol))
+                    else {
+                        continue;
+                    };
+                    let c = component.and_then(|c| project.schematic.components.get(c));
+                    let refdes = c.map_or(format!("{}?", part.prefix), |c| c.refdes.clone());
+                    let value = c.map_or(part.default_value.as_str(), |c| c.value.as_str());
+                    let variant = c.map_or(part.variants.first(), |c| part.variant(c.variant));
+                    let footprint = variant.and_then(|v| project.library.footprints.get(v.footprint));
+                    draw_symbol_graphics(sym, *unit, transform, &refdes, value, variant.zip(footprint), l, &mut p);
+                }
+            }
+        }
+        // Ghosts are drawn translucent on top of everything.
+        let layer = self.hover_layer;
+        let out: Vec<(RLayer, Instance)> = p
+            .out
+            .into_iter()
+            .map(|(_, mut inst)| {
+                inst.color = inst.color.with_alpha((inst.color.0[3] as u16 * 3 / 4) as u8);
+                (layer, inst)
+            })
+            .collect();
+        self.scene.set_item(PREVIEW_ITEM, out);
     }
 
     // ------------------------------------------------------------------------------------
@@ -487,27 +550,41 @@ fn draw_symbol(project: &Project, inst: &SymbolInstance, l: &SchLayers, p: &mut 
     let Some(sym) = symbol_of_instance(project, inst) else { return };
     let component = project.schematic.components.get(inst.component);
     let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
-    let t = inst.transform();
+    // Pad names per pin for the component's variant.
+    let variant = component.and_then(|c| project.library.parts.get(c.part).and_then(|part| part.variant(c.variant)));
+    let footprint = component.and_then(|c| project.library.footprint_of(c.part, c.variant));
+    let pads = variant.zip(footprint);
+    draw_symbol_graphics(sym, inst.unit, &inst.transform(), refdes, value, pads, l, p);
+}
 
+#[allow(clippy::too_many_arguments)]
+fn draw_symbol_graphics(
+    sym: &Symbol,
+    unit: u32,
+    t: &Transform,
+    refdes: &str,
+    value: &str,
+    pads: Option<(&PartVariant, &Footprint)>,
+    l: &SchLayers,
+    p: &mut Painter,
+) {
+    let t = *t;
     for shape in &sym.graphics {
         p.shape(l.body, &shape.transformed(&t), SCH_BODY, Some((l.body_fill, SCH_BODY_FILL)));
     }
 
-    // Pad names per pin for the component's variant.
-    let variant = component.and_then(|c| project.library.parts.get(c.part).and_then(|part| part.variant(c.variant)));
-    let footprint = component.and_then(|c| project.library.footprint_of(c.part, c.variant));
     for pin in sym.pins.iter() {
         let (a, b) = (t.point(pin.pos), t.point(pin.inner_end()));
         p.line(l.pins, a, b, WIRE_WIDTH, SCH_PIN);
         let d = b - a;
         let horizontal = d.x.abs() >= d.y.abs();
         if pin.show_number
-            && let (Some(v), Some(fp)) = (variant, footprint)
+            && let Some((v, fp)) = pads
         {
             let pads: Vec<&str> = v
                 .connections
                 .iter()
-                .filter(|c| c.unit == inst.unit && c.pin == pin.id)
+                .filter(|c| c.unit == unit && c.pin == pin.id)
                 .filter_map(|c| fp.pads.get(c.pad).map(|pad| pad.name.as_str()))
                 .collect();
             if !pads.is_empty() {
@@ -540,7 +617,7 @@ fn draw_symbol(project: &Project, inst: &SymbolInstance, l: &SchLayers, p: &mut 
         if sideways {
             // Keep reference and value horizontal next to vertical symbols.
             text.rotation = Angle::ZERO;
-            let left = text.pos.x < inst.pos.x;
+            let left = text.pos.x < t.offset.x;
             text.halign = if left { HAlign::Right } else { HAlign::Left };
             text.valign = VAlign::Center;
             if let Some(b) = body {

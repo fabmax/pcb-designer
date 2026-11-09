@@ -21,6 +21,9 @@ pub const HOVER: Color = Color::rgba(0xff, 0xff, 0xff, 0x50);
 pub const VIA: Color = Color::rgb(0xa8, 0xa8, 0xa8);
 pub const HOLE: Color = Color::rgb(0x10, 0x11, 0x14);
 
+/// Junction dot radius (mm).
+pub const JUNCTION_RADIUS: f32 = 0.45;
+
 /// Schematic wire width.
 pub const WIRE_WIDTH: Coord = 152_400;
 

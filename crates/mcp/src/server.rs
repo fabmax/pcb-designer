@@ -295,6 +295,15 @@ impl PcbTools {
         self.call(Request::Component { refdes: p.refdes }).await
     }
 
+    #[tool(description = "Schematic netlist: every net with at least two pins or a label, with \
+        its pins (reference, pin name, footprint pads, position), plus unconnected pins and \
+        connectivity problems (e.g. two different labels on one net). Pins connect where wire \
+        ends, pins, labels and junctions coincide, where a wire ends on another wire, and \
+        through same-named labels; crossing wires connect only with a junction.")]
+    async fn get_netlist(&self) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::Netlist).await
+    }
+
     #[tool(description = "Execute editing commands (the same ones the GUI uses) as a single undo \
         step, all-or-nothing. Returns the changed object ids and the created objects.")]
     async fn execute(&self, Parameters(p): Parameters<ExecuteParams>) -> Result<CallToolResult, ErrorData> {
