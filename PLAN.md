@@ -865,3 +865,7 @@ KiCad's model, so a later KiCad project import maps one to one.
     Esc/Skip/click outside to skip. Keyboard shortcuts are off while it is open.
   - The label is its own undo step, after the bus or wire.
 
+- **Dialog style.** `theme::dialog` is a modal with a title bar: `panel_dark` background,
+  a bottom border line, and the title in `accent()` at 17 pt. Content has 18 pt padding.
+  Use it for new modal dialogs. The Settings and KiCad import windows are still plain
+  egui windows.
