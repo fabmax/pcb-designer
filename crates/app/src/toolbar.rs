@@ -273,6 +273,9 @@ pub fn grid_menu(ui: &mut Ui, grid: &mut Coord, background: &mut Background, kin
     ui.horizontal(|ui| {
         dim(ui, "Units");
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            // Menus use tight padding; the unit chips and the size field get more room.
+            ui.spacing_mut().button_padding = vec2(8.0, 3.0);
+            ui.spacing_mut().item_spacing.x = 4.0;
             let mut unit = units::unit();
             for u in Unit::ALL.into_iter().rev() {
                 ui.selectable_value(&mut unit, u, u.label());
@@ -289,6 +292,8 @@ pub fn grid_menu(ui: &mut Ui, grid: &mut Coord, background: &mut Background, kin
     ui.horizontal(|ui| {
         dim(ui, "Grid size");
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.spacing_mut().button_padding = vec2(8.0, 3.0);
+            ui.spacing_mut().interact_size.x = 84.0;
             // Menus draw widgets without a frame: give the field one.
             let v = &mut ui.visuals_mut().widgets;
             for w in [&mut v.inactive, &mut v.hovered, &mut v.active] {
