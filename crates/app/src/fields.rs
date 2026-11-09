@@ -64,12 +64,15 @@ impl Fields {
         (r.lost_focus() && buf != current).then(|| buf.clone())
     }
 
-    /// Length in mm, edited by dragging or typing. Returns the new value in nm.
+    /// Length in the display unit, edited by dragging or typing; at least `min` mm.
+    /// Returns the new value in nm.
     pub fn length(&mut self, ui: &mut egui::Ui, value: Coord, min: f64) -> Option<Coord> {
-        let mut v = to_mm(value);
-        let r = ui.add(egui::DragValue::new(&mut v).speed(0.05).range(min..=f64::MAX).suffix(" mm").max_decimals(4));
+        // Lengths are below a kilometre.
+        let limit = mm(1e6);
+        let min = if min > -1e6 { mm(min) } else { -limit };
+        let (r, v) = crate::units::drag(ui, value, min, limit);
         self.active |= r.dragged() || r.has_focus();
-        r.changed().then(|| mm(v))
+        v
     }
 
     pub fn number(

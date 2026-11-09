@@ -16,10 +16,7 @@ use crate::keymap::{Action, Keymap};
 use crate::part_form::PartForm;
 use crate::theme;
 use crate::toolbar::{self, ToolButton};
-
-pub const SYMBOL_GRIDS: &[(f64, &str)] = &[(2.54, "2.54 mm"), (1.27, "1.27 mm"), (0.635, "0.635 mm")];
-pub const FOOTPRINT_GRIDS: &[(f64, &str)] =
-    &[(1.0, "1 mm"), (0.5, "0.5 mm"), (0.25, "0.25 mm"), (0.1, "0.1 mm"), (0.05, "0.05 mm"), (0.635, "25 mil")];
+use crate::units::GridKind;
 
 /// What the library tab shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -435,36 +432,27 @@ impl LibraryEditor {
             b(Tool::Text, Icon::Text, "Place text.", Action::ToolText),
         ];
         let id = egui::Id::unique(("item_toolbar", self.key));
-        let (chosen, right) = toolbar::strip(ui, rect, id, &[&select, &connect, &draw], self.placer.tool, keymap);
+        let (chosen, _) = toolbar::strip(ui, rect, id, &[&select, &connect, &draw], self.placer.tool, keymap);
         if let Some(tool) = chosen {
             self.set_tool(tool);
         }
-        let grids = match item {
-            Item::Symbol(_) => SYMBOL_GRIDS,
-            Item::Footprint(_) => FOOTPRINT_GRIDS,
+        let grid_kind = match item {
+            Item::Symbol(_) => GridKind::Schematic,
+            Item::Footprint(_) => GridKind::Board,
         };
-        toolbar::header(ui, rect, right, id.with("header"), |ui| {
-            let current = to_mm(self.it.grid);
-            let text = grids
-                .iter()
-                .find(|g| (g.0 - current).abs() < 1e-9)
-                .map_or(format!("{current} mm"), |g| g.1.to_string());
-            egui::ComboBox::from_id_salt(("item_grid", self.key)).selected_text(format!("Grid {text}")).show_ui(
-                ui,
-                |ui| {
-                    for &(g, name) in grids {
-                        if ui.selectable_label((g - current).abs() < 1e-9, name).clicked() {
-                            self.it.grid = mm(g);
-                            self.canvas.background.grid = g as f32;
-                        }
-                    }
-                },
-            );
-            let fit = keymap.menu_text(ui.ctx(), Action::FitView);
-            if ui.button("Fit").on_hover_text(format!("Zoom to show the whole item ({fit})")).clicked() {
-                self.canvas.request_fit();
-            }
-        });
+        let entries = self.view.layer_menu();
+        let (scene, it, canvas) = (&mut self.view.scene, &mut self.it, &mut self.canvas);
+        let fit = toolbar::view_buttons(
+            ui,
+            rect,
+            id.with("view_buttons"),
+            keymap,
+            |ui| toolbar::layer_menu(ui, scene, &entries),
+            |ui| toolbar::grid_menu(ui, &mut it.grid, &mut canvas.background, grid_kind),
+        );
+        if fit {
+            self.canvas.request_fit();
+        }
         let tip = match self.placer.tool {
             Tool::Select => "Click/box to select · drag to move · R rotate · X mirror · Del delete",
             Tool::Line => "Click points · click the last point again or Esc to finish",

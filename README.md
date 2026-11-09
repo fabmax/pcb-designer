@@ -48,7 +48,8 @@ rendered offscreen.
 
 ## Settings
 
-Theme (dark or light), key bindings and recent projects are saved in
+Theme (dark or light), length units (mm, mil or inch), key bindings and recent projects
+are saved in
 `settings.json` in the configuration folder (macOS: `~/Library/Application
 Support/pcb-designer`). Edit them in **Edit → Settings…** (⌘,): click `+` next to an
 action and press the new shortcut. `PCB_DESIGNER_CONFIG=DIR` uses another folder;

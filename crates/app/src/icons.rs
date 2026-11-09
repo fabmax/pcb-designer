@@ -21,6 +21,9 @@ pub enum Icon {
     Rect,
     Circle,
     Text,
+    Layers,
+    Grid,
+    Fit,
 }
 
 /// Paint `icon` into `rect` (square) in `color`.
@@ -38,6 +41,10 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
     };
     let open = |pts: Vec<Pos2>, st: Stroke| {
         painter.add(Shape::line(pts, st));
+    };
+    let close = |mut pts: Vec<Pos2>| {
+        pts.push(pts[0]);
+        pts
     };
     let dot = |c: Pos2, r: f32| painter.circle_filled(c, r * s, color);
     let ring = |c: Pos2, r: f32, st: Stroke| painter.circle_stroke(c, r * s, st);
@@ -130,6 +137,30 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::Circle => {
             ring(p(0.5, 0.5), 0.34, line);
             dot(p(0.5, 0.5), 0.05);
+        }
+        Icon::Layers => {
+            // Three stacked sheets, the top one filled.
+            let sheet = |y: f32| vec![p(0.5, y - 0.17), p(0.9, y), p(0.5, y + 0.17), p(0.1, y)];
+            open(close(sheet(0.7)), line);
+            open(close(sheet(0.5)), line);
+            poly(sheet(0.3), color, line);
+        }
+        Icon::Grid => {
+            let thin = Stroke::new(w * 0.8, color);
+            for t in [0.15, 0.38, 0.62, 0.85] {
+                seg(p(t, 0.1), p(t, 0.9), thin);
+                seg(p(0.1, t), p(0.9, t), thin);
+            }
+        }
+        Icon::Fit => {
+            // Corner brackets around a square.
+            for (x, y, dx, dy) in
+                [(0.1, 0.1, 1.0, 1.0), (0.9, 0.1, -1.0, 1.0), (0.1, 0.9, 1.0, -1.0), (0.9, 0.9, -1.0, -1.0)]
+            {
+                open(vec![p(x, y + dy * 0.24), p(x, y), p(x + dx * 0.24, y)], line);
+            }
+            painter.rect_filled(rect_of(0.34, 0.34, 0.66, 0.66), 0.04 * s, faint);
+            painter.rect_stroke(rect_of(0.34, 0.34, 0.66, 0.66), 0.04 * s, line, egui::StrokeKind::Middle);
         }
         Icon::Text => {
             seg(p(0.18, 0.18), p(0.82, 0.18), thick);

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use view::style::Theme;
 
 use crate::keymap::{Action, Keymap, Shortcut};
+use crate::units::Unit;
 
 const RECENT: usize = 10;
 
@@ -17,6 +18,8 @@ const RECENT: usize = 10;
 #[serde(default)]
 pub struct Settings {
     pub theme: Theme,
+    /// Display unit of lengths.
+    pub unit: Unit,
     /// Recently opened or saved projects, newest first.
     pub recent: Vec<PathBuf>,
     /// Key bindings that differ from the defaults.
@@ -110,7 +113,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sub/settings.json");
         assert_eq!(Settings::load_from(&path), Settings::default());
-        let mut s = Settings { theme: Theme::Light, ..Default::default() };
+        let mut s = Settings { theme: Theme::Light, unit: Unit::Mil, ..Default::default() };
         for i in 0..12 {
             s.add_recent(&dir.path().join(format!("p{i}")));
         }

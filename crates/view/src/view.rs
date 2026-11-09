@@ -35,6 +35,16 @@ impl ViewKind {
 
 type RLayer = render::LayerId;
 
+/// A layer the user can show or hide (layer menus).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LayerEntry {
+    pub layer: RLayer,
+    /// What the layer's content is drawn in, if it has one colour.
+    pub color: Option<Color>,
+    /// Menus separate entries of different groups.
+    pub group: u8,
+}
+
 struct SchLayers {
     body_fill: RLayer,
     body: RLayer,
@@ -184,6 +194,39 @@ impl View {
         let hover = scene.add_layer("Hover");
         let selection = scene.add_layer("Selection");
         (scene, layers, hover, selection)
+    }
+
+    /// The user-facing layers in menu order with their colours: copper top to bottom,
+    /// then top and bottom technical layers, the outline and the overlays.
+    pub fn layer_menu(&self) -> Vec<LayerEntry> {
+        let p = pal();
+        let e = |layer, color, group| LayerEntry { layer, color, group };
+        match &self.layers {
+            Layers::Sch(l) => vec![
+                e(l.body_fill, Some(p.sch_body_fill), 0),
+                e(l.body, Some(p.sch_body), 0),
+                e(l.pins, Some(p.sch_pin), 0),
+                e(l.pin_text, Some(p.sch_pin_text), 0),
+                e(l.wires, Some(p.sch_wire), 1),
+                e(l.labels, Some(p.sch_label), 1),
+                e(l.text, Some(p.sch_text), 1),
+            ],
+            Layers::Board(b) => {
+                let board = |id: LayerId, group| e(b.map[&id], Some(board_layer_color(id)), group);
+                let mut v: Vec<LayerEntry> = b.copper.iter().map(|&id| board(id, 0)).collect();
+                v.extend([e(b.vias, Some(p.via), 1), e(b.holes, None, 1)]);
+                use LayerId as L;
+                for (group, ids) in [
+                    (2, [L::TOP_SILK, L::TOP_FAB, L::TOP_COURTYARD, L::TOP_MASK, L::TOP_PASTE]),
+                    (3, [L::BOTTOM_SILK, L::BOTTOM_FAB, L::BOTTOM_COURTYARD, L::BOTTOM_MASK, L::BOTTOM_PASTE]),
+                ] {
+                    v.extend(ids.into_iter().map(|id| board(id, group)));
+                }
+                v.push(board(L::OUTLINE, 4));
+                v.extend([e(b.pad_numbers, None, 5), e(b.ratsnest, Some(p.ratsnest), 5)]);
+                v
+            }
+        }
     }
 
     /// Number of render layers that are user facing (overlays excluded).
