@@ -1,9 +1,10 @@
 //! Scripted input for screenshots and manual testing (development aid):
 //! `--script "key W; click 0,0; move 10.16,5.08; wait 5"`. Coordinates are schematic
-//! world millimetres (`board` switches to board coordinates, `schematic` back; `ui-click
+//! world millimetres (`board` switches to the board tab and coordinates, `schematic` back; `ui-click
 //! x,y` clicks at a screen position in points); each step runs a few frames after the previous one.
 
 use std::collections::VecDeque;
+use view::ViewKind;
 
 use egui::{Event, Key, Modifiers, PointerButton, Pos2};
 
@@ -38,6 +39,11 @@ pub struct Script {
 const GAP: u32 = 3;
 
 impl Script {
+    /// The view the script currently works in (its tab is brought to the front).
+    pub fn view(&self) -> ViewKind {
+        if self.board { ViewKind::Board } else { ViewKind::Schematic }
+    }
+
     pub fn parse(text: &str) -> Result<Script, String> {
         let mut steps = VecDeque::from([Step::Wait(20)]);
         for cmd in text.split(';').map(str::trim).filter(|c| !c.is_empty()) {

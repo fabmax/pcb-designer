@@ -145,13 +145,7 @@ impl PcbApp {
         let rs = cc.wgpu_render_state.as_ref().expect("wgpu renderer");
         CanvasResources::install(rs);
 
-        let mut tiles = Tiles::default();
-        let sch = tiles.insert_pane(Tab::View(ViewKind::Schematic));
-        let pcb = tiles.insert_pane(Tab::View(ViewKind::Board));
-        let left = tiles.insert_tab_tile(vec![sch]);
-        let right = tiles.insert_tab_tile(vec![pcb]);
-        let root = tiles.insert_horizontal_tile(vec![left, right]);
-        let tree = Tree::new(egui::Id::unique("main_tree"), root, tiles);
+        let tree = default_tree();
 
         let mut status = None;
         let doc = match opts.startup {
@@ -701,13 +695,67 @@ impl PcbApp {
         self.sch.place(part);
     }
 
-    /// Give the schematic tab keyboard focus and bring it to the front.
-    fn focus_schematic(&mut self) {
-        self.active = ViewKind::Schematic;
+    /// After tab changes (clicks, drag and drop, closing): keyboard focus goes to a view
+    /// or library that is visible.
+    fn follow_visible_tabs(&mut self) {
+        let visible: Vec<Tab> =
+            self.tree.active_tiles().into_iter().filter_map(|t| self.tree.tiles.get_pane(&t).copied()).collect();
+        if let Some(key) = self.focus_lib
+            && !visible.contains(&Tab::Library(key))
+        {
+            self.focus_lib = None;
+        }
+        if self.focus_lib.is_none() && !visible.contains(&Tab::View(self.active)) {
+            match visible.iter().find_map(|t| if let Tab::View(k) = t { Some(*k) } else { None }) {
+                Some(kind) => self.active = kind,
+                None => {
+                    self.focus_lib = visible.iter().find_map(|t| if let Tab::Library(k) = t { Some(*k) } else { None })
+                }
+            }
+        }
+    }
+
+    /// Schematic and PCB are in different tab groups (visible at the same time).
+    fn is_side_by_side(&self) -> bool {
+        let parent = |k| self.tree.tiles.find_pane(&Tab::View(k)).and_then(|t| self.tree.tiles.parent_of(t));
+        parent(ViewKind::Schematic) != parent(ViewKind::Board)
+    }
+
+    /// Rearrange: everything as tabs of one area, or schematic (and libraries) left and
+    /// the PCB right.
+    fn set_layout(&mut self, side_by_side: bool) {
+        let libs: Vec<Tab> = self.libraries.iter().map(|l| Tab::Library(l.key)).collect();
+        let mut tree = if side_by_side { side_by_side_tree() } else { default_tree() };
+        let group = tree
+            .tiles
+            .find_pane(&Tab::View(ViewKind::Schematic))
+            .and_then(|t| tree.tiles.parent_of(t))
+            .expect("schematic tab");
+        for tab in libs {
+            let tile = tree.tiles.insert_pane(tab);
+            if let Some(Tile::Container(c)) = tree.tiles.get_mut(group) {
+                c.add_child(tile);
+            }
+        }
+        self.tree = tree;
+        self.show_view(self.active);
+        for pane in &mut self.panes {
+            pane.canvas.request_fit();
+        }
+    }
+
+    /// Bring a view's tab to the front and give it keyboard focus.
+    fn show_view(&mut self, kind: ViewKind) {
+        self.active = kind;
         self.focus_lib = None;
-        if let Some(tile) = self.tree.tiles.find_pane(&Tab::View(ViewKind::Schematic)) {
+        if let Some(tile) = self.tree.tiles.find_pane(&Tab::View(kind)) {
             self.tree.make_active(|id, _| id == tile);
         }
+    }
+
+    /// Give the schematic tab keyboard focus and bring it to the front.
+    fn focus_schematic(&mut self) {
+        self.show_view(ViewKind::Schematic);
     }
 
     fn set_sch_tool(&mut self, tool: SchTool) {
@@ -720,9 +768,21 @@ impl PcbApp {
     }
 
     /// Cross-probing: the active view's selection highlights the matching objects in the
-    /// other view, and nets on the board. The net being routed is highlighted too.
+    /// other view, and nets on the board. The net being routed is highlighted too. With
+    /// nothing selected in the active view, the other view's selection probes (select in
+    /// the schematic, switch to the board tab: the footprints are highlighted).
     fn update_highlights(&mut self) {
-        let from = self.active;
+        let other_kind = match self.active {
+            ViewKind::Schematic => ViewKind::Board,
+            ViewKind::Board => ViewKind::Schematic,
+        };
+        let from = if self.panes[self.active as usize].it.selection.is_empty()
+            && !self.panes[other_kind as usize].it.selection.is_empty()
+        {
+            other_kind
+        } else {
+            self.active
+        };
         let selection = self.panes[from as usize].it.selection.clone();
         let routing = self.pcb.routing_net().or(self.pcb.zone_net()).map(str::to_string);
         let key = Some((from, selection.clone(), self.doc.revision, routing.clone()));
@@ -1019,6 +1079,14 @@ impl PcbApp {
                 ui.separator();
                 self.menu_item(ui, "Back", Action::NavigateBack, back);
                 self.menu_item(ui, "Forward", Action::NavigateForward, forward);
+                ui.separator();
+                let side = self.is_side_by_side();
+                if ui.radio(!side, "Tabs").on_hover_text("Schematic and PCB as full-size tabs").clicked() && side {
+                    self.set_layout(false);
+                }
+                if ui.radio(side, "Side by side").on_hover_text("Schematic left, PCB right").clicked() && !side {
+                    self.set_layout(true);
+                }
                 ui.separator();
                 let current = view::style::theme();
                 for &t in view::style::Theme::ALL {
@@ -1767,6 +1835,12 @@ impl eframe::App for PcbApp {
             };
             self.tree.ui(&mut behavior, ui);
         });
+        self.follow_visible_tabs();
+        if let Some(kind) = self.script.as_ref().map(Script::view)
+            && (kind != self.active || self.focus_lib.is_some())
+        {
+            self.show_view(kind);
+        }
 
         for key in std::mem::take(&mut self.close_requests) {
             self.close_library(key);
@@ -1808,5 +1882,49 @@ impl eframe::App for PcbApp {
         }
         self.update_title(&ctx);
         self.screenshot_tick(&ctx);
+    }
+}
+
+/// Schematic and board as tabs of one full-size area (schematic in front). Tabs can be
+/// dragged apart to work side by side.
+fn default_tree() -> Tree<Tab> {
+    let mut tiles = Tiles::default();
+    let sch = tiles.insert_pane(Tab::View(ViewKind::Schematic));
+    let pcb = tiles.insert_pane(Tab::View(ViewKind::Board));
+    let root = tiles.insert_tab_tile(vec![sch, pcb]);
+    let mut tree = Tree::new(egui::Id::unique("main_tree"), root, tiles);
+    tree.make_active(|id, _| id == sch);
+    tree
+}
+
+/// Schematic left, PCB right (each in its own tab group).
+fn side_by_side_tree() -> Tree<Tab> {
+    let mut tiles = Tiles::default();
+    let sch = tiles.insert_pane(Tab::View(ViewKind::Schematic));
+    let pcb = tiles.insert_pane(Tab::View(ViewKind::Board));
+    let left = tiles.insert_tab_tile(vec![sch]);
+    let right = tiles.insert_tab_tile(vec![pcb]);
+    let root = tiles.insert_horizontal_tile(vec![left, right]);
+    Tree::new(egui::Id::unique("main_tree"), root, tiles)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn visible(tree: &Tree<Tab>) -> Vec<Tab> {
+        tree.active_tiles().into_iter().filter_map(|t| tree.tiles.get_pane(&t).copied()).collect()
+    }
+
+    #[test]
+    fn default_layout_is_tabs_with_the_schematic_in_front() {
+        let mut tree = default_tree();
+        let root = tree.root.unwrap();
+        assert!(matches!(tree.tiles.get(root), Some(Tile::Container(Container::Tabs(t))) if t.children.len() == 2));
+        assert_eq!(visible(&tree), vec![Tab::View(ViewKind::Schematic)]);
+        let pcb = tree.tiles.find_pane(&Tab::View(ViewKind::Board)).unwrap();
+        tree.make_active(|id, _| id == pcb);
+        assert_eq!(visible(&tree), vec![Tab::View(ViewKind::Board)]);
+        assert_eq!(visible(&side_by_side_tree()).len(), 2, "both views visible side by side");
     }
 }

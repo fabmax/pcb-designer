@@ -678,3 +678,17 @@ and level of detail for tiny primitives.
   - Saved window layout and pane sizes. The eframe persistence feature is off.
   - Per-layer colour customisation.
   - UI scale.
+
+## GUI refinements (2026-11-09)
+
+- **Default layout: tabs.** Schematic and PCB are full-size tabs of one area, with the
+  schematic in front. The usual workflow is schematic first, then layout, so a
+  permanent split wasted half the screen.
+  - View → Tabs / Side by side switches layouts; library tabs stay with the schematic.
+    Dragging tabs still works for any other arrangement.
+  - Keyboard focus follows the visible tab, whether it changed by a click, drag and
+    drop or closing a tab.
+  - Cross-probing works across tabs: with nothing selected in the active view, the
+    other view's selection is highlighted. For example, select R1 in the schematic,
+    open the PCB tab, and R1's footprint is highlighted.
+  - The script step `board` (dev aid) brings the PCB tab to the front.
