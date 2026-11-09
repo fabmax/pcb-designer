@@ -53,6 +53,46 @@ pub fn panel_frame(outer: Margin) -> Frame {
     Frame::NONE.fill(panel()).corner_radius(RADIUS).inner_margin(Margin::same(8)).outer_margin(outer)
 }
 
+/// A modal dialog: a title bar in the accent colour over `width` points of content with
+/// generous padding. Closes on Esc or a click outside (see `ModalResponse::should_close`).
+pub fn dialog<R>(
+    ctx: &egui::Context,
+    id: egui::Id,
+    title: &str,
+    width: f32,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::ModalResponse<R> {
+    const PAD: i8 = 18;
+    let r = RADIUS;
+    let frame = Frame::NONE
+        .fill(panel())
+        .stroke(Stroke::new(1.0, border()))
+        .corner_radius(r)
+        .shadow(ctx.global_style().visuals.popup_shadow);
+    egui::Modal::new(id).frame(frame).show(ctx, |ui| {
+        ui.set_width(width + 2.0 * f32::from(PAD));
+        let spacing = ui.spacing().item_spacing;
+        ui.spacing_mut().item_spacing.y = 0.0;
+        let bar = Frame::NONE
+            .fill(panel_dark())
+            .corner_radius(CornerRadius { nw: r - 1, ne: r - 1, sw: 0, se: 0 })
+            .inner_margin(Margin { left: PAD, right: PAD, top: 11, bottom: 10 })
+            .show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                ui.label(egui::RichText::new(title).size(17.0).strong().color(accent()));
+            });
+        let line = bar.response.rect;
+        ui.painter().hline(line.x_range(), line.bottom(), Stroke::new(1.0, border()));
+        Frame::NONE
+            .inner_margin(Margin { left: PAD, right: PAD, top: 14, bottom: PAD })
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing = spacing;
+                add_contents(ui)
+            })
+            .inner
+    })
+}
+
 /// Round the corners of `rect` after its content was painted (content that can't be
 /// clipped, like the GPU canvases): masks the corners with the window background and
 /// smooths the rounded edge.

@@ -29,13 +29,14 @@ impl NamePrompt {
     /// skipped, `None` while open.
     pub fn ui(&mut self, ctx: &egui::Context) -> Option<Option<String>> {
         let mut outcome = None;
-        let modal = egui::Modal::new(egui::Id::unique("name_prompt")).show(ctx, |ui| {
-            ui.set_width(380.0);
+        let title = match self.prompt {
+            SchPrompt::BusName { .. } => "Name the bus",
+            SchPrompt::EntryNet { .. } => "Name the signal",
+        };
+        let modal = theme::dialog(ctx, egui::Id::unique("name_prompt"), title, 380.0, |ui| {
             let valid = self.prompt.check(&self.text);
             match &self.prompt {
                 SchPrompt::BusName { .. } => {
-                    ui.heading("Name the bus");
-                    ui.add_space(4.0);
                     ui.label("A bus groups signals. Its name lists them:");
                     ui.add_space(2.0);
                     egui::Grid::new("bus_rules").num_columns(2).spacing([12.0, 2.0]).show(ui, |ui| {
@@ -54,8 +55,6 @@ impl NamePrompt {
                     hint(ui, "Signals leave the bus through bus entries and connect by labels with these names.");
                 }
                 SchPrompt::EntryNet { bus, members, used, .. } => {
-                    ui.heading("Name the signal");
-                    ui.add_space(4.0);
                     ui.label(format!("This wire leaves bus {bus}. Label it with one of its signals:"));
                     ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
