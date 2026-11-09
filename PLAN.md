@@ -840,3 +840,28 @@ KiCad's model, so a later KiCad project import maps one to one.
 - **Not yet:** KiCad's "unfold bus" and buses across sheets (sheet pins and hierarchical
   labels come with multi-sheet schematics).
 
+### Bus naming prompts (2026-11-09)
+
+- **When it asks.**
+  - Finishing a bus chain (on a bus, by double-click, Esc or switching tools) whose bus
+    has no name asks for one.
+  - A finished wire chain or a placed entry that leaves an unnamed net with wires or
+    pins on an entry of a named bus asks for the signal. The bus's members are offered;
+    those that are already nets are dimmed, and the first unused one is suggested.
+  - Named nets are left alone (a wrong name shows up as a problem).
+- **Where the label goes.**
+  - Bus: the middle of the longest new segment, snapped to the grid if that stays on the
+    segment, rotated along it.
+  - Signal: on the wire leaving the entry, 2.54 mm from the entry's wire end, rotated
+    along the wire (180°/270° text stays readable). If no wire ends there, at the
+    wire end.
+- **Split.**
+  - `SchPlacer` collects what finished chains and entries created (`finished`).
+    `take_prompt(doc, grid)` checks them against connectivity once and returns a
+    `SchPrompt`.
+  - `SchPrompt::check` and `label` validate the answer: a bus name for buses, a non-bus
+    name for signals.
+  - The app's `name_prompt.rs` shows an egui `Modal`, with Enter to confirm and
+    Esc/Skip/click outside to skip. Keyboard shortcuts are off while it is open.
+  - The label is its own undo step, after the bus or wire.
+

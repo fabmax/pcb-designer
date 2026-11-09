@@ -14,6 +14,8 @@ use model::*;
 use view::item::Item;
 use view::pcb_tools::{PcbPlacer, PcbTool};
 use view::sch_tools::{SchPlacer, SchTool};
+
+use crate::name_prompt::NamePrompt;
 use view::tools::Tool;
 use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
 
@@ -130,6 +132,8 @@ pub struct PcbApp {
     kicad: KicadImport,
     /// Schematic creation tools.
     sch: SchPlacer,
+    /// Asking for the name of a new bus or of a signal leaving one.
+    name_prompt: Option<NamePrompt>,
     /// Board creation tools.
     pcb: PcbPlacer,
     /// Inputs of the current cross-probe highlights (to skip unchanged frames).
@@ -194,6 +198,7 @@ impl PcbApp {
             agent: Agent::new(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
             kicad: KicadImport::new(opts.kicad_paths.clone(), crate::settings::kicad_dir()),
             sch: SchPlacer::default(),
+            name_prompt: None,
             pcb: PcbPlacer::default(),
             probe_key: None,
             script: None,
@@ -257,6 +262,28 @@ impl PcbApp {
 
     fn pane(&mut self, kind: ViewKind) -> &mut Pane {
         &mut self.panes[kind as usize]
+    }
+
+    /// After drawing a bus or a wire to a bus entry, ask for the missing name and add
+    /// the label.
+    fn name_prompt_ui(&mut self, ctx: &egui::Context) {
+        if self.name_prompt.is_none() {
+            let grid = self.panes[ViewKind::Schematic as usize].it.grid;
+            self.name_prompt = self.sch.take_prompt(&mut self.doc, grid).map(NamePrompt::new);
+        }
+        let Some(dialog) = &mut self.name_prompt else { return };
+        let Some(answer) = dialog.ui(ctx) else { return };
+        let command = answer.map(|name| dialog.prompt.label(&name));
+        self.name_prompt = None;
+        match command {
+            Some(Ok(cmd)) => {
+                if let Err(e) = self.doc.execute(cmd) {
+                    self.set_status(e.to_string());
+                }
+            }
+            Some(Err(e)) => self.set_status(e),
+            None => {}
+        }
     }
 
     fn set_status(&mut self, msg: impl Into<String>) {
@@ -1837,7 +1864,8 @@ impl eframe::App for PcbApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.handle_close(&ctx);
-        if !self.record_shortcut(&ctx) {
+        // The name dialog takes the keys while it is open.
+        if !self.record_shortcut(&ctx) && self.name_prompt.is_none() {
             for action in self.keymap.triggered(&ctx, self.context()) {
                 self.run_action(action);
             }
@@ -1993,6 +2021,7 @@ impl eframe::App for PcbApp {
                 pane.it.refresh(&mut self.doc.target(pane.kind));
             }
         }
+        self.name_prompt_ui(&ctx);
         self.settings_window(&ctx);
         let libs: Vec<(u64, String)> = self.libraries.iter().map(|l| (l.key, l.lib.name().to_string())).collect();
         self.kicad.poll();

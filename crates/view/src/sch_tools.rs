@@ -2,8 +2,8 @@
 //! and part placement, with a ghost preview under the cursor. Independent of the GUI
 //! toolkit.
 
-use editor_core::Command;
 use editor_core::connectivity::{Connectivity, on_segment_inside};
+use editor_core::{Command, bus};
 use model::*;
 
 use crate::document::Document;
@@ -53,7 +53,7 @@ impl SchTool {
             SchTool::Select => "Click/box to select · drag to move (wires follow) · R rotate · X mirror · Del delete",
             SchTool::Wire => "Click to start · click corners · ends on a pin or wire · / corner direction · Esc done",
             SchTool::Bus => {
-                "Click to start · click corners · ends on a bus · / corner direction · name it with a label like D[0..7]"
+                "Click to start · click corners · ends on a bus · / corner direction · Esc done (asks for a name)"
             }
             SchTool::BusEntry => "Click on a bus to place an entry · R rotate · X mirror · Esc done",
             SchTool::Label | SchTool::Power => "Click to place · R rotate · Esc done",
@@ -122,6 +122,136 @@ pub enum SchGhost {
     Target(Point),
 }
 
+/// A name the editor asks for after drawing (see [`SchPlacer::take_prompt`]). Answering
+/// adds a label ([`SchPrompt::label`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum SchPrompt {
+    /// A new bus has no name; its label goes to `pos`.
+    BusName { pos: Point, rotation: Angle },
+    /// An unnamed net leaves bus `bus` through an entry; its label goes to `pos`.
+    EntryNet {
+        bus: String,
+        /// The bus's members, and those that are already a net.
+        members: Vec<String>,
+        used: Vec<String>,
+        pos: Point,
+        rotation: Angle,
+    },
+}
+
+impl SchPrompt {
+    /// Why `name` can't be the answer, if it can't.
+    pub fn check(&self, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        match self {
+            _ if name.is_empty() => Err("Enter a name".into()),
+            SchPrompt::BusName { .. } if !bus::is_bus_name(name) => {
+                Err("Not a bus name: use D[0..7], {SDA SCL} or I2C{SDA SCL}".into())
+            }
+            SchPrompt::EntryNet { .. } if bus::is_bus_name(name) => Err("A signal name, not a bus name".into()),
+            _ => Ok(()),
+        }
+    }
+
+    /// The command adding the label `name`.
+    pub fn label(&self, name: &str) -> Result<Command, String> {
+        self.check(name)?;
+        let (SchPrompt::BusName { pos, rotation } | SchPrompt::EntryNet { pos, rotation, .. }) = self;
+        Ok(Command::AddLabel {
+            sheet: None,
+            pos: *pos,
+            name: name.trim().to_string(),
+            kind: LabelKind::Net,
+            rotation: *rotation,
+        })
+    }
+}
+
+/// Direction of an axis-aligned vector as a label rotation (`None` if diagonal or zero).
+fn axis_rotation(d: Point) -> Option<Angle> {
+    match (d.x.signum(), d.y.signum()) {
+        (1, 0) => Some(Angle::ZERO),
+        (0, 1) => Some(Angle::DEG90),
+        (-1, 0) => Some(Angle::deg(180.0)),
+        (0, -1) => Some(Angle::DEG270),
+        _ => None,
+    }
+}
+
+fn prompt_for(project: &Project, conn: &Connectivity, finished: &[ObjectId], grid: Coord) -> Option<SchPrompt> {
+    let s = &project.schematic;
+    // A new bus without a name: label the middle of its longest new segment.
+    let new_bus: Vec<&BusWire> = finished
+        .iter()
+        .filter_map(|id| if let ObjectId::BusWire(w) = id { s.bus_wires.get(*w) } else { None })
+        .collect();
+    if let Some(&first) = new_bus.first() {
+        if !conn.bus_of(ObjectId::BusWire(first.id)).is_some_and(|b| b.name.is_empty()) {
+            return None;
+        }
+        let w = new_bus.iter().max_by_key(|w| (w.b - w.a).length() as i64)?;
+        let rotation = match axis_rotation(w.b - w.a) {
+            Some(r) if r == Angle::ZERO || r == Angle::deg(180.0) => Angle::ZERO,
+            Some(_) => Angle::DEG90,
+            None => Angle::ZERO,
+        };
+        let mid = Point::new((w.a.x + w.b.x) / 2, (w.a.y + w.b.y) / 2);
+        let snapped = if grid > 0 {
+            Point::new(
+                (mid.x as f64 / grid as f64).round() as Coord * grid,
+                (mid.y as f64 / grid as f64).round() as Coord * grid,
+            )
+        } else {
+            mid
+        };
+        let on = snapped == w.a || snapped == w.b || on_segment_inside(snapped, w.a, w.b);
+        return Some(SchPrompt::BusName { pos: if on { snapped } else { mid }, rotation });
+    }
+
+    // An unnamed net now reaching a bus entry: offer the bus's members.
+    for &id in finished {
+        let Some(net) = conn.net_of(id) else { continue };
+        if net.named || (net.wires.is_empty() && net.pins.is_empty()) {
+            continue;
+        }
+        for &e in &net.entries {
+            let Some(entry) = s.bus_entries.get(e) else { continue };
+            let Some(bus) = conn.bus_of(ObjectId::BusEntry(e)) else { continue };
+            if bus.members.is_empty() {
+                continue;
+            }
+            // On the wire leaving the entry, a grid step away from it.
+            let end = entry.wire_end();
+            let leaving = net.wires.iter().filter_map(|&w| s.wires.get(w)).find_map(|w| {
+                let other = if w.a == end {
+                    w.b
+                } else if w.b == end {
+                    w.a
+                } else {
+                    return None;
+                };
+                let rotation = axis_rotation(other - end)?;
+                let len = (other - end).length();
+                let step = (BusEntry::SIZE as f64).min(len);
+                let d = other - end;
+                let pos = end + Point::new((d.x as f64 * step / len) as Coord, (d.y as f64 * step / len) as Coord);
+                Some((pos, rotation))
+            });
+            let (pos, rotation) = leaving
+                .unwrap_or_else(|| (end, if entry.dir.offset().x >= 0 { Angle::ZERO } else { Angle::deg(180.0) }));
+            let used = bus.members.iter().filter(|m| conn.net(m).is_some()).cloned().collect();
+            return Some(SchPrompt::EntryNet {
+                bus: bus.name.clone(),
+                members: bus.members.clone(),
+                used,
+                pos,
+                rotation,
+            });
+        }
+    }
+    None
+}
+
 /// Id of ghost objects (never in a project).
 const GHOST_ID: Id = Id::from_u128(0);
 
@@ -142,6 +272,10 @@ pub struct SchPlacer {
     pub placing: Option<Placing>,
     /// Start of the wire segment being drawn.
     start: Option<Point>,
+    /// Wires or bus wires of the chain being drawn.
+    chain: Vec<ObjectId>,
+    /// Objects of finished chains and placed entries, for [`SchPlacer::take_prompt`].
+    finished: Vec<ObjectId>,
     cursor: Option<Point>,
     /// The cursor is on a connection point.
     on_target: bool,
@@ -156,6 +290,8 @@ impl Default for SchPlacer {
             settings: SchSettings::default(),
             placing: None,
             start: None,
+            chain: Vec::new(),
+            finished: Vec::new(),
             cursor: None,
             on_target: false,
             shown: Vec::new(),
@@ -213,8 +349,8 @@ impl SchPlacer {
     }
 
     pub fn set_tool(&mut self, tool: SchTool) {
+        self.end_chain();
         self.tool = tool;
-        self.start = None;
         self.on_target = false;
         if tool != SchTool::Place {
             self.placing = None;
@@ -255,7 +391,8 @@ impl SchPlacer {
 
     /// Escape: end the wire being drawn, or leave the tool. Returns true if the tool was left.
     pub fn escape(&mut self) -> bool {
-        if self.start.take().is_some() {
+        if self.start.is_some() {
+            self.end_chain();
             return false;
         }
         self.set_tool(SchTool::Select);
@@ -288,7 +425,7 @@ impl SchPlacer {
                 };
                 if start == p {
                     // Clicking the last point again ends the chain.
-                    self.start = None;
+                    self.end_chain();
                     placed.finished = true;
                     return Ok(placed);
                 }
@@ -303,7 +440,7 @@ impl SchPlacer {
                     return Ok(placed);
                 };
                 if start == p {
-                    self.start = None;
+                    self.end_chain();
                     placed.finished = true;
                     return Ok(placed);
                 }
@@ -355,11 +492,37 @@ impl SchPlacer {
         let changes = doc.execute(command).map_err(|e| e.to_string())?;
         placed.objects = changes.changes.iter().filter(|c| c.is_insert()).map(|c| c.id).collect();
         match self.tool {
+            SchTool::Wire | SchTool::Bus => {
+                self.chain
+                    .extend(placed.objects.iter().filter(|id| matches!(id, ObjectId::Wire(_) | ObjectId::BusWire(_))));
+                if placed.finished {
+                    self.end_chain();
+                }
+            }
+            SchTool::BusEntry => self.finished.extend(placed.objects.iter().copied()),
             SchTool::Label => self.settings.label = increment_name(&self.settings.label),
             SchTool::Place => self.advance_unit(doc.project(), &placed.objects),
             _ => {}
         }
         Ok(placed)
+    }
+
+    /// Stop drawing the current chain; its wires are checked by [`Self::take_prompt`].
+    fn end_chain(&mut self) {
+        self.start = None;
+        self.finished.append(&mut self.chain);
+    }
+
+    /// A label to ask for after a chain or entry was finished: the name of a new bus that
+    /// has none, or the signal of an unnamed net reaching a bus entry. Asked once per
+    /// finished chain or entry; `grid` places bus labels on grid points.
+    pub fn take_prompt(&mut self, doc: &mut Document, grid: Coord) -> Option<SchPrompt> {
+        if self.finished.is_empty() {
+            return None;
+        }
+        let finished = std::mem::take(&mut self.finished);
+        let conn = doc.current_connectivity().clone();
+        prompt_for(doc.project(), &conn, &finished, grid)
     }
 
     /// After placing a unit: the next click places the component's next unit, or a new

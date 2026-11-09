@@ -5,7 +5,7 @@ use editor_core::query::pin_positions;
 use model::builtin::{self, PART_OPAMP, PART_RESISTOR};
 use model::*;
 use view::Document;
-use view::sch_tools::{SchGhost, SchPlacer, SchTool};
+use view::sch_tools::{SchGhost, SchPlacer, SchPrompt, SchTool};
 
 fn doc_with(parts: Vec<Id>, library: Library) -> Document {
     let mut doc = Document::new(Project::new("T"));
@@ -178,4 +178,77 @@ fn draw_a_bus_with_entries() {
     assert_eq!(c.buses[0].members, ["D0", "D1", "D2", "D3"]);
     assert!(c.problems.is_empty(), "{:?}", c.problems);
     assert_eq!(c.nets.iter().filter(|n| n.named).map(|n| n.name.as_str()).collect::<Vec<_>>(), ["D2"]);
+}
+
+#[test]
+fn new_buses_and_signals_leaving_them_ask_for_a_name() {
+    let mut doc = doc_with(vec![PART_RESISTOR], builtin::starter_library());
+    let mut t = SchPlacer::default();
+    let p = Point::mm;
+    let grid = mm(1.27);
+
+    // A finished bus without a name asks for one; the label goes to its middle.
+    t.set_tool(SchTool::Bus);
+    t.click(&mut doc, p(0.0, 0.0)).unwrap();
+    t.click(&mut doc, p(0.0, 22.86)).unwrap();
+    assert_eq!(t.take_prompt(&mut doc, grid), None, "still drawing");
+    assert!(!t.escape(), "Esc ends the chain");
+    let prompt = t.take_prompt(&mut doc, grid).expect("asks for the bus name");
+    assert_eq!(prompt, SchPrompt::BusName { pos: p(0.0, 11.43), rotation: Angle::DEG90 });
+    assert_eq!(t.take_prompt(&mut doc, grid), None, "asked once");
+    assert!(prompt.label("D0").is_err(), "not a bus name");
+    doc.execute(prompt.label(" D[0..3] ").unwrap()).unwrap();
+    assert_eq!(doc.current_connectivity().buses[0].name, "D[0..3]");
+
+    // A bus continuing the named one doesn't ask.
+    t.click(&mut doc, p(0.0, 22.86)).unwrap();
+    t.click(&mut doc, p(10.16, 22.86)).unwrap();
+    t.escape();
+    assert_eq!(t.take_prompt(&mut doc, grid), None);
+
+    // A wire from a pin to an entry asks for the signal, offering the bus's members.
+    t.set_tool(SchTool::BusEntry);
+    t.click(&mut doc, p(0.0, 5.08)).unwrap();
+    assert_eq!(t.take_prompt(&mut doc, grid), None, "nothing leaves the entry yet");
+    t.set_tool(SchTool::Select);
+    let r = doc
+        .execute(Command::PlacePart {
+            part: PART_RESISTOR,
+            variant: None,
+            sheet: None,
+            pos: p(20.32, 7.62),
+            rotation: Angle::ZERO,
+            mirror: false,
+            refdes: None,
+            value: None,
+        })
+        .unwrap()
+        .ids()
+        .find_map(|id| if let ObjectId::Symbol(s) = id { Some(s) } else { None })
+        .unwrap();
+    let pin1 = pin(&doc, r, "1");
+    t.set_tool(SchTool::Wire);
+    t.click(&mut doc, pin1).unwrap();
+    assert!(t.click(&mut doc, p(2.54, 7.62)).unwrap().finished);
+    let prompt = t.take_prompt(&mut doc, grid).expect("asks for the signal");
+    let SchPrompt::EntryNet { bus, members, used, pos, rotation } = &prompt else { panic!("{prompt:?}") };
+    assert_eq!((bus.as_str(), members.len(), used.len()), ("D[0..3]", 4, 0));
+    assert_eq!((*pos, *rotation), (p(5.08, 7.62), Angle::ZERO), "on the wire, next to the entry");
+    doc.execute(prompt.label("D1").unwrap()).unwrap();
+    let c = doc.current_connectivity();
+    assert!(c.problems.is_empty(), "{:?}", c.problems);
+    assert_eq!(c.net("D1").unwrap().pins.len(), 1);
+
+    // An entry placed onto an unnamed wire asks too, now with D1 in use; a named one doesn't.
+    t.set_tool(SchTool::Wire);
+    t.click(&mut doc, p(2.54, 15.24)).unwrap();
+    t.click(&mut doc, p(12.7, 15.24)).unwrap();
+    t.escape();
+    assert_eq!(t.take_prompt(&mut doc, grid), None, "not on an entry yet");
+    t.set_tool(SchTool::BusEntry);
+    t.click(&mut doc, p(0.0, 12.7)).unwrap();
+    let Some(SchPrompt::EntryNet { used, .. }) = t.take_prompt(&mut doc, grid) else { panic!("asks") };
+    assert_eq!(used, ["D1"]);
+    t.click(&mut doc, p(0.0, 10.16)).unwrap();
+    assert_eq!(t.take_prompt(&mut doc, grid), None, "nothing leaves this one");
 }
