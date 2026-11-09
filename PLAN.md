@@ -471,3 +471,48 @@ and level of detail for tiny primitives.
   - ERC (pin type checks).
   - Wire posture that flips automatically with the cursor.
   - Drag of wire segments themselves (moving a wire moves it and drags its neighbours).
+
+## Milestone 7 results (2026-11-09)
+
+- **Board connectivity** (`editor_core::copper`, rebuilt after board or schematic changes):
+  - Copper items: pads (on their side's copper; through-hole on all layers), tracks and
+    vias. Shapes are capsules (tracks, vias, round and oval pads) or polygons (other
+    pads). Items on a common layer that touch form islands (grid broad phase, union-find).
+  - Nets come only from the schematic. A pad gets its pin's net; tracks and vias get the
+    net of the pads in their island. Tracks have no stored net. An island with pads of
+    two nets is reported as a short.
+  - Ratsnest: a minimum spanning tree per net over pad centers, via centers and track
+    ends, with points of one island already connected (Delaunay edges for large nets).
+    "Fully routed" means no ratsnest lines and no shorts.
+  - About 6 ms for 20k pads (10k components, release), on top of the ~13 ms schematic
+    connectivity. Same rule as the schematic: no rebuild during a drag if it is slow.
+- **Layer stack and design rules are undoable:** `SetCopperLayers { count }` (even, 2–32;
+  refuses to drop inner layers that still have copper) and `SetDesignRules`. A change set
+  carries the board setup before and after; the board view rebuilds its layers.
+- **Board tools** (`view::pcb_tools`, toolbar above the PCB with the active layer and
+  routing status, settings in the right panel):
+  - **Route (T):** 45° or 90° corners, straight-first or bend-first (`/`). Clicks snap
+    to pad and via centers and track ends within 8 px. A route ends on copper. L
+    switches to the next copper layer and adds a via at the current end when routing.
+    The net being routed is highlighted.
+  - **Via (Shift+V)** and **Outline (O)**: two corners make a rectangle on the Board
+    Outline layer.
+- **Net highlighting:** the routed net, or the nets of selected tracks and vias.
+  Track and via properties show their net.
+- **Board setup panel** (PCB with nothing selected): copper layer count and design rules,
+  edited live with one undo step per edit.
+- **MCP:** a `get_routing` tool returns unrouted connections (net, from, to), shorts,
+  layers and rules. Agents route with `add_track`/`add_via`.
+- **Demo:** D1 is rotated so its anode faces R1. The new short detection found that the
+  old R1→D1 track crossed D1's cathode pad.
+- **Tests:**
+  - `editor-core/tests/board.rs`: routing removes ratsnest lines, vias, shorts,
+    through-hole pads, a fully routed LED board, undoable layer stack and rules.
+  - `view/tests/pcb_tools.rs`: routing two nets with a layer change through the tool,
+    outline and vias.
+  - MCP e2e: route one ratsnest line.
+- **Not yet:**
+  - Clearance checking while routing (DRC is milestone 9).
+  - Push-and-shove routing; dragging tracks while keeping them connected.
+  - Blind and buried vias in the UI.
+  - Copper graphics inside footprints (from KiCad custom pads) don't count as connections.

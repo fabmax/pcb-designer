@@ -1,6 +1,7 @@
 //! Schematic and board views: incremental scene building, highlights and hit testing.
 
 use editor_core::ChangeSet;
+use editor_core::copper::{BoardConnectivity, Geo};
 use editor_core::query::{footprint_of_instance, symbol_of_instance};
 use model::*;
 use render::{Color, Instance, Scene};
@@ -9,6 +10,7 @@ use std::hash::{Hash, Hasher};
 
 use crate::draw::{Painter, mmf, substitute};
 use crate::index::SpatialIndex;
+use crate::pcb_tools::PcbGhost;
 use crate::sch_tools::SchGhost;
 use crate::style::*;
 
@@ -49,6 +51,7 @@ struct BoardLayers {
     vias: RLayer,
     holes: RLayer,
     pad_numbers: RLayer,
+    ratsnest: RLayer,
 }
 
 enum Layers {
@@ -66,6 +69,8 @@ pub struct View {
     painter: Painter,
     selection: FxHashSet<ObjectId>,
     hover: Option<ObjectId>,
+    /// Highlighted nets (board), by name.
+    nets: Vec<String>,
 }
 
 fn item(id: ObjectId) -> u64 {
@@ -78,6 +83,8 @@ fn item(id: ObjectId) -> u64 {
 const CONNECTIVITY_ITEM: u64 = 3 << 62;
 /// Scene item of the creation tool preview.
 const PREVIEW_ITEM: u64 = (3 << 62) | 1;
+/// Scene item of the highlighted nets.
+const NET_ITEM: u64 = (3 << 62) | 2;
 
 fn overlay_item(id: ObjectId, hover: bool) -> u64 {
     item(id) | if hover { 2 << 62 } else { 1 << 62 }
@@ -96,6 +103,7 @@ impl View {
             painter: Painter::default(),
             selection: FxHashSet::default(),
             hover: None,
+            nets: Vec::new(),
         };
         v.draw_all(project);
         v
@@ -156,10 +164,11 @@ impl View {
                 }
                 let pad_numbers = scene.add_layer("Pad numbers");
                 scene.layer_mut(pad_numbers).min_zoom = 25.0;
+                let ratsnest = scene.add_layer("Ratsnest");
                 for id in [LayerId::TOP_MASK, LayerId::BOTTOM_MASK, LayerId::TOP_PASTE, LayerId::BOTTOM_PASTE] {
                     scene.layer_mut(map[&id]).visible = false;
                 }
-                Layers::Board(BoardLayers { map, copper, vias, holes, pad_numbers })
+                Layers::Board(BoardLayers { map, copper, vias, holes, pad_numbers, ratsnest })
             }
         };
         let hover = scene.add_layer("Hover");
@@ -228,6 +237,11 @@ impl View {
 
     /// Update after a command, undo or redo.
     pub fn apply(&mut self, project: &Project, changes: &ChangeSet) {
+        if changes.setup.is_some() && self.kind == ViewKind::Board {
+            // Layers come and go.
+            self.rebuild(project);
+            return;
+        }
         let mut ids: Vec<ObjectId> = Vec::new();
         for c in &changes.changes {
             let kind = c.id.kind();
@@ -340,6 +354,75 @@ impl View {
             })
             .collect();
         self.scene.set_item(PREVIEW_ITEM, out);
+    }
+
+    /// Show what a board tool would create (empty slice clears).
+    pub fn set_board_preview(&mut self, ghosts: &[PcbGhost]) {
+        if ghosts.is_empty() {
+            self.scene.remove_item(PREVIEW_ITEM);
+            return;
+        }
+        let layer = self.hover_layer;
+        let mut out = Vec::new();
+        for g in ghosts {
+            match *g {
+                PcbGhost::Track { layer: l, a, b, width } => out.push((
+                    layer,
+                    Instance::line(mmf(a), mmf(b), (width as f64 * 1e-6) as f32, board_layer_color(l).with_alpha(0xc0)),
+                )),
+                PcbGhost::Via { pos, diameter } => out
+                    .push((layer, Instance::circle(mmf(pos), (diameter as f64 * 0.5e-6) as f32, VIA.with_alpha(0xc0)))),
+                PcbGhost::Outline(r) => {
+                    let c = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
+                    let color = board_layer_color(LayerId::OUTLINE);
+                    for i in 0..4 {
+                        out.push((layer, Instance::line(mmf(c[i]), mmf(c[(i + 1) % 4]), 0.1, color)));
+                    }
+                }
+                PcbGhost::Target(p) => {
+                    out.push((layer, Instance::circle_outline(mmf(p), 0.5, 0.08, HOVER.with_alpha(0xc0))))
+                }
+            }
+        }
+        self.scene.set_item(PREVIEW_ITEM, out);
+    }
+
+    /// Draw the ratsnest and refresh net highlights (board only).
+    pub fn set_copper(&mut self, _project: &Project, c: &BoardConnectivity) {
+        let Layers::Board(l) = &self.layers else { return };
+        let out: Vec<(RLayer, Instance)> =
+            c.ratsnest.iter().map(|r| (l.ratsnest, Instance::line(mmf(r.a), mmf(r.b), 0.05, RATSNEST))).collect();
+        self.scene.set_item(CONNECTIVITY_ITEM, out);
+        let nets = std::mem::take(&mut self.nets);
+        self.set_nets(c, &nets);
+    }
+
+    /// Highlight all copper of these nets (board only; empty clears).
+    pub fn set_nets(&mut self, c: &BoardConnectivity, nets: &[String]) {
+        self.nets = nets.to_vec();
+        let indices: Vec<u32> = nets.iter().filter_map(|n| c.net_index(n)).collect();
+        if indices.is_empty() {
+            self.scene.remove_item(NET_ITEM);
+            return;
+        }
+        let layer = self.hover_layer;
+        let mut out = Vec::new();
+        for item in c.items.iter().filter(|i| i.net.is_some_and(|n| indices.contains(&n))) {
+            match &item.geo {
+                Geo::Capsule { a, b, r } => {
+                    out.push((layer, Instance::line(mmf(*a), mmf(*b), (*r as f64 * 2e-6) as f32, NET_HIGHLIGHT)))
+                }
+                Geo::Polygon(points) => {
+                    let pts: Vec<[f32; 2]> = points.iter().map(|&p| mmf(p)).collect();
+                    out.extend(render::tess::fill_polygon(&pts, NET_HIGHLIGHT).into_iter().map(|i| (layer, i)));
+                }
+            }
+        }
+        self.scene.set_item(NET_ITEM, out);
+    }
+
+    pub fn highlighted_nets(&self) -> &[String] {
+        &self.nets
     }
 
     // ------------------------------------------------------------------------------------

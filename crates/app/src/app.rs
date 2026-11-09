@@ -7,12 +7,14 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use editor_core::Command;
+use editor_core::copper::CopperItem;
 use editor_core::query::{PartState, part_statuses};
 use egui::{RichText, WidgetText};
 use egui_tiles::{Behavior, Container, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse};
 use model::*;
 use render::gpu::Background;
 use view::item::Item;
+use view::pcb_tools::{PcbPlacer, PcbTool};
 use view::sch_tools::{SchPlacer, SchTool};
 use view::tools::Tool;
 use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
@@ -22,6 +24,7 @@ use crate::canvas::{self, Canvas, CanvasResources};
 use crate::keymap::{Action, Context, Keymap};
 use crate::kicad_import::{ImportAction, KicadImport};
 use crate::library::{LibEvent, LibraryEditor, Open};
+use crate::pcb_ui;
 use crate::properties::Properties;
 use crate::sch_ui;
 use crate::script::Script;
@@ -123,6 +126,8 @@ pub struct PcbApp {
     kicad: KicadImport,
     /// Schematic creation tools.
     sch: SchPlacer,
+    /// Board creation tools.
+    pcb: PcbPlacer,
     script: Option<Script>,
 }
 
@@ -176,6 +181,7 @@ impl PcbApp {
             agent: Agent::new(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
             kicad: KicadImport::new(opts.kicad_paths.clone()),
             sch: SchPlacer::default(),
+            pcb: PcbPlacer::default(),
             script: None,
         };
         match opts.script.as_deref().map(Script::parse) {
@@ -268,6 +274,7 @@ impl PcbApp {
         }
         self.properties = Properties::default();
         self.sch.set_tool(SchTool::Select);
+        self.pcb = PcbPlacer::default();
     }
 
     /// Ask to save unsaved changes. Returns false if the user cancelled.
@@ -675,7 +682,7 @@ impl PcbApp {
             Action::SchPower => SchTool::Power,
             Action::SchJunction => SchTool::Junction,
             Action::ToolSelect => SchTool::Select,
-            Action::SchPosture => {
+            Action::Posture => {
                 self.sch.toggle_posture();
                 return true;
             }
@@ -698,6 +705,42 @@ impl PcbApp {
         true
     }
 
+    fn set_pcb_tool(&mut self, tool: PcbTool) {
+        let pane = &mut self.panes[ViewKind::Board as usize];
+        if tool != PcbTool::Select {
+            pane.it.reset();
+            pane.it.refresh(&mut self.doc.target(ViewKind::Board));
+        }
+        self.pcb.set_tool(tool);
+    }
+
+    /// Board tool shortcuts. Returns true if handled.
+    fn pcb_action(&mut self, action: Action) -> bool {
+        let tool = match action {
+            Action::PcbRoute => PcbTool::Route,
+            Action::PcbVia => PcbTool::Via,
+            Action::PcbOutline => PcbTool::Outline,
+            Action::ToolSelect => PcbTool::Select,
+            Action::Posture => {
+                self.pcb.toggle_posture();
+                return true;
+            }
+            Action::PcbNextLayer => {
+                if let Err(e) = self.pcb.next_layer(&mut self.doc) {
+                    self.set_status(e);
+                }
+                return true;
+            }
+            Action::Cancel if self.pcb.is_placing() => {
+                self.pcb.escape();
+                return true;
+            }
+            _ => return false,
+        };
+        self.set_pcb_tool(tool);
+        true
+    }
+
     fn run_action(&mut self, action: Action) {
         if let Some(key) = self.focus_lib
             && self.lib_action(key, action)
@@ -705,6 +748,9 @@ impl PcbApp {
             return;
         }
         if self.context() == Context::Schematic && self.sch_action(action) {
+            return;
+        }
+        if self.context() == Context::Board && self.pcb_action(action) {
             return;
         }
         let key_action = match action {
@@ -739,7 +785,11 @@ impl PcbApp {
             | Action::SchLabel
             | Action::SchPower
             | Action::SchJunction
-            | Action::SchPosture => return,
+            | Action::Posture
+            | Action::PcbRoute
+            | Action::PcbVia
+            | Action::PcbOutline
+            | Action::PcbNextLayer => return,
         };
         let kind = self.active;
         let pane = &mut self.panes[kind as usize];
@@ -788,7 +838,8 @@ impl PcbApp {
                 None
             }
             Action::New | Action::Open | Action::Save | Action::SaveAs => None,
-            Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction | Action::SchPosture => None,
+            Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction | Action::Posture => None,
+            Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbNextLayer => None,
         };
         if let Some(m) = msg {
             self.set_status(m);
@@ -1239,6 +1290,7 @@ struct TreeBehavior<'a> {
     hovered: &'a mut Option<ViewKind>,
     close_requests: &'a mut Vec<u64>,
     sch: &'a mut SchPlacer,
+    pcb: &'a mut PcbPlacer,
     status: &'a mut Option<(String, Instant)>,
 }
 
@@ -1254,6 +1306,18 @@ impl TreeBehavior<'_> {
                 pane.it.refresh(&mut self.doc.target(kind));
             }
             self.sch.set_tool(tool);
+            *self.active = kind;
+            *self.focus_lib = None;
+        }
+        if kind == ViewKind::Board
+            && let Some(tool) = pcb_ui::toolbar(ui, self.pcb, self.doc)
+        {
+            let pane = &mut self.panes[kind as usize];
+            if tool != PcbTool::Select {
+                pane.it.reset();
+                pane.it.refresh(&mut self.doc.target(kind));
+            }
+            self.pcb.set_tool(tool);
             *self.active = kind;
             *self.focus_lib = None;
         }
@@ -1286,6 +1350,24 @@ impl TreeBehavior<'_> {
             if response.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             }
+        } else if kind == ViewKind::Board && self.pcb.is_placing() {
+            let world = response.hover_pos().map(|p| {
+                let [x, y] = pane.canvas.screen_to_world(p);
+                let raw = Point::mm(x, y);
+                (raw, pane.it.snap(raw))
+            });
+            let tol = (8.0 / pane.canvas.camera.zoom * 1e6) as Coord;
+            self.pcb.hover(self.doc, world, tol);
+            if world.is_some()
+                && response.hovered()
+                && ui.input(|i| i.pointer.primary_pressed())
+                && let Err(e) = self.pcb.click(self.doc)
+            {
+                *self.status = Some((e, Instant::now()));
+            }
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            }
         } else {
             let engaged = !pane.it.is_idle();
             if let Some(input) = canvas::pointer_input(ui, &response, &pane.canvas, engaged, pane.it.hover.is_some()) {
@@ -1305,6 +1387,35 @@ impl TreeBehavior<'_> {
         {
             let (project, view) = self.doc.project_and_view(kind);
             view.set_preview(project, &ghosts);
+        }
+        if kind == ViewKind::Board {
+            if let Some(ghosts) = self.pcb.take_preview(self.doc) {
+                self.doc.board.set_board_preview(&ghosts);
+            }
+            // Highlight the net being routed, or the nets of selected tracks and vias.
+            let nets: Vec<String> = match self.pcb.routing_net() {
+                Some(n) => vec![n.to_string()],
+                None => {
+                    let copper = self.doc.copper();
+                    let mut nets: Vec<String> = pane
+                        .it
+                        .selection
+                        .iter()
+                        .filter_map(|id| match *id {
+                            ObjectId::Track(t) => copper.net_of(CopperItem::Track(t)),
+                            ObjectId::Via(v) => copper.net_of(CopperItem::Via(v)),
+                            _ => None,
+                        })
+                        .map(str::to_string)
+                        .collect();
+                    nets.sort();
+                    nets.dedup();
+                    nets
+                }
+            };
+            if nets.as_slice() != self.doc.board.highlighted_nets() {
+                self.doc.highlight_nets(&nets);
+            }
         }
         if !pane.it.is_idle() {
             ui.ctx().request_repaint();
@@ -1386,8 +1497,11 @@ impl Behavior<Tab> for TreeBehavior<'_> {
 impl eframe::App for PcbApp {
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         if let Some(script) = &mut self.script {
-            let canvas = &self.panes[ViewKind::Schematic as usize].canvas;
-            raw.events.extend(script.events(|w| canvas.world_to_screen(w)));
+            let panes = &self.panes;
+            raw.events.extend(script.events(|board, w| {
+                let kind = if board { ViewKind::Board } else { ViewKind::Schematic };
+                panes[kind as usize].canvas.world_to_screen(w)
+            }));
         }
     }
 
@@ -1415,10 +1529,17 @@ impl eframe::App for PcbApp {
                     sch_ui::settings(ui, &mut self.sch, &self.doc);
                     return;
                 }
+                if kind == ViewKind::Board && self.pcb.is_placing() {
+                    pcb_ui::settings(ui, &mut self.pcb, &self.doc);
+                    return;
+                }
                 let pane = &mut self.panes[kind as usize];
                 let selection = pane.it.selection.clone();
                 let mut message = None;
                 self.properties.ui(ui, &mut self.doc, &selection, &mut message);
+                if kind == ViewKind::Board && selection.is_empty() {
+                    pcb_ui::board_setup(ui, &mut self.doc, &mut message);
+                }
                 if let Some(m) = message {
                     self.status = Some((m, Instant::now()));
                 }
@@ -1436,6 +1557,7 @@ impl eframe::App for PcbApp {
                 hovered: &mut self.hovered,
                 close_requests: &mut self.close_requests,
                 sch: &mut self.sch,
+                pcb: &mut self.pcb,
                 status: &mut self.status,
             };
             self.tree.ui(&mut behavior, ui);

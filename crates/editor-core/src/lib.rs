@@ -6,6 +6,7 @@
 
 pub mod command;
 pub mod connectivity;
+pub mod copper;
 pub mod editor;
 pub mod history;
 pub mod query;

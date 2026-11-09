@@ -222,6 +222,16 @@ impl Rect {
         }
     }
 
+    /// Grown by `d` on every side.
+    pub fn grow(self, d: Coord) -> Rect {
+        Rect { min: Point::new(self.min.x - d, self.min.y - d), max: Point::new(self.max.x + d, self.max.y + d) }
+    }
+
+    /// Do the rectangles overlap (touching counts)?
+    pub fn intersects(&self, o: &Rect) -> bool {
+        self.min.x <= o.max.x && o.min.x <= self.max.x && self.min.y <= o.max.y && o.min.y <= self.max.y
+    }
+
     pub fn contains(&self, p: Point) -> bool {
         p.x >= self.min.x && p.x <= self.max.x && p.y >= self.min.y && p.y <= self.max.y
     }

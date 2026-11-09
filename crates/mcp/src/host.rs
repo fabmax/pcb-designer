@@ -43,6 +43,8 @@ pub enum Request {
     },
     /// Nets of the schematic.
     Netlist,
+    /// Board routing state: ratsnest, shorts, layers, rules.
+    Routing,
     Execute {
         commands: Vec<Command>,
     },
@@ -100,6 +102,7 @@ impl Request {
             Request::GetObjects { ids } => format!("read {} object(s)", ids.len()),
             Request::Component { refdes } => format!("read {refdes}"),
             Request::Netlist => "read netlist".into(),
+            Request::Routing => "read routing state".into(),
             Request::Execute { commands } => match &commands[..] {
                 [one] => one.label(),
                 many => format!("{} commands", many.len()),
@@ -247,6 +250,11 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
         }
         Request::Component { refdes } => component(host.document().project(), &refdes)?,
         Request::Netlist => netlist(host.document().current_connectivity()),
+        Request::Routing => {
+            let doc = host.document();
+            doc.update_connectivity(false);
+            routing(doc.project(), doc.copper())
+        }
         Request::KicadSearch { query, footprints, limit } => host.kicad_search(&query, footprints, limit)?,
         Request::KicadImport(_) => unreachable!("answered by the host"),
         Request::Execute { commands } => execute(host.document(), commands)?,
@@ -500,4 +508,18 @@ fn netlist(c: &editor_core::connectivity::Connectivity) -> Value {
     let unconnected: Vec<String> =
         c.nets.iter().flat_map(|n| &n.pins).filter(|p| open.contains(&(p.symbol, p.pin))).map(|p| p.label()).collect();
     json!({ "nets": nets, "unconnected_pins": unconnected, "problems": c.problems })
+}
+
+fn routing(p: &Project, c: &editor_core::copper::BoardConnectivity) -> Value {
+    let unrouted: Vec<Value> =
+        c.ratsnest.iter().map(|r| json!({ "net": c.nets[r.net as usize], "from": r.a, "to": r.b })).collect();
+    let shorts: Vec<Value> = c.shorts.iter().map(|(nets, at)| json!({ "nets": nets, "at": at })).collect();
+    let layers: Vec<Value> = p.board.copper_layers().map(|l| json!({ "id": l.id, "name": l.name })).collect();
+    json!({
+        "fully_routed": c.ratsnest.is_empty() && c.shorts.is_empty(),
+        "unrouted": unrouted,
+        "shorts": shorts,
+        "copper_layers": layers,
+        "rules": p.board.rules,
+    })
 }

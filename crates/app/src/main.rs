@@ -24,6 +24,7 @@ mod keymap;
 mod kicad_import;
 mod library;
 mod part_form;
+mod pcb_ui;
 mod properties;
 mod sch_ui;
 mod script;

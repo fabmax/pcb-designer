@@ -22,6 +22,15 @@ fn main() {
             c.unconnected.len(),
             t.elapsed()
         );
+        let t = Instant::now();
+        let b = editor_core::copper::BoardConnectivity::build(doc.project(), &c);
+        println!(
+            "board connectivity: {} copper items, {} ratsnest lines, {} shorts in {:?}",
+            b.items.len(),
+            b.ratsnest.len(),
+            b.shorts.len(),
+            t.elapsed()
+        );
     }
     println!(
         "  schematic {} prims, board {} prims",

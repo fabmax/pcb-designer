@@ -40,7 +40,11 @@ pub enum Action {
     SchLabel,
     SchPower,
     SchJunction,
-    SchPosture,
+    Posture,
+    PcbRoute,
+    PcbVia,
+    PcbOutline,
+    PcbNextLayer,
 }
 
 /// Where an action's shortcut applies. Actions of different contexts may share a key.
@@ -78,7 +82,11 @@ impl Action {
         Action::SchLabel,
         Action::SchPower,
         Action::SchJunction,
-        Action::SchPosture,
+        Action::Posture,
+        Action::PcbRoute,
+        Action::PcbVia,
+        Action::PcbOutline,
+        Action::PcbNextLayer,
     ];
 
     pub fn label(self) -> &'static str {
@@ -108,7 +116,11 @@ impl Action {
             Action::SchLabel => "Net label tool (schematic)",
             Action::SchPower => "Power port tool (schematic)",
             Action::SchJunction => "Junction tool (schematic)",
-            Action::SchPosture => "Wire corner direction (schematic)",
+            Action::Posture => "Corner direction (wires, tracks)",
+            Action::PcbRoute => "Route tool (PCB)",
+            Action::PcbVia => "Via tool (PCB)",
+            Action::PcbOutline => "Board outline tool (PCB)",
+            Action::PcbNextLayer => "Next copper layer; adds a via while routing (PCB)",
         }
     }
 
@@ -122,9 +134,8 @@ impl Action {
             | Action::ToolText
             | Action::NavigateBack
             | Action::NavigateForward => Some(Context::Library),
-            Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction | Action::SchPosture => {
-                Some(Context::Schematic)
-            }
+            Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction => Some(Context::Schematic),
+            Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbNextLayer => Some(Context::Board),
             _ => None,
         }
     }
@@ -172,6 +183,10 @@ impl Shortcut {
 
     pub const fn alt(key: Key) -> Self {
         Shortcut { command: false, shift: false, alt: true, key }
+    }
+
+    pub const fn shift(key: Key) -> Self {
+        Shortcut { command: false, shift: true, alt: false, key }
     }
 
     pub const fn cmd_shift(key: Key) -> Self {
@@ -277,7 +292,11 @@ impl Default for Keymap {
             (Action::SchLabel, vec![S::key(Key::L)]),
             (Action::SchPower, vec![S::key(Key::P)]),
             (Action::SchJunction, vec![S::key(Key::J)]),
-            (Action::SchPosture, vec![S::key(Key::Slash)]),
+            (Action::Posture, vec![S::key(Key::Slash)]),
+            (Action::PcbRoute, vec![S::key(Key::T)]),
+            (Action::PcbVia, vec![S::shift(Key::V)]),
+            (Action::PcbOutline, vec![S::key(Key::O)]),
+            (Action::PcbNextLayer, vec![S::key(Key::L)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
     }
@@ -375,7 +394,7 @@ mod tests {
         let map = Keymap::default();
         assert_eq!(map.lookup(Key::L, Modifiers::NONE, Context::Library), Some(Action::ToolLine));
         assert_eq!(map.lookup(Key::L, Modifiers::NONE, Context::Schematic), Some(Action::SchLabel));
-        assert_eq!(map.lookup(Key::L, Modifiers::NONE, Context::Board), None);
+        assert_eq!(map.lookup(Key::L, Modifiers::NONE, Context::Board), Some(Action::PcbNextLayer));
         // Same context: a conflict.
         let map = Keymap::from_json(r#"{"sch_wire": ["L"]}"#).unwrap();
         assert_eq!(map.conflicts().len(), 1);

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use editor_core::connectivity::Connectivity;
+use editor_core::copper::BoardConnectivity;
 use editor_core::{ChangeSet, Command, CommandError, Editor};
 use model::io::{FileError, load_project, save_project};
 use model::{Coord, ObjectId, Point, Project, Rect};
@@ -23,6 +24,10 @@ pub struct Document {
     /// The schematic changed since `connectivity` was computed.
     connectivity_stale: bool,
     connectivity_time: Duration,
+    copper: BoardConnectivity,
+    /// The board (or the schematic) changed since `copper` was computed.
+    copper_stale: bool,
+    copper_time: Duration,
 }
 
 impl Document {
@@ -38,6 +43,9 @@ impl Document {
             connectivity: Connectivity::default(),
             connectivity_stale: true,
             connectivity_time: Duration::ZERO,
+            copper: BoardConnectivity::default(),
+            copper_stale: true,
+            copper_time: Duration::ZERO,
         };
         doc.update_connectivity(false);
         doc
@@ -54,19 +62,48 @@ impl Document {
         &self.connectivity
     }
 
-    /// Recompute connectivity if the schematic changed, and show junction dots and
-    /// unconnected pins. While `busy` (dragging), large projects whose connectivity
-    /// takes long are only updated afterwards. Returns true if it was recomputed.
+    /// Board connectivity (islands, nets of copper, ratsnest) as of the last
+    /// [`update_connectivity`](Self::update_connectivity).
+    pub fn copper(&self) -> &BoardConnectivity {
+        &self.copper
+    }
+
+    /// Up-to-date board connectivity.
+    pub fn current_copper(&mut self) -> &BoardConnectivity {
+        self.update_connectivity(false);
+        &self.copper
+    }
+
+    /// Highlight the copper of these nets on the board (empty clears).
+    pub fn highlight_nets(&mut self, nets: &[String]) {
+        self.board.set_nets(&self.copper, nets);
+    }
+
+    /// Recompute schematic and board connectivity where they changed, and show junction
+    /// dots, unconnected pins and the ratsnest. While `busy` (dragging), large projects
+    /// whose connectivity takes long are only updated afterwards. Returns true if
+    /// anything was recomputed.
     pub fn update_connectivity(&mut self, busy: bool) -> bool {
-        if !self.connectivity_stale || (busy && self.connectivity_time > Duration::from_millis(4)) {
-            return false;
+        let slow = |t: Duration| busy && t > Duration::from_millis(4);
+        let mut done = false;
+        if self.connectivity_stale && !slow(self.connectivity_time) {
+            let t = Instant::now();
+            self.connectivity = Connectivity::build(self.editor.project());
+            self.connectivity_time = t.elapsed();
+            self.connectivity_stale = false;
+            self.copper_stale = true;
+            self.schematic.set_connectivity(&self.connectivity);
+            done = true;
         }
-        let t = Instant::now();
-        self.connectivity = Connectivity::build(self.editor.project());
-        self.connectivity_time = t.elapsed();
-        self.connectivity_stale = false;
-        self.schematic.set_connectivity(&self.connectivity);
-        true
+        if self.copper_stale && !self.connectivity_stale && !slow(self.copper_time) {
+            let t = Instant::now();
+            self.copper = BoardConnectivity::build(self.editor.project(), &self.connectivity);
+            self.copper_time = t.elapsed();
+            self.copper_stale = false;
+            self.board.set_copper(self.editor.project(), &self.copper);
+            done = true;
+        }
+        done
     }
 
     pub fn open(dir: impl AsRef<Path>) -> Result<Self, FileError> {
@@ -175,6 +212,9 @@ impl Document {
         self.revision += 1;
         if changes.touches_schematic() || changes.ids().any(|id| id.kind().is_library()) {
             self.connectivity_stale = true;
+        }
+        if changes.touches_board() || self.connectivity_stale {
+            self.copper_stale = true;
         }
         let project = self.editor.project();
         self.schematic.apply(project, changes);
