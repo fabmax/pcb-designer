@@ -231,8 +231,8 @@ fn new_buses_and_signals_leaving_them_ask_for_a_name() {
     t.click(&mut doc, pin1).unwrap();
     assert!(t.click(&mut doc, p(2.54, 7.62)).unwrap().finished);
     let prompt = t.take_prompt(&mut doc, grid).expect("asks for the signal");
-    let SchPrompt::EntryNet { bus, members, used, pos, rotation } = &prompt else { panic!("{prompt:?}") };
-    assert_eq!((bus.as_str(), members.len(), used.len()), ("D[0..3]", 4, 0));
+    let SchPrompt::EntryNet { bus, members, uses, pos, rotation } = &prompt else { panic!("{prompt:?}") };
+    assert_eq!((bus.as_str(), members.len(), uses.as_slice()), ("D[0..3]", 4, &[0, 0, 0, 0][..]));
     assert_eq!((*pos, *rotation), (p(5.08, 7.62), Angle::ZERO), "on the wire, next to the entry");
     doc.execute(prompt.label("D1").unwrap()).unwrap();
     let c = doc.current_connectivity();
@@ -247,8 +247,8 @@ fn new_buses_and_signals_leaving_them_ask_for_a_name() {
     assert_eq!(t.take_prompt(&mut doc, grid), None, "not on an entry yet");
     t.set_tool(SchTool::BusEntry);
     t.click(&mut doc, p(0.0, 12.7)).unwrap();
-    let Some(SchPrompt::EntryNet { used, .. }) = t.take_prompt(&mut doc, grid) else { panic!("asks") };
-    assert_eq!(used, ["D1"]);
+    let Some(SchPrompt::EntryNet { uses, .. }) = t.take_prompt(&mut doc, grid) else { panic!("asks") };
+    assert_eq!(uses, [0, 1, 0, 0], "D1 is labelled once");
     t.click(&mut doc, p(0.0, 10.16)).unwrap();
     assert_eq!(t.take_prompt(&mut doc, grid), None, "nothing leaves this one");
 }
