@@ -48,11 +48,10 @@ pub const GAP: i8 = 6;
 /// Corner radius of panels and tab groups.
 pub const RADIUS: u8 = 10;
 
-/// A side panel: rounded, outlined, `outer` margin to its neighbours.
+/// A side panel: rounded, `outer` margin to its neighbours.
 pub fn panel_frame(outer: Margin) -> Frame {
     Frame::NONE
         .fill(panel())
-        .stroke(Stroke::new(1.0, border()))
         .corner_radius(RADIUS)
         .inner_margin(Margin::same(8))
         .outer_margin(outer)
@@ -60,7 +59,7 @@ pub fn panel_frame(outer: Margin) -> Frame {
 
 /// Round the corners of `rect` after its content was painted (content that can't be
 /// clipped, like the GPU canvases): masks the corners with the window background and
-/// outlines the rounded rectangle.
+/// smooths the rounded edge.
 pub fn round_corners(painter: &Painter, rect: Rect) {
     let r = f32::from(RADIUS);
     let bg = window_bg();
@@ -85,8 +84,8 @@ pub fn round_corners(painter: &Painter, rect: Rect) {
         }
     }
     painter.add(mesh);
-    // Anti-aliased edge over the mask's.
-    painter.rect_stroke(rect, RADIUS, Stroke::new(1.0, border()), egui::StrokeKind::Inside);
+    // Anti-aliased edge over the mask's (in the background colour: no visible outline).
+    painter.rect_stroke(rect, RADIUS, Stroke::new(1.0, bg), egui::StrokeKind::Middle);
 }
 
 /// Apply the theme to egui (call after [`view::style::set_theme`]).
