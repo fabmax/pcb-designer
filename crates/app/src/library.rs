@@ -448,7 +448,7 @@ impl LibraryEditor {
             id.with("view_buttons"),
             keymap,
             |ui| toolbar::layer_menu(ui, scene, &entries),
-            |ui| toolbar::grid_menu(ui, &mut it.grid, &mut canvas.background, grid_kind),
+            |ui| toolbar::grid_menu(ui, &mut it.grid, &mut it.snap, &mut canvas.background, grid_kind),
         );
         if fit {
             self.canvas.request_fit();

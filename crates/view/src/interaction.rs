@@ -126,6 +126,8 @@ pub struct Interaction<I> {
     pub hover: Option<I>,
     /// Snap grid in nm (0 disables snapping).
     pub grid: Coord,
+    /// Snap to the grid (off: positions are free; the grid stays for display).
+    pub snap: bool,
     state: State<I>,
     /// Last error or remark from an edit (e.g. moving a locked footprint), for the status bar.
     pub message: Option<String>,
@@ -133,11 +135,11 @@ pub struct Interaction<I> {
 
 impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
     pub fn new(grid: Coord) -> Self {
-        Interaction { selection: Vec::new(), hover: None, grid, state: State::Idle, message: None }
+        Interaction { selection: Vec::new(), hover: None, grid, snap: true, state: State::Idle, message: None }
     }
 
     pub fn snap(&self, p: Point) -> Point {
-        if self.grid <= 0 {
+        if !self.snap || self.grid <= 0 {
             return p;
         }
         let g = self.grid;

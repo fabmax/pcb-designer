@@ -45,6 +45,14 @@ fn click_selects_and_drag_is_one_undo_step() {
     doc.undo();
     assert_eq!(symbol(&doc, "R1").pos, r1.pos);
     assert!(!doc.is_modified());
+
+    // Without snapping the drag lands exactly where the pointer went.
+    it.snap = false;
+    press(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos);
+    drag(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos + Point::mm(5.3, 0.0));
+    release(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos + Point::mm(5.3, 0.0));
+    assert_eq!(symbol(&doc, "R1").pos, r1.pos + Point::mm(5.3, 0.0));
+    assert_eq!(it.snap(Point::mm(0.123, 0.0)), Point::mm(0.123, 0.0));
 }
 
 #[test]

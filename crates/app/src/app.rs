@@ -282,7 +282,9 @@ impl PcbApp {
         self.doc = doc;
         for kind in [ViewKind::Schematic, ViewKind::Board] {
             let pane = self.pane(kind);
+            let snap = pane.it.snap;
             pane.it = Interaction::new(pane.it.grid);
+            pane.it.snap = snap;
             pane.canvas.request_fit();
         }
         self.properties = Properties::default();
@@ -1382,12 +1384,17 @@ impl PcbApp {
                         Open::Part(_) => "Part",
                         Open::None => "Library",
                     };
-                    (format!("{what} · {}", l.lib.name()), l.canvas.cursor_world, l.it.grid, l.it.selection.len())
+                    (
+                        format!("{what} · {}", l.lib.name()),
+                        l.canvas.cursor_world,
+                        (l.it.grid, l.it.snap),
+                        l.it.selection.len(),
+                    )
                 }
                 None => {
                     let pane = &self.panes[self.hovered.unwrap_or(self.active) as usize];
                     let sel = self.panes[self.active as usize].it.selection.len();
-                    (pane.title().to_string(), pane.canvas.cursor_world, pane.it.grid, sel)
+                    (pane.title().to_string(), pane.canvas.cursor_world, (pane.it.grid, pane.it.snap), sel)
                 }
             };
             ui.label(RichText::new(title).color(theme::accent()));
@@ -1401,7 +1408,12 @@ impl PcbApp {
                 None => ui.monospace(" ".repeat(29)),
             };
             ui.separator();
+            let (grid, snap) = grid;
             ui.monospace(format!("grid {}", units::fmt(grid)));
+            if !snap {
+                ui.label(RichText::new("no snap").color(theme::warn()))
+                    .on_hover_text("Snapping to the grid is off (grid menu at the canvas' bottom left)");
+            }
             ui.separator();
             ui.label(format!("{selected} selected"));
             let msg = self.panes.iter().find_map(|p| p.it.message.clone());
@@ -1579,7 +1591,7 @@ impl TreeBehavior<'_> {
             egui::Id::unique(("view_buttons", kind as u8)),
             self.keymap,
             |ui| toolbar::layer_menu(ui, scene, &entries),
-            |ui| toolbar::grid_menu(ui, &mut pane.it.grid, &mut pane.canvas.background, grid_kind),
+            |ui| toolbar::grid_menu(ui, &mut pane.it.grid, &mut pane.it.snap, &mut pane.canvas.background, grid_kind),
         );
         if fit {
             pane.canvas.request_fit();
