@@ -24,6 +24,7 @@ mod agent;
 mod app;
 mod canvas;
 mod fields;
+mod icons;
 mod keymap;
 mod kicad_import;
 mod library;
@@ -34,6 +35,7 @@ mod sch_ui;
 mod script;
 mod settings;
 mod theme;
+mod toolbar;
 
 use app::{Options, Startup};
 

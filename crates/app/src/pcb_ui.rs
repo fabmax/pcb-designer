@@ -10,54 +10,74 @@ use view::interaction::new_group;
 use view::pcb_tools::{Corners, PcbPlacer, PcbTool};
 
 use crate::fields::{self, grid, hint, label, row};
+use crate::icons::Icon;
+use crate::keymap::{Action, Keymap};
 use crate::theme;
+use crate::toolbar::{self, ToolButton};
 
-/// Tool buttons, active layer and usage hint above the board. Returns a newly chosen tool.
-pub fn toolbar(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) -> Option<PcbTool> {
-    let mut chosen = None;
-    let full = ui.max_rect();
-    egui::Frame::NONE.fill(theme::panel()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
-        ui.set_width(full.width() - 16.0);
-        ui.horizontal(|ui| {
-            for &tool in PcbTool::ALL {
-                if ui.selectable_label(pcb.tool() == tool, tool.label()).clicked() {
-                    chosen = Some(tool);
-                }
-            }
-            ui.separator();
-            layer_combo(ui, "pcb_layer", &mut pcb.settings.layer, doc);
-            ui.separator();
-            let copper = doc.copper();
-            let text = match copper.unrouted() {
-                0 => RichText::new("Fully routed").color(theme::success()),
-                n => RichText::new(format!("{n} unrouted")).color(theme::text_dim()),
-            };
-            ui.label(text);
-            let flagged = copper.flagged().count();
-            if flagged > 0 {
-                ui.label(RichText::new(format!("{flagged} flagged")).color(theme::warn()))
-                    .on_hover_text("Tracks and vias in a short, or touching no pad (see Board problems)");
-            }
-            if !copper.shorts.is_empty() {
-                let tip: Vec<String> = copper.shorts.iter().map(|(nets, _)| nets.join(" ↔ ")).collect();
-                ui.label(RichText::new(format!("{} short(s)", copper.shorts.len())).color(theme::warn()))
-                    .on_hover_text(tip.join("\n"));
-            }
-            ui.separator();
-            ui.add(egui::Label::new(RichText::new(pcb.tool().hint()).color(theme::text_dim())).truncate());
-        });
+/// Floating tool bar, header (active layer, routing status) and usage hint over the
+/// board canvas. Returns a newly chosen tool.
+pub fn toolbar(
+    ui: &mut egui::Ui,
+    canvas: egui::Rect,
+    pcb: &mut PcbPlacer,
+    doc: &Document,
+    keymap: &Keymap,
+) -> Option<PcbTool> {
+    let b =
+        |tool, icon, about, action| ToolButton { tool, icon, name: PcbTool::label(tool), about, action: Some(action) };
+    let select = [b(
+        PcbTool::Select,
+        Icon::Select,
+        "Select, move and edit footprints, tracks and vias. Drag a box to select several.",
+        Action::ToolSelect,
+    )];
+    let copper = [
+        b(PcbTool::Route, Icon::Route, "Route tracks from pad to pad on the active layer.", Action::PcbRoute),
+        b(PcbTool::Via, Icon::Via, "Place a via between the copper layers.", Action::PcbVia),
+    ];
+    let board = [
+        b(PcbTool::Outline, Icon::Outline, "Draw the board outline.", Action::PcbOutline),
+        b(PcbTool::Zone, Icon::Zone, "Draw a copper zone, filled around other nets.", Action::PcbZone),
+    ];
+    let id = egui::Id::unique("pcb_toolbar");
+    let (chosen, right) = toolbar::strip(ui, canvas, id, &[&select, &copper, &board], pcb.tool(), keymap);
+    toolbar::header(ui, canvas, right, id.with("header"), |ui| {
+        layer_combo(ui, "pcb_layer", &mut pcb.settings.layer, doc)
+            .on_hover_text(format!("Active copper layer ({})", keymap.menu_text(ui.ctx(), Action::PcbNextLayer)));
+        ui.separator();
+        let copper = doc.copper();
+        let text = match copper.unrouted() {
+            0 => RichText::new("Fully routed").color(theme::success()),
+            n => RichText::new(format!("{n} unrouted")).color(theme::text_dim()),
+        };
+        ui.label(text).on_hover_text("Connections still to route (ratsnest lines)");
+        let flagged = copper.flagged().count();
+        if flagged > 0 {
+            ui.label(RichText::new(format!("{flagged} flagged")).color(theme::warn()))
+                .on_hover_text("Tracks and vias in a short, or touching no pad (see Board problems)");
+        }
+        if !copper.shorts.is_empty() {
+            let tip: Vec<String> = copper.shorts.iter().map(|(nets, _)| nets.join(" ↔ ")).collect();
+            ui.label(RichText::new(format!("{} short(s)", copper.shorts.len())).color(theme::warn()))
+                .on_hover_text(tip.join("\n"));
+        }
     });
+    toolbar::hint(ui, canvas, pcb.tool().hint());
     chosen
 }
 
-fn layer_combo(ui: &mut egui::Ui, salt: &str, layer: &mut LayerId, doc: &Document) {
+fn layer_combo(ui: &mut egui::Ui, salt: &str, layer: &mut LayerId, doc: &Document) -> egui::Response {
     let board = &doc.project().board;
     let name = |id: LayerId| board.layers.iter().find(|l| l.id == id).map_or(format!("{id:?}"), |l| l.name.clone());
-    egui::ComboBox::from_id_salt(salt).selected_text(name(*layer)).show_ui(ui, |ui| {
-        for l in board.copper_layers() {
-            ui.selectable_value(layer, l.id, &l.name);
-        }
-    });
+    egui::ComboBox::from_id_salt(salt)
+        .selected_text(name(*layer))
+        .show_ui(ui, |ui| {
+            for l in board.copper_layers() {
+                ui.selectable_value(layer, l.id, &l.name);
+            }
+        })
+        .response
 }
 
 /// Settings of the active tool.
