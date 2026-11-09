@@ -1,23 +1,85 @@
-//! A [`Host`] without a GUI: a document plus selections. Used by tests and, later, by the
-//! headless MCP mode.
+//! A [`Host`] without a GUI: a document plus selections. Used by tests and by the headless
+//! MCP mode.
+//!
+//! KiCad imports go into a "KiCad import" library and their parts straight into the
+//! project (there is nobody to place them from a library window).
 
+use std::path::PathBuf;
+
+use editor_core::Command;
+use kicad::Catalog;
+use kicad::download::{self, Source};
 use model::{Library, ObjectId, builtin};
 use render::gpu::Background;
 use render::offscreen::Offscreen;
-use view::{Document, ViewKind};
+use serde_json::Value;
+use view::{Document, LibraryDoc, ViewKind};
 
-use crate::host::{Host, render_png};
+use crate::host::{
+    Host, KicadImport, Reply, Responder, kicad_download_reply, kicad_import_reply, kicad_request, render_png,
+};
 
 pub struct HeadlessHost {
     pub doc: Document,
     pub library: Library,
+    /// Objects imported from KiCad.
+    pub kicad_library: LibraryDoc,
+    /// Download folder of KiCad's libraries (`None`: downloads are refused).
+    pub kicad_root: Option<PathBuf>,
+    /// More KiCad library folders, always searched.
+    pub kicad_paths: Vec<PathBuf>,
+    pub kicad_source: Source,
+    catalog: Option<Catalog>,
     selection: [Vec<ObjectId>; 2],
     offscreen: Option<Offscreen>,
 }
 
 impl HeadlessHost {
     pub fn new(doc: Document) -> Self {
-        HeadlessHost { doc, library: builtin::starter_library(), selection: Default::default(), offscreen: None }
+        HeadlessHost {
+            doc,
+            library: builtin::starter_library(),
+            kicad_library: LibraryDoc::new(Library::new("KiCad import")),
+            kicad_root: None,
+            kicad_paths: Vec::new(),
+            kicad_source: Source::default(),
+            catalog: None,
+            selection: Default::default(),
+            offscreen: None,
+        }
+    }
+
+    fn catalog(&mut self) -> &mut Catalog {
+        let paths: Vec<PathBuf> =
+            self.kicad_paths.iter().cloned().chain(download::library_paths(self.kicad_root.as_deref())).collect();
+        self.catalog.get_or_insert_with(|| Catalog::scan(&paths))
+    }
+
+    fn import(&mut self, job: &KicadImport) -> Result<Value, String> {
+        let req = kicad_request(job, |symbol| {
+            let c = self.catalog();
+            let sym = c.load_symbol(symbol).map_err(|e| e.to_string())?;
+            Ok(kicad::import::suggested_footprints(c, &sym))
+        })?;
+        let imported = kicad::import(self.catalog(), &req);
+        if imported.symbols.is_empty() && imported.footprints.is_empty() {
+            return Err(if imported.errors.is_empty() {
+                "nothing to import".into()
+            } else {
+                imported.errors.join("; ")
+            });
+        }
+        let (added, replaced) =
+            self.kicad_library.upsert(imported.symbols.clone(), imported.footprints.clone(), imported.parts.clone())?;
+        let parts: Vec<model::Id> = imported.parts.iter().map(|p| p.id).collect();
+        if !parts.is_empty() {
+            let library = self.kicad_library.library().clone();
+            self.doc.execute(Command::ImportParts { library, parts }).map_err(|e| e.to_string())?;
+        }
+        let name = self.kicad_library.library().name.clone();
+        let mut reply = kicad_import_reply(&name, added, replaced, &imported, &req);
+        reply["in_project"] = Value::Bool(!imported.parts.is_empty());
+        Ok(reply)
     }
 }
 
@@ -35,7 +97,7 @@ impl Host for HeadlessHost {
     }
 
     fn libraries(&self) -> Vec<&Library> {
-        vec![&self.library]
+        vec![&self.library, self.kicad_library.library()]
     }
 
     fn selection(&self, view: ViewKind) -> Vec<ObjectId> {
@@ -50,5 +112,31 @@ impl Host for HeadlessHost {
 
     fn render_view(&mut self, view: ViewKind, _fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String> {
         render_png(&mut self.offscreen, &self.doc.view(view).scene, None, &background(view), width, height)
+    }
+
+    fn kicad_search(&mut self, query: &str, footprints: bool, limit: usize) -> Result<Value, String> {
+        let c = self.catalog();
+        if c.symbol_count() + c.footprint_count() == 0 {
+            return Err("no KiCad libraries found; download them with download_kicad_libraries".into());
+        }
+        let results = if footprints { c.search_footprints(query, limit) } else { c.search_symbols(query, limit) };
+        Ok(serde_json::json!({ "results": results, "truncated": results.len() >= limit }))
+    }
+
+    fn kicad_import(&mut self, request: KicadImport, reply: Responder) {
+        let _ = reply.send(self.import(&request).map(Reply::Json));
+    }
+
+    fn kicad_download(&mut self, update: bool, reply: Responder) {
+        let result = match &self.kicad_root {
+            None => Err("no folder to download KiCad libraries to".to_string()),
+            Some(root) => download::ensure(root, update, None, &self.kicad_source, &mut |_| true)
+                .map(|(installed, fresh)| Reply::Json(kicad_download_reply(&installed, fresh)))
+                .map_err(|e| e.to_string()),
+        };
+        if result.is_ok() {
+            self.catalog = None;
+        }
+        let _ = reply.send(result);
     }
 }

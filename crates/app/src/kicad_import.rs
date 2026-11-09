@@ -1,12 +1,21 @@
 //! "Import from KiCad" window: search KiCad's symbol and footprint libraries, pick symbols
 //! (each with a footprint, making a part) and lone footprints, and import them into a
 //! library.
+//!
+//! The libraries searched are KiCad's downloaded ones (see [`kicad::download`]) or else an
+//! installed KiCad's, plus folders added by hand or with `--kicad`. Downloads and update
+//! checks run on a background thread, polled every frame by [`KicadImport::poll`].
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::thread::JoinHandle;
 
 use egui::RichText;
+use kicad::download::{self, DownloadError, Installed, Source};
 use kicad::import::{Request, pin_numbers, suggested_footprints};
 use kicad::{Catalog, Imported};
+use mcp::host::{Reply, Responder};
 
 use crate::fields::{self, hint};
 use crate::theme;
@@ -45,9 +54,33 @@ pub enum ImportAction {
     Import(Option<u64>, Request),
 }
 
+/// A download running in the background.
+struct DownloadJob {
+    bytes: Arc<AtomicU64>,
+    cancel: Arc<AtomicBool>,
+    handle: JoinHandle<Result<(Installed, bool), DownloadError>>,
+    /// Agents waiting for the result.
+    replies: Vec<Responder>,
+}
+
+/// State of the downloaded libraries shown in the window.
+enum Remote {
+    Idle,
+    Failed(String),
+    Checking(JoinHandle<Result<String, DownloadError>>),
+    UpToDate,
+    Available(String),
+}
+
 pub struct KicadImport {
     pub open: bool,
-    pub paths: Vec<PathBuf>,
+    /// Folders added by hand or with `--kicad`, searched besides the downloaded or
+    /// installed libraries.
+    pub extra: Vec<PathBuf>,
+    /// Download folder (`None`: no configuration folder, downloads unavailable).
+    root: Option<PathBuf>,
+    download: Option<DownloadJob>,
+    remote: Remote,
     catalog: Option<Catalog>,
     query: String,
     kind: Kind,
@@ -64,16 +97,13 @@ pub struct KicadImport {
 }
 
 impl KicadImport {
-    pub fn new(paths: Vec<PathBuf>) -> Self {
-        let paths = if paths.is_empty() {
-            let (s, f) = kicad::default_paths();
-            s.into_iter().chain(f).collect()
-        } else {
-            paths
-        };
+    pub fn new(extra: Vec<PathBuf>, root: Option<PathBuf>) -> Self {
         KicadImport {
             open: false,
-            paths,
+            extra,
+            root,
+            download: None,
+            remote: Remote::Idle,
             catalog: None,
             query: String::new(),
             kind: Kind::Symbols,
@@ -102,8 +132,93 @@ impl KicadImport {
         self.request()
     }
 
+    /// Every folder searched: the added ones, then the downloaded or installed libraries.
+    fn paths(&self) -> Vec<PathBuf> {
+        self.extra.iter().cloned().chain(download::library_paths(self.root.as_deref())).collect()
+    }
+
     fn catalog(&mut self) -> &mut Catalog {
-        self.catalog.get_or_insert_with(|| Catalog::scan(&self.paths))
+        let paths = self.paths();
+        self.catalog.get_or_insert_with(|| Catalog::scan(&paths))
+    }
+
+    fn installed(&self) -> Option<Installed> {
+        self.root.as_deref().and_then(download::installed)
+    }
+
+    /// Start downloading (`version`: that release; else the newest unless already
+    /// downloaded and not `update`). An agent's `reply` is answered when it finishes.
+    pub fn start_download(
+        &mut self,
+        ctx: &egui::Context,
+        update: bool,
+        version: Option<String>,
+        reply: Option<Responder>,
+    ) {
+        let Some(root) = self.root.clone() else {
+            if let Some(r) = reply {
+                let _ = r.send(Err("no configuration folder to download KiCad libraries to".into()));
+            }
+            return;
+        };
+        if let Some(job) = &mut self.download {
+            job.replies.extend(reply);
+            return;
+        }
+        let bytes = Arc::new(AtomicU64::new(0));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (b, c, ctx) = (bytes.clone(), cancel.clone(), ctx.clone());
+        let handle = std::thread::spawn(move || {
+            let mut progress = |n| {
+                b.store(n, Ordering::Relaxed);
+                ctx.request_repaint();
+                !c.load(Ordering::Relaxed)
+            };
+            let r = download::ensure(&root, update, version.as_deref(), &Source::default(), &mut progress);
+            ctx.request_repaint();
+            r
+        });
+        self.remote = Remote::Idle;
+        self.download = Some(DownloadJob { bytes, cancel, handle, replies: reply.into_iter().collect() });
+    }
+
+    fn check_updates(&mut self, ctx: &egui::Context) {
+        let ctx = ctx.clone();
+        self.remote = Remote::Checking(std::thread::spawn(move || {
+            let r = download::latest_version(&Source::default());
+            ctx.request_repaint();
+            r
+        }));
+    }
+
+    /// Collect finished background work (call every frame).
+    pub fn poll(&mut self) {
+        if self.download.as_ref().is_some_and(|j| j.handle.is_finished()) {
+            let job = self.download.take().unwrap();
+            let result = job.handle.join().unwrap_or_else(|_| Err(DownloadError::Http("download crashed".into())));
+            match &result {
+                Ok(_) => self.rescan(),
+                Err(DownloadError::Cancelled) => {}
+                Err(e) => self.remote = Remote::Failed(e.to_string()),
+            }
+            for r in job.replies {
+                let _ = r.send(match &result {
+                    Ok((installed, fresh)) => Ok(Reply::Json(mcp::host::kicad_download_reply(installed, *fresh))),
+                    Err(e) => Err(e.to_string()),
+                });
+            }
+        }
+        if let Remote::Checking(h) = &self.remote
+            && h.is_finished()
+        {
+            let Remote::Checking(h) = std::mem::replace(&mut self.remote, Remote::Idle) else { unreachable!() };
+            let current = self.installed().map(|i| i.version);
+            self.remote = match h.join().unwrap_or_else(|_| Err(DownloadError::Http("check crashed".into()))) {
+                Ok(v) if Some(&v) == current.as_ref() => Remote::UpToDate,
+                Ok(v) => Remote::Available(v),
+                Err(e) => Remote::Failed(e.to_string()),
+            };
+        }
     }
 
     fn rescan(&mut self) {
@@ -229,30 +344,29 @@ impl KicadImport {
                 .clicked()
                 && let Some(dir) = rfd::FileDialog::new().set_title("KiCad library folder").pick_folder()
             {
-                self.paths.push(dir);
+                self.extra.push(dir);
                 self.rescan();
             }
             if ui.button("Rescan").clicked() {
                 self.rescan();
             }
         });
+        self.download_ui(ui, syms + fps == 0);
         egui::CollapsingHeader::new(RichText::new("Library folders").color(theme::text_dim()))
             .id_salt("kicad_paths")
             .show(ui, |ui| {
-                if self.paths.is_empty() {
-                    hint(ui, "No KiCad installation found. Add the folders containing KiCad's symbols and footprints.");
-                }
+                let added = self.extra.len();
                 let mut remove = None;
-                for (i, p) in self.paths.iter().enumerate() {
+                for (i, p) in self.paths().iter().enumerate() {
                     ui.horizontal(|ui| {
-                        if ui.small_button("Remove").clicked() {
+                        if i < added && ui.small_button("Remove").clicked() {
                             remove = Some(i);
                         }
                         ui.label(RichText::new(p.display().to_string()).monospace());
                     });
                 }
                 if let Some(i) = remove {
-                    self.paths.remove(i);
+                    self.extra.remove(i);
                     self.rescan();
                 }
             });
@@ -314,6 +428,86 @@ impl KicadImport {
             }
         }
         action
+    }
+
+    /// Download progress, the download offer when nothing was found, and updates.
+    fn download_ui(&mut self, ui: &mut egui::Ui, nothing_found: bool) {
+        if self.root.is_none() {
+            return;
+        }
+        let mb = |b: u64| b as f64 / 1e6;
+        if let Some(job) = &self.download {
+            ui.horizontal(|ui| {
+                let done = job.bytes.load(Ordering::Relaxed);
+                let total = download::APPROX_DOWNLOAD_BYTES;
+                let bar = egui::ProgressBar::new((done as f32 / total as f32).min(0.99))
+                    .desired_width(240.0)
+                    .text(format!("{:.1} MB of about {:.0} MB", mb(done), mb(total)));
+                ui.label("Downloading KiCad libraries…");
+                ui.add(bar);
+                if ui.button("Cancel").clicked() {
+                    job.cancel.store(true, Ordering::Relaxed);
+                }
+            });
+            return;
+        }
+        let ctx = ui.ctx().clone();
+        let offer = format!(
+            "Download KiCad {}.x libraries ({:.0} MB download, {:.0} MB on disk)",
+            download::SUPPORTED_MAJOR,
+            mb(download::APPROX_DOWNLOAD_BYTES),
+            mb(download::APPROX_DISK_BYTES)
+        );
+        let installed = self.installed();
+        ui.horizontal_wrapped(|ui| {
+            match &installed {
+                Some(i) => {
+                    ui.label(
+                        RichText::new(format!("Downloaded KiCad libraries {}", i.version)).color(theme::text_dim()),
+                    );
+                }
+                None if nothing_found
+                    && ui
+                        .button(RichText::new(&offer).strong())
+                        .on_hover_text("KiCad's official symbols and footprints, without 3D models")
+                        .clicked() =>
+                {
+                    self.start_download(&ctx, false, None, None);
+                }
+                None => {}
+            }
+            match &self.remote {
+                Remote::Idle if installed.is_some() => {
+                    if ui.link("Check for updates").clicked() {
+                        self.check_updates(&ctx);
+                    }
+                }
+                Remote::Idle => {}
+                Remote::Checking(_) => {
+                    ui.spinner();
+                    ui.label(RichText::new("Checking…").color(theme::text_dim()));
+                }
+                Remote::UpToDate => {
+                    ui.label(RichText::new("Up to date").color(theme::success()));
+                }
+                Remote::Available(v) => {
+                    let v = v.clone();
+                    if ui.button(format!("Update to {v}")).clicked() {
+                        self.start_download(&ctx, true, Some(v), None);
+                    }
+                }
+                Remote::Failed(e) => {
+                    ui.label(RichText::new(e).color(theme::warn()));
+                    if ui.button("Retry").clicked() {
+                        if installed.is_some() {
+                            self.check_updates(&ctx);
+                        } else {
+                            self.start_download(&ctx, false, None, None);
+                        }
+                    }
+                }
+            }
+        });
     }
 
     fn search_ui(&mut self, ui: &mut egui::Ui, height: f32) {

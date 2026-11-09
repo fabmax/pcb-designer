@@ -112,6 +112,14 @@ pub struct KicadSymbolPick {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct DownloadKicadParams {
+    /// Look for a newer release and download it if there is one (default: keep an
+    /// existing download as it is).
+    #[serde(default)]
+    pub update: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ImportKicadParams {
     #[serde(default)]
     pub symbols: Vec<KicadSymbolPick>,
@@ -119,7 +127,7 @@ pub struct ImportKicadParams {
     #[serde(default)]
     pub footprints: Vec<String>,
     /// Name of the open library to import into (default: a library named "KiCad import",
-    /// created if needed).
+    /// created if needed). Ignored in headless mode, where parts go into the project.
     #[serde(default)]
     pub library: Option<String>,
 }
@@ -276,8 +284,9 @@ impl PcbTools {
         self.call(Request::UpdateParts { parts: p.parts.unwrap_or_default() }).await
     }
 
-    #[tool(description = "Search the KiCad symbol (or footprint) libraries installed on this \
-        computer by name. Returns \"Library:Name\" entries for import_kicad.")]
+    #[tool(description = "Search the KiCad symbol (or footprint) libraries by name: the ones \
+        downloaded with download_kicad_libraries, else an installed KiCad's. Returns \
+        \"Library:Name\" entries for import_kicad.")]
     async fn search_kicad(&self, Parameters(p): Parameters<SearchKicadParams>) -> Result<CallToolResult, ErrorData> {
         let limit = p.limit.unwrap_or(50).clamp(1, 500);
         self.call(Request::KicadSearch { query: p.query, footprints: p.footprints, limit }).await
@@ -287,7 +296,8 @@ impl PcbTools {
         becomes a part with one variant per footprint (pads mapped to pins by number; power \
         symbols like GND are skipped, use net labels). Returns the new part ids (for \
         import_parts), the chosen footprints and conversion notes. Re-importing updates \
-        the library objects in place.")]
+        the library objects in place. In headless mode the parts are also added to the \
+        project, ready to place.")]
     async fn import_kicad(&self, Parameters(p): Parameters<ImportKicadParams>) -> Result<CallToolResult, ErrorData> {
         let request = crate::host::KicadImport {
             symbols: p.symbols.into_iter().map(|s| (s.symbol, s.footprints)).collect(),
@@ -295,6 +305,17 @@ impl PcbTools {
             library: p.library,
         };
         self.call(Request::KicadImport(request)).await
+    }
+
+    #[tool(description = "Download KiCad's official symbol and footprint libraries (about 24 MB, \
+        450 MB on disk; no 3D models) so search_kicad and import_kicad work without a KiCad \
+        installation. Returns at once if they are already downloaded; with update, checks for \
+        a newer release first. Returns the version, folder and library counts.")]
+    async fn download_kicad_libraries(
+        &self,
+        Parameters(p): Parameters<DownloadKicadParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::KicadDownload { update: p.update }).await
     }
 
     #[tool(description = "List project objects (optionally of one kind), paginated. Objects are \

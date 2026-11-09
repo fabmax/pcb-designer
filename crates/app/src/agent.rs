@@ -125,13 +125,17 @@ impl Host for AppHost<'_> {
     fn kicad_search(&mut self, query: &str, footprints: bool, limit: usize) -> Result<Value, String> {
         let (results, symbols, fps) = self.kicad.search(query, footprints, limit);
         if symbols + fps == 0 {
-            return Err("no KiCad libraries found; add their folders in File > Import from KiCad".into());
+            return Err("no KiCad libraries found; download them with download_kicad_libraries".into());
         }
         Ok(json!({ "results": results, "truncated": results.len() >= limit }))
     }
 
     fn kicad_import(&mut self, request: KicadJob, reply: Responder) {
         self.jobs.push((request, reply));
+    }
+
+    fn kicad_download(&mut self, update: bool, reply: Responder) {
+        self.kicad.start_download(self.ctx, update, None, Some(reply));
     }
 
     fn window_screenshot(&mut self, reply: Responder) {

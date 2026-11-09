@@ -192,7 +192,7 @@ impl PcbApp {
             show_settings: false,
             recording: None,
             agent: Agent::new(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
-            kicad: KicadImport::new(opts.kicad_paths.clone()),
+            kicad: KicadImport::new(opts.kicad_paths.clone(), crate::settings::kicad_dir()),
             sch: SchPlacer::default(),
             pcb: PcbPlacer::default(),
             probe_key: None,
@@ -586,44 +586,14 @@ impl PcbApp {
 
     /// Answer an agent's KiCad import.
     fn agent_kicad_import(&mut self, job: mcp::host::KicadImport) -> Result<serde_json::Value, String> {
-        let mut req = kicad::Request { symbols: Vec::new(), footprints: job.footprints };
-        for (symbol, fps) in job.symbols {
-            let fps = match fps {
-                Some(f) => f,
-                None => self.kicad.suggested(&symbol)?,
-            };
-            req.symbols.push((symbol, fps));
-        }
+        let req = mcp::host::kicad_request(&job, |symbol| self.kicad.suggested(symbol))?;
         let target =
             job.library.as_deref().and_then(|n| self.libraries.iter().find(|l| l.lib.name() == n)).map(|l| l.key);
         let target = target.or_else(|| self.libraries.iter().find(|l| l.lib.name() == "KiCad import").map(|l| l.key));
         let new_name = job.library.as_deref().unwrap_or("KiCad import");
         let (key, imported, added, replaced) = self.kicad_import_into(target, new_name, &req)?;
         let library = self.lib(key).map(|l| l.lib.name().to_string()).unwrap_or_default();
-        let parts: Vec<serde_json::Value> = imported
-            .parts
-            .iter()
-            .map(|p| {
-                let variants: Vec<serde_json::Value> = p
-                    .variants
-                    .iter()
-                    .map(|v| serde_json::json!({ "id": v.id, "footprint": v.name, "connected_pads": v.connections.len() }))
-                    .collect();
-                serde_json::json!({ "id": p.id, "name": p.name, "units": p.units.len(), "variants": variants })
-            })
-            .collect();
-        let footprints: Vec<&str> = imported.footprints.iter().map(|f| f.name.as_str()).collect();
-        let symbols_only: Vec<&str> = req.symbols.iter().filter(|s| s.1.is_empty()).map(|s| s.0.as_str()).collect();
-        Ok(serde_json::json!({
-            "library": library,
-            "added": added,
-            "updated": replaced,
-            "parts": parts,
-            "footprints": footprints,
-            "symbols_without_part": symbols_only,
-            "notes": imported.warnings,
-            "errors": imported.errors,
-        }))
+        Ok(mcp::host::kicad_import_reply(&library, added, replaced, &imported, &req))
     }
 
     fn library_refs(&self) -> Vec<&Library> {
@@ -2005,6 +1975,7 @@ impl eframe::App for PcbApp {
         }
         self.settings_window(&ctx);
         let libs: Vec<(u64, String)> = self.libraries.iter().map(|l| (l.key, l.lib.name().to_string())).collect();
+        self.kicad.poll();
         if let Some(ImportAction::Import(target, req)) = self.kicad.ui(&ctx, &libs) {
             self.run_kicad_import(target, req);
         }
