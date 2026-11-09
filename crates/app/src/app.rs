@@ -19,6 +19,7 @@ use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
 
 use crate::agent::{self, Agent};
 use crate::canvas::{self, Canvas, CanvasResources};
+use crate::icons::{self, Icon};
 use crate::keymap::{Action, Context, Keymap, Shortcut};
 use crate::kicad_import::{ImportAction, KicadImport};
 use crate::library::{LibEvent, LibraryEditor, Open};
@@ -1775,7 +1776,16 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         let galley = text.into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, font_id);
         let margin = 10.0;
         let close = 14.0;
-        let width = galley.size().x + 2.0 * margin + if state.closable { close + 4.0 } else { 0.0 };
+        // An icon in the colour of what the tab shows: schematic wires, copper, libraries.
+        let icon = match Self::tab_of(tiles, tile_id) {
+            Some(Tab::View(ViewKind::Schematic)) => (Icon::Schematic, view::style::pal().sch_wire),
+            Some(Tab::View(ViewKind::Board)) => (Icon::Board, view::style::pal().top_copper),
+            _ => (Icon::Library, view::style::pal().sch_label),
+        };
+        let icon_size = 15.0;
+        let icon_gap = 6.0;
+        let width =
+            icon_size + icon_gap + galley.size().x + 2.0 * margin + if state.closable { close + 4.0 } else { 0.0 };
         let (_, rect) = ui.allocate_space(egui::vec2(width + 4.0, ui.available_height()));
         let pill = egui::Rect::from_min_max(
             egui::pos2(rect.left() + 4.0, rect.top() + 4.0),
@@ -1793,7 +1803,15 @@ impl Behavior<Tab> for TreeBehavior<'_> {
             };
             ui.painter().rect_filled(pill, 6, fill);
             let color = if state.active { v.strong_text_color() } else { theme::text_dim() };
-            let pos = egui::pos2(pill.left() + margin, pill.center().y - galley.size().y / 2.0);
+            let [r, g, b, _] = icon.1.0;
+            let icon_color = egui::Color32::from_rgb(r, g, b);
+            let icon_color = if state.active { icon_color } else { icon_color.gamma_multiply(0.6) };
+            let icon_rect = egui::Rect::from_center_size(
+                egui::pos2(pill.left() + margin + icon_size / 2.0, pill.center().y),
+                egui::vec2(icon_size, icon_size),
+            );
+            icons::paint(ui.painter(), icon_rect, icon.0, icon_color);
+            let pos = egui::pos2(icon_rect.right() + icon_gap, pill.center().y - galley.size().y / 2.0);
             ui.painter().galley(pos, galley, color);
             if state.closable {
                 let r = egui::Rect::from_center_size(
