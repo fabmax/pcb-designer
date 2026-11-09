@@ -1,7 +1,7 @@
 //! PCB Designer desktop application.
 //!
 //! Usage: pcb-designer [PROJECT_DIR | --demo | --new | --stress N] [--no-vsync]
-//!                     [--keymap FILE.json] [--mcp] [--mcp-port PORT]
+//!                     [--keymap FILE.json] [--mcp] [--mcp-port PORT] [--side-by-side]
 //!                     [--library FILE.pcblib]... [--show [part:|symbol:|footprint:]NAME]...
 //!                     [--kicad DIR]... [--kicad-pick [footprint:]LIB:NAME]... [--kicad-import]
 //!                     [--kicad-search [footprint:]TEXT]
@@ -53,6 +53,7 @@ fn main() -> eframe::Result {
         kicad_import: false,
         kicad_query: None,
         script: None,
+        side_by_side: false,
     };
     let mut vsync = true;
     let mut stdio = false;
@@ -65,6 +66,7 @@ fn main() -> eframe::Result {
             "--mcp-stdio" => stdio = true,
             "--stress" => opts.startup = Startup::Stress(args.next().and_then(|v| v.parse().ok()).unwrap_or(2_000)),
             "--no-vsync" => vsync = false,
+            "--side-by-side" => opts.side_by_side = true,
             "--screenshot" => opts.screenshot = args.next(),
             "--frames" => opts.screenshot_frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(30),
             "--select" => opts.select = args.next(),

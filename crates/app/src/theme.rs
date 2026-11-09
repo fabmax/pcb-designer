@@ -1,7 +1,7 @@
 //! Application chrome themes (dark and light). The active theme is the canvas palette's
 //! ([`view::style::theme`]), so chrome and canvases always match.
 
-use egui::{Color32, CornerRadius, Stroke, Visuals, style::Selection};
+use egui::{Color32, CornerRadius, Frame, Margin, Painter, Rect, Stroke, Visuals, pos2, style::Selection};
 use view::style::Theme;
 
 fn dark() -> bool {
@@ -31,6 +31,62 @@ pub fn success() -> Color32 {
 
 pub fn text_dim() -> Color32 {
     if dark() { Color32::from_rgb(0x8a, 0x92, 0xa3) } else { Color32::from_rgb(0x5c, 0x63, 0x70) }
+}
+
+/// Window background: shows in the gaps between panels.
+pub fn window_bg() -> Color32 {
+    if dark() { Color32::from_rgb(0x0d, 0x0e, 0x11) } else { Color32::from_rgb(0xd3, 0xd6, 0xdc) }
+}
+
+/// Subtle outline of panels and tab groups.
+pub fn border() -> Color32 {
+    if dark() { Color32::from_rgb(0x2a, 0x2e, 0x36) } else { Color32::from_rgb(0xc4, 0xc8, 0xd0) }
+}
+
+/// Gap between panels (points).
+pub const GAP: i8 = 6;
+/// Corner radius of panels and tab groups.
+pub const RADIUS: u8 = 10;
+
+/// A side panel: rounded, outlined, `outer` margin to its neighbours.
+pub fn panel_frame(outer: Margin) -> Frame {
+    Frame::NONE
+        .fill(panel())
+        .stroke(Stroke::new(1.0, border()))
+        .corner_radius(RADIUS)
+        .inner_margin(Margin::same(8))
+        .outer_margin(outer)
+}
+
+/// Round the corners of `rect` after its content was painted (content that can't be
+/// clipped, like the GPU canvases): masks the corners with the window background and
+/// outlines the rounded rectangle.
+pub fn round_corners(painter: &Painter, rect: Rect) {
+    let r = f32::from(RADIUS);
+    let bg = window_bg();
+    let mut mesh = egui::Mesh::default();
+    let corners = [
+        (rect.left_top(), pos2(rect.left() + r, rect.top() + r), std::f32::consts::PI),
+        (rect.right_top(), pos2(rect.right() - r, rect.top() + r), 1.5 * std::f32::consts::PI),
+        (rect.right_bottom(), pos2(rect.right() - r, rect.bottom() - r), 0.0),
+        (rect.left_bottom(), pos2(rect.left() + r, rect.bottom() - r), 0.5 * std::f32::consts::PI),
+    ];
+    const STEPS: u32 = 8;
+    for (corner, center, start) in corners {
+        // A fan from the corner over the quarter circle.
+        let base = mesh.vertices.len() as u32;
+        mesh.colored_vertex(corner, bg);
+        for i in 0..=STEPS {
+            let t = start + std::f32::consts::FRAC_PI_2 * i as f32 / STEPS as f32;
+            mesh.colored_vertex(center + r * egui::vec2(t.cos(), t.sin()), bg);
+        }
+        for i in 0..STEPS {
+            mesh.add_triangle(base, base + 1 + i, base + 2 + i);
+        }
+    }
+    painter.add(mesh);
+    // Anti-aliased edge over the mask's.
+    painter.rect_stroke(rect, RADIUS, Stroke::new(1.0, border()), egui::StrokeKind::Inside);
 }
 
 /// Apply the theme to egui (call after [`view::style::set_theme`]).

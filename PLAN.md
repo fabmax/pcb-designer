@@ -692,3 +692,13 @@ and level of detail for tiny primitives.
     other view's selection is highlighted. For example, select R1 in the schematic,
     open the PCB tab, and R1's footprint is highlighted.
   - The script step `board` (dev aid) brings the PCB tab to the front.
+- **Panel styling (IntelliJ-like).** The window background shows through 6 pt gaps
+  between the side panels, the tab groups, the menu bar and the status bar. Panels and
+  tab groups have rounded corners (10 pt) and a subtle outline. Side by side, the
+  schematic and PCB groups are now clearly separate.
+  - GPU canvases can't be clipped by egui, so their corners are masked afterwards with
+    the window background (`theme::round_corners`, drawn by egui_tiles'
+    `paint_on_top_of_tile`), with an anti-aliased outline on top.
+  - Tabs are rounded pills: the active one is filled and the others highlight on hover.
+    The tool bars share the tab bar's colour, with a hairline to the canvas.
+  - `--side-by-side` starts in the split layout.

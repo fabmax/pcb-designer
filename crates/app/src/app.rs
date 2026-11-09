@@ -60,6 +60,8 @@ pub struct Options {
     pub kicad_import: bool,
     /// Open the import window with this search.
     pub kicad_query: Option<String>,
+    /// Start with schematic and PCB side by side instead of as tabs.
+    pub side_by_side: bool,
     /// Scripted input, see [`crate::script`].
     pub script: Option<String>,
 }
@@ -145,7 +147,7 @@ impl PcbApp {
         let rs = cc.wgpu_render_state.as_ref().expect("wgpu renderer");
         CanvasResources::install(rs);
 
-        let tree = default_tree();
+        let tree = if opts.side_by_side { side_by_side_tree() } else { default_tree() };
 
         let mut status = None;
         let doc = match opts.startup {
@@ -1564,6 +1566,8 @@ fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
 }
 
 struct TreeBehavior<'a> {
+    /// Tab containers: drawn as rounded panels.
+    tab_groups: Vec<TileId>,
     doc: &'a mut Document,
     panes: &'a mut [Pane; 2],
     libraries: &'a mut [LibraryEditor],
@@ -1603,8 +1607,10 @@ impl TreeBehavior<'_> {
             *self.active = kind;
             *self.focus_lib = None;
         }
-        // The canvas fills the rest of the tab.
-        let rect = egui::Rect::from_min_max(egui::pos2(full.left(), ui.cursor().top()), full.max);
+        // The canvas fills the rest of the tab, right below the tool bar.
+        let top = ui.min_rect().bottom();
+        ui.painter().hline(full.x_range(), top, egui::Stroke::new(1.0, theme::border()));
+        let rect = egui::Rect::from_min_max(egui::pos2(full.left(), top + 1.0), full.max);
         let pane = &mut self.panes[kind as usize];
         let scene = &mut self.doc.view_mut(kind).scene;
         let canvas = &mut pane.canvas;
@@ -1744,15 +1750,101 @@ impl Behavior<Tab> for TreeBehavior<'_> {
     }
 
     fn gap_width(&self, _style: &egui::Style) -> f32 {
-        2.0
+        f32::from(theme::GAP)
+    }
+
+    fn resize_stroke(&self, style: &egui::Style, state: egui_tiles::ResizeState) -> egui::Stroke {
+        match state {
+            // The gap shows the window background.
+            egui_tiles::ResizeState::Idle => egui::Stroke::NONE,
+            egui_tiles::ResizeState::Hovering => egui::Stroke::new(2.0, style.visuals.widgets.hovered.bg_fill),
+            egui_tiles::ResizeState::Dragging => egui::Stroke::new(2.0, theme::accent()),
+        }
+    }
+
+    fn tab_bar_height(&self, _style: &egui::Style) -> f32 {
+        32.0
     }
 
     fn tab_bar_color(&self, _visuals: &egui::Visuals) -> egui::Color32 {
-        theme::panel_dark()
+        theme::panel()
+    }
+
+    fn tab_bar_hline_stroke(&self, _visuals: &egui::Visuals) -> egui::Stroke {
+        egui::Stroke::new(1.0, theme::border())
+    }
+
+    fn paint_on_top_of_tile(&self, painter: &egui::Painter, _style: &egui::Style, tile_id: TileId, rect: egui::Rect) {
+        if self.tab_groups.contains(&tile_id) {
+            theme::round_corners(painter, rect);
+        }
+    }
+
+    /// Tabs as rounded pills (the active one filled, others on hover).
+    fn tab_ui(
+        &mut self,
+        tiles: &mut Tiles<Tab>,
+        ui: &mut egui::Ui,
+        id: egui::Id,
+        tile_id: TileId,
+        state: &egui_tiles::TabState,
+    ) -> egui::Response {
+        let text = self.tab_title_for_tile(tiles, tile_id);
+        let font_id = egui::TextStyle::Button.resolve(ui.style());
+        let galley = text.into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, font_id);
+        let margin = 10.0;
+        let close = 14.0;
+        let width = galley.size().x + 2.0 * margin + if state.closable { close + 4.0 } else { 0.0 };
+        let (_, rect) = ui.allocate_space(egui::vec2(width + 4.0, ui.available_height()));
+        let pill = egui::Rect::from_min_max(
+            egui::pos2(rect.left() + 4.0, rect.top() + 4.0),
+            egui::pos2(rect.right(), rect.bottom() - 4.0),
+        );
+        let response = ui.interact(pill, id, egui::Sense::click_and_drag()).on_hover_cursor(egui::CursorIcon::Default);
+        if ui.is_rect_visible(rect) && !state.is_being_dragged {
+            let v = ui.visuals();
+            let fill = if state.active {
+                v.widgets.inactive.weak_bg_fill
+            } else if response.hovered() {
+                v.widgets.inactive.weak_bg_fill.gamma_multiply(0.5)
+            } else {
+                egui::Color32::TRANSPARENT
+            };
+            ui.painter().rect_filled(pill, 6, fill);
+            let color = if state.active { v.strong_text_color() } else { theme::text_dim() };
+            let pos = egui::pos2(pill.left() + margin, pill.center().y - galley.size().y / 2.0);
+            ui.painter().galley(pos, galley, color);
+            if state.closable {
+                let r = egui::Rect::from_center_size(
+                    egui::pos2(pill.right() - margin - close / 2.0 + 2.0, pill.center().y),
+                    egui::vec2(close, close),
+                );
+                let close_id = ui.auto_id_with(("tab_close", tile_id));
+                let c = ui.interact(r, close_id, egui::Sense::click()).on_hover_cursor(egui::CursorIcon::Default);
+                if c.hovered() {
+                    ui.painter().rect_filled(r, 4, v.widgets.hovered.weak_bg_fill);
+                }
+                let x = r.shrink(4.0);
+                let stroke =
+                    egui::Stroke::new(1.2, if c.hovered() { v.strong_text_color() } else { theme::text_dim() });
+                ui.painter().line_segment([x.left_top(), x.right_bottom()], stroke);
+                ui.painter().line_segment([x.right_top(), x.left_bottom()], stroke);
+                if (c.clicked() || response.clicked_by(egui::PointerButton::Middle))
+                    && self.on_tab_close(tiles, tile_id)
+                {
+                    tiles.remove(tile_id);
+                }
+            }
+        }
+        self.on_tab_button(tiles, tile_id, response)
     }
 }
 
 impl eframe::App for PcbApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        theme::window_bg().to_normalized_gamma_f32()
+    }
+
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
         if let Some(script) = &mut self.script {
             let panes = &self.panes;
@@ -1772,56 +1864,87 @@ impl eframe::App for PcbApp {
             }
         }
 
-        egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
-        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
-        egui::Panel::left("library").resizable(true).default_size(240.0).show(ui, |ui| {
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.left_panel(ui));
-        });
-        egui::Panel::right("properties").resizable(true).default_size(300.0).show(ui, |ui| {
-            ui.add_space(6.0);
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                if let Some(l) = self.focused_lib() {
-                    l.inspector_ui(ui);
-                    return;
-                }
-                let kind = self.active;
-                if kind == ViewKind::Schematic && self.sch.is_placing() {
-                    sch_ui::settings(ui, &mut self.sch, &self.doc);
-                    return;
-                }
-                if kind == ViewKind::Board && self.pcb.is_placing() {
-                    pcb_ui::settings(ui, &mut self.pcb, &self.doc);
-                    return;
-                }
-                let pane = &mut self.panes[kind as usize];
-                let selection = pane.it.selection.clone();
-                let mut message = None;
-                self.properties.ui(ui, &mut self.doc, &selection, &mut message);
-                if kind == ViewKind::Board && selection.is_empty() {
-                    if let Some(ids) = pcb_ui::problems(ui, &self.doc) {
+        let gap = theme::GAP;
+        let bar = |m: egui::Margin| egui::Frame::NONE.fill(theme::window_bg()).inner_margin(m);
+        egui::Panel::top("menu")
+            .frame(bar(egui::Margin { left: 8, right: 8, top: 2, bottom: gap }))
+            .show_separator_line(false)
+            .show(ui, |ui| self.menu(ui));
+        egui::Panel::bottom("status")
+            .frame(bar(egui::Margin { left: 10, right: 10, top: 4, bottom: 4 }))
+            .show_separator_line(false)
+            .show(ui, |ui| self.status_bar(ui));
+        egui::Panel::left("library")
+            .frame(theme::panel_frame(egui::Margin { left: gap, ..Default::default() }))
+            .show_separator_line(false)
+            .resizable(true)
+            .default_size(240.0)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.left_panel(ui));
+            });
+        egui::Panel::right("properties")
+            .frame(theme::panel_frame(egui::Margin { right: gap, ..Default::default() }))
+            .show_separator_line(false)
+            .resizable(true)
+            .default_size(300.0)
+            .show(ui, |ui| {
+                ui.add_space(6.0);
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    if let Some(l) = self.focused_lib() {
+                        l.inspector_ui(ui);
+                        return;
+                    }
+                    let kind = self.active;
+                    if kind == ViewKind::Schematic && self.sch.is_placing() {
+                        sch_ui::settings(ui, &mut self.sch, &self.doc);
+                        return;
+                    }
+                    if kind == ViewKind::Board && self.pcb.is_placing() {
+                        pcb_ui::settings(ui, &mut self.pcb, &self.doc);
+                        return;
+                    }
+                    let pane = &mut self.panes[kind as usize];
+                    let selection = pane.it.selection.clone();
+                    let mut message = None;
+                    self.properties.ui(ui, &mut self.doc, &selection, &mut message);
+                    if kind == ViewKind::Board && selection.is_empty() {
+                        if let Some(ids) = pcb_ui::problems(ui, &self.doc) {
+                            let pane = &mut self.panes[kind as usize];
+                            pane.it.set_selection(&mut self.doc.target(kind), ids);
+                        }
+                        pcb_ui::board_setup(ui, &mut self.doc, &mut message);
+                    }
+                    if kind == ViewKind::Board
+                        && let Some((ids, pos)) = pcb_ui::drc(ui, &mut self.doc)
+                    {
                         let pane = &mut self.panes[kind as usize];
                         pane.it.set_selection(&mut self.doc.target(kind), ids);
+                        let cam = &mut pane.canvas.camera;
+                        cam.center = [to_mm(pos.x), to_mm(pos.y)];
+                        cam.zoom = cam.zoom.max(25.0);
                     }
-                    pcb_ui::board_setup(ui, &mut self.doc, &mut message);
-                }
-                if kind == ViewKind::Board
-                    && let Some((ids, pos)) = pcb_ui::drc(ui, &mut self.doc)
-                {
-                    let pane = &mut self.panes[kind as usize];
-                    pane.it.set_selection(&mut self.doc.target(kind), ids);
-                    let cam = &mut pane.canvas.camera;
-                    cam.center = [to_mm(pos.x), to_mm(pos.y)];
-                    cam.zoom = cam.zoom.max(25.0);
-                }
-                if let Some(m) = message {
-                    self.status = Some((m, Instant::now()));
-                }
+                    if let Some(m) = message {
+                        self.status = Some((m, Instant::now()));
+                    }
+                });
             });
-        });
 
         self.hovered = None;
-        egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
+        let central = egui::Frame::NONE.fill(theme::window_bg()).inner_margin(egui::Margin {
+            left: gap,
+            right: gap,
+            ..Default::default()
+        });
+        let tab_groups: Vec<TileId> = self
+            .tree
+            .tiles
+            .iter()
+            .filter(|(_, t)| matches!(t, Tile::Container(Container::Tabs(_))))
+            .map(|(&id, _)| id)
+            .collect();
+        egui::CentralPanel::default().frame(central).show(ui, |ui| {
             let mut behavior = TreeBehavior {
+                tab_groups,
                 doc: &mut self.doc,
                 panes: &mut self.panes,
                 libraries: &mut self.libraries,

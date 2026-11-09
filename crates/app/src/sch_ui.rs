@@ -13,7 +13,7 @@ const LABEL_SIDES: [&str; 4] = ["0°", "90°", "180°", "270°"];
 pub fn toolbar(ui: &mut egui::Ui, sch: &SchPlacer) -> Option<SchTool> {
     let mut chosen = None;
     let full = ui.max_rect();
-    egui::Frame::NONE.fill(theme::panel_dark()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+    egui::Frame::NONE.fill(theme::panel()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
         ui.set_width(full.width() - 16.0);
         ui.horizontal(|ui| {
             for &tool in SchTool::BAR {

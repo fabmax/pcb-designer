@@ -467,7 +467,7 @@ impl LibraryEditor {
     /// Back / forward and what is shown, above the editor or part form.
     fn nav_bar(&mut self, ui: &mut egui::Ui) {
         let width = ui.max_rect().width();
-        egui::Frame::NONE.fill(theme::panel_dark()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+        egui::Frame::NONE.fill(theme::panel()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
             ui.set_width(width - 16.0);
             ui.horizontal(|ui| {
                 let back = self.back.last().map(|o| self.describe(*o));
@@ -492,7 +492,7 @@ impl LibraryEditor {
 
     fn item_ui(&mut self, ui: &mut egui::Ui, item: Item) {
         let full = ui.max_rect();
-        egui::Frame::NONE.fill(theme::panel_dark()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+        egui::Frame::NONE.fill(theme::panel()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
             ui.set_width(full.width() - 16.0);
             ui.horizontal_wrapped(|ui| {
                 for &tool in Tool::for_item(item) {
@@ -538,7 +538,9 @@ impl LibraryEditor {
         });
 
         // The canvas fills the rest of the tab exactly (never wider, whatever the toolbar did).
-        let rect = egui::Rect::from_min_max(egui::pos2(full.left(), ui.cursor().top()), full.max);
+        let top = ui.min_rect().bottom();
+        ui.painter().hline(full.x_range(), top, egui::Stroke::new(1.0, theme::border()));
+        let rect = egui::Rect::from_min_max(egui::pos2(full.left(), top + 1.0), full.max);
         let scene = &mut self.view.scene;
         let canvas = &mut self.canvas;
         let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
