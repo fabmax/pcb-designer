@@ -87,8 +87,8 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
             ui.add_space(6.0);
             hint(
                 ui,
-                "Name a bus with a label on it: D[0..7], {SDA SCL} or I2C{SDA SCL} (members I2C.SDA, \
-                 I2C.SCL). Signals leave through bus entries and connect by their labels.",
+                "A new bus without a name asks for one when you finish it; the name becomes a label on \
+                 the bus: D[0..7], {SDA SCL} or I2C{SDA SCL} (signals I2C.SDA, I2C.SCL).",
             );
         }
         SchTool::BusEntry => {
@@ -100,7 +100,10 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 ui.end_row();
             });
             ui.add_space(6.0);
-            hint(ui, "Click on a bus. Label the wire leaving the entry with a member of the bus. R rotates.");
+            hint(
+                ui,
+                "Click on a bus. Wiring an unnamed net to the entry asks which of the bus's signals it is. R rotates.",
+            );
         }
         SchTool::Label => {
             grid(ui, "sch_tool", |ui| {

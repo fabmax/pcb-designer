@@ -28,6 +28,7 @@ mod icons;
 mod keymap;
 mod kicad_import;
 mod library;
+mod name_prompt;
 mod part_form;
 mod pcb_ui;
 mod properties;
