@@ -21,10 +21,12 @@ use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
 
 use crate::agent::{self, Agent};
 use crate::canvas::{self, Canvas, CanvasResources};
+use crate::dock::{Dock, Panel, Side, Unseen};
 use crate::icons::{self, Icon};
 use crate::keymap::{Action, Context, Keymap, Shortcut};
 use crate::kicad_import::{ImportAction, KicadImport};
 use crate::library::{LibEvent, LibraryEditor, Open};
+use crate::messages;
 use crate::pcb_ui;
 use crate::properties::Properties;
 use crate::sch_ui;
@@ -67,6 +69,8 @@ pub struct Options {
     pub kicad_query: Option<String>,
     /// Start with schematic and PCB side by side instead of as tabs.
     pub side_by_side: bool,
+    /// Panels to open (`messages`, `board_setup`, …; development aid for screenshots).
+    pub panels: Vec<String>,
     /// Scripted input, see [`crate::script`].
     pub script: Option<String>,
 }
@@ -134,6 +138,12 @@ pub struct PcbApp {
     sch: SchPlacer,
     /// Asking for the name of a new bus or of a signal leaving one.
     name_prompt: Option<NamePrompt>,
+    /// The dock as last saved (the live one is in `settings`).
+    saved_dock: Dock,
+    /// Library tab that last had focus (Library browser panel).
+    last_lib: Option<u64>,
+    /// Problems not seen in the Messages panel yet.
+    unseen: Unseen,
     /// Board creation tools.
     pcb: PcbPlacer,
     /// Inputs of the current cross-probe highlights (to skip unchanged frames).
@@ -199,6 +209,9 @@ impl PcbApp {
             kicad: KicadImport::new(opts.kicad_paths.clone(), crate::settings::kicad_dir()),
             sch: SchPlacer::default(),
             name_prompt: None,
+            saved_dock: Dock::default(),
+            last_lib: None,
+            unseen: Unseen::default(),
             pcb: PcbPlacer::default(),
             probe_key: None,
             script: None,
@@ -240,6 +253,13 @@ impl PcbApp {
         for name in &opts.show {
             app.show_by_name(name);
         }
+        for name in &opts.panels {
+            match Panel::parse(name) {
+                Some(p) => app.settings.dock.show(p),
+                None => eprintln!("unknown panel {name:?}"),
+            }
+        }
+        app.saved_dock = app.settings.dock.clone();
         if opts.mcp.is_some() {
             app.agent.start(&cc.egui_ctx);
         }
@@ -885,6 +905,9 @@ impl PcbApp {
     }
 
     fn run_action(&mut self, action: Action) {
+        if let Some(panel) = Panel::of_action(action) {
+            return self.settings.dock.toggle(panel);
+        }
         if let Some(key) = self.focus_lib
             && self.lib_action(key, action)
         {
@@ -937,7 +960,14 @@ impl PcbApp {
             | Action::PcbVia
             | Action::PcbOutline
             | Action::PcbZone
-            | Action::PcbNextLayer => return,
+            | Action::PcbNextLayer
+            | Action::PanelLibraries
+            | Action::PanelLibraryBrowser
+            | Action::PanelMessages
+            | Action::PanelProperties
+            | Action::PanelToolSettings
+            | Action::PanelBoardSetup
+            | Action::PanelOverview => return,
         };
         let kind = self.active;
         let pane = &mut self.panes[kind as usize];
@@ -982,6 +1012,13 @@ impl PcbApp {
             | Action::SchJunction
             | Action::Posture => None,
             Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => None,
+            Action::PanelLibraries
+            | Action::PanelLibraryBrowser
+            | Action::PanelMessages
+            | Action::PanelProperties
+            | Action::PanelToolSettings
+            | Action::PanelBoardSetup
+            | Action::PanelOverview => None,
         };
         if let Some(m) = msg {
             self.set_status(m);
@@ -1254,25 +1291,36 @@ impl PcbApp {
         true
     }
 
-    fn left_panel(&mut self, ui: &mut egui::Ui) {
-        if let Some(key) = self.focus_lib {
-            let event = self.lib(key).and_then(|l| l.browser_ui(ui, true));
-            match event {
-                Some(LibEvent::Place(part)) => self.place_part(key, part),
-                Some(LibEvent::Save) => {
-                    self.save_library(key, false);
-                }
-                Some(LibEvent::SaveAs) => {
-                    self.save_library(key, true);
-                }
-                Some(LibEvent::Close) => self.close_requests.push(key),
-                None => {}
-            }
+    /// The library tab the Library browser shows: the focused one, else the last one.
+    /// The library the browser panel shows: the focused (or last focused) library tab,
+    /// else the first open one.
+    fn browser_lib(&self) -> Option<u64> {
+        self.focus_lib
+            .or(self.last_lib)
+            .filter(|k| self.libraries.iter().any(|l| l.key == *k))
+            .or(self.libraries.first().map(|l| l.key))
+    }
+
+    fn library_browser_panel(&mut self, ui: &mut egui::Ui) {
+        let Some(key) = self.browser_lib() else {
+            crate::fields::hint(
+                ui,
+                "Open a library tab (Edit in the Libraries panel) to browse its parts, symbols and footprints.",
+            );
             return;
+        };
+        let event = self.lib(key).and_then(|l| l.browser_ui(ui, true));
+        match event {
+            Some(LibEvent::Place(part)) => self.place_part(key, part),
+            Some(LibEvent::Save) => {
+                self.save_library(key, false);
+            }
+            Some(LibEvent::SaveAs) => {
+                self.save_library(key, true);
+            }
+            Some(LibEvent::Close) => self.close_requests.push(key),
+            None => {}
         }
-        ui.add_space(6.0);
-        self.libraries_section(ui);
-        self.project_parts_section(ui);
     }
 
     /// Parts of all open libraries, ready to place.
@@ -1378,6 +1426,169 @@ impl PcbApp {
         });
         if let Some(parts) = update {
             self.update_parts(&parts);
+        }
+    }
+
+    /// A window edge's bar of panel buttons (the left one also holds the bottom panels).
+    fn dock_bar(&mut self, ui: &mut egui::Ui, side: Side) {
+        let frame = egui::Frame::NONE.fill(theme::window_bg()).inner_margin(egui::Margin::symmetric(0, 2));
+        let panel = match side {
+            Side::Left => egui::Panel::left("dock_bar_left"),
+            _ => egui::Panel::right("dock_bar_right"),
+        };
+        let mut clicked = None;
+        panel.exact_size(DOCK_BAR).resizable(false).show_separator_line(false).frame(frame).show(ui, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.spacing_mut().item_spacing.y = 4.0;
+                let groups: &[Side] = if side == Side::Left { &[Side::Left, Side::Bottom] } else { &[Side::Right] };
+                for (g, &group) in groups.iter().enumerate() {
+                    if g > 0 {
+                        let (r, _) = ui.allocate_exact_size(egui::vec2(20.0, 9.0), egui::Sense::hover());
+                        ui.painter().hline(r.x_range(), r.center().y, egui::Stroke::new(1.0, theme::border()));
+                    }
+                    for panel in Panel::on(group) {
+                        let badge = (panel == Panel::Messages && !self.settings.dock.is_open(panel))
+                            .then_some((self.unseen.new, self.unseen.total));
+                        let open = self.settings.dock.is_open(panel);
+                        if dock_button(ui, panel, open, badge, &self.keymap) {
+                            clicked = Some(panel);
+                        }
+                    }
+                }
+            });
+        });
+        if let Some(p) = clicked {
+            self.settings.dock.toggle(p);
+        }
+    }
+
+    /// The panel open on `side`, with a title bar to hide it.
+    fn dock_panel(&mut self, ui: &mut egui::Ui, side: Side) {
+        let Some(panel) = self.settings.dock.open(side) else { return };
+        let gap = theme::GAP;
+        let (container, margin) = match side {
+            Side::Left => (egui::Panel::left("dock_left"), egui::Margin::default()),
+            Side::Right => (egui::Panel::right("dock_right"), egui::Margin::default()),
+            Side::Bottom => {
+                (egui::Panel::bottom("dock_bottom"), egui::Margin { left: gap, right: gap, top: gap, bottom: 0 })
+            }
+        };
+        let mut hide = false;
+        let r = container
+            .frame(theme::panel_frame(margin))
+            .show_separator_line(false)
+            .resizable(true)
+            .default_size(self.settings.dock.size(side))
+            .size_range(if side == Side::Bottom { 80.0..=800.0 } else { 160.0..=700.0 })
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(panel.title()).strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let (rect, r) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                        if r.hovered() {
+                            ui.painter().rect_filled(rect, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
+                        }
+                        icons::paint(ui.painter(), rect.shrink(4.0), Icon::Minus, theme::text_dim());
+                        hide = r.on_hover_text("Hide").clicked();
+                    });
+                });
+                ui.add_space(4.0);
+                if panel == Panel::Messages {
+                    self.panel_ui(ui, panel);
+                } else {
+                    egui::ScrollArea::vertical()
+                        .id_salt(("dock", side as u8))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| self.panel_ui(ui, panel));
+                }
+            });
+        if hide {
+            self.settings.dock.hide(side);
+        }
+        let rect = r.response.rect;
+        let size = if side == Side::Bottom { rect.height() } else { rect.width() };
+        self.settings.dock.set_size(side, size);
+    }
+
+    fn panel_ui(&mut self, ui: &mut egui::Ui, panel: Panel) {
+        let mut message = None;
+        match panel {
+            Panel::Libraries => {
+                self.libraries_section(ui);
+                self.project_parts_section(ui);
+            }
+            Panel::LibraryBrowser => self.library_browser_panel(ui),
+            Panel::Properties => {
+                if let Some(l) = self.focused_lib() {
+                    return l.properties_ui(ui);
+                }
+                let kind = self.active;
+                let selection = self.panes[kind as usize].it.selection.clone();
+                self.properties.ui(ui, &mut self.doc, &selection, &mut message);
+            }
+            Panel::ToolSettings => {
+                if let Some(l) = self.focused_lib() {
+                    return l.tool_settings_ui(ui);
+                }
+                match self.active {
+                    ViewKind::Schematic if self.sch.is_placing() => sch_ui::settings(ui, &mut self.sch, &self.doc),
+                    ViewKind::Board if self.pcb.is_placing() => pcb_ui::settings(ui, &mut self.pcb, &self.doc),
+                    _ => crate::fields::hint(ui, "The select tool has no settings. Pick a tool from the tool bar."),
+                }
+            }
+            Panel::BoardSetup => pcb_ui::board_setup(ui, &mut self.doc, &mut message),
+            Panel::Overview => match self.focused_lib() {
+                Some(l) => l.overview_ui(ui),
+                None => crate::properties::project_summary(ui, &self.doc),
+            },
+            Panel::Messages => {
+                if let Some(show) = messages::ui(ui, &mut self.doc, &mut self.libraries) {
+                    self.show_message(show);
+                }
+            }
+        }
+        if let Some(m) = message {
+            self.status = Some((m, Instant::now()));
+        }
+    }
+
+    /// Bring what a clicked message is about into view.
+    fn show_message(&mut self, show: messages::Show) {
+        match show {
+            messages::Show::Objects(kind, ids, pos) => {
+                self.show_view(kind);
+                let pane = &mut self.panes[kind as usize];
+                if !ids.is_empty() {
+                    pane.it.set_selection(&mut self.doc.target(kind), ids);
+                }
+                if let Some(pos) = pos {
+                    let cam = &mut pane.canvas.camera;
+                    cam.center = [to_mm(pos.x), to_mm(pos.y)];
+                    if kind == ViewKind::Board {
+                        cam.zoom = cam.zoom.max(25.0);
+                    }
+                }
+            }
+            messages::Show::LibraryPart(key, part) => {
+                self.focus_library_tab(key);
+                if let Some(l) = self.lib(key) {
+                    l.show(Open::Part(part));
+                }
+            }
+        }
+    }
+
+    /// Per frame: the Library browser's library, the Messages badge, saving the dock.
+    fn update_dock(&mut self, ctx: &egui::Context) {
+        if self.focus_lib.is_some() {
+            self.last_lib = self.focus_lib;
+        }
+        let keys = messages::keys(&self.doc, &mut self.libraries);
+        self.unseen.update(keys, self.settings.dock.is_open(Panel::Messages));
+        // Save once a resize is done.
+        if self.settings.dock != self.saved_dock && !ctx.input(|i| i.pointer.any_down()) {
+            self.saved_dock = self.settings.dock.clone();
+            self.save_settings();
         }
     }
 
@@ -1534,6 +1745,52 @@ fn ask_save(question: &str) -> rfd::MessageDialogResult {
         .set_description(question)
         .set_buttons(rfd::MessageButtons::YesNoCancel)
         .show()
+}
+
+/// Width of the panel button bars (points).
+const DOCK_BAR: f32 = 36.0;
+
+/// A panel's bar button: its icon, accent-tinted while the panel is open. `badge` is
+/// (new, total) problems: a count bubble for new ones, a dot if only old ones remain.
+fn dock_button(ui: &mut egui::Ui, panel: Panel, open: bool, badge: Option<(usize, usize)>, keymap: &Keymap) -> bool {
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::click());
+    let painter = ui.painter();
+    if open {
+        painter.rect_filled(rect, 6.0, theme::accent().gamma_multiply(0.28));
+    } else if r.hovered() {
+        painter.rect_filled(rect, 6.0, ui.visuals().widgets.hovered.weak_bg_fill);
+    }
+    let color = if open { theme::accent() } else { ui.visuals().text_color() };
+    icons::paint(painter, rect.shrink(6.0), panel.icon(), color);
+    match badge {
+        Some((new, _)) if new > 0 => {
+            let text = if new > 99 { "99+".to_string() } else { new.to_string() };
+            let font = egui::FontId::proportional(9.5);
+            let galley = painter.layout_no_wrap(text, font, egui::Color32::BLACK);
+            let w = (galley.size().x + 6.0).max(14.0);
+            let center = rect.right_top() + egui::vec2(-4.0, 5.0);
+            let bubble = egui::Rect::from_center_size(center, egui::vec2(w, 14.0));
+            painter.rect_filled(bubble, 7.0, theme::warn());
+            painter.galley(bubble.center() - galley.size() / 2.0, galley, egui::Color32::BLACK);
+        }
+        Some((_, total)) if total > 0 => {
+            painter.circle_filled(rect.right_top() + egui::vec2(-5.0, 5.0), 3.5, theme::warn());
+        }
+        _ => {}
+    }
+    let shortcut = ui.ctx().format_shortcut(
+        &keymap
+            .shortcuts(panel.action())
+            .first()
+            .map(|s| s.to_egui())
+            .unwrap_or(egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F35)),
+    );
+    let tip = if keymap.shortcuts(panel.action()).is_empty() {
+        panel.title().to_string()
+    } else {
+        format!("{}  {shortcut}", panel.title())
+    };
+    r.on_hover_text(tip).clicked()
 }
 
 fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
@@ -1881,70 +2138,11 @@ impl eframe::App for PcbApp {
             .frame(bar(egui::Margin { left: 10, right: 10, top: 4, bottom: 4 }))
             .show_separator_line(false)
             .show(ui, |ui| self.status_bar(ui));
-        egui::Panel::left("library")
-            .frame(theme::panel_frame(egui::Margin { left: gap, ..Default::default() }))
-            .show_separator_line(false)
-            .resizable(true)
-            .default_size(240.0)
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| self.left_panel(ui));
-            });
-        egui::Panel::right("properties")
-            .frame(theme::panel_frame(egui::Margin { right: gap, ..Default::default() }))
-            .show_separator_line(false)
-            .resizable(true)
-            .default_size(300.0)
-            .show(ui, |ui| {
-                ui.add_space(6.0);
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                    if let Some(l) = self.focused_lib() {
-                        l.inspector_ui(ui);
-                        return;
-                    }
-                    let kind = self.active;
-                    if kind == ViewKind::Schematic && self.sch.is_placing() {
-                        sch_ui::settings(ui, &mut self.sch, &self.doc);
-                        return;
-                    }
-                    if kind == ViewKind::Board && self.pcb.is_placing() {
-                        pcb_ui::settings(ui, &mut self.pcb, &self.doc);
-                        return;
-                    }
-                    let pane = &mut self.panes[kind as usize];
-                    let selection = pane.it.selection.clone();
-                    let mut message = None;
-                    self.properties.ui(ui, &mut self.doc, &selection, &mut message);
-                    if kind == ViewKind::Schematic
-                        && selection.is_empty()
-                        && let Some((ids, pos)) = sch_ui::problems(ui, &self.doc)
-                    {
-                        let pane = &mut self.panes[kind as usize];
-                        pane.it.set_selection(&mut self.doc.target(kind), ids);
-                        if let Some(pos) = pos {
-                            pane.canvas.camera.center = [to_mm(pos.x), to_mm(pos.y)];
-                        }
-                    }
-                    if kind == ViewKind::Board && selection.is_empty() {
-                        if let Some(ids) = pcb_ui::problems(ui, &self.doc) {
-                            let pane = &mut self.panes[kind as usize];
-                            pane.it.set_selection(&mut self.doc.target(kind), ids);
-                        }
-                        pcb_ui::board_setup(ui, &mut self.doc, &mut message);
-                    }
-                    if kind == ViewKind::Board
-                        && let Some((ids, pos)) = pcb_ui::drc(ui, &mut self.doc)
-                    {
-                        let pane = &mut self.panes[kind as usize];
-                        pane.it.set_selection(&mut self.doc.target(kind), ids);
-                        let cam = &mut pane.canvas.camera;
-                        cam.center = [to_mm(pos.x), to_mm(pos.y)];
-                        cam.zoom = cam.zoom.max(25.0);
-                    }
-                    if let Some(m) = message {
-                        self.status = Some((m, Instant::now()));
-                    }
-                });
-            });
+        self.dock_bar(ui, Side::Left);
+        self.dock_bar(ui, Side::Right);
+        self.dock_panel(ui, Side::Left);
+        self.dock_panel(ui, Side::Right);
+        self.dock_panel(ui, Side::Bottom);
 
         self.hovered = None;
         let central = egui::Frame::NONE.fill(theme::window_bg()).inner_margin(egui::Margin {
@@ -1982,9 +2180,7 @@ impl eframe::App for PcbApp {
             self.settings.unit = units::unit();
             self.save_settings();
         }
-        if let Some(kind) = self.script.as_ref().map(Script::view)
-            && (kind != self.active || self.focus_lib.is_some())
-        {
+        if let Some(kind) = self.script.as_mut().and_then(Script::take_switch) {
             self.show_view(kind);
         }
 
@@ -2021,6 +2217,7 @@ impl eframe::App for PcbApp {
                 pane.it.refresh(&mut self.doc.target(pane.kind));
             }
         }
+        self.update_dock(&ctx);
         self.name_prompt_ui(&ctx);
         self.settings_window(&ctx);
         let libs: Vec<(u64, String)> = self.libraries.iter().map(|l| (l.key, l.lib.name().to_string())).collect();

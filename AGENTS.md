@@ -102,9 +102,11 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
   - `--side-by-side`
   - `--select R1`
   - `--show footprint:0805` (opens a library item)
+  - `--panel messages` (repeatable; shows a panel for this run only, see `dock.rs`)
   - `--script "board; ui-click X,Y; ui-move X,Y; key W; click X,Y; wait N"`
   - World coordinates are in mm; `ui-*` steps take screen points.
-  - A script forces the schematic or board tab to the front.
+  - A script brings the schematic tab to the front at its start and on `board` /
+    `schematic` steps; clicks may switch tabs afterwards.
   - `ui-click` on menus is unreliable.
 - Without a window: `cargo run -p mcp --example render_board -- out.png [w h] [--light]
   [--schematic]`.

@@ -1,14 +1,12 @@
 //! Schematic tool bar and tool settings (right panel).
 
-use egui::RichText;
-use model::{EntryDir, ObjectId, Point};
+use model::EntryDir;
 use view::Document;
 use view::sch_tools::{POWER_NAMES, SchPlacer, SchTool};
 
 use crate::fields::{self, grid, hint, label, row};
 use crate::icons::Icon;
 use crate::keymap::{Action, Keymap};
-use crate::theme;
 use crate::toolbar::{self, ToolButton};
 
 const LABEL_SIDES: [&str; 4] = ["0°", "90°", "180°", "270°"];
@@ -174,31 +172,6 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
     }
     ui.add_space(6.0);
     hint(ui, "Esc ends the tool.");
-}
-
-/// Schematic problems (connectivity and bus checks), shown with nothing selected.
-/// Returns the objects and position of a clicked problem.
-pub fn problems(ui: &mut egui::Ui, doc: &Document) -> Option<(Vec<ObjectId>, Option<Point>)> {
-    let problems = &doc.connectivity().problems;
-    if problems.is_empty() {
-        return None;
-    }
-    let mut chosen = None;
-    ui.add_space(8.0);
-    let title = RichText::new(format!("Schematic problems ({})", problems.len())).strong().color(theme::warn());
-    egui::CollapsingHeader::new(title).id_salt("sch_problems").default_open(true).show(ui, |ui| {
-        const SHOWN: usize = 300;
-        for p in problems.iter().take(SHOWN) {
-            let r = ui.add(egui::Button::selectable(false, &p.message).truncate());
-            if r.on_hover_text(&p.message).clicked() {
-                chosen = Some((p.objects.clone(), p.pos));
-            }
-        }
-        if problems.len() > SHOWN {
-            hint(ui, &format!("… and {} more", problems.len() - SHOWN));
-        }
-    });
-    chosen
 }
 
 /// Four buttons showing the bus entry directions. Returns a newly picked one.

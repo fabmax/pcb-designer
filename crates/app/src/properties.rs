@@ -33,7 +33,15 @@ impl Properties {
         self.active = false;
         let mut cx = Ctx { doc, message };
         match selection {
-            [] => project_summary(ui, cx.doc),
+            [] => {
+                ui.label(RichText::new("Nothing selected").color(theme::text_dim()));
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("Click an object to see and edit its properties; drag a box to select several.")
+                        .color(theme::text_dim())
+                        .small(),
+                );
+            }
             [id] => self.single(ui, &mut cx, *id),
             ids => multiple(ui, ids),
         }
@@ -580,7 +588,8 @@ fn multiple(ui: &mut egui::Ui, ids: &[ObjectId]) {
     ui.label(RichText::new("R rotate · X mirror · F flip · Del delete").color(theme::text_dim()));
 }
 
-fn project_summary(ui: &mut egui::Ui, doc: &Document) {
+/// Project statistics (Overview panel).
+pub fn project_summary(ui: &mut egui::Ui, doc: &Document) {
     let p = doc.project();
     heading(ui, &p.name, "");
     if let Some(path) = &doc.path {
@@ -602,6 +611,4 @@ fn project_summary(ui: &mut egui::Ui, doc: &Document) {
         row(ui, "Vias", p.board.vias.len().to_string());
         row(ui, "Library parts", p.library.parts.len().to_string());
     });
-    ui.add_space(8.0);
-    ui.label(RichText::new("Nothing selected").color(theme::text_dim()));
 }

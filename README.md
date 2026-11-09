@@ -59,9 +59,30 @@ updates" afterwards; the app only goes online when you click one of these. Agent
 KiCad's libraries are licensed CC-BY-SA 4.0, with an exception that allows using them in
 your designs without restrictions (see the KiCad library license).
 
+## Panels
+
+Tool windows sit in narrow icon bars on the window edges, IntelliJ style. Click an icon
+(or press its shortcut) to show its panel; click it again to hide it. Each side shows one
+panel at a time.
+
+| Bar | Panel | Shortcut |
+| --- | --- | --- |
+| left | Libraries | ⌘1 |
+| left | Library browser (of the open library tab) | ⌘2 |
+| left, bottom panel | Messages: schematic problems, board problems, DRC, library issues | ⌘3 |
+| right | Properties | ⌘4 |
+| right | Tool settings | ⌘5 |
+| right | Board setup | ⌘6 |
+| right | Overview (project or library statistics) | ⌘7 |
+
+Properties, Tool settings and Overview follow the editor tab you used last. Clicking a
+message shows its objects. While Messages is hidden, its icon counts new problems (a dot
+means only problems you have already seen). Which panels are open, and their sizes, are
+saved with the settings.
+
 ## Settings
 
-Theme (dark or light), length units (mm, mil or inch), key bindings and recent projects
+Theme (dark or light), length units (mm, mil or inch), key bindings, the panel layout and recent projects
 are saved in `settings.json` in the configuration folder (macOS:
 `~/Library/Application Support/pcb-designer`). Edit them in **Edit → Settings…** (⌘,): click `+` next to an
 action and press the new shortcut. `PCB_DESIGNER_CONFIG=DIR` uses another folder;

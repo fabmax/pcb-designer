@@ -24,6 +24,8 @@ pub struct Settings {
     pub recent: Vec<PathBuf>,
     /// Key bindings that differ from the defaults.
     pub keymap: BTreeMap<Action, Vec<Shortcut>>,
+    /// Open panels and their sizes.
+    pub dock: crate::dock::Dock,
 }
 
 pub fn config_dir() -> Option<PathBuf> {

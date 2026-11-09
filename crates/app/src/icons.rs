@@ -29,6 +29,15 @@ pub enum Icon {
     Schematic,
     Board,
     Library,
+    /// Panels.
+    Tree,
+    Properties,
+    Wrench,
+    Messages,
+    Info,
+    BoardSetup,
+    /// Hide a panel.
+    Minus,
 }
 
 /// Paint `icon` into `rect` (square) in `color`.
@@ -210,6 +219,58 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             painter.rect(rect_of(0.1, 0.22, 0.3, 0.86), 0.03 * s, faint, line, egui::StrokeKind::Middle);
             painter.rect(rect_of(0.36, 0.12, 0.56, 0.86), 0.03 * s, faint, line, egui::StrokeKind::Middle);
             poly(vec![p(0.6, 0.3), p(0.78, 0.24), p(0.94, 0.82), p(0.76, 0.88)], faint, line);
+        }
+        Icon::Tree => {
+            // A folder tree: a root and two indented children with branch lines.
+            let row = |x: f32, y: f32| {
+                painter.rect(rect_of(x, y - 0.08, x + 0.3, y + 0.08), 0.03 * s, faint, line, egui::StrokeKind::Middle);
+            };
+            row(0.1, 0.2);
+            row(0.5, 0.5);
+            row(0.5, 0.8);
+            open(vec![p(0.22, 0.28), p(0.22, 0.8), p(0.5, 0.8)], line);
+            seg(p(0.22, 0.5), p(0.5, 0.5), line);
+        }
+        Icon::Properties => {
+            // Three sliders.
+            for (y, x) in [(0.24, 0.62), (0.5, 0.34), (0.76, 0.56)] {
+                seg(p(0.1, y), p(0.9, y), Stroke::new(w, faint));
+                painter.circle(p(x, y), 0.09 * s, color, Stroke::NONE);
+            }
+        }
+        Icon::Wrench => {
+            // Handle from the lower left to a ring open towards the upper right.
+            seg(p(0.16, 0.84), p(0.52, 0.48), Stroke::new(w * 2.2, color));
+            let (cx, cy, r) = (0.64, 0.36, 0.2);
+            let arc: Vec<Pos2> = (0..=18)
+                .map(|i| {
+                    let a = (i as f32 / 18.0 * 270.0).to_radians();
+                    p(cx + r * a.cos(), cy + r * a.sin())
+                })
+                .collect();
+            open(arc, Stroke::new(w * 1.8, color));
+        }
+        Icon::Messages => {
+            // Warning triangle with an exclamation mark.
+            poly(vec![p(0.5, 0.1), p(0.92, 0.86), p(0.08, 0.86)], faint, line);
+            seg(p(0.5, 0.36), p(0.5, 0.6), Stroke::new(w * 1.3, color));
+            dot(p(0.5, 0.73), 0.05);
+        }
+        Icon::Info => {
+            ring(p(0.5, 0.5), 0.4, line);
+            seg(p(0.5, 0.44), p(0.5, 0.74), Stroke::new(w * 1.3, color));
+            dot(p(0.5, 0.3), 0.06);
+        }
+        Icon::BoardSetup => {
+            // Stacked layers with a settings dot.
+            let sheet = |y: f32| vec![p(0.42, y - 0.15), p(0.78, y), p(0.42, y + 0.15), p(0.06, y)];
+            open(close(sheet(0.66)), line);
+            poly(sheet(0.44), faint, line);
+            ring(p(0.78, 0.24), 0.11, Stroke::new(w * 1.2, color));
+            dot(p(0.78, 0.24), 0.04);
+        }
+        Icon::Minus => {
+            seg(p(0.22, 0.5), p(0.78, 0.5), line);
         }
         Icon::Text => {
             seg(p(0.18, 0.18), p(0.82, 0.18), thick);
