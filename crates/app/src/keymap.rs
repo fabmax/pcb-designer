@@ -34,8 +34,6 @@ pub enum Action {
     ToolRect,
     ToolCircle,
     ToolText,
-    NavigateBack,
-    NavigateForward,
     SchWire,
     SchLabel,
     SchPower,
@@ -78,8 +76,6 @@ impl Action {
         Action::ToolRect,
         Action::ToolCircle,
         Action::ToolText,
-        Action::NavigateBack,
-        Action::NavigateForward,
         Action::SchWire,
         Action::SchLabel,
         Action::SchPower,
@@ -114,8 +110,6 @@ impl Action {
             Action::ToolRect => "Rectangle tool",
             Action::ToolCircle => "Circle tool",
             Action::ToolText => "Text tool",
-            Action::NavigateBack => "Back (library editor)",
-            Action::NavigateForward => "Forward (library editor)",
             Action::SchWire => "Wire tool (schematic)",
             Action::SchLabel => "Net label tool (schematic)",
             Action::SchPower => "Power port tool (schematic)",
@@ -133,13 +127,9 @@ impl Action {
     /// The only context the action works in (`None`: everywhere).
     pub fn context(self) -> Option<Context> {
         match self {
-            Action::ToolPin
-            | Action::ToolLine
-            | Action::ToolRect
-            | Action::ToolCircle
-            | Action::ToolText
-            | Action::NavigateBack
-            | Action::NavigateForward => Some(Context::Library),
+            Action::ToolPin | Action::ToolLine | Action::ToolRect | Action::ToolCircle | Action::ToolText => {
+                Some(Context::Library)
+            }
             Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction => Some(Context::Schematic),
             Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => {
                 Some(Context::Board)
@@ -187,10 +177,6 @@ impl Shortcut {
 
     pub const fn cmd(key: Key) -> Self {
         Shortcut { command: true, shift: false, alt: false, key }
-    }
-
-    pub const fn alt(key: Key) -> Self {
-        Shortcut { command: false, shift: false, alt: true, key }
     }
 
     pub const fn shift(key: Key) -> Self {
@@ -268,7 +254,21 @@ impl<'de> Deserialize<'de> for Shortcut {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Keymap {
+    #[serde(deserialize_with = "bindings")]
     bindings: BTreeMap<Action, Vec<Shortcut>>,
+}
+
+/// Deserialize action → shortcuts, skipping actions this version doesn't know (removed
+/// ones in saved settings shouldn't discard the other bindings).
+pub fn bindings<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeMap<Action, Vec<Shortcut>>, D::Error> {
+    let raw = BTreeMap::<String, Vec<Shortcut>>::deserialize(d)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|(name, keys)| {
+            let action = serde_json::from_value(serde_json::Value::String(name.clone()));
+            action.inspect_err(|_| log::warn!("ignoring shortcuts of unknown action {name:?}")).ok().map(|a| (a, keys))
+        })
+        .collect())
 }
 
 impl Default for Keymap {
@@ -294,8 +294,6 @@ impl Default for Keymap {
             (Action::ToolRect, vec![S::key(Key::B)]),
             (Action::ToolCircle, vec![S::key(Key::C)]),
             (Action::ToolText, vec![S::key(Key::T)]),
-            (Action::NavigateBack, vec![S::alt(Key::ArrowLeft), S::cmd(Key::OpenBracket)]),
-            (Action::NavigateForward, vec![S::alt(Key::ArrowRight), S::cmd(Key::CloseBracket)]),
             (Action::SchWire, vec![S::key(Key::W)]),
             (Action::SchLabel, vec![S::key(Key::L)]),
             (Action::SchPower, vec![S::key(Key::P)]),

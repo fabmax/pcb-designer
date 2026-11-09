@@ -12,7 +12,7 @@
 //! project folder that doesn't exist yet becomes a new project saved there.
 //!
 //! `--show NAME` opens a part, symbol or footprint of the last opened (or starter)
-//! library in its editor tab; repeat it to navigate several steps.
+//! library in its editor tab (repeated: the last one is shown).
 //!
 //! `--kicad DIR` sets the KiCad library folders (default: the KiCad installation);
 //! `--kicad-pick` adds symbols/footprints to the KiCad import window, `--kicad-import`
