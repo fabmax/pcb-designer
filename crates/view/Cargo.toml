@@ -11,6 +11,7 @@ editor-core.workspace = true
 render.workspace = true
 rstar.workspace = true
 rustc-hash.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

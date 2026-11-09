@@ -315,10 +315,10 @@ impl View {
         let Layers::Sch(l) = &self.layers else { return };
         let mut out = Vec::with_capacity(c.dots.len() + c.unconnected.len());
         for &(_, p) in &c.dots {
-            out.push((l.wires, Instance::circle(mmf(p), JUNCTION_RADIUS, SCH_JUNCTION)));
+            out.push((l.wires, Instance::circle(mmf(p), JUNCTION_RADIUS, pal().sch_junction)));
         }
         for &(_, _, p) in &c.unconnected {
-            out.push((l.pins, Instance::circle_outline(mmf(p), 0.4, 0.12, SCH_PIN)));
+            out.push((l.pins, Instance::circle_outline(mmf(p), 0.4, 0.12, pal().sch_pin)));
         }
         self.scene.set_item(CONNECTIVITY_ITEM, out);
     }
@@ -333,10 +333,10 @@ impl View {
         let mut p = Painter::default();
         for g in ghosts {
             match g {
-                SchGhost::Wire(a, b) => p.line(l.wires, *a, *b, WIRE_WIDTH, SCH_WIRE),
-                SchGhost::Junction(pos) => p.circle(l.wires, *pos, 450_000, SCH_JUNCTION),
+                SchGhost::Wire(a, b) => p.line(l.wires, *a, *b, WIRE_WIDTH, pal().sch_wire),
+                SchGhost::Junction(pos) => p.circle(l.wires, *pos, 450_000, pal().sch_junction),
                 SchGhost::Target(pos) => {
-                    p.push(l.wires, Instance::circle_outline(mmf(*pos), 0.6, 0.12, HOVER.with_alpha(0xc0)))
+                    p.push(l.wires, Instance::circle_outline(mmf(*pos), 0.6, 0.12, pal().hover.with_alpha(0xc0)))
                 }
                 SchGhost::Label(lab) => draw_label(lab, l, &mut p),
                 SchGhost::Symbol { part, component, unit, transform } => {
@@ -389,8 +389,10 @@ impl View {
                     layer,
                     Instance::line(mmf(a), mmf(b), (width as f64 * 1e-6) as f32, board_layer_color(l).with_alpha(0xc0)),
                 )),
-                PcbGhost::Via { pos, diameter } => out
-                    .push((layer, Instance::circle(mmf(pos), (diameter as f64 * 0.5e-6) as f32, VIA.with_alpha(0xc0)))),
+                PcbGhost::Via { pos, diameter } => out.push((
+                    layer,
+                    Instance::circle(mmf(pos), (diameter as f64 * 0.5e-6) as f32, pal().via.with_alpha(0xc0)),
+                )),
                 PcbGhost::Outline(r) => {
                     let c = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
                     let color = board_layer_color(LayerId::OUTLINE);
@@ -399,7 +401,7 @@ impl View {
                     }
                 }
                 PcbGhost::Target(p) => {
-                    out.push((layer, Instance::circle_outline(mmf(p), 0.5, 0.08, HOVER.with_alpha(0xc0))))
+                    out.push((layer, Instance::circle_outline(mmf(p), 0.5, 0.08, pal().hover.with_alpha(0xc0))))
                 }
             }
         }
@@ -418,12 +420,12 @@ impl View {
                 out.extend(region_instances(shape, color).into_iter().map(|i| (layer, i)));
             }
         }
-        out.extend(c.ratsnest.iter().map(|r| (l.ratsnest, Instance::line(mmf(r.a), mmf(r.b), 0.05, RATSNEST))));
+        out.extend(c.ratsnest.iter().map(|r| (l.ratsnest, Instance::line(mmf(r.a), mmf(r.b), 0.05, pal().ratsnest))));
         // Flagged copper: a halo around it.
         for item in c.flagged() {
             if let Geo::Capsule { a, b, r } = item.geo {
                 let w = (r as f64 * 2e-6) as f32 + 0.3;
-                out.push((l.ratsnest, Instance::line(mmf(a), mmf(b), w, FLAGGED)));
+                out.push((l.ratsnest, Instance::line(mmf(a), mmf(b), w, pal().flagged)));
             }
         }
         self.scene.set_item(CONNECTIVITY_ITEM, out);
@@ -446,10 +448,10 @@ impl View {
         let mut out = Vec::new();
         for &p in &self.drc {
             let c = mmf(p);
-            out.push((layer, Instance::circle_outline(c, 0.6, 0.12, DRC_MARKER)));
+            out.push((layer, Instance::circle_outline(c, 0.6, 0.12, pal().drc_marker)));
             let d = 0.35;
-            out.push((layer, Instance::line([c[0] - d, c[1] - d], [c[0] + d, c[1] + d], 0.12, DRC_MARKER)));
-            out.push((layer, Instance::line([c[0] - d, c[1] + d], [c[0] + d, c[1] - d], 0.12, DRC_MARKER)));
+            out.push((layer, Instance::line([c[0] - d, c[1] - d], [c[0] + d, c[1] + d], 0.12, pal().drc_marker)));
+            out.push((layer, Instance::line([c[0] - d, c[1] + d], [c[0] + d, c[1] - d], 0.12, pal().drc_marker)));
         }
         self.scene.set_item(DRC_ITEM, out);
     }
@@ -467,15 +469,15 @@ impl View {
         for item in c.items.iter().filter(|i| i.net.is_some_and(|n| indices.contains(&n))) {
             match &item.geo {
                 Geo::Capsule { a, b, r } => {
-                    out.push((layer, Instance::line(mmf(*a), mmf(*b), (*r as f64 * 2e-6) as f32, NET_HIGHLIGHT)))
+                    out.push((layer, Instance::line(mmf(*a), mmf(*b), (*r as f64 * 2e-6) as f32, pal().net_highlight)))
                 }
                 Geo::Polygon(points) => {
                     let pts: Vec<[f32; 2]> = points.iter().map(|&p| mmf(p)).collect();
-                    out.extend(render::tess::fill_polygon(&pts, NET_HIGHLIGHT).into_iter().map(|i| (layer, i)));
+                    out.extend(render::tess::fill_polygon(&pts, pal().net_highlight).into_iter().map(|i| (layer, i)));
                 }
                 Geo::Region { outer, holes } => {
                     let shape: Vec<Vec<Point>> = std::iter::once(outer).chain(holes).cloned().collect();
-                    out.extend(region_instances(&shape, NET_HIGHLIGHT).into_iter().map(|i| (layer, i)));
+                    out.extend(region_instances(&shape, pal().net_highlight).into_iter().map(|i| (layer, i)));
                 }
             }
         }
@@ -505,14 +507,14 @@ impl View {
                 continue;
             }
             out.extend(p.out.into_iter().map(|(_, mut inst)| {
-                inst.color = PROBE;
+                inst.color = pal().probe;
                 (layer, inst)
             }));
             if matches!(id, ObjectId::Symbol(_) | ObjectId::Footprint(_))
                 && let Some(b) = p.bounds
             {
                 let size = [(b.width() as f64 * 1e-6) as f32, (b.height() as f64 * 1e-6) as f32];
-                out.push((layer, Instance::rect(mmf(b.center()), size, 0.0, 0.0, PROBE_FILL)));
+                out.push((layer, Instance::rect(mmf(b.center()), size, 0.0, 0.0, pal().probe_fill)));
             }
         }
         self.scene.set_item(PROBE_ITEM, out);
@@ -551,7 +553,8 @@ impl View {
             self.scene.remove_item(key);
             return;
         }
-        let (layer, color) = if hover { (self.hover_layer, HOVER) } else { (self.selection_layer, SELECTION) };
+        let (layer, color) =
+            if hover { (self.hover_layer, pal().hover) } else { (self.selection_layer, pal().selection) };
         let mut out: Vec<(RLayer, Instance)> = p
             .out
             .into_iter()
@@ -563,7 +566,7 @@ impl View {
         if matches!(id, ObjectId::Symbol(_) | ObjectId::Footprint(_))
             && let Some(b) = p.bounds
         {
-            let fill = if hover { HOVER.with_alpha(0x18) } else { SELECTION_FILL };
+            let fill = if hover { pal().hover.with_alpha(0x18) } else { pal().selection_fill };
             let size = [(b.width() as f64 * 1e-6) as f32, (b.height() as f64 * 1e-6) as f32];
             out.push((layer, Instance::rect(mmf(b.center()), size, 0.0, 0.0, fill)));
         }
@@ -637,11 +640,14 @@ impl View {
                 project.schematic.symbols.get(i).map(|s| draw_symbol(project, s, l, p)).is_some()
             }
             (Layers::Sch(l), ObjectId::Wire(i)) => {
-                project.schematic.wires.get(i).map(|w| p.line(l.wires, w.a, w.b, WIRE_WIDTH, SCH_WIRE)).is_some()
+                project.schematic.wires.get(i).map(|w| p.line(l.wires, w.a, w.b, WIRE_WIDTH, pal().sch_wire)).is_some()
             }
-            (Layers::Sch(l), ObjectId::Junction(i)) => {
-                project.schematic.junctions.get(i).map(|j| p.circle(l.wires, j.pos, 450_000, SCH_JUNCTION)).is_some()
-            }
+            (Layers::Sch(l), ObjectId::Junction(i)) => project
+                .schematic
+                .junctions
+                .get(i)
+                .map(|j| p.circle(l.wires, j.pos, 450_000, pal().sch_junction))
+                .is_some(),
             (Layers::Sch(l), ObjectId::Label(i)) => {
                 project.schematic.labels.get(i).map(|lab| draw_label(lab, l, p)).is_some()
             }
@@ -649,7 +655,7 @@ impl View {
                 .schematic
                 .texts
                 .get(i)
-                .map(|t| p.text(l.text, &t.text, SCH_TEXT, &|s| s.to_string(), true))
+                .map(|t| p.text(l.text, &t.text, pal().sch_text, &|s| s.to_string(), true))
                 .is_some(),
             (Layers::Board(l), ObjectId::Footprint(i)) => {
                 project.board.footprints.get(i).map(|f| draw_footprint(project, f, l, p)).is_some()
@@ -669,8 +675,8 @@ impl View {
                 .vias
                 .get(i)
                 .map(|v| {
-                    p.circle(l.vias, v.pos, v.diameter / 2, VIA);
-                    p.push(l.holes, Instance::circle(mmf(v.pos), (v.drill as f64 * 0.5e-6) as f32, HOLE));
+                    p.circle(l.vias, v.pos, v.diameter / 2, pal().via);
+                    p.push(l.holes, Instance::circle(mmf(v.pos), (v.drill as f64 * 0.5e-6) as f32, pal().hole));
                 })
                 .is_some(),
             (Layers::Board(l), ObjectId::Zone(i)) => project
@@ -746,12 +752,12 @@ fn draw_symbol_graphics(
 ) {
     let t = *t;
     for shape in &sym.graphics {
-        p.shape(l.body, &shape.transformed(&t), SCH_BODY, Some((l.body_fill, SCH_BODY_FILL)));
+        p.shape(l.body, &shape.transformed(&t), pal().sch_body, Some((l.body_fill, pal().sch_body_fill)));
     }
 
     for pin in sym.pins.iter() {
         let (a, b) = (t.point(pin.pos), t.point(pin.inner_end()));
-        p.line(l.pins, a, b, WIRE_WIDTH, SCH_PIN);
+        p.line(l.pins, a, b, WIRE_WIDTH, pal().sch_pin);
         let d = b - a;
         let horizontal = d.x.abs() >= d.y.abs();
         if pin.show_number
@@ -772,7 +778,7 @@ fn draw_symbol_graphics(
                 };
                 let mut text = Text::new(pads.join(","), pos, 1_000_000).aligned(HAlign::Center, VAlign::Bottom);
                 text.rotation = rotation;
-                p.text(l.pin_text, &text, SCH_PIN_TEXT, &|s| s.to_string(), false);
+                p.text(l.pin_text, &text, pal().sch_pin_text, &|s| s.to_string(), false);
             }
         }
         if pin.show_name {
@@ -782,7 +788,7 @@ fn draw_symbol_graphics(
             let mut text = Text::new(pin.name.clone(), b + step, 1_270_000)
                 .aligned(if inward { HAlign::Left } else { HAlign::Right }, VAlign::Center);
             text.rotation = if horizontal { Angle::ZERO } else { Angle::DEG90 };
-            p.text(l.body, &text, SCH_BODY, &|s| s.to_string(), false);
+            p.text(l.body, &text, pal().sch_body, &|s| s.to_string(), false);
         }
     }
 
@@ -801,7 +807,7 @@ fn draw_symbol_graphics(
                 text.pos.x = if left { text.pos.x.min(b.min.x - gap) } else { text.pos.x.max(b.max.x + gap) };
             }
         }
-        p.text(l.text, &text, SCH_TEXT, &|s| substitute(s, refdes, value), false);
+        p.text(l.text, &text, pal().sch_text, &|s| substitute(s, refdes, value), false);
     }
 }
 
@@ -812,27 +818,27 @@ fn draw_label(lab: &NetLabel, l: &SchLayers, p: &mut Painter) {
     };
     match lab.kind {
         LabelKind::Net => {
-            p.circle(l.labels, lab.pos, 200_000, SCH_LABEL);
+            p.circle(l.labels, lab.pos, 200_000, pal().sch_label);
             let text = Text::new(lab.name.clone(), Point::mm(0.4, 0.3), 1_270_000).transformed(&t);
-            p.text(l.labels, &text, SCH_LABEL, &|s| s.to_string(), true);
+            p.text(l.labels, &text, pal().sch_label, &|s| s.to_string(), true);
         }
         LabelKind::Power if lab.name.to_uppercase().contains("GND") => {
-            line(p, (0.0, 0.0), (0.0, -1.27), SCH_POWER);
+            line(p, (0.0, 0.0), (0.0, -1.27), pal().sch_power);
             for (y, w) in [(-1.27, 1.27), (-1.78, 0.76), (-2.29, 0.25)] {
-                line(p, (-w, y), (w, y), SCH_POWER);
+                line(p, (-w, y), (w, y), pal().sch_power);
             }
             let text = Text::new(lab.name.clone(), Point::mm(0.0, -2.8), 1_270_000)
                 .aligned(HAlign::Center, VAlign::Top)
                 .transformed(&t);
-            p.text(l.labels, &text, SCH_POWER, &|s| s.to_string(), true);
+            p.text(l.labels, &text, pal().sch_power, &|s| s.to_string(), true);
         }
         LabelKind::Power => {
-            line(p, (0.0, 0.0), (0.0, 1.27), SCH_POWER);
-            line(p, (-1.27, 1.27), (1.27, 1.27), SCH_POWER);
+            line(p, (0.0, 0.0), (0.0, 1.27), pal().sch_power);
+            line(p, (-1.27, 1.27), (1.27, 1.27), pal().sch_power);
             let text = Text::new(lab.name.clone(), Point::mm(0.0, 1.8), 1_270_000)
                 .aligned(HAlign::Center, VAlign::Bottom)
                 .transformed(&t);
-            p.text(l.labels, &text, SCH_POWER, &|s| s.to_string(), true);
+            p.text(l.labels, &text, pal().sch_power, &|s| s.to_string(), true);
         }
     }
 }
@@ -873,7 +879,7 @@ fn draw_footprint(project: &Project, inst: &FootprintInstance, l: &BoardLayers, 
             }
         }
         if let PadKind::ThroughHole { drill } | PadKind::NonPlatedHole { drill } = pad.kind {
-            p.push(l.holes, Instance::circle(mmf(center), (drill as f64 * 0.5e-6) as f32, HOLE));
+            p.push(l.holes, Instance::circle(mmf(center), (drill as f64 * 0.5e-6) as f32, pal().hole));
         }
         let r = Rect::around(center, pad.size.w.max(pad.size.h) / 2);
         body = Some(body.map_or(r, |b| b.union(r)));

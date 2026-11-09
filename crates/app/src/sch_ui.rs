@@ -13,7 +13,7 @@ const LABEL_SIDES: [&str; 4] = ["0°", "90°", "180°", "270°"];
 pub fn toolbar(ui: &mut egui::Ui, sch: &SchPlacer) -> Option<SchTool> {
     let mut chosen = None;
     let full = ui.max_rect();
-    egui::Frame::NONE.fill(theme::PANEL_DARK).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+    egui::Frame::NONE.fill(theme::panel_dark()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
         ui.set_width(full.width() - 16.0);
         ui.horizontal(|ui| {
             for &tool in SchTool::BAR {
@@ -25,7 +25,7 @@ pub fn toolbar(ui: &mut egui::Ui, sch: &SchPlacer) -> Option<SchTool> {
                 let _ = ui.selectable_label(true, SchTool::Place.label());
             }
             ui.separator();
-            ui.add(egui::Label::new(RichText::new(sch.tool().hint()).color(theme::TEXT_DIM)).truncate());
+            ui.add(egui::Label::new(RichText::new(sch.tool().hint()).color(theme::text_dim())).truncate());
         });
     });
     chosen

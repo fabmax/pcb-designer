@@ -146,7 +146,7 @@ impl PartForm {
         let nv = part.variants.len();
         for (vi, variant) in part.variants.iter_mut().enumerate() {
             ui.add_space(6.0);
-            egui::Frame::group(ui.style()).fill(theme::PANEL_DARK).inner_margin(egui::Margin::same(10)).show(
+            egui::Frame::group(ui.style()).fill(theme::panel_dark()).inner_margin(egui::Margin::same(10)).show(
                 ui,
                 |ui| {
                     ui.set_width(ui.available_width());
@@ -248,14 +248,14 @@ fn mapping_ui(
     options: &[(Option<(u32, Id)>, String)],
 ) {
     let Some(fp) = lib.footprints.get(variant.footprint) else {
-        ui.label(RichText::new("Footprint missing").color(theme::WARN));
+        ui.label(RichText::new("Footprint missing").color(theme::warn()));
         return;
     };
     let mut pads: Vec<&Pad> = fp.pads.iter().collect();
     pads.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     let connected = variant.connections.len();
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(format!("{connected} of {} pads connected", pads.len())).color(theme::TEXT_DIM));
+        ui.label(RichText::new(format!("{connected} of {} pads connected", pads.len())).color(theme::text_dim()));
         {
             if ui
                 .button("Map by name")
@@ -302,6 +302,6 @@ fn mapping_ui(
         })
         .collect();
     if !unmapped.is_empty() {
-        ui.label(RichText::new(format!("Pins without a pad: {}", unmapped.join(", "))).color(theme::WARN));
+        ui.label(RichText::new(format!("Pins without a pad: {}", unmapped.join(", "))).color(theme::warn()));
     }
 }

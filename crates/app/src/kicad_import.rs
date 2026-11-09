@@ -222,7 +222,7 @@ impl KicadImport {
         };
         ui.horizontal_wrapped(|ui| {
             let text = format!("{syms} symbols in {sym_libs} libraries, {fps} footprints in {fp_libs} libraries");
-            ui.label(RichText::new(text).color(if syms + fps == 0 { theme::WARN } else { theme::TEXT_DIM }));
+            ui.label(RichText::new(text).color(if syms + fps == 0 { theme::warn() } else { theme::text_dim() }));
             if ui
                 .button("Add folder…")
                 .on_hover_text("A KiCad symbols or footprints folder, or a single library")
@@ -236,7 +236,7 @@ impl KicadImport {
                 self.rescan();
             }
         });
-        egui::CollapsingHeader::new(RichText::new("Library folders").color(theme::TEXT_DIM))
+        egui::CollapsingHeader::new(RichText::new("Library folders").color(theme::text_dim()))
             .id_salt("kicad_paths")
             .show(ui, |ui| {
                 if self.paths.is_empty() {
@@ -292,9 +292,13 @@ impl KicadImport {
             }
         });
         if let Some(r) = &self.report {
-            ui.label(RichText::new(&r.summary).color(if r.errors.is_empty() { theme::SUCCESS } else { theme::WARN }));
+            ui.label(RichText::new(&r.summary).color(if r.errors.is_empty() {
+                theme::success()
+            } else {
+                theme::warn()
+            }));
             for e in &r.errors {
-                ui.label(RichText::new(e).color(theme::WARN));
+                ui.label(RichText::new(e).color(theme::warn()));
             }
             if !r.warnings.is_empty() {
                 egui::CollapsingHeader::new(format!("{} note(s)", r.warnings.len())).id_salt("kicad_warnings").show(
@@ -302,7 +306,7 @@ impl KicadImport {
                     |ui| {
                         egui::ScrollArea::vertical().id_salt("kicad_warn_scroll").max_height(80.0).show(ui, |ui| {
                             for w in &r.warnings {
-                                ui.label(RichText::new(w).color(theme::TEXT_DIM));
+                                ui.label(RichText::new(w).color(theme::text_dim()));
                             }
                         });
                     },
@@ -335,7 +339,7 @@ impl KicadImport {
             self.results_for = Some(key);
         }
         if let Some(e) = &self.error {
-            ui.label(RichText::new(e).color(theme::WARN));
+            ui.label(RichText::new(e).color(theme::warn()));
         }
         if self.results.len() >= RESULT_LIMIT {
             hint(ui, &format!("First {RESULT_LIMIT} matches; refine the search."));
@@ -360,7 +364,7 @@ impl KicadImport {
                             assign = Some(r.clone());
                         }
                         let (lib, name) = r.split_once(':').unwrap_or(("", r));
-                        ui.label(RichText::new(lib).color(theme::TEXT_DIM));
+                        ui.label(RichText::new(lib).color(theme::text_dim()));
                         ui.label(name);
                     });
                 }
@@ -394,7 +398,7 @@ impl KicadImport {
                 for (i, p) in self.picks.iter_mut().enumerate() {
                     let active = self.active == Some(i);
                     let frame = egui::Frame::group(ui.style())
-                        .fill(if active { theme::PANEL } else { theme::PANEL_DARK })
+                        .fill(if active { theme::panel() } else { theme::panel_dark() })
                         .inner_margin(egui::Margin::same(6));
                     let r = frame.show(ui, |ui| {
                         ui.set_width(ui.available_width());
@@ -405,15 +409,15 @@ impl KicadImport {
                             ui.label(RichText::new(&p.symbol).strong());
                             let units = if p.units > 1 { format!(", {} units", p.units) } else { String::new() };
                             let pins = if p.pins == 1 { "1 pin".to_string() } else { format!("{} pins", p.pins) };
-                            ui.label(RichText::new(format!("{pins}{units}")).color(theme::TEXT_DIM));
+                            ui.label(RichText::new(format!("{pins}{units}")).color(theme::text_dim()));
                         });
                         if !p.description.is_empty() {
-                            ui.label(RichText::new(&p.description).color(theme::TEXT_DIM).small());
+                            ui.label(RichText::new(&p.description).color(theme::text_dim()).small());
                         }
                         if p.power {
                             ui.label(
                                 RichText::new("Power symbol: use a net label instead; it will not be imported.")
-                                    .color(theme::WARN),
+                                    .color(theme::warn()),
                             );
                             return;
                         }
@@ -439,7 +443,7 @@ impl KicadImport {
                         if ui.small_button("Remove").clicked() {
                             remove_fp = Some(i);
                         }
-                        ui.label(RichText::new("Footprint").color(theme::TEXT_DIM));
+                        ui.label(RichText::new("Footprint").color(theme::text_dim()));
                         ui.label(f);
                     });
                 }

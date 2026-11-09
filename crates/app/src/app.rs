@@ -11,7 +11,6 @@ use editor_core::query::{PartState, part_statuses};
 use egui::{RichText, WidgetText};
 use egui_tiles::{Behavior, Container, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse};
 use model::*;
-use render::gpu::Background;
 use view::item::Item;
 use view::pcb_tools::{PcbPlacer, PcbTool};
 use view::sch_tools::{SchPlacer, SchTool};
@@ -20,13 +19,14 @@ use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
 
 use crate::agent::{self, Agent};
 use crate::canvas::{self, Canvas, CanvasResources};
-use crate::keymap::{Action, Context, Keymap};
+use crate::keymap::{Action, Context, Keymap, Shortcut};
 use crate::kicad_import::{ImportAction, KicadImport};
 use crate::library::{LibEvent, LibraryEditor, Open};
 use crate::pcb_ui;
 use crate::properties::Properties;
 use crate::sch_ui;
 use crate::script::Script;
+use crate::settings::Settings;
 use crate::theme;
 
 pub enum Startup {
@@ -44,7 +44,8 @@ pub struct Options {
     pub screenshot_frames: u32,
     /// Select everything in the schematic before the screenshot (shows highlights).
     pub select: Option<String>,
-    pub keymap: Keymap,
+    /// Key bindings from `--keymap` (instead of the saved ones).
+    pub keymap: Option<Keymap>,
     /// Start the MCP server on this port.
     pub mcp: Option<u16>,
     /// Library files to open.
@@ -88,7 +89,7 @@ impl Pane {
             ViewKind::Schematic => (1, 1.27),
             ViewKind::Board => (2, 0.5),
         };
-        let canvas = Canvas::new(id, Background { grid: grid as f32, ..Default::default() });
+        let canvas = Canvas::new(id, view::style::background(grid as f32));
         Pane { kind, canvas, it: Interaction::new(mm(grid)) }
     }
 
@@ -120,7 +121,10 @@ pub struct PcbApp {
     screenshot: Option<(String, u32)>,
     allow_close: bool,
     keymap: Keymap,
-    show_keymap: bool,
+    settings: Settings,
+    show_settings: bool,
+    /// Action whose new shortcut is being recorded in the settings window.
+    recording: Option<Action>,
     agent: Agent,
     kicad: KicadImport,
     /// Schematic creation tools.
@@ -134,7 +138,10 @@ pub struct PcbApp {
 
 impl PcbApp {
     pub fn new(cc: &eframe::CreationContext<'_>, opts: Options) -> Self {
+        let mut settings = Settings::load();
+        view::style::set_theme(settings.theme);
         theme::apply(&cc.egui_ctx);
+        let keymap = opts.keymap.unwrap_or_else(|| settings.keymap());
         let rs = cc.wgpu_render_state.as_ref().expect("wgpu renderer");
         CanvasResources::install(rs);
 
@@ -148,10 +155,17 @@ impl PcbApp {
 
         let mut status = None;
         let doc = match opts.startup {
-            Startup::Open(path) => Document::open(&path).unwrap_or_else(|e| {
-                status = Some((format!("Could not open {}: {e}", path.display()), Instant::now()));
-                Document::new(Project::new("Untitled"))
-            }),
+            Startup::Open(path) => match Document::open(&path) {
+                Ok(doc) => {
+                    settings.add_recent(&path);
+                    let _ = settings.save();
+                    doc
+                }
+                Err(e) => {
+                    status = Some((format!("Could not open {}: {e}", path.display()), Instant::now()));
+                    Document::new(Project::new("Untitled"))
+                }
+            },
             Startup::Demo => Document::new(view::demo::demo_project()),
             Startup::Empty => Document::new(Project::new("Untitled")),
             Startup::Stress(n) => {
@@ -177,8 +191,10 @@ impl PcbApp {
             revision: u64::MAX,
             screenshot: opts.screenshot.map(|p| (p, opts.screenshot_frames)),
             allow_close: false,
-            keymap: opts.keymap,
-            show_keymap: false,
+            keymap,
+            settings,
+            show_settings: false,
+            recording: None,
             agent: Agent::new(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
             kicad: KicadImport::new(opts.kicad_paths.clone()),
             sch: SchPlacer::default(),
@@ -302,13 +318,48 @@ impl PcbApp {
             return;
         }
         let Some(dir) = rfd::FileDialog::new().set_title("Open project folder").pick_folder() else { return };
-        match Document::open(&dir) {
+        self.open_path(&dir);
+    }
+
+    /// Open a project folder (after unsaved changes were dealt with).
+    fn open_path(&mut self, dir: &std::path::Path) {
+        match Document::open(dir) {
             Ok(doc) => {
                 self.replace_document(doc);
                 self.set_status(format!("Opened {}", dir.display()));
+                self.remember_project(dir);
             }
             Err(e) => self.set_status(format!("Open failed: {e}")),
         }
+    }
+
+    fn remember_project(&mut self, dir: &std::path::Path) {
+        self.settings.add_recent(dir);
+        self.save_settings();
+    }
+
+    fn save_settings(&mut self) {
+        if let Err(e) = self.settings.save() {
+            self.set_status(format!("Settings not saved: {e}"));
+        }
+    }
+
+    /// Switch the theme of the chrome and every canvas.
+    fn set_theme(&mut self, ctx: &egui::Context, t: view::style::Theme) {
+        view::style::set_theme(t);
+        theme::apply(ctx);
+        for pane in &mut self.panes {
+            pane.canvas.background = view::style::background(pane.canvas.background.grid);
+        }
+        self.doc.restyle();
+        for l in &mut self.libraries {
+            l.canvas.background = view::style::background(l.canvas.background.grid);
+            l.lib.doc.restyle();
+            l.view.restyle();
+        }
+        self.probe_key = None;
+        self.settings.theme = t;
+        self.save_settings();
     }
 
     /// Save (or Save As when `choose` or the document has no folder yet).
@@ -326,6 +377,7 @@ impl PcbApp {
         match self.doc.save_as(&path) {
             Ok(()) => {
                 self.set_status(format!("Saved {}", path.display()));
+                self.remember_project(&path);
                 true
             }
             Err(e) => {
@@ -783,6 +835,10 @@ impl PcbApp {
         }
         let key_action = match action {
             Action::New => return self.new_document(),
+            Action::Settings => {
+                self.show_settings = true;
+                return;
+            }
             Action::Open => return self.open(),
             Action::Save => {
                 self.save(false);
@@ -828,7 +884,7 @@ impl PcbApp {
     /// Handle an action for a focused library. Returns false for project-level actions.
     fn lib_action(&mut self, key: u64, action: Action) -> bool {
         match action {
-            Action::New | Action::Open => return false,
+            Action::New | Action::Open | Action::Settings => return false,
             Action::Save | Action::SaveAs => {
                 self.save_library(key, action == Action::SaveAs);
                 return true;
@@ -866,7 +922,7 @@ impl PcbApp {
                 }
                 None
             }
-            Action::New | Action::Open | Action::Save | Action::SaveAs => None,
+            Action::New | Action::Open | Action::Save | Action::SaveAs | Action::Settings => None,
             Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction | Action::Posture => None,
             Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => None,
         };
@@ -893,6 +949,23 @@ impl PcbApp {
                 let lib_focus = self.focus_lib.is_some();
                 self.menu_item(ui, "New project", Action::New, true);
                 self.menu_item(ui, "Open project…", Action::Open, true);
+                let recent = self.settings.recent.clone();
+                ui.add_enabled_ui(!recent.is_empty(), |ui| {
+                    ui.menu_button("Open recent", |ui| {
+                        for p in &recent {
+                            let name = p.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
+                            let r = ui.button(name).on_hover_text(p.display().to_string());
+                            if r.clicked() && self.confirm_discard() {
+                                self.open_path(p);
+                            }
+                        }
+                        ui.separator();
+                        if ui.button("Clear list").clicked() {
+                            self.settings.recent.clear();
+                            self.save_settings();
+                        }
+                    });
+                });
                 if ui.button("Open demo project").clicked() && self.confirm_discard() {
                     self.replace_document(Document::new(view::demo::demo_project()));
                 }
@@ -936,6 +1009,8 @@ impl PcbApp {
                 for action in [Action::SelectAll, Action::Rotate, Action::Mirror, Action::Flip, Action::Delete] {
                     self.menu_item(ui, action.label(), action, true);
                 }
+                ui.separator();
+                self.menu_item(ui, "Settings…", Action::Settings, true);
             });
             ui.menu_button("View", |ui| {
                 self.menu_item(ui, "Fit view", Action::FitView, true);
@@ -944,11 +1019,28 @@ impl PcbApp {
                 ui.separator();
                 self.menu_item(ui, "Back", Action::NavigateBack, back);
                 self.menu_item(ui, "Forward", Action::NavigateForward, forward);
+                ui.separator();
+                let current = view::style::theme();
+                for &t in view::style::Theme::ALL {
+                    if ui.radio(current == t, format!("{} theme", t.label())).clicked() && current != t {
+                        self.set_theme(ui.ctx(), t);
+                    }
+                }
             });
-            ui.menu_button("Tools", |ui| self.agent_menu(ui));
+            ui.menu_button("Tools", |ui| {
+                if ui.button("Run design rule check").clicked() {
+                    let n = self.doc.run_drc().violations.len();
+                    self.set_status(match n {
+                        0 => "DRC: no violations".to_string(),
+                        n => format!("DRC: {n} violation(s), listed in the board properties"),
+                    });
+                }
+                ui.separator();
+                self.agent_menu(ui);
+            });
             ui.menu_button("Help", |ui| {
                 if ui.button("Keyboard shortcuts").clicked() {
-                    self.show_keymap = true;
+                    self.show_settings = true;
                 }
             });
         });
@@ -964,10 +1056,10 @@ impl PcbApp {
             }
         }
         if let Some(e) = &self.agent.error {
-            ui.label(RichText::new(e).color(theme::WARN));
+            ui.label(RichText::new(e).color(theme::warn()));
         }
         if let Some(url) = self.agent.url() {
-            ui.label(RichText::new(&url).monospace().color(theme::TEXT_DIM));
+            ui.label(RichText::new(&url).monospace().color(theme::text_dim()));
             if ui.button("Copy URL").clicked() {
                 ui.ctx().copy_text(url.clone());
             }
@@ -981,32 +1073,125 @@ impl PcbApp {
                 ui.ctx().copy_text(cfg);
             }
         } else {
-            ui.label(RichText::new(format!("Listens on 127.0.0.1:{} only", self.agent.port)).color(theme::TEXT_DIM));
+            ui.label(RichText::new(format!("Listens on 127.0.0.1:{} only", self.agent.port)).color(theme::text_dim()));
+        }
+        ui.separator();
+        ui.label(RichText::new("Headless (no window, MCP on stdio):").color(theme::text_dim()));
+        if ui.button("Copy Claude Code command (headless)").clicked() {
+            let exe = std::env::current_exe().map_or("pcb-designer".into(), |p| p.display().to_string());
+            let project = self.doc.path.as_ref().map_or(String::new(), |p| format!(" \"{}\"", p.display()));
+            ui.ctx().copy_text(format!("claude mcp add pcb-designer -- \"{exe}\" --mcp-stdio{project}"));
         }
     }
 
-    /// Read-only list of the current bindings (editing comes with the settings UI).
-    fn keymap_window(&mut self, ctx: &egui::Context) {
-        let mut open = self.show_keymap;
-        egui::Window::new("Keyboard shortcuts").open(&mut open).resizable(false).collapsible(false).show(ctx, |ui| {
-            egui::Grid::new("keymap").num_columns(2).striped(true).spacing([24.0, 4.0]).show(ui, |ui| {
-                for &action in Action::ALL {
-                    ui.label(action.label());
-                    let keys: Vec<String> =
-                        self.keymap.shortcuts(action).iter().map(|s| ctx.format_shortcut(&s.to_egui())).collect();
-                    ui.monospace(keys.join("  "));
-                    ui.end_row();
+    /// Theme and key bindings (saved in the settings file).
+    fn settings_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.show_settings;
+        let mut theme_choice = None;
+        let mut changed = false;
+        egui::Window::new("Settings").open(&mut open).resizable(true).default_height(560.0).collapsible(false).show(
+            ctx,
+            |ui| {
+                ui.heading("Appearance");
+                ui.horizontal(|ui| {
+                    ui.label("Theme");
+                    let current = view::style::theme();
+                    for &t in view::style::Theme::ALL {
+                        if ui.selectable_label(current == t, t.label()).clicked() && current != t {
+                            theme_choice = Some(t);
+                        }
+                    }
+                });
+                ui.add_space(8.0);
+                ui.heading("Keyboard shortcuts");
+                let conflicts = self.keymap.conflicts();
+                if !conflicts.is_empty() {
+                    let text: Vec<String> = conflicts
+                        .iter()
+                        .map(|(s, a)| {
+                            let names: Vec<&str> = a.iter().map(|a| a.label()).collect();
+                            format!("{} is bound to {}", ctx.format_shortcut(&s.to_egui()), names.join(" and "))
+                        })
+                        .collect();
+                    ui.label(RichText::new(text.join("\n")).color(theme::warn()));
                 }
-            });
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                if ui.button("Copy as JSON").clicked() {
-                    ui.ctx().copy_text(self.keymap.to_json());
+                egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                    egui::Grid::new("keymap").num_columns(2).striped(true).spacing([24.0, 4.0]).show(ui, |ui| {
+                        for &action in Action::ALL {
+                            ui.label(action.label());
+                            ui.horizontal(|ui| {
+                                let keys = self.keymap.shortcuts(action).to_vec();
+                                for (i, k) in keys.iter().enumerate() {
+                                    let text = format!("{}  ×", ctx.format_shortcut(&k.to_egui()));
+                                    if ui.small_button(text).on_hover_text("Remove").clicked() {
+                                        let mut keys = keys.clone();
+                                        keys.remove(i);
+                                        self.keymap.set(action, keys);
+                                        changed = true;
+                                    }
+                                }
+                                if self.recording == Some(action) {
+                                    ui.label(RichText::new("Press a key… (Esc cancels)").color(theme::accent()));
+                                } else if ui.small_button("+").on_hover_text("Add a shortcut").clicked() {
+                                    self.recording = Some(action);
+                                }
+                            });
+                            ui.end_row();
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Reset to defaults").clicked() {
+                        self.keymap = Keymap::default();
+                        changed = true;
+                    }
+                    if ui.button("Copy as JSON").clicked() {
+                        ui.ctx().copy_text(self.keymap.to_json());
+                    }
+                });
+                if let Some(path) = Settings::path() {
+                    ui.label(RichText::new(format!("Saved in {}", path.display())).color(theme::text_dim()));
                 }
-                ui.label(RichText::new("Edit and load with --keymap FILE.json").color(theme::TEXT_DIM));
-            });
+            },
+        );
+        if !open {
+            self.recording = None;
+        }
+        self.show_settings = open;
+        if changed {
+            self.settings.set_keymap(&self.keymap);
+            self.save_settings();
+        }
+        if let Some(t) = theme_choice {
+            self.set_theme(ctx, t);
+        }
+    }
+
+    /// While a shortcut is being recorded, the next key press (with modifiers) becomes it.
+    /// Returns true if input was consumed.
+    fn record_shortcut(&mut self, ctx: &egui::Context) -> bool {
+        let Some(action) = self.recording else { return false };
+        let pressed = ctx.input(|i| {
+            i.events.iter().find_map(|e| match e {
+                egui::Event::Key { key, pressed: true, modifiers, .. } => Some((*key, *modifiers)),
+                _ => None,
+            })
         });
-        self.show_keymap = open;
+        let Some((key, m)) = pressed else { return true };
+        self.recording = None;
+        if key == egui::Key::Escape {
+            return true;
+        }
+        let shortcut = Shortcut { command: m.command, shift: m.shift, alt: m.alt, key };
+        let mut keys = self.keymap.shortcuts(action).to_vec();
+        if !keys.contains(&shortcut) {
+            keys.push(shortcut);
+            self.keymap.set(action, keys);
+            self.settings.set_keymap(&self.keymap);
+            self.save_settings();
+        }
+        true
     }
 
     fn left_panel(&mut self, ui: &mut egui::Ui) {
@@ -1077,7 +1262,7 @@ impl PcbApp {
                 let id = ui.make_persistent_id(("lib_parts", l.key));
                 egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
                     .show_header(ui, |ui| {
-                        ui.label(RichText::new(l.title()).color(theme::TEXT_DIM));
+                        ui.label(RichText::new(l.title()).color(theme::text_dim()));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button("Edit").on_hover_text("Open in the library editor").clicked() {
                                 act = Some(Act::Edit(l.key));
@@ -1136,13 +1321,13 @@ impl PcbApp {
             for s in &statuses {
                 ui.horizontal(|ui| {
                     let (text, color, tip) = match s.state {
-                        PartState::UpToDate => ("current", theme::TEXT_DIM, "Same as in the library"),
-                        PartState::LibraryChanged => ("changed", theme::WARN, "The library has a different version"),
-                        PartState::LibraryMissing => ("lib closed", theme::TEXT_DIM, "Its library is not open"),
+                        PartState::UpToDate => ("current", theme::text_dim(), "Same as in the library"),
+                        PartState::LibraryChanged => ("changed", theme::warn(), "The library has a different version"),
+                        PartState::LibraryMissing => ("lib closed", theme::text_dim(), "Its library is not open"),
                         PartState::RemovedFromLibrary => {
-                            ("removed", theme::WARN, "The part no longer exists in its library")
+                            ("removed", theme::warn(), "The part no longer exists in its library")
                         }
-                        PartState::Local => ("local", theme::TEXT_DIM, "Not from a library"),
+                        PartState::Local => ("local", theme::text_dim(), "Not from a library"),
                     };
                     ui.label(&s.name).on_hover_text(s.library_name.as_deref().unwrap_or(""));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1184,7 +1369,7 @@ impl PcbApp {
                     (pane.title().to_string(), pane.canvas.cursor_world, pane.it.grid, sel)
                 }
             };
-            ui.label(RichText::new(title).color(theme::ACCENT));
+            ui.label(RichText::new(title).color(theme::accent()));
             match cursor {
                 Some([x, y]) => ui.monospace(format!("X {x:>9.3}  Y {y:>9.3} mm")),
                 None => ui.monospace(" ".repeat(26)),
@@ -1197,7 +1382,7 @@ impl PcbApp {
             let status = self.status.as_ref().filter(|(_, t)| t.elapsed() < Duration::from_secs(6));
             if let Some(m) = msg.as_deref().or(status.map(|s| s.0.as_str())) {
                 ui.separator();
-                ui.label(RichText::new(m).color(theme::WARN));
+                ui.label(RichText::new(m).color(theme::warn()));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if let Some(url) = self.agent.url() {
@@ -1207,10 +1392,10 @@ impl PcbApp {
                         None => "MCP".to_string(),
                     };
                     let tip = format!("{url}\n{} requests", self.agent.calls);
-                    ui.label(RichText::new(text).color(theme::SUCCESS)).on_hover_text(&tip);
+                    ui.label(RichText::new(text).color(theme::success())).on_hover_text(&tip);
                     // Right-to-left layout: the dot ends up left of the text.
                     let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                    ui.painter().circle_filled(dot.center(), 3.5, theme::SUCCESS);
+                    ui.painter().circle_filled(dot.center(), 3.5, theme::success());
                     if recent.is_some() {
                         ui.ctx().request_repaint_after(Duration::from_millis(500));
                     }
@@ -1218,7 +1403,7 @@ impl PcbApp {
                 }
                 ui.label(
                     RichText::new("Drag: move · Box: select · Middle/right drag: pan · Wheel: zoom · V: fit")
-                        .color(theme::TEXT_DIM),
+                        .color(theme::text_dim()),
                 );
             });
         });
@@ -1495,7 +1680,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
     }
 
     fn tab_bar_color(&self, _visuals: &egui::Visuals) -> egui::Color32 {
-        theme::PANEL_DARK
+        theme::panel_dark()
     }
 }
 
@@ -1513,8 +1698,10 @@ impl eframe::App for PcbApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.handle_close(&ctx);
-        for action in self.keymap.triggered(&ctx, self.context()) {
-            self.run_action(action);
+        if !self.record_shortcut(&ctx) {
+            for action in self.keymap.triggered(&ctx, self.context()) {
+                self.run_action(action);
+            }
         }
 
         egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
@@ -1614,7 +1801,7 @@ impl eframe::App for PcbApp {
                 pane.it.refresh(&mut self.doc.target(pane.kind));
             }
         }
-        self.keymap_window(&ctx);
+        self.settings_window(&ctx);
         let libs: Vec<(u64, String)> = self.libraries.iter().map(|l| (l.key, l.lib.name().to_string())).collect();
         if let Some(ImportAction::Import(target, req)) = self.kicad.ui(&ctx, &libs) {
             self.run_kicad_import(target, req);

@@ -305,11 +305,6 @@ pub enum Ghost {
     Text(Text),
 }
 
-pub const PREVIEW: Color = Color::rgba(0x4c, 0x9a, 0xff, 0xc0);
-const ORIGIN: Color = Color::rgba(0x9a, 0xa0, 0xb0, 0x90);
-const PAD_TEXT: Color = Color::rgba(0xff, 0xff, 0xff, 0xd0);
-const NAME_DIM: Color = SCH_PIN_TEXT;
-
 fn elem_key(e: Elem) -> u64 {
     let mut h = FxHasher::default();
     e.hash(&mut h);
@@ -395,6 +390,11 @@ impl ItemView {
         }
     }
 
+    /// Redraw on the next [`ItemView::sync`] (after a theme change).
+    pub fn restyle(&mut self) {
+        self.drawn = None;
+    }
+
     /// Redraw if the document changed since the last call.
     pub fn sync(&mut self, doc: &Document) {
         if self.drawn == Some(doc.revision) {
@@ -422,9 +422,9 @@ impl ItemView {
         // Origin cross.
         let s = 1.0;
         let origin = vec![
-            (l.origin, Instance::line([-s, 0.0], [s, 0.0], 0.03, ORIGIN)),
-            (l.origin, Instance::line([0.0, -s], [0.0, s], 0.03, ORIGIN)),
-            (l.origin, Instance::circle_outline([0.0, 0.0], 0.3 * s, 0.03, ORIGIN)),
+            (l.origin, Instance::line([-s, 0.0], [s, 0.0], 0.03, pal().origin)),
+            (l.origin, Instance::line([0.0, -s], [0.0, s], 0.03, pal().origin)),
+            (l.origin, Instance::circle_outline([0.0, 0.0], 0.3 * s, 0.03, pal().origin)),
         ];
         self.scene.set_item(ORIGIN_KEY, origin);
         let Some(content) = &self.content else { return };
@@ -469,7 +469,8 @@ impl ItemView {
         if !content.exists(e) {
             return;
         }
-        let (layer, color) = if hover { (self.layers.hover, HOVER) } else { (self.layers.selection, SELECTION) };
+        let (layer, color) =
+            if hover { (self.layers.hover, pal().hover) } else { (self.layers.selection, pal().selection) };
         let mut p = Painter::default();
         draw_elem(&self.layers, content, e, &mut p, Some(color));
         let out: Vec<_> = p.out.into_iter().map(|(_, i)| (layer, i)).collect();
@@ -486,10 +487,10 @@ impl ItemView {
         let mut p = Painter::default();
         for g in ghosts {
             match g {
-                Ghost::Pin(pin) => draw_pin(l, pin, &mut p, Some(PREVIEW)),
-                Ghost::Pad(pad) => draw_pad(l, pad, &mut p, Some(PREVIEW)),
-                Ghost::Shape(s) => p.shape(l.preview, s, PREVIEW, None),
-                Ghost::Text(t) => p.text(l.preview, t, PREVIEW, &|s| s.to_string(), false),
+                Ghost::Pin(pin) => draw_pin(l, pin, &mut p, Some(pal().preview)),
+                Ghost::Pad(pad) => draw_pad(l, pad, &mut p, Some(pal().preview)),
+                Ghost::Shape(s) => p.shape(l.preview, s, pal().preview, None),
+                Ghost::Text(t) => p.text(l.preview, t, pal().preview, &|s| s.to_string(), false),
             }
         }
         let out: Vec<_> = p.out.into_iter().map(|(_, i)| (l.preview, i)).collect();
@@ -593,13 +594,13 @@ fn draw_elem(l: &Layers, content: &Content, e: Elem, p: &mut Painter, color: Opt
         }
         (Content::Symbol(s), Elem::Graphic(i)) => {
             if let Some(g) = s.graphics.get(i) {
-                let fill = if color.is_some() { None } else { Some((l.body_fill, SCH_BODY_FILL)) };
-                p.shape(l.body, g, c(SCH_BODY), fill);
+                let fill = if color.is_some() { None } else { Some((l.body_fill, pal().sch_body_fill)) };
+                p.shape(l.body, g, c(pal().sch_body), fill);
             }
         }
         (Content::Symbol(s), Elem::Text(i)) => {
             if let Some(t) = s.texts.get(i) {
-                p.text(l.text, t, c(SCH_TEXT), &placeholder, true);
+                p.text(l.text, t, c(pal().sch_text), &placeholder, true);
             }
         }
         (Content::Footprint(f), Elem::Pad(id)) => {
@@ -629,9 +630,9 @@ fn draw_elem(l: &Layers, content: &Content, e: Elem, p: &mut Painter, color: Opt
 
 fn draw_pin(l: &Layers, pin: &Pin, p: &mut Painter, color: Option<Color>) {
     let (a, b) = (pin.pos, pin.inner_end());
-    p.line(l.pins, a, b, WIRE_WIDTH, color.unwrap_or(SCH_PIN));
+    p.line(l.pins, a, b, WIRE_WIDTH, color.unwrap_or(pal().sch_pin));
     // Connection point marker.
-    p.push(l.pins, Instance::circle_outline(mmf(a), 0.35, 0.05, color.unwrap_or(SCH_PIN)));
+    p.push(l.pins, Instance::circle_outline(mmf(a), 0.35, 0.05, color.unwrap_or(pal().sch_pin)));
     let d = b - a;
     let horizontal = d.x.abs() >= d.y.abs();
     let rotation = if horizontal { Angle::ZERO } else { Angle::DEG90 };
@@ -642,7 +643,7 @@ fn draw_pin(l: &Layers, pin: &Pin, p: &mut Painter, color: Option<Color>) {
         let mut t = Text::new(pin.name.clone(), b + step, 1_270_000)
             .aligned(if inward { HAlign::Left } else { HAlign::Right }, VAlign::Center);
         t.rotation = rotation;
-        p.text(l.names, &t, color.unwrap_or(SCH_BODY), &|s| s.to_string(), false);
+        p.text(l.names, &t, color.unwrap_or(pal().sch_body), &|s| s.to_string(), false);
     }
     // Along the pin: the number, or the hidden name (dimmed) so it can be identified.
     let along =
@@ -652,7 +653,7 @@ fn draw_pin(l: &Layers, pin: &Pin, p: &mut Painter, color: Option<Color>) {
         let pos = if horizontal { mid + Point::new(0, 250_000) } else { mid - Point::new(250_000, 0) };
         let mut t = Text::new(text, pos, 1_000_000).aligned(HAlign::Center, VAlign::Bottom);
         t.rotation = rotation;
-        p.text(l.names, &t, color.unwrap_or(NAME_DIM), &|s| s.to_string(), false);
+        p.text(l.names, &t, color.unwrap_or(pal().sch_pin_text), &|s| s.to_string(), false);
     }
 }
 
@@ -676,7 +677,7 @@ fn draw_pad(l: &Layers, pad: &Pad, p: &mut Painter, color: Option<Color>) {
         }
     }
     if let PadKind::ThroughHole { drill } | PadKind::NonPlatedHole { drill } = pad.kind {
-        let hole = if color.is_some() && !has_copper { copper } else { HOLE };
+        let hole = if color.is_some() && !has_copper { copper } else { pal().hole };
         p.push(l.holes, Instance::circle(c, (drill as f64 * 0.5e-6) as f32, hole));
         if !has_copper {
             p.push(l.holes, Instance::circle_outline(c, (drill as f64 * 0.5e-6) as f32, 0.05, copper));
@@ -695,7 +696,7 @@ fn draw_pad(l: &Layers, pad: &Pad, p: &mut Painter, color: Option<Color>) {
     if color.is_none() {
         let size = (pad.size.w.min(pad.size.h) as f64 * 0.5) as Coord;
         let t = Text::new(pad.name.clone(), pad.pos, size).aligned(HAlign::Center, VAlign::Center);
-        p.text(l.names, &t, PAD_TEXT, &|s| s.to_string(), false);
+        p.text(l.names, &t, pal().pad_text, &|s| s.to_string(), false);
     }
 }
 
