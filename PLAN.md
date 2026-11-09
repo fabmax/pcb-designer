@@ -915,3 +915,44 @@ context, became IntelliJ-style tool windows (`app/src/dock.rs`).
 - **Later.** Dragging buttons to reorder them or move them between bars, a Nets panel,
   stacking two panels on one side, the project browser.
 
+## MCP library tools (2026-11-09)
+
+Agents can now make a part from a datasheet entirely over MCP. Before, they could only
+insert library objects into the project, or import KiCad parts. Tested by building the
+Toshiba TBD62083A (symbol, four packages) in a running app.
+
+- **Tools** (`mcp/src/library.rs`): `list_libraries`, `create_library` (optionally saved
+  right away), `open_library`, `get_library_items`, `edit_library`, `save_library`, and
+  `render_library_item` (offscreen PNG of a symbol or footprint drawn by `ItemView`, as
+  in the editor). Libraries are named by their name, or their path. Items are named
+  `[part:|symbol:|footprint:]NAME` or by id, like `--show`.
+- **`edit_library` takes the file format, made writable by hand.** `upsert` objects
+  (`lib_symbol`, `lib_footprint`, `lib_part`) are matched by id, else name. A match is
+  updated; omitted fields keep their value (top-level merge over the existing object,
+  or over `blank_symbol` / `blank_footprint` / part defaults). Ids are optional:
+  - pins keep theirs by number (else name), pads by name, variants by name;
+  - so parts' pad mappings, and projects that use the part, stay valid when an agent
+    resends a footprint or symbol.
+  Parts name their symbols (`units: [{"symbol": NAME}]`, units named A, B, …) and
+  footprints (`variants: [{"footprint": NAME}]`, variant named after the footprint).
+  Connections default to `map_by_name` (pad name ↔ pin number). They can also be
+  `"in_order"`, or a list of `{pad: NAME, pin: NUMBER|NAME, unit?}`. Other defaults: pin
+  length 2.54 mm, text width size/7, prefix U, default value = name.
+- **All-or-nothing.** The edit is applied to a copy first. It is refused if
+  `Library::issues` reports anything new, such as a part using a deleted footprint or an
+  unknown pad or pin. Only new issues count, so a broken library can still be fixed step
+  by step. Commands then run in dependency order (inserts and updates of symbols and
+  footprints, then parts, then deletions, parts first) through `LibraryDoc::execute_all`:
+  one undo step in the library's tab.
+- **Reply.** For each touched part's variant: "N of M" pads connected, the unconnected
+  pads, and pins without a pad (an agent sees a wrong mapping at once).
+- **Hosts.** `Request::Library` goes to `Host::library_request`, which may answer later.
+  The app defers it like KiCad imports (`agent::Job`), because creating or opening a
+  library adds a tab. It then answers with `mcp::library::respond` over
+  `AgentLibraries`, an adapter over the library tabs. Edits show the changed part in its
+  tab without switching tabs. The headless host now keeps `libraries: Vec<LibraryDoc>`
+  (the starter first). KiCad imports go into the named library (no longer ignored
+  headless), else a "KiCad import" library created on demand.
+- **Gotcha.** `LibraryDoc::save_as` renames the library after the file stem, so
+  `create_library` with a path names the library after the file.
+
