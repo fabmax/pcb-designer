@@ -254,21 +254,7 @@ impl<'de> Deserialize<'de> for Shortcut {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Keymap {
-    #[serde(deserialize_with = "bindings")]
     bindings: BTreeMap<Action, Vec<Shortcut>>,
-}
-
-/// Deserialize action → shortcuts, skipping actions this version doesn't know (removed
-/// ones in saved settings shouldn't discard the other bindings).
-pub fn bindings<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeMap<Action, Vec<Shortcut>>, D::Error> {
-    let raw = BTreeMap::<String, Vec<Shortcut>>::deserialize(d)?;
-    Ok(raw
-        .into_iter()
-        .filter_map(|(name, keys)| {
-            let action = serde_json::from_value(serde_json::Value::String(name.clone()));
-            action.inspect_err(|_| log::warn!("ignoring shortcuts of unknown action {name:?}")).ok().map(|a| (a, keys))
-        })
-        .collect())
 }
 
 impl Default for Keymap {
