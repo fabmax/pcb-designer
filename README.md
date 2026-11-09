@@ -33,6 +33,13 @@ Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 or the whole window) and `save_project`. Agent edits go through the same commands as the
 GUI, so they can be undone with ⌘Z, and the status bar shows what the agent just did.
 
+Library tools let an agent make parts nobody has, e.g. from a datasheet: `list_libraries`,
+`create_library`, `open_library`, `get_library_items`, `edit_library` (add or change
+symbols, footprints and parts; ids optional, references by name, pads mapped to pins by
+number), `render_library_item` (a PNG of a symbol or footprint) and `save_library`. New
+libraries open in a tab, and `import_parts` puts their parts into the project. Library
+edits are undone in the library's tab.
+
 ### Headless mode
 
 Agents can also use the editor without a window: `pcb-designer --mcp-stdio [PROJECT_DIR]`

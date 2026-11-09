@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use mcp::host::{KicadImport as KicadJob, Responder, render_png};
+use mcp::library::LibraryRequest;
 use mcp::{Call, Host, McpServer, Reply};
 use model::{Library, ObjectId};
 use render::offscreen::Offscreen;
@@ -16,11 +17,17 @@ use crate::kicad_import::KicadImport;
 
 pub const DEFAULT_PORT: u16 = 7340;
 
+/// Requests the app answers itself after [`Agent::process`]: they open library tabs.
+pub enum Job {
+    Kicad(KicadJob, Responder),
+    Library(LibraryRequest, Responder),
+}
+
 /// Server state owned by the app.
 pub struct Agent {
     server: Option<(McpServer, Receiver<Call>)>,
     pub port: u16,
-    offscreen: Option<Offscreen>,
+    pub offscreen: Option<Offscreen>,
     pub calls: usize,
     pub last: Option<(String, Instant)>,
     pub error: Option<String>,
@@ -58,7 +65,8 @@ impl Agent {
     }
 
     /// Answer queued requests. Call once per frame when no interaction is in progress.
-    /// KiCad imports are returned for the app to run (they change the open libraries).
+    /// KiCad imports and library requests are returned for the app to run (they change
+    /// the open libraries).
     pub fn process(
         &mut self,
         ctx: &egui::Context,
@@ -66,7 +74,7 @@ impl Agent {
         panes: &mut [Pane; 2],
         libraries: &[&Library],
         kicad: &mut KicadImport,
-    ) -> Vec<(KicadJob, Responder)> {
+    ) -> Vec<Job> {
         let Some((_, rx)) = &self.server else { return Vec::new() };
         let mut jobs = Vec::new();
         let mut host = AppHost { ctx, doc, panes, libraries, offscreen: &mut self.offscreen, kicad, jobs: &mut jobs };
@@ -90,7 +98,7 @@ struct AppHost<'a> {
     libraries: &'a [&'a Library],
     offscreen: &'a mut Option<Offscreen>,
     kicad: &'a mut KicadImport,
-    jobs: &'a mut Vec<(KicadJob, Responder)>,
+    jobs: &'a mut Vec<Job>,
 }
 
 impl Host for AppHost<'_> {
@@ -131,7 +139,11 @@ impl Host for AppHost<'_> {
     }
 
     fn kicad_import(&mut self, request: KicadJob, reply: Responder) {
-        self.jobs.push((request, reply));
+        self.jobs.push(Job::Kicad(request, reply));
+    }
+
+    fn library_request(&mut self, request: LibraryRequest, reply: Responder) {
+        self.jobs.push(Job::Library(request, reply));
     }
 
     fn kicad_download(&mut self, update: bool, reply: Responder) {

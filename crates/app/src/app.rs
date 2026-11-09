@@ -19,7 +19,7 @@ use crate::name_prompt::NamePrompt;
 use view::tools::Tool;
 use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
 
-use crate::agent::{self, Agent};
+use crate::agent::{self, Agent, Job};
 use crate::canvas::{self, Canvas, CanvasResources};
 use crate::dock::{Dock, Panel, Side, Unseen};
 use crate::icons::{self, Icon};
@@ -1798,6 +1798,41 @@ fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
     ui.add_space(4.0);
 }
 
+/// The open library tabs, as the agent's library tools see them.
+struct AgentLibraries<'a>(&'a mut PcbApp);
+
+impl mcp::library::Libraries for AgentLibraries<'_> {
+    fn count(&self) -> usize {
+        self.0.libraries.len()
+    }
+
+    fn get(&mut self, index: usize) -> &mut LibraryDoc {
+        &mut self.0.libraries[index].lib
+    }
+
+    fn add(&mut self, lib: LibraryDoc) -> usize {
+        self.0.add_library(lib, false);
+        self.0.libraries.len() - 1
+    }
+
+    /// Show what the agent changed in its library tab (without switching tabs).
+    fn changed(&mut self, index: usize, show: Option<ObjectId>) {
+        let l = &mut self.0.libraries[index];
+        l.refresh();
+        let open = match show {
+            Some(ObjectId::LibPart(id)) => Open::Part(id),
+            Some(ObjectId::LibSymbol(id)) => Open::Item(Item::Symbol(id)),
+            Some(ObjectId::LibFootprint(id)) => Open::Item(Item::Footprint(id)),
+            _ => return,
+        };
+        l.show(open);
+    }
+
+    fn offscreen(&mut self) -> &mut Option<render::offscreen::Offscreen> {
+        &mut self.0.agent.offscreen
+    }
+}
+
 struct TreeBehavior<'a> {
     /// Tab containers: drawn as rounded panels.
     tab_groups: Vec<TileId>,
@@ -2195,9 +2230,16 @@ impl eframe::App for PcbApp {
         if !self.busy() {
             let libraries: Vec<&Library> = self.libraries.iter().map(|l| l.lib.library()).collect();
             let jobs = self.agent.process(&ctx, &mut self.doc, &mut self.panes, &libraries, &mut self.kicad);
-            for (job, reply) in jobs {
-                let result = self.agent_kicad_import(job).map(mcp::Reply::Json);
-                let _ = reply.send(result);
+            for job in jobs {
+                match job {
+                    Job::Kicad(job, reply) => {
+                        let result = self.agent_kicad_import(job).map(mcp::Reply::Json);
+                        let _ = reply.send(result);
+                    }
+                    Job::Library(request, reply) => {
+                        let _ = reply.send(mcp::library::respond(request, &mut AgentLibraries(self)));
+                    }
+                }
             }
         }
 

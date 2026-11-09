@@ -18,6 +18,8 @@ use tokio::sync::oneshot;
 use view::interaction::new_group;
 use view::{Document, ViewKind};
 
+use crate::library::LibraryRequest;
+
 /// What a tool asks the application to do.
 #[derive(Debug)]
 pub enum Request {
@@ -83,6 +85,8 @@ pub enum Request {
     KicadDownload {
         update: bool,
     },
+    /// Create, open, read, edit, save or render libraries.
+    Library(LibraryRequest),
 }
 
 /// A KiCad import requested by an agent.
@@ -127,6 +131,7 @@ impl Request {
             Request::KicadImport(k) => format!("import {} item(s) from KiCad", k.symbols.len() + k.footprints.len()),
             Request::KicadDownload { update: false } => "download KiCad libraries".into(),
             Request::KicadDownload { update: true } => "update KiCad libraries".into(),
+            Request::Library(r) => r.describe(),
         }
     }
 
@@ -141,7 +146,7 @@ impl Request {
                 | Request::Redo
                 | Request::Save { .. }
                 | Request::KicadImport(_)
-        )
+        ) || matches!(self, Request::Library(r) if r.modifies())
     }
 }
 
@@ -185,6 +190,11 @@ pub trait Host {
     /// background).
     fn kicad_download(&mut self, _update: bool, reply: Responder) {
         let _ = reply.send(Err("KiCad libraries can't be downloaded in this host".into()));
+    }
+    /// Library tools (see [`crate::library`]); the host may answer later (opening a
+    /// library may need the UI). Answer with [`crate::library::respond`].
+    fn library_request(&mut self, _request: LibraryRequest, reply: Responder) {
+        let _ = reply.send(Err("libraries can't be edited in this host".into()));
     }
 }
 
@@ -259,6 +269,7 @@ pub fn handle(call: Call, host: &mut dyn Host) {
         Request::Screenshot { target: None, .. } => return host.window_screenshot(reply),
         Request::KicadImport(k) => return host.kicad_import(k, reply),
         Request::KicadDownload { update } => return host.kicad_download(update, reply),
+        Request::Library(r) => return host.library_request(r, reply),
         r => r,
     };
     let result = respond(request, host);
@@ -352,7 +363,9 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             })
         }
         Request::KicadSearch { query, footprints, limit } => host.kicad_search(&query, footprints, limit)?,
-        Request::KicadImport(_) | Request::KicadDownload { .. } => unreachable!("answered by the host"),
+        Request::KicadImport(_) | Request::KicadDownload { .. } | Request::Library(_) => {
+            unreachable!("answered by the host")
+        }
         Request::Execute { commands } => execute(host.document(), commands)?,
         Request::Undo => {
             let doc = host.document();

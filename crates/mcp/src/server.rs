@@ -26,6 +26,7 @@ use tokio_util::sync::CancellationToken;
 use view::ViewKind;
 
 use crate::host::{Call, Reply, Request};
+use crate::library::LibraryRequest;
 
 pub type Waker = Arc<dyn Fn() + Send + Sync>;
 
@@ -46,8 +47,9 @@ angles are degrees, counter-clockwise; Y points up.
 
 Typical workflow:
 1. get_project for an overview (components, layers, design rules, outline).
-2. list_library_parts, then import_parts to copy parts into the project. New parts can also be \
-   created directly in the project with insert of lib_symbol, lib_footprint and lib_part objects.
+2. list_library_parts, then import_parts to copy parts into the project. Parts nobody has \
+   (e.g. from a datasheet): create_library (or open_library), edit_library to add the symbol, \
+   footprints and part, render_library_item to check them, save_library, then import_parts.
 3. execute commands (place_part, add_wire, add_label, add_track, move, rotate, ...). Several \
    commands in one call form a single undo step and are applied all-or-nothing.
 4. screenshot the schematic or board to check the result visually.
@@ -131,7 +133,7 @@ pub struct ImportKicadParams {
     #[serde(default)]
     pub footprints: Vec<String>,
     /// Name of the open library to import into (default: a library named "KiCad import",
-    /// created if needed). Ignored in headless mode, where parts go into the project.
+    /// created if needed).
     #[serde(default)]
     pub library: Option<String>,
 }
@@ -210,6 +212,64 @@ pub struct SaveParams {
     /// Project folder to save to. Defaults to the current folder.
     #[serde(default)]
     pub path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CreateLibraryParams {
+    /// Library name, e.g. the part or the manufacturer.
+    pub name: String,
+    /// File to save it to right away (`….pcblib`; the library takes the file's name).
+    /// Omit to save later with save_library.
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct OpenLibraryParams {
+    /// A `.pcblib` file.
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct LibraryItemsParams {
+    /// Name of an open library (see list_libraries).
+    pub library: String,
+    /// Items as `[part:|symbol:|footprint:]NAME` or ids, e.g. "OpAmp" (part and symbol),
+    /// "footprint:SOIC-8".
+    pub items: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct EditLibraryParams {
+    /// Name of an open library.
+    pub library: String,
+    /// Symbols, footprints and parts to add or update (see the tool description).
+    #[serde(default)]
+    pub upsert: Vec<serde_json::Value>,
+    /// Items to delete: `[part:|symbol:|footprint:]NAME` or ids.
+    #[serde(default)]
+    pub delete: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SaveLibraryParams {
+    pub library: String,
+    /// File to save to (`….pcblib`; the library takes the file's name). Defaults to its
+    /// current file.
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RenderLibraryItemParams {
+    pub library: String,
+    /// A symbol or footprint: `[symbol:|footprint:]NAME` or id (a part shows its symbol).
+    pub item: String,
+    /// Image size in pixels (default 800x800, 64..4096).
+    #[serde(default)]
+    pub width: Option<u32>,
+    #[serde(default)]
+    pub height: Option<u32>,
 }
 
 /// The MCP service; one per session, all sharing the same call queue.
@@ -410,6 +470,94 @@ impl PcbTools {
             height: p.height.unwrap_or(800),
         };
         self.call(request).await
+    }
+
+    #[tool(description = "Open libraries: name, file, unsaved changes, and their symbols (pin \
+        counts), footprints (pad counts) and parts (units, variants). Parts of open libraries \
+        can be put into the project with import_parts.")]
+    async fn list_libraries(&self) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::Library(LibraryRequest::List)).await
+    }
+
+    #[tool(description = "Create a new, empty library and open it (the user sees it in a tab). \
+        Fill it with edit_library.")]
+    async fn create_library(
+        &self,
+        Parameters(p): Parameters<CreateLibraryParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::Library(LibraryRequest::Create { name: p.name, path: p.path.map(Into::into) })).await
+    }
+
+    #[tool(description = "Open a library file (.pcblib) so its parts can be edited or imported \
+        into the project.")]
+    async fn open_library(&self, Parameters(p): Parameters<OpenLibraryParams>) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::Library(LibraryRequest::Open { path: p.path.into() })).await
+    }
+
+    #[tool(description = "Symbols, footprints and parts of an open library in full JSON: the \
+        format edit_library takes. The Starter library's parts (e.g. \"OpAmp\", \"NPN\", \
+        \"footprint:SOIC-8\") are good examples.")]
+    async fn get_library_items(
+        &self,
+        Parameters(p): Parameters<LibraryItemsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::Library(LibraryRequest::Get { library: p.library, items: p.items })).await
+    }
+
+    #[tool(description = "Add or change symbols, footprints and parts of an open library (e.g. \
+        a part from a datasheet). One undo step, all-or-nothing: refused if it would leave \
+        dangling references. `upsert` takes objects in the format get_library_items returns \
+        (\"type\": lib_symbol, lib_footprint or lib_part), with conveniences:\n\
+        - Matched by id or name: a match is updated, otherwise added. Fields left out keep \
+        their value (new items get defaults). Ids are optional everywhere: pins keep theirs \
+        by number (or name), pads by name, variants by name.\n\
+        - lib_symbol: name, pins, graphics, texts. Pin: name, number (datasheet pin \
+        number), pos (the outer end, where wires connect; put it on the 2.54 mm grid), \
+        direction (degrees from pos toward the body: 0 for a pin on the left side, 180 \
+        right, 270 top, 90 bottom), length (default 2.54 mm), kind (input, output, \
+        bidirectional, tri_state, passive, power_in, power_out, open_collector, \
+        not_connected). Graphics are shapes ({\"type\": \"rect\", \"a\": [x, y], \"b\": [x, y], \
+        \"width\": 254000, \"fill\": true}, line a/b, circle center/radius, arc, polygon \
+        points). Texts: text (${REF}, ${VALUE} show the component's), pos, size, halign, \
+        valign; width defaults to size/7.\n\
+        - lib_footprint: name, description, pads, graphics, texts. Pad: name (as in the \
+        datasheet), pos (centre), size [w, h], shape ({\"type\": \"rect\"}, round_rect with \
+        ratio, oval, circle), kind ({\"type\": \"smd\"}, through_hole or non_plated_hole \
+        with drill). Origin at the package centre, pad 1 top left, Y up. Graphics \
+        {\"layer\": silkscreen, fabrication or courtyard, \"shape\": …}: body outline on \
+        fabrication, courtyard around everything, silkscreen clear of the pads.\n\
+        - lib_part: name, description, prefix (default U), default_value (default the \
+        name), properties, units [{\"symbol\": SYMBOL NAME}] (named A, B, …), variants \
+        [{\"footprint\": FOOTPRINT NAME, \"name\"?, \"connections\"?}] (one per package). \
+        Without connections, pads connect to pins with the same number (else name); or \
+        \"in_order\"; or a list of {\"pad\": PAD NAME, \"pin\": PIN NUMBER or NAME, \"unit\"?}.\n\
+        Coordinates and sizes in nm (1 mm = 1000000). Returns what changed and each variant's \
+        mapping (unconnected pads, pins without a pad). Check with render_library_item, then \
+        save_library.")]
+    async fn edit_library(&self, Parameters(p): Parameters<EditLibraryParams>) -> Result<CallToolResult, ErrorData> {
+        let request = LibraryRequest::Edit { library: p.library, upsert: p.upsert, delete: p.delete };
+        self.call(Request::Library(request)).await
+    }
+
+    #[tool(description = "Save an open library to its file, or to `path`.")]
+    async fn save_library(&self, Parameters(p): Parameters<SaveLibraryParams>) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::Library(LibraryRequest::Save { library: p.library, path: p.path.map(Into::into) })).await
+    }
+
+    #[tool(description = "PNG of a library symbol or footprint as the editor draws it (pins with \
+        names and numbers; pads with their names, silkscreen, fabrication and courtyard \
+        layers). Use it to check a new symbol or footprint.")]
+    async fn render_library_item(
+        &self,
+        Parameters(p): Parameters<RenderLibraryItemParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let request = LibraryRequest::Render {
+            library: p.library,
+            item: p.item,
+            width: p.width.unwrap_or(800),
+            height: p.height.unwrap_or(800),
+        };
+        self.call(Request::Library(request)).await
     }
 
     #[tool(description = "Save the project folder (to its current location or to `path`).")]

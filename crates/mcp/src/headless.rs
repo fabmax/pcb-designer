@@ -1,7 +1,8 @@
 //! A [`Host`] without a GUI: a document plus selections. Used by tests and by the headless
 //! MCP mode.
 //!
-//! KiCad imports go into a "KiCad import" library and their parts straight into the
+//! Libraries are kept open in memory (the starter library first). KiCad imports go into
+//! the named library, else a "KiCad import" library, and their parts straight into the
 //! project (there is nobody to place them from a library window).
 
 use std::path::PathBuf;
@@ -18,12 +19,12 @@ use view::{Document, LibraryDoc, ViewKind};
 use crate::host::{
     Host, KicadImport, Reply, Responder, kicad_download_reply, kicad_import_reply, kicad_request, render_png,
 };
+use crate::library::{Libraries, LibraryRequest};
 
 pub struct HeadlessHost {
     pub doc: Document,
-    pub library: Library,
-    /// Objects imported from KiCad.
-    pub kicad_library: LibraryDoc,
+    /// Open libraries: the starter library, then the ones agents created or opened.
+    pub libraries: Vec<LibraryDoc>,
     /// Download folder of KiCad's libraries (`None`: downloads are refused).
     pub kicad_root: Option<PathBuf>,
     /// More KiCad library folders, always searched.
@@ -38,8 +39,7 @@ impl HeadlessHost {
     pub fn new(doc: Document) -> Self {
         HeadlessHost {
             doc,
-            library: builtin::starter_library(),
-            kicad_library: LibraryDoc::new(Library::new("KiCad import")),
+            libraries: vec![LibraryDoc::new(builtin::starter_library())],
             kicad_root: None,
             kicad_paths: Vec::new(),
             kicad_source: Source::default(),
@@ -53,6 +53,20 @@ impl HeadlessHost {
         let paths: Vec<PathBuf> =
             self.kicad_paths.iter().cloned().chain(download::library_paths(self.kicad_root.as_deref())).collect();
         self.catalog.get_or_insert_with(|| Catalog::scan(&paths))
+    }
+
+    /// The open library named `name`, or a new one.
+    fn library_named(&mut self, name: &str) -> &mut LibraryDoc {
+        let i = match self.libraries.iter().position(|l| l.name() == name) {
+            Some(i) => i,
+            None => {
+                let mut lib = LibraryDoc::new(Library::new(name));
+                lib.doc.mark_saved();
+                self.libraries.push(lib);
+                self.libraries.len() - 1
+            }
+        };
+        &mut self.libraries[i]
     }
 
     fn import(&mut self, job: &KicadImport) -> Result<Value, String> {
@@ -69,14 +83,14 @@ impl HeadlessHost {
                 imported.errors.join("; ")
             });
         }
+        let target = self.library_named(job.library.as_deref().unwrap_or("KiCad import"));
         let (added, replaced) =
-            self.kicad_library.upsert(imported.symbols.clone(), imported.footprints.clone(), imported.parts.clone())?;
+            target.upsert(imported.symbols.clone(), imported.footprints.clone(), imported.parts.clone())?;
+        let (library, name) = (target.library().clone(), target.name().to_string());
         let parts: Vec<model::Id> = imported.parts.iter().map(|p| p.id).collect();
         if !parts.is_empty() {
-            let library = self.kicad_library.library().clone();
             self.doc.execute(Command::ImportParts { library, parts }).map_err(|e| e.to_string())?;
         }
-        let name = self.kicad_library.library().name.clone();
         let mut reply = kicad_import_reply(&name, added, replaced, &imported, &req);
         reply["in_project"] = Value::Bool(!imported.parts.is_empty());
         Ok(reply)
@@ -97,7 +111,7 @@ impl Host for HeadlessHost {
     }
 
     fn libraries(&self) -> Vec<&Library> {
-        vec![&self.library, self.kicad_library.library()]
+        self.libraries.iter().map(LibraryDoc::library).collect()
     }
 
     fn selection(&self, view: ViewKind) -> Vec<ObjectId> {
@@ -123,6 +137,10 @@ impl Host for HeadlessHost {
         Ok(serde_json::json!({ "results": results, "truncated": results.len() >= limit }))
     }
 
+    fn library_request(&mut self, request: LibraryRequest, reply: Responder) {
+        let _ = reply.send(crate::library::respond(request, self));
+    }
+
     fn kicad_import(&mut self, request: KicadImport, reply: Responder) {
         let _ = reply.send(self.import(&request).map(Reply::Json));
     }
@@ -138,5 +156,24 @@ impl Host for HeadlessHost {
             self.catalog = None;
         }
         let _ = reply.send(result);
+    }
+}
+
+impl Libraries for HeadlessHost {
+    fn count(&self) -> usize {
+        self.libraries.len()
+    }
+
+    fn get(&mut self, index: usize) -> &mut LibraryDoc {
+        &mut self.libraries[index]
+    }
+
+    fn add(&mut self, lib: LibraryDoc) -> usize {
+        self.libraries.push(lib);
+        self.libraries.len() - 1
+    }
+
+    fn offscreen(&mut self) -> &mut Option<Offscreen> {
+        &mut self.offscreen
     }
 }

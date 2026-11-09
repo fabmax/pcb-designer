@@ -68,6 +68,10 @@ async fn agent_session() {
         "get_netlist",
         "get_routing",
         "run_drc",
+        "create_library",
+        "edit_library",
+        "render_library_item",
+        "save_library",
     ] {
         assert!(names.contains(&expected), "missing tool {expected}: {names:?}");
     }
