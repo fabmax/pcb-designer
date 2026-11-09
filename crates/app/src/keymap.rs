@@ -47,6 +47,13 @@ pub enum Action {
     PcbZone,
     PcbNextLayer,
     Settings,
+    PanelLibraries,
+    PanelLibraryBrowser,
+    PanelMessages,
+    PanelProperties,
+    PanelToolSettings,
+    PanelBoardSetup,
+    PanelOverview,
 }
 
 /// Where an action's shortcut applies. Actions of different contexts may share a key.
@@ -91,6 +98,13 @@ impl Action {
         Action::PcbZone,
         Action::PcbNextLayer,
         Action::Settings,
+        Action::PanelLibraries,
+        Action::PanelLibraryBrowser,
+        Action::PanelMessages,
+        Action::PanelProperties,
+        Action::PanelToolSettings,
+        Action::PanelBoardSetup,
+        Action::PanelOverview,
     ];
 
     pub fn label(self) -> &'static str {
@@ -127,6 +141,13 @@ impl Action {
             Action::PcbZone => "Copper zone tool (PCB)",
             Action::PcbNextLayer => "Next copper layer; adds a via while routing (PCB)",
             Action::Settings => "Settings",
+            Action::PanelLibraries => "Show/hide Libraries panel",
+            Action::PanelLibraryBrowser => "Show/hide Library browser panel",
+            Action::PanelMessages => "Show/hide Messages panel",
+            Action::PanelProperties => "Show/hide Properties panel",
+            Action::PanelToolSettings => "Show/hide Tool settings panel",
+            Action::PanelBoardSetup => "Show/hide Board setup panel",
+            Action::PanelOverview => "Show/hide Overview panel",
         }
     }
 
@@ -164,6 +185,7 @@ impl Action {
     /// Still triggers while a text field has keyboard focus.
     fn works_while_typing(self) -> bool {
         matches!(self, Action::New | Action::Open | Action::Save | Action::SaveAs)
+            || crate::dock::Panel::of_action(self).is_some()
     }
 
     /// Fires repeatedly while the key is held.
@@ -304,6 +326,13 @@ impl Default for Keymap {
             (Action::PcbZone, vec![S::key(Key::Z)]),
             (Action::PcbNextLayer, vec![S::key(Key::L)]),
             (Action::Settings, vec![S::cmd(Key::Comma)]),
+            (Action::PanelLibraries, vec![S::cmd(Key::Num1)]),
+            (Action::PanelLibraryBrowser, vec![S::cmd(Key::Num2)]),
+            (Action::PanelMessages, vec![S::cmd(Key::Num3)]),
+            (Action::PanelProperties, vec![S::cmd(Key::Num4)]),
+            (Action::PanelToolSettings, vec![S::cmd(Key::Num5)]),
+            (Action::PanelBoardSetup, vec![S::cmd(Key::Num6)]),
+            (Action::PanelOverview, vec![S::cmd(Key::Num7)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
     }

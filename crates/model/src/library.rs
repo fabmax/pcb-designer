@@ -352,28 +352,33 @@ impl Library {
 
     /// Consistency problems (dangling references, bad pad mappings).
     pub fn validate(&self) -> Vec<String> {
+        self.issues().into_iter().map(|(_, m)| m).collect()
+    }
+
+    /// Problems with the parts, each with the part it concerns.
+    pub fn issues(&self) -> Vec<(Id, String)> {
         let mut issues = Vec::new();
         for part in self.parts.iter() {
             for (i, u) in part.units.iter().enumerate() {
                 if !self.symbols.contains(u.symbol) {
-                    issues.push(format!("part {:?}: unit {i} references missing symbol", part.name));
+                    issues.push((part.id, format!("part {:?}: unit {i} references missing symbol", part.name)));
                 }
             }
             if part.variants.is_empty() {
-                issues.push(format!("part {:?} has no variant", part.name));
+                issues.push((part.id, format!("part {:?} has no variant", part.name)));
             }
             for v in &part.variants {
                 let Some(fp) = self.footprints.get(v.footprint) else {
-                    issues.push(format!("part {:?} variant {:?}: missing footprint", part.name, v.name));
+                    issues.push((part.id, format!("part {:?} variant {:?}: missing footprint", part.name, v.name)));
                     continue;
                 };
                 let mut seen = std::collections::HashSet::new();
                 for c in &v.connections {
                     if !fp.pads.contains(c.pad) {
-                        issues.push(format!("part {:?} variant {:?}: unknown pad", part.name, v.name));
+                        issues.push((part.id, format!("part {:?} variant {:?}: unknown pad", part.name, v.name)));
                     }
                     if !seen.insert(c.pad) {
-                        issues.push(format!("part {:?} variant {:?}: pad mapped twice", part.name, v.name));
+                        issues.push((part.id, format!("part {:?} variant {:?}: pad mapped twice", part.name, v.name)));
                     }
                     let pin_ok = part
                         .units
@@ -381,7 +386,7 @@ impl Library {
                         .and_then(|u| self.symbols.get(u.symbol))
                         .is_some_and(|s| s.pins.contains(c.pin));
                     if !pin_ok {
-                        issues.push(format!("part {:?} variant {:?}: unknown pin", part.name, v.name));
+                        issues.push((part.id, format!("part {:?} variant {:?}: unknown pin", part.name, v.name)));
                     }
                 }
             }

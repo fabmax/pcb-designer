@@ -876,3 +876,42 @@ KiCad's model, so a later KiCad project import maps one to one.
   face, so `theme::bold_label` draws the text three times across 0.8 pt. Content has 18 pt padding.
   Use it for new modal dialogs. The Settings and KiCad import windows are still plain
   egui windows.
+
+## Tool window bars (2026-11-09)
+
+The fixed left (libraries) and right (properties) panels, whose content changed with the
+context, became IntelliJ-style tool windows (`app/src/dock.rs`).
+
+- **Bars.** A 36 pt icon bar on each window edge, one button per panel. The open panel's
+  button is tinted with the accent. The tooltip gives the name and shortcut (⌘1…⌘7).
+  - Left: Libraries (tree icon; to become a project browser), Library browser, then a
+    separator and Messages, which opens as a bottom panel between the side panels.
+  - Right: Properties, Tool settings, Board setup, Overview.
+- **One panel per side.** Clicking the open panel's button (or "–" in its header) hides
+  it; the bar stays. Panels never open or switch on their own. A panel that doesn't apply
+  says so (e.g. the Library browser without a library tab); buttons never disappear.
+- **Context.** Properties, Tool settings and Overview follow the last focused editor:
+  schematic, PCB or a library tab (library tool settings, element properties, library
+  summary). The Library browser shows the focused or last focused library tab, else the
+  first open one.
+- **Messages** (`messages.rs`). Three columns: Schematic (ERC problems), Board (shorts,
+  flagged copper, then Design rules with Run DRC and the grouped violations), Libraries
+  (`Library::issues`, which `validate` now wraps). Clicking a message shows its tab,
+  selects its objects and centres on them; a library issue opens the part.
+  - Badge: `Unseen` remembers the problem keys (hash of section + text) present while
+    the panel was open. A closed Messages button shows the count of problems not seen
+    yet, or a dot if only seen ones remain. A problem that goes away and comes back
+    counts as new.
+  - The glyph font has no ✔; headings say "OK".
+- **Persistence.** `Settings::dock` (open panel per side, sizes). Saved when it differs
+  from the last saved dock and no pointer button is down, so resizing doesn't write the
+  file every frame. `--panel NAME` (repeatable, dev aid) shows panels for one run without
+  saving them. The recorded size is the panel rect, and it round-trips without drift.
+- **Shortcuts work while typing** (`works_while_typing`), like the other window-level
+  actions.
+- **Scripts** now bring their tab to the front only at the start and on `board` /
+  `schematic` steps (`Script::take_switch`). Before, they forced it every frame, which
+  undid tab switches caused by clicks (like clicking a message).
+- **Later.** Dragging buttons to reorder them or move them between bars, a Nets panel,
+  stacking two panels on one side, the project browser.
+

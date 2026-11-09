@@ -1,8 +1,7 @@
 //! Board tool bar, tool settings and board setup (layer stack, design rules).
 
 use editor_core::Command;
-use editor_core::copper::{CopperItem, Flag};
-use editor_core::drc::ViolationKind;
+
 use egui::RichText;
 use model::*;
 use view::Document;
@@ -165,10 +164,9 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
 
 const LAYER_COUNTS: &[u16] = &[2, 4, 6, 8];
 
-/// Layer stack and design rules (board properties with nothing selected).
+/// Layer stack and design rules (Board setup panel).
 pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<String>) {
-    ui.add_space(8.0);
-    egui::CollapsingHeader::new(RichText::new("Board setup").strong()).default_open(true).show(ui, |ui| {
+    {
         let board = &doc.project().board;
         let count = board.copper_layers().count() as u16;
         let mut rules = board.rules.clone();
@@ -219,94 +217,7 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
         {
             *message = Some(e.to_string());
         }
-    });
-}
-
-/// Shorts and flagged copper (board properties with nothing selected). Returns objects
-/// to select.
-pub fn problems(ui: &mut egui::Ui, doc: &Document) -> Option<Vec<ObjectId>> {
-    let copper = doc.copper();
-    let flagged: Vec<ObjectId> = copper
-        .flagged()
-        .filter(|c| matches!(c.item, CopperItem::Track(_) | CopperItem::Via(_)))
-        .map(|c| c.item.object())
-        .collect();
-    if flagged.is_empty() && copper.shorts.is_empty() {
-        return None;
     }
-    let mut select = None;
-    ui.add_space(8.0);
-    egui::CollapsingHeader::new(RichText::new("Board problems").strong().color(theme::warn())).default_open(true).show(
-        ui,
-        |ui| {
-            for (nets, at) in &copper.shorts {
-                ui.label(format!("Short: {} at {}", nets.join(" ↔ "), units::fmt_point(*at)));
-            }
-            let unconnected = copper.flagged().filter(|c| c.flag == Some(Flag::Unconnected)).count();
-            if unconnected > 0 {
-                ui.label(format!("{unconnected} track(s)/via(s) touch no pad"));
-            }
-            if !flagged.is_empty() && ui.button(format!("Select {} flagged", flagged.len())).clicked() {
-                select = Some(flagged.clone());
-            }
-            hint(ui, "Schematic changes never delete copper; it is flagged here instead.");
-        },
-    );
-    select
-}
-
-/// Design rule check: run it, list the violations. Returns a violation's objects and
-/// position when one is clicked.
-pub fn drc(ui: &mut egui::Ui, doc: &mut Document) -> Option<(Vec<ObjectId>, Point)> {
-    let mut chosen = None;
-    ui.add_space(8.0);
-    let title = match doc.drc() {
-        Some(r) if r.violations.is_empty() => {
-            RichText::new("Design rules: no violations").strong().color(theme::success())
-        }
-        Some(r) => {
-            RichText::new(format!("Design rules: {} violation(s)", r.violations.len())).strong().color(theme::warn())
-        }
-        None => RichText::new("Design rule check").strong(),
-    };
-    egui::CollapsingHeader::new(title).id_salt("drc").default_open(true).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            if ui.button("Run DRC").clicked() {
-                doc.run_drc();
-            }
-            if doc.drc().is_some() && ui.small_button("Clear").clicked() {
-                doc.clear_drc();
-            }
-        });
-        let Some(report) = doc.drc() else {
-            hint(ui, "Checks clearances, shorts, unrouted nets, the board edge, courtyards, track widths and drills.");
-            return;
-        };
-        let outdated = report.revision != doc.revision;
-        let status = format!(
-            "{} in {:.1} ms{}",
-            if report.violations.is_empty() { "Clean" } else { "Found problems" },
-            report.time.as_secs_f64() * 1e3,
-            if outdated { " · board changed since" } else { "" }
-        );
-        ui.label(RichText::new(status).color(if outdated { theme::warn() } else { theme::text_dim() }));
-        const SHOWN: usize = 300;
-        let mut kind: Option<ViolationKind> = None;
-        for v in report.violations.iter().take(SHOWN) {
-            if kind != Some(v.kind) {
-                kind = Some(v.kind);
-                let n = report.violations.iter().filter(|w| w.kind == v.kind).count();
-                ui.add_space(4.0);
-                ui.label(RichText::new(format!("{} ({n})", v.kind.label())).strong());
-            }
-            let r = ui.add(egui::Button::selectable(false, &v.message).truncate());
-            if r.on_hover_text(&v.message).clicked() {
-                chosen = Some((v.objects.clone(), v.pos));
-            }
-        }
-        if report.violations.len() > SHOWN {
-            hint(ui, &format!("… and {} more", report.violations.len() - SHOWN));
-        }
-    });
-    chosen
+    ui.add_space(6.0);
+    hint(ui, "Applies to the whole board, from any tab. Removing an inner layer needs it to be empty.");
 }

@@ -33,15 +33,23 @@ pub struct Script {
     steps: VecDeque<Step>,
     wait: u32,
     board: bool,
+    /// The view changed (or the script just started): its tab is to be brought to the
+    /// front, once, so clicks may still switch tabs afterwards.
+    switched: bool,
 }
 
 /// Frames between steps (lets the camera fit and the UI settle).
 const GAP: u32 = 3;
 
 impl Script {
-    /// The view the script currently works in (its tab is brought to the front).
+    /// The view the script currently works in.
     pub fn view(&self) -> ViewKind {
         if self.board { ViewKind::Board } else { ViewKind::Schematic }
+    }
+
+    /// The view to bring to the front, at the start and after `board` / `schematic`.
+    pub fn take_switch(&mut self) -> Option<ViewKind> {
+        std::mem::take(&mut self.switched).then(|| self.view())
     }
 
     pub fn parse(text: &str) -> Result<Script, String> {
@@ -75,7 +83,7 @@ impl Script {
                 _ => return Err(format!("unknown script step {cmd:?}")),
             }
         }
-        Ok(Script { steps, wait: 0, board: false })
+        Ok(Script { steps, wait: 0, board: false, switched: true })
     }
 
     pub fn is_done(&self) -> bool {
@@ -119,6 +127,7 @@ impl Script {
             }
             Step::Board(b) => {
                 self.board = b;
+                self.switched = true;
                 self.wait = 0;
                 Vec::new()
             }

@@ -47,6 +47,8 @@ pub struct LibraryEditor {
     fields: Fields,
     filter: String,
     revision: u64,
+    /// Validation issues and the revision they are of.
+    issues: (u64, Vec<(Id, String)>),
     pub message: Option<String>,
 }
 
@@ -65,6 +67,7 @@ impl LibraryEditor {
             fields: Fields::default(),
             filter: String::new(),
             revision: u64::MAX,
+            issues: (u64::MAX, Vec::new()),
             message: None,
         }
     }
@@ -513,10 +516,35 @@ impl LibraryEditor {
     // ------------------------------------------------------------------------------------
     // Inspector (right panel)
 
-    pub fn inspector_ui(&mut self, ui: &mut egui::Ui) {
+    /// Validation issues of the library (part, message), recomputed when it changed.
+    pub fn issues(&mut self) -> &[(Id, String)] {
+        if self.issues.0 != self.lib.doc.revision {
+            self.issues = (self.lib.doc.revision, self.lib.library().issues());
+        }
+        &self.issues.1
+    }
+
+    /// Settings of the active library tool (Tool settings panel).
+    pub fn tool_settings_ui(&mut self, ui: &mut egui::Ui) {
         self.fields.begin_frame();
         match self.open {
             Open::Item(item) if self.placer.is_placing() => self.tool_settings(ui, item),
+            _ => hint(ui, "The select tool has no settings. Pick a drawing tool from the tool bar."),
+        }
+        if self.fields.end_frame() {
+            self.lib.doc.close_group();
+        }
+    }
+
+    /// The library summary (Overview panel).
+    pub fn overview_ui(&mut self, ui: &mut egui::Ui) {
+        self.library_summary(ui);
+    }
+
+    /// The selected element, the open item or part (Properties panel).
+    pub fn properties_ui(&mut self, ui: &mut egui::Ui) {
+        self.fields.begin_frame();
+        match self.open {
             Open::Item(item) => match self.it.selection.as_slice() {
                 [] => self.item_summary(ui, item),
                 [e] => self.element(ui, item, *e),
@@ -529,7 +557,7 @@ impl LibraryEditor {
                 fields::heading(ui, "Part", "");
                 hint(ui, "Edit units, footprint variants and the pin-pad mapping in the form.");
             }
-            Open::None => self.library_summary(ui),
+            Open::None => hint(ui, "Open a part, symbol or footprint in the library browser."),
         }
         if self.fields.end_frame() {
             self.lib.doc.close_group();

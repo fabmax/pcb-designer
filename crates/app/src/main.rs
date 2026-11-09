@@ -6,6 +6,7 @@
 //!                     [--kicad DIR]... [--kicad-pick [footprint:]LIB:NAME]... [--kicad-import]
 //!                     [--kicad-search [footprint:]TEXT]
 //!                     [--screenshot FILE.png [--frames N] [--select all|REFDES]]
+//!                     [--panel NAME]... [--script STEPS]
 //!        pcb-designer --mcp-stdio [PROJECT_DIR | --demo]
 //!
 //! `--mcp-stdio` runs without a window: an MCP server on stdin/stdout for agents. A
@@ -23,11 +24,13 @@
 mod agent;
 mod app;
 mod canvas;
+mod dock;
 mod fields;
 mod icons;
 mod keymap;
 mod kicad_import;
 mod library;
+mod messages;
 mod name_prompt;
 mod part_form;
 mod pcb_ui;
@@ -56,6 +59,7 @@ fn main() -> eframe::Result {
         kicad_pick: Vec::new(),
         kicad_import: false,
         kicad_query: None,
+        panels: Vec::new(),
         script: None,
         side_by_side: false,
     };
@@ -77,6 +81,7 @@ fn main() -> eframe::Result {
             "--script" => opts.script = args.next(),
             "--library" => opts.library.extend(args.next().map(Into::into)),
             "--show" => opts.show.extend(args.next()),
+            "--panel" => opts.panels.extend(args.next()),
             "--kicad" => opts.kicad_paths.extend(args.next().map(Into::into)),
             "--kicad-pick" => opts.kicad_pick.extend(args.next()),
             "--kicad-import" => opts.kicad_import = true,
