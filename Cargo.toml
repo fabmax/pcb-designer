@@ -26,6 +26,8 @@ pollster = "1"
 png = "0.18"
 rustc-hash = "2"
 delaunator = "1"
+i_overlay = "9"
+i_triangle = "0.51"
 smallvec = "1"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }

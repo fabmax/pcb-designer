@@ -1,4 +1,5 @@
-//! Board creation tools: route tracks (45° or 90°), place vias, draw the board outline.
+//! Board creation tools: route tracks (45° or 90°), place vias, draw the board outline
+//! and copper zones.
 //! Independent of the GUI toolkit.
 
 use editor_core::Command;
@@ -13,10 +14,11 @@ pub enum PcbTool {
     Route,
     Via,
     Outline,
+    Zone,
 }
 
 impl PcbTool {
-    pub const ALL: &[PcbTool] = &[PcbTool::Select, PcbTool::Route, PcbTool::Via, PcbTool::Outline];
+    pub const ALL: &[PcbTool] = &[PcbTool::Select, PcbTool::Route, PcbTool::Via, PcbTool::Outline, PcbTool::Zone];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -24,6 +26,7 @@ impl PcbTool {
             PcbTool::Route => "Route",
             PcbTool::Via => "Via",
             PcbTool::Outline => "Outline",
+            PcbTool::Zone => "Zone",
         }
     }
 
@@ -35,6 +38,7 @@ impl PcbTool {
             }
             PcbTool::Via => "Click to place a via · Esc done",
             PcbTool::Outline => "Click two corners of the board outline · Esc done",
+            PcbTool::Zone => "Click the zone's corners · click the first or last corner again to close · Esc cancels",
         }
     }
 }
@@ -55,11 +59,19 @@ pub struct PcbSettings {
     pub corners: Corners,
     /// The diagonal (45°) or vertical (90°) part comes first.
     pub bend_first: bool,
+    /// Net of new zones; empty: the net of the copper under the first corner.
+    pub zone_net: String,
 }
 
 impl Default for PcbSettings {
     fn default() -> Self {
-        PcbSettings { layer: LayerId::TOP_COPPER, width: None, corners: Corners::Deg45, bend_first: false }
+        PcbSettings {
+            layer: LayerId::TOP_COPPER,
+            width: None,
+            corners: Corners::Deg45,
+            bend_first: false,
+            zone_net: String::new(),
+        }
     }
 }
 
@@ -77,6 +89,11 @@ pub enum PcbGhost {
         diameter: Coord,
     },
     Outline(Rect),
+    /// A zone being drawn (the last point is the cursor).
+    Zone {
+        layer: LayerId,
+        points: Vec<Point>,
+    },
     /// The cursor is on copper (a route would start or end there).
     Target(Point),
 }
@@ -88,8 +105,10 @@ pub struct PcbPlacer {
     pub settings: PcbSettings,
     /// Start of the track segment being routed, or the first outline corner.
     start: Option<Point>,
-    /// Net being routed.
+    /// Net being routed, or of the zone being drawn.
     net: Option<String>,
+    /// Corners of the zone being drawn.
+    corners: Vec<Point>,
     cursor: Option<Point>,
     /// The cursor is on copper of the active layer.
     on_copper: bool,
@@ -103,6 +122,7 @@ impl Default for PcbPlacer {
             settings: PcbSettings::default(),
             start: None,
             net: None,
+            corners: Vec::new(),
             cursor: None,
             on_copper: false,
             shown: Vec::new(),
@@ -159,7 +179,7 @@ impl PcbPlacer {
     }
 
     pub fn in_progress(&self) -> bool {
-        self.start.is_some()
+        self.start.is_some() || !self.corners.is_empty()
     }
 
     /// Net of the track being routed.
@@ -171,6 +191,7 @@ impl PcbPlacer {
         self.tool = tool;
         self.start = None;
         self.net = None;
+        self.corners.clear();
         self.on_copper = false;
     }
 
@@ -181,7 +202,7 @@ impl PcbPlacer {
     /// Escape: end the track being routed, or leave the tool. Returns true if the tool
     /// was left.
     pub fn escape(&mut self) -> bool {
-        if self.start.take().is_some() {
+        if self.start.take().is_some() | !std::mem::take(&mut self.corners).is_empty() {
             self.net = None;
             return false;
         }
@@ -272,6 +293,7 @@ impl PcbPlacer {
                 doc.execute(Command::AddVia { pos: p, diameter: None, drill: None }).map_err(|e| e.to_string())?;
                 Ok(false)
             }
+            PcbTool::Zone => self.zone_click(doc, p),
             PcbTool::Outline => {
                 let Some(a) = self.start.take() else {
                     self.start = Some(p);
@@ -287,6 +309,38 @@ impl PcbPlacer {
                 Ok(true)
             }
         }
+    }
+
+    /// Add a zone corner; clicking the first or last corner again closes the zone.
+    fn zone_click(&mut self, doc: &mut Document, p: Point) -> Result<bool, String> {
+        let layer = self.settings.layer;
+        if self.corners.is_empty() {
+            let copper = doc.current_copper();
+            let under = copper.at(p, layer).and_then(|c| copper.net_of(c.item)).map(str::to_string);
+            let net = if self.settings.zone_net.is_empty() { under } else { Some(self.settings.zone_net.clone()) };
+            let Some(net) = net else {
+                return Err("choose the zone's net in the tool settings, or start on copper of the net".into());
+            };
+            self.net = Some(net);
+        }
+        let closes = self.corners.first() == Some(&p) || self.corners.last() == Some(&p);
+        if !closes {
+            self.corners.push(p);
+            return Ok(false);
+        }
+        if self.corners.len() < 3 {
+            return Err("a zone needs at least three corners".into());
+        }
+        let outline = std::mem::take(&mut self.corners);
+        let net = self.net.take().unwrap_or_default();
+        let zone = Zone { id: Id::new(), layer, net, outline, priority: 0, clearance: None };
+        doc.execute(Command::Insert { objects: vec![Object::Zone(zone)] }).map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    /// Net of the zone being drawn.
+    pub fn zone_net(&self) -> Option<&str> {
+        (!self.corners.is_empty()).then_some(self.net.as_deref()).flatten()
     }
 
     /// What to preview at the cursor.
@@ -310,6 +364,14 @@ impl PcbPlacer {
             PcbTool::Outline => {
                 if let Some(a) = self.start {
                     g.push(PcbGhost::Outline(Rect::from_points(a, p)));
+                }
+                g.push(PcbGhost::Target(p));
+            }
+            PcbTool::Zone => {
+                if !self.corners.is_empty() {
+                    let mut points = self.corners.clone();
+                    points.push(p);
+                    g.push(PcbGhost::Zone { layer: s.layer, points });
                 }
                 g.push(PcbGhost::Target(p));
             }

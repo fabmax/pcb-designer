@@ -32,6 +32,36 @@ fn main() {
             t.elapsed()
         );
     }
+    // Design rule check, then a zone of the largest net over the whole board.
+    let t = Instant::now();
+    let v = doc.run_drc().violations.len();
+    println!("drc: {v} violations in {:?}", t.elapsed());
+    let copper = doc.current_copper();
+    let mut counts = vec![0usize; copper.nets.len()];
+    for c in &copper.items {
+        if let Some(n) = c.net {
+            counts[n as usize] += 1;
+        }
+    }
+    let net = (0..counts.len()).max_by_key(|&i| counts[i]).map(|i| copper.nets[i].clone()).unwrap_or_default();
+    let r = Rect::union_all(copper.items.iter().map(|c| c.geo.bounds())).unwrap().grow(mm(2.0));
+    let outline = vec![r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
+    let zone =
+        Zone { id: Id::new(), layer: LayerId::TOP_COPPER, net: net.clone(), outline, priority: 0, clearance: None };
+    let t = Instant::now();
+    doc.execute(editor_core::Command::Insert { objects: vec![Object::Zone(zone)] }).unwrap();
+    let b = doc.current_copper();
+    let pieces: usize = b.fills.iter().map(|f| f.shapes.len()).sum();
+    let vertices: usize = b.fills.iter().flat_map(|f| &f.shapes).flatten().map(Vec::len).sum();
+    println!(
+        "zone of {net} ({} items): {pieces} piece(s), {vertices} vertices, fill + connectivity {:?}",
+        counts.iter().max().unwrap_or(&0),
+        t.elapsed()
+    );
+    let t = Instant::now();
+    let v = doc.run_drc().violations.len();
+    println!("drc with the zone: {v} violations in {:?}", t.elapsed());
+
     println!(
         "  schematic {} prims, board {} prims",
         doc.schematic.scene.instance_count(),

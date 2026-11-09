@@ -71,6 +71,8 @@ pub struct View {
     hover: Option<ObjectId>,
     /// Highlighted nets (board), by name.
     nets: Vec<String>,
+    /// Positions of design rule violations (board).
+    drc: Vec<Point>,
     /// Cross-probed objects.
     probed: Vec<ObjectId>,
 }
@@ -89,6 +91,8 @@ const PREVIEW_ITEM: u64 = (3 << 62) | 1;
 const NET_ITEM: u64 = (3 << 62) | 2;
 /// Scene item of cross-probed objects.
 const PROBE_ITEM: u64 = (3 << 62) | 3;
+/// Design rule violation markers.
+const DRC_ITEM: u64 = (3 << 62) | 4;
 
 fn overlay_item(id: ObjectId, hover: bool) -> u64 {
     item(id) | if hover { 2 << 62 } else { 1 << 62 }
@@ -108,6 +112,7 @@ impl View {
             selection: FxHashSet::default(),
             hover: None,
             nets: Vec::new(),
+            drc: Vec::new(),
             probed: Vec::new(),
         };
         v.draw_all(project);
@@ -207,6 +212,7 @@ impl View {
         let sel: Vec<ObjectId> = self.selection.drain().collect();
         let hover = self.hover.take();
         self.set_highlight(project, &sel, hover);
+        self.draw_drc();
     }
 
     fn draw_all(&mut self, project: &Project) {
@@ -371,6 +377,14 @@ impl View {
         let mut out = Vec::new();
         for g in ghosts {
             match *g {
+                PcbGhost::Zone { layer: l, ref points } => {
+                    let color = board_layer_color(l).with_alpha(0xc0);
+                    let n = points.len();
+                    for i in 0..n {
+                        let w = if i + 1 == n { 0.05 } else { 0.1 };
+                        out.push((layer, Instance::line(mmf(points[i]), mmf(points[(i + 1) % n]), w, color)));
+                    }
+                }
                 PcbGhost::Track { layer: l, a, b, width } => out.push((
                     layer,
                     Instance::line(mmf(a), mmf(b), (width as f64 * 1e-6) as f32, board_layer_color(l).with_alpha(0xc0)),
@@ -395,8 +409,16 @@ impl View {
     /// Draw the ratsnest and refresh net highlights (board only).
     pub fn set_copper(&mut self, _project: &Project, c: &BoardConnectivity) {
         let Layers::Board(l) = &self.layers else { return };
-        let mut out: Vec<(RLayer, Instance)> =
-            c.ratsnest.iter().map(|r| (l.ratsnest, Instance::line(mmf(r.a), mmf(r.b), 0.05, RATSNEST))).collect();
+        let mut out: Vec<(RLayer, Instance)> = Vec::new();
+        // Zone fills, on their copper layer.
+        for fill in &c.fills {
+            let Some(&layer) = l.map.get(&fill.layer) else { continue };
+            let color = board_layer_color(fill.layer).with_alpha(0x90);
+            for shape in &fill.shapes {
+                out.extend(region_instances(shape, color).into_iter().map(|i| (layer, i)));
+            }
+        }
+        out.extend(c.ratsnest.iter().map(|r| (l.ratsnest, Instance::line(mmf(r.a), mmf(r.b), 0.05, RATSNEST))));
         // Flagged copper: a halo around it.
         for item in c.flagged() {
             if let Geo::Capsule { a, b, r } = item.geo {
@@ -407,6 +429,29 @@ impl View {
         self.scene.set_item(CONNECTIVITY_ITEM, out);
         let nets = std::mem::take(&mut self.nets);
         self.set_nets(c, &nets);
+    }
+
+    /// Mark design rule violations (board only; empty clears).
+    pub fn set_drc(&mut self, violations: &[editor_core::drc::Violation]) {
+        self.drc = violations.iter().map(|v| v.pos).collect();
+        self.draw_drc();
+    }
+
+    fn draw_drc(&mut self) {
+        if self.drc.is_empty() {
+            self.scene.remove_item(DRC_ITEM);
+            return;
+        }
+        let layer = self.hover_layer;
+        let mut out = Vec::new();
+        for &p in &self.drc {
+            let c = mmf(p);
+            out.push((layer, Instance::circle_outline(c, 0.6, 0.12, DRC_MARKER)));
+            let d = 0.35;
+            out.push((layer, Instance::line([c[0] - d, c[1] - d], [c[0] + d, c[1] + d], 0.12, DRC_MARKER)));
+            out.push((layer, Instance::line([c[0] - d, c[1] + d], [c[0] + d, c[1] - d], 0.12, DRC_MARKER)));
+        }
+        self.scene.set_item(DRC_ITEM, out);
     }
 
     /// Highlight all copper of these nets (board only; empty clears).
@@ -427,6 +472,10 @@ impl View {
                 Geo::Polygon(points) => {
                     let pts: Vec<[f32; 2]> = points.iter().map(|&p| mmf(p)).collect();
                     out.extend(render::tess::fill_polygon(&pts, NET_HIGHLIGHT).into_iter().map(|i| (layer, i)));
+                }
+                Geo::Region { outer, holes } => {
+                    let shape: Vec<Vec<Point>> = std::iter::once(outer).chain(holes).cloned().collect();
+                    out.extend(region_instances(&shape, NET_HIGHLIGHT).into_iter().map(|i| (layer, i)));
                 }
             }
         }
@@ -629,7 +678,7 @@ impl View {
                 .zones
                 .get(i)
                 .map(|z| {
-                    // Zone fills come with milestone 9; show the outline.
+                    // The outline; fills are derived (see `set_copper`).
                     if let Some(&layer) = l.map.get(&z.layer) {
                         let shape = Shape::Polygon { points: z.outline.clone(), width: 100_000, fill: false };
                         p.shape(layer, &shape, board_layer_color(z.layer).with_alpha(0xa0), None);
@@ -864,4 +913,10 @@ impl Painter {
         self.shape(layer, shape, color, None);
         self.bounds = saved;
     }
+}
+
+/// A filled region: `[outline, holes…]`.
+fn region_instances(shape: &[Vec<Point>], color: Color) -> Vec<Instance> {
+    let contours: Vec<Vec<[f32; 2]>> = shape.iter().map(|c| c.iter().map(|&p| mmf(p)).collect()).collect();
+    render::tess::fill_region(&contours, color)
 }

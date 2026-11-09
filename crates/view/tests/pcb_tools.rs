@@ -116,3 +116,46 @@ fn outline_and_vias() {
     assert!(t.escape());
     assert_eq!(t.tool(), PcbTool::Select);
 }
+
+#[test]
+fn draw_a_zone_that_connects_its_net() {
+    let mut doc = Document::new(Project::new("T"));
+    let parts = vec![PART_RESISTOR, PART_HEADER_1X4];
+    doc.execute(Command::ImportParts { library: builtin::starter_library(), parts }).unwrap();
+    let (sj, fj) = place(&mut doc, PART_HEADER_1X4, 0.0, Point::mm(0.0, 0.0));
+    let (sr, _) = place(&mut doc, PART_RESISTOR, 20.32, Point::mm(10.0, 0.0));
+    for (a, b) in [((sj, "1"), (sr, "1")), ((sj, "2"), (sr, "2"))] {
+        let (pa, pb) = (pin(&doc, a.0, a.1), pin(&doc, b.0, b.1));
+        let pts = if pa.x == pb.x || pa.y == pb.y { vec![pa, pb] } else { vec![pa, Point::new(pb.x, pa.y), pb] };
+        doc.execute(Command::AddWire { sheet: None, points: pts }).unwrap();
+    }
+    assert_eq!(doc.current_copper().unrouted(), 2);
+
+    let mut t = PcbPlacer::default();
+    t.set_tool(PcbTool::Zone);
+    // Without a net (free space, no net chosen) the zone can't start.
+    let free = Point::mm(-20.0, -20.0);
+    t.hover(&mut doc, Some((free, free)), mm(0.3));
+    assert!(t.click(&mut doc).is_err());
+    // Start on J1.1: the zone takes its net.
+    let j1 = pad(&doc, fj, "1");
+    let net = doc.current_copper().nets.clone();
+    let corners = [j1, Point::mm(-5.0, -10.0), Point::mm(20.0, -10.0), Point::mm(20.0, 10.0), Point::mm(-5.0, 10.0)];
+    for c in corners {
+        t.hover(&mut doc, Some((c, c)), mm(0.3));
+        assert!(!t.click(&mut doc).unwrap());
+    }
+    let zone_net = t.zone_net().unwrap().to_string();
+    assert!(net.contains(&zone_net));
+    assert!(matches!(&t.ghosts(&doc)[0], PcbGhost::Zone { points, .. } if points.len() == 6));
+    // Click the last corner again: closed.
+    let last = corners[4];
+    t.hover(&mut doc, Some((last, last)), mm(0.3));
+    assert!(t.click(&mut doc).unwrap());
+    let z = doc.project().board.zones.iter().next().unwrap();
+    assert_eq!((z.net.as_str(), z.outline.len(), z.layer), (zone_net.as_str(), 5, LayerId::TOP_COPPER));
+    let copper = doc.current_copper();
+    assert!(copper.fills[0].shapes.len() == 1);
+    assert_eq!(copper.unrouted(), 1, "the zone connects J1.1 and R1.1: {:?}", copper.ratsnest);
+    assert!(copper.shorts.is_empty());
+}

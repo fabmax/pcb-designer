@@ -672,7 +672,7 @@ impl PcbApp {
     fn update_highlights(&mut self) {
         let from = self.active;
         let selection = self.panes[from as usize].it.selection.clone();
-        let routing = self.pcb.routing_net().map(str::to_string);
+        let routing = self.pcb.routing_net().or(self.pcb.zone_net()).map(str::to_string);
         let key = Some((from, selection.clone(), self.doc.revision, routing.clone()));
         if key == self.probe_key {
             return;
@@ -747,6 +747,7 @@ impl PcbApp {
             Action::PcbRoute => PcbTool::Route,
             Action::PcbVia => PcbTool::Via,
             Action::PcbOutline => PcbTool::Outline,
+            Action::PcbZone => PcbTool::Zone,
             Action::ToolSelect => PcbTool::Select,
             Action::Posture => {
                 self.pcb.toggle_posture();
@@ -816,6 +817,7 @@ impl PcbApp {
             | Action::PcbRoute
             | Action::PcbVia
             | Action::PcbOutline
+            | Action::PcbZone
             | Action::PcbNextLayer => return,
         };
         let kind = self.active;
@@ -866,7 +868,7 @@ impl PcbApp {
             }
             Action::New | Action::Open | Action::Save | Action::SaveAs => None,
             Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction | Action::Posture => None,
-            Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbNextLayer => None,
+            Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => None,
         };
         if let Some(m) = msg {
             self.set_status(m);
@@ -1546,6 +1548,15 @@ impl eframe::App for PcbApp {
                         pane.it.set_selection(&mut self.doc.target(kind), ids);
                     }
                     pcb_ui::board_setup(ui, &mut self.doc, &mut message);
+                }
+                if kind == ViewKind::Board
+                    && let Some((ids, pos)) = pcb_ui::drc(ui, &mut self.doc)
+                {
+                    let pane = &mut self.panes[kind as usize];
+                    pane.it.set_selection(&mut self.doc.target(kind), ids);
+                    let cam = &mut pane.canvas.camera;
+                    cam.center = [to_mm(pos.x), to_mm(pos.y)];
+                    cam.zoom = cam.zoom.max(25.0);
                 }
                 if let Some(m) = message {
                     self.status = Some((m, Instant::now()));

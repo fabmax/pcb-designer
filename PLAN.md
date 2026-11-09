@@ -546,3 +546,83 @@ and level of detail for tiny primitives.
   after variant changes, deletes, layer stack changes and undo/redo.
 - **Not yet:** pin/gate swaps driven from the board (back-annotation is out of scope:
   the PCB never changes the schematic).
+
+## Milestone 9 results (2026-11-09)
+
+- **Zone fill** (`editor-core::zones`, i_overlay boolean operations on nm coordinates):
+  - Each zone fills its outline, clipped to the board outline minus the edge clearance.
+  - Other-net copper keeps the clearance (per-zone override or the design rule).
+  - Pads of the zone's net connect through thermal reliefs. The gap and spoke width are
+    new design rules (`thermal_gap`, `thermal_spoke`, default 0.5 mm; older files load
+    with the defaults).
+  - Tracks and vias of the zone's net, and copper without a net (stitching vias), are
+    flooded.
+  - Zones fill in priority order. Lower-priority zones keep the clearance to fills of
+    other nets.
+  - Islands touching no copper of the zone's net are removed.
+  - Fills are derived data, like connectivity: they are never saved.
+- **Two-pass connectivity:** board connectivity is built without zones, the zones are
+  filled using those nets, then connectivity is rebuilt with the fill pieces as copper
+  (`CopperItem::Zone`, `Geo::Region`). Zones satisfy ratsnest lines, and stitching
+  vias take the zone's net.
+  - `RegionIndex` grids a fill's edges for point and shape queries. Without it, a
+    full-board fill with 80k vertices took 0.7 s just for the touch tests.
+  - Fixed along the way: region–region touch tests only looked at one region's holes.
+- **Rendering:** fills are drawn translucent in their layer colour, triangulated with
+  i_triangle (holes, robust, O(n log n)). Edges used by only one triangle are the
+  outline, and only those are anti-aliased. Earcut needed 1.9 s for one fill with
+  thousands of holes.
+- **Zone tool** (Z on the board, also in the tool bar):
+  - Click corners; clicking the first or last corner again closes the zone.
+  - Its net comes from the tool settings, or else from the copper under the first
+    corner.
+  - The net being drawn is highlighted.
+- **DRC** (`editor-core::drc::run`, a pure function, sorted most severe first):
+  - Shorts.
+  - Clearance between copper of different nets on a shared layer (grid broad phase,
+    exact distances). Pad pairs within one footprint and zone fills are skipped; fills
+    keep the clearance by construction.
+  - Copper too close to or outside the board edge.
+  - Overlapping courtyards on the same side.
+  - Track width and drill (vias, through-hole pads) below the minimums.
+  - Copper touching no pad.
+  - Unrouted connections.
+  - Each violation has a message, a position and the objects involved.
+- **DRC in the GUI:**
+  - "Run DRC" in the board properties lists violations by kind.
+  - Clicking a violation selects its objects and centres the view on it.
+  - The board shows ⊗ markers, kept across view rebuilds.
+  - The panel says when the board has changed since the last run.
+- **DRC over MCP:** `run_drc` returns counts by kind plus the first `limit` violations,
+  and marks them in the GUI.
+- **Tests:**
+  - `editor-core/tests/board.rs` (zones):
+    - The fill connects its net.
+    - Clearance to other-net copper and to the edge.
+    - Thermal gap and spokes.
+    - Dead islands.
+    - Priority.
+    - Stitching vias.
+  - `editor-core/tests/drc.rs`: a clean routed board, plus seeded errors (one of each
+    kind, found exactly once).
+  - `view/tests/pcb_tools.rs`: drawing a zone with the tool.
+  - `render`: regions with holes.
+  - MCP end-to-end: `run_drc`.
+- **Performance** (`edit_bench`, release, Apple M4). The zone is one top-layer zone of
+  the largest net over the whole board:
+
+  | | 2k components | 10k components |
+  |---|---|---|
+  | Fill + connectivity + render | 0.10 s (80k vertices) | 0.54 s (400k vertices) |
+  | DRC | 8.5 ms | 13 ms |
+
+  Board changes refill all zones. While dragging, slow rebuilds are deferred until the
+  drag ends, as before.
+- **Not yet:**
+  - Incremental or background refill (only zones near the change).
+  - Arc outlines in fills (circles are polygons with 16–64 segments, circumscribed so
+    clearances are never undercut).
+  - Exact courtyard polygons (DRC uses bounding boxes).
+  - Per-net clearance classes.
+- Dev aid: `cargo run -p mcp --example render_board -- out.png` renders the demo board
+  offscreen after a DRC. It needs no window, which helps when the display is asleep.

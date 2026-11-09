@@ -13,25 +13,56 @@ use crate::connectivity::Connectivity;
 /// A piece of copper.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CopperItem {
-    Pad { footprint: Id, pad: Id },
+    Pad {
+        footprint: Id,
+        pad: Id,
+    },
     Track(Id),
     Via(Id),
+    /// One connected piece of a zone's fill.
+    Zone {
+        zone: Id,
+        part: u32,
+    },
+}
+
+impl CopperItem {
+    /// The project object this copper belongs to (a pad: its footprint).
+    pub fn object(self) -> ObjectId {
+        match self {
+            CopperItem::Pad { footprint, .. } => ObjectId::Footprint(footprint),
+            CopperItem::Track(t) => ObjectId::Track(t),
+            CopperItem::Via(v) => ObjectId::Via(v),
+            CopperItem::Zone { zone, .. } => ObjectId::Zone(zone),
+        }
+    }
 }
 
 /// Copper outline in board coordinates: a segment with round ends (tracks, vias, round
 /// and oval pads) or a polygon (other pads).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Geo {
-    Capsule { a: Point, b: Point, r: Coord },
+    Capsule {
+        a: Point,
+        b: Point,
+        r: Coord,
+    },
     Polygon(Vec<Point>),
+    /// Polygon with holes (zone fills).
+    Region {
+        outer: Vec<Point>,
+        holes: Vec<Vec<Point>>,
+    },
 }
 
 impl Geo {
     pub fn bounds(&self) -> Rect {
         match self {
             Geo::Capsule { a, b, r } => Rect::from_points(*a, *b).grow(*r),
-            Geo::Polygon(p) => Rect::union_all(p.iter().map(|&q| Rect::from_points(q, q)))
-                .unwrap_or(Rect::from_points(Point::ZERO, Point::ZERO)),
+            Geo::Polygon(p) | Geo::Region { outer: p, .. } => {
+                Rect::union_all(p.iter().map(|&q| Rect::from_points(q, q)))
+                    .unwrap_or(Rect::from_points(Point::ZERO, Point::ZERO))
+            }
         }
     }
 
@@ -45,6 +76,43 @@ impl Geo {
                 capsule_polygon(*a, *b, *r, p)
             }
             (Geo::Polygon(p), Geo::Polygon(q)) => polygon_polygon(p, q),
+            (Geo::Region { outer, holes }, other) | (other, Geo::Region { outer, holes }) => {
+                // Touches the outline, and isn't entirely inside a hole.
+                let o = Geo::Polygon(outer.clone());
+                match other {
+                    Geo::Region { outer: q, holes: qh } => {
+                        o.touches(&Geo::Polygon(q.clone()))
+                            && !holes.iter().any(|h| polygon_in_hole(q, h))
+                            && !qh.iter().any(|h| polygon_in_hole(outer, h))
+                    }
+                    _ => o.touches(other) && !holes.iter().any(|h| geo_in_hole(other, h)),
+                }
+            }
+        }
+    }
+
+    /// Distance between the shapes (0 when they touch).
+    pub fn distance(&self, other: &Geo) -> f64 {
+        if self.touches(other) {
+            return 0.0;
+        }
+        let (ea, ra) = self.edges_and_radius();
+        let (eb, rb) = other.edges_and_radius();
+        let mut d = f64::MAX;
+        for &(a, b) in &ea {
+            for &(c, e) in &eb {
+                d = d.min(seg_seg_dist(a, b, c, e));
+            }
+        }
+        (d - (ra + rb) as f64).max(0.0)
+    }
+
+    /// Boundary segments (a capsule is its axis) and the radius around them.
+    fn edges_and_radius(&self) -> (Vec<(Point, Point)>, Coord) {
+        match self {
+            Geo::Capsule { a, b, r } => (vec![(*a, *b)], *r),
+            Geo::Polygon(p) => (edges(p).collect(), 0),
+            Geo::Region { outer, holes } => (edges(outer).chain(holes.iter().flat_map(|h| edges(h))).collect(), 0),
         }
     }
 
@@ -53,6 +121,12 @@ impl Geo {
         match self {
             Geo::Capsule { a, b, r } => point_seg_dist(p, *a, *b) <= *r as f64,
             Geo::Polygon(poly) => point_in_polygon(p, poly),
+            Geo::Region { outer, holes } => {
+                point_in_polygon(p, outer)
+                    && !holes
+                        .iter()
+                        .any(|h| point_in_polygon(p, h) && edges(h).all(|(a, b)| point_seg_dist(p, a, b) > 0.5))
+            }
         }
     }
 }
@@ -105,12 +179,27 @@ pub struct BoardConnectivity {
     pub ratsnest: Vec<RatsLine>,
     /// Islands connecting pads of different nets: the nets and a point on the island.
     pub shorts: Vec<(Vec<String>, Point)>,
+    /// Filled copper of the zones.
+    pub fills: Vec<crate::zones::ZoneFill>,
     index: HashMap<CopperItem, usize>,
     net_index: HashMap<String, u32>,
 }
 
 impl BoardConnectivity {
     pub fn build(project: &Project, sch: &Connectivity) -> BoardConnectivity {
+        // Zone fills need the nets of tracks and vias, and connect copper themselves:
+        // first without zones, then with the fills.
+        let first = Self::build_with(project, sch, &[]);
+        if project.board.zones.is_empty() {
+            return first;
+        }
+        let fills = crate::zones::fill_zones(project, &first);
+        let mut bc = Self::build_with(project, sch, &fills);
+        bc.fills = fills;
+        bc
+    }
+
+    fn build_with(project: &Project, sch: &Connectivity, fills: &[crate::zones::ZoneFill]) -> BoardConnectivity {
         let mut bc = BoardConnectivity::default();
         // Pad nets: (component, pad name) → net.
         let mut pad_net: HashMap<(Id, &str), u32> = HashMap::default();
@@ -176,19 +265,45 @@ impl BoardConnectivity {
                 flag: None,
             });
         }
+        for fill in fills {
+            for (part, shape) in fill.shapes.iter().enumerate() {
+                let Some((outer, holes)) = shape.split_first() else { continue };
+                bc.items.push(Copper {
+                    item: CopperItem::Zone { zone: fill.zone, part: part as u32 },
+                    layers: layer_bit(fill.layer),
+                    geo: Geo::Region { outer: outer.clone(), holes: holes.to_vec() },
+                    anchors: vec![outer[0]],
+                    island: 0,
+                    net: None,
+                    flag: None,
+                });
+            }
+        }
         bc.index = bc.items.iter().enumerate().map(|(i, c)| (c.item, i)).collect();
 
         // Islands.
         let mut uf = UnionFind::new(bc.items.len());
         let bounds: Vec<Rect> = bc.items.iter().map(|c| c.geo.bounds()).collect();
+        // Zone fills can have many thousand vertices: indexed.
+        let regions: HashMap<usize, RegionIndex> = (0..bc.items.len())
+            .filter_map(|i| match &bc.items[i].geo {
+                Geo::Region { outer, holes } => Some((i, RegionIndex::new(outer, holes))),
+                _ => None,
+            })
+            .collect();
         let grid = Grid::new(&bounds);
         grid.pairs(|i, j| {
             let (a, b) = (&bc.items[i], &bc.items[j]);
-            if a.layers & b.layers != 0
-                && bounds[i].intersects(&bounds[j])
-                && uf.find(i) != uf.find(j)
-                && a.geo.touches(&b.geo)
-            {
+            if a.layers & b.layers == 0 || !bounds[i].intersects(&bounds[j]) || uf.find(i) == uf.find(j) {
+                return;
+            }
+            let touch = match (regions.get(&i), regions.get(&j)) {
+                (Some(r), Some(q)) => r.touches_region(q),
+                (Some(r), None) => r.touches(&b.geo),
+                (None, Some(q)) => q.touches(&a.geo),
+                (None, None) => a.geo.touches(&b.geo),
+            };
+            if touch {
                 uf.union(i, j);
             }
         });
@@ -217,6 +332,7 @@ impl BoardConnectivity {
             let nets = &island_nets[c.island as usize];
             c.net = nets.first().copied();
             c.flag = match nets.len() {
+                _ if matches!(c.item, CopperItem::Zone { .. }) => None,
                 0 => Some(Flag::Unconnected),
                 1 => None,
                 _ => Some(Flag::Short),
@@ -246,7 +362,7 @@ impl BoardConnectivity {
             }
             let mut points = Vec::new();
             let mut island = Vec::new();
-            for &i in items {
+            for &i in items.iter().filter(|&&i| !matches!(bc.items[i].item, CopperItem::Zone { .. })) {
                 for &p in &bc.items[i].anchors {
                     points.push([p.x as f64, p.y as f64]);
                     island.push(bc.items[i].island);
@@ -303,7 +419,7 @@ impl BoardConnectivity {
         let bit = layer_bit(layer);
         self.items
             .iter()
-            .filter(|c| c.layers & bit != 0)
+            .filter(|c| c.layers & bit != 0 && !matches!(c.item, CopperItem::Zone { .. }))
             .flat_map(|c| c.anchors.iter().map(move |&a| (a, c)))
             .map(|(a, c)| ((a - p).length(), a, c))
             .filter(|(d, _, _)| *d <= tol as f64)
@@ -318,6 +434,7 @@ impl BoardConnectivity {
             CopperItem::Pad { .. } => 0,
             CopperItem::Via(_) => 1,
             CopperItem::Track(_) => 2,
+            CopperItem::Zone { .. } => 3,
         };
         self.items.iter().filter(|c| c.layers & bit != 0 && c.geo.contains(p)).min_by_key(|c| rank(c))
     }
@@ -394,8 +511,137 @@ pub fn point_in_polygon(p: Point, poly: &[Point]) -> bool {
     inside || (0..n).any(|i| point_seg_dist(p, poly[i], poly[(i + 1) % n]) < 0.5)
 }
 
+/// A polygon with holes, with its edges in a grid for fast point and shape queries
+/// (zone fills have thousands of vertices).
+pub struct RegionIndex {
+    edges: Vec<(Point, Point)>,
+    first: Point,
+    origin: Point,
+    cell: Coord,
+    nx: i64,
+    ny: i64,
+    /// Edges per cell (row-major).
+    cells: Vec<Vec<u32>>,
+}
+
+impl RegionIndex {
+    pub fn new(outer: &[Point], holes: &[Vec<Point>]) -> RegionIndex {
+        let edges: Vec<(Point, Point)> =
+            std::iter::once(outer).chain(holes.iter().map(Vec::as_slice)).flat_map(edges).collect();
+        let b = Rect::union_all(outer.iter().map(|&p| Rect::from_points(p, p)))
+            .unwrap_or(Rect::from_points(Point::ZERO, Point::ZERO));
+        let n = ((edges.len() as f64).sqrt().ceil() as i64).clamp(1, 512);
+        let cell = (b.width().max(b.height()) / n).max(1_000) + 1;
+        let (nx, ny) = (b.width() / cell + 1, b.height() / cell + 1);
+        let mut cells = vec![Vec::new(); (nx * ny) as usize];
+        let mut index = RegionIndex {
+            edges: Vec::new(),
+            first: outer.first().copied().unwrap_or_default(),
+            origin: b.min,
+            cell,
+            nx,
+            ny,
+            cells: Vec::new(),
+        };
+        for (k, &(a, c)) in edges.iter().enumerate() {
+            index.for_cells(Rect::from_points(a, c), |i| cells[i].push(k as u32));
+        }
+        index.edges = edges;
+        index.cells = cells;
+        index
+    }
+
+    fn for_cells(&self, r: Rect, mut f: impl FnMut(usize)) {
+        let cx = |x: Coord| ((x - self.origin.x) / self.cell).clamp(0, self.nx - 1);
+        let cy = |y: Coord| ((y - self.origin.y) / self.cell).clamp(0, self.ny - 1);
+        if r.max.x < self.origin.x || r.max.y < self.origin.y {
+            return;
+        }
+        for y in cy(r.min.y)..=cy(r.max.y) {
+            for x in cx(r.min.x)..=cx(r.max.x) {
+                f((y * self.nx + x) as usize);
+            }
+        }
+    }
+
+    /// Edges whose cells overlap `r` (possibly repeated).
+    fn edges_near(&self, r: Rect, mut f: impl FnMut((Point, Point)) -> bool) -> bool {
+        let mut hit = false;
+        self.for_cells(r, |i| {
+            if !hit {
+                hit = self.cells[i].iter().any(|&k| f(self.edges[k as usize]));
+            }
+        });
+        hit
+    }
+
+    /// Is `p` inside (or on the boundary)? Crossings of a ray to the right, along the
+    /// cells of `p`'s row.
+    pub fn contains(&self, p: Point) -> bool {
+        let row = Rect::from_points(p, Point::new(Coord::MAX / 4, p.y));
+        let mut crossings = std::collections::HashSet::new();
+        let mut on_edge = false;
+        self.for_cells(row, |i| {
+            for &k in &self.cells[i] {
+                let (a, b) = self.edges[k as usize];
+                if point_seg_dist(p, a, b) < 0.5 {
+                    on_edge = true;
+                }
+                let (fa, fb, (px, py)) = (f(a), f(b), f(p));
+                if (fa.1 > py) != (fb.1 > py) && px < (fb.0 - fa.0) * (py - fa.1) / (fb.1 - fa.1) + fa.0 {
+                    crossings.insert(k);
+                }
+            }
+        });
+        on_edge || crossings.len() % 2 == 1
+    }
+
+    /// Does the shape overlap the region (not just lie in a hole)?
+    pub fn touches(&self, g: &Geo) -> bool {
+        let b = g.bounds();
+        let crosses = match g {
+            Geo::Capsule { a, b: c, r } => self.edges_near(b.grow(1), |(p, q)| seg_seg_dist(*a, *c, p, q) <= *r as f64),
+            Geo::Polygon(poly) | Geo::Region { outer: poly, .. } => edges(poly)
+                .any(|(p, q)| self.edges_near(Rect::from_points(p, q), |(c, d)| seg_seg_dist(p, q, c, d) < 0.5)),
+        };
+        if crosses {
+            return true;
+        }
+        // No boundary contact: entirely inside, entirely outside, or the region inside it.
+        let probe = match g {
+            Geo::Capsule { a, .. } => *a,
+            Geo::Polygon(p) | Geo::Region { outer: p, .. } => p[0],
+        };
+        self.contains(probe) || g.contains(self.first)
+    }
+
+    pub fn touches_region(&self, other: &RegionIndex) -> bool {
+        other
+            .edges
+            .iter()
+            .any(|&(p, q)| self.edges_near(Rect::from_points(p, q), |(c, d)| seg_seg_dist(p, q, c, d) < 0.5))
+            || self.contains(other.first)
+            || other.contains(self.first)
+    }
+}
+
 fn edges(poly: &[Point]) -> impl Iterator<Item = (Point, Point)> + '_ {
     (0..poly.len()).map(move |i| (poly[i], poly[(i + 1) % poly.len()]))
+}
+
+/// Is the shape strictly inside the hole (not touching its edge)?
+fn geo_in_hole(g: &Geo, hole: &[Point]) -> bool {
+    match g {
+        Geo::Capsule { a, b, r } => {
+            point_in_polygon(*a, hole) && edges(hole).all(|(c, d)| seg_seg_dist(*a, *b, c, d) > *r as f64)
+        }
+        Geo::Polygon(p) | Geo::Region { outer: p, .. } => polygon_in_hole(p, hole),
+    }
+}
+
+fn polygon_in_hole(p: &[Point], hole: &[Point]) -> bool {
+    p.first().is_some_and(|&v| point_in_polygon(v, hole))
+        && edges(p).all(|(a, b)| edges(hole).all(|(c, d)| seg_seg_dist(a, b, c, d) > 0.0))
 }
 
 fn capsule_polygon(a: Point, b: Point, r: Coord, poly: &[Point]) -> bool {
@@ -437,7 +683,7 @@ impl UnionFind {
 }
 
 /// Uniform grid over item bounds for finding candidate pairs.
-struct Grid {
+pub(crate) struct Grid {
     cells: HashMap<(i64, i64), Vec<usize>>,
     /// Items too large for the grid; tested against everything.
     large: Vec<usize>,
@@ -445,13 +691,13 @@ struct Grid {
 }
 
 impl Grid {
-    fn new(bounds: &[Rect]) -> Grid {
+    pub(crate) fn new(bounds: &[Rect]) -> Grid {
         let cell: Coord = 2_000_000;
         let mut cells: HashMap<(i64, i64), Vec<usize>> = HashMap::default();
         let mut large = Vec::new();
         for (i, b) in bounds.iter().enumerate() {
             let (x0, y0, x1, y1) = (b.min.x / cell, b.min.y / cell, b.max.x / cell, b.max.y / cell);
-            if (x1 - x0 + 1) * (y1 - y0 + 1) > 256 {
+            if (x1 - x0 + 1) * (y1 - y0 + 1) > 16_384 {
                 large.push(i);
                 continue;
             }
@@ -465,7 +711,7 @@ impl Grid {
     }
 
     /// Calls `f(i, j)` for candidate pairs (possibly more than once per pair).
-    fn pairs(&self, mut f: impl FnMut(usize, usize)) {
+    pub(crate) fn pairs(&self, mut f: impl FnMut(usize, usize)) {
         for items in self.cells.values() {
             for (k, &i) in items.iter().enumerate() {
                 for &j in &items[k + 1..] {

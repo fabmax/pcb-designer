@@ -20,6 +20,8 @@ pub const SELECTION_FILL: Color = Color::rgba(0x4c, 0x9a, 0xff, 0x28);
 pub const RATSNEST: Color = Color::rgba(0xe8, 0xe8, 0xf0, 0xb0);
 /// Halo around flagged tracks and vias (shorts, unconnected copper).
 pub const FLAGGED: Color = Color::rgba(0xff, 0x9a, 0x2e, 0x70);
+/// Design rule violation markers.
+pub const DRC_MARKER: Color = Color::rgba(0xff, 0x4d, 0x6a, 0xe0);
 /// Copper of highlighted nets.
 pub const NET_HIGHLIGHT: Color = Color::rgba(0xff, 0xff, 0xff, 0x60);
 /// Objects selected in the other view (cross-probing).

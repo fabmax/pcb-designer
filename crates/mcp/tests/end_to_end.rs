@@ -67,6 +67,7 @@ async fn agent_session() {
         "import_kicad",
         "get_netlist",
         "get_routing",
+        "run_drc",
     ] {
         assert!(names.contains(&expected), "missing tool {expected}: {names:?}");
     }
@@ -155,6 +156,9 @@ async fn agent_session() {
     let after = ok_json(call("get_routing", Value::Null).await);
     assert_eq!(after["unrouted"].as_array().unwrap().len(), lines.len() - 1, "{after}");
     assert!(after["shorts"].as_array().unwrap().is_empty());
+    let drc = ok_json(call("run_drc", json!({ "limit": 3 })).await);
+    assert_eq!(drc["by_kind"]["Unrouted"], lines.len() - 1, "{drc}");
+    assert!(drc["violations"].as_array().unwrap().len() <= 3 && drc["clean"] == false);
     ok_json(call("undo", Value::Null).await);
 
     // A failing batch changes nothing.

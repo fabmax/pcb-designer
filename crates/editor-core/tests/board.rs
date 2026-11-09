@@ -338,3 +338,145 @@ fn flipping_a_footprint_disconnects_top_tracks() {
     b.ed.execute(Command::FlipSide { ids: vec![ObjectId::Footprint(f1)], axis_x: x }).unwrap();
     assert_eq!(b.bc().unrouted(), 1, "SMD pads moved to the bottom");
 }
+
+// ---- Copper zones
+
+fn add_zone(b: &mut B, layer: LayerId, net: &str, r: Rect, priority: u32) -> Id {
+    let id = Id::new();
+    let outline = vec![r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
+    let zone = Zone { id, layer, net: net.into(), outline, priority, clearance: None };
+    b.ed.execute(Command::Insert { objects: vec![Object::Zone(zone)] }).unwrap();
+    id
+}
+
+fn add_outline(b: &mut B, r: Rect) {
+    let g = BoardGraphic {
+        id: Id::new(),
+        layer: LayerId::OUTLINE,
+        shape: Shape::Rect { a: r.min, b: r.max, width: 100_000, fill: false },
+    };
+    b.ed.execute(Command::Insert { objects: vec![Object::BoardGraphic(g)] }).unwrap();
+}
+
+/// `series()` with R1.1 and R2.2 both on GND, a board outline and a GND zone on top.
+fn grounded() -> (B, [Id; 2], Id) {
+    let (mut b, fps) = series();
+    let labels: Vec<NetLabel> = b.ed.project().schematic.labels.iter().cloned().collect();
+    for mut l in labels {
+        l.name = "GND".into();
+        b.ed.execute(Command::Update { objects: vec![Object::Label(l)] }).unwrap();
+    }
+    add_outline(&mut b, Rect::from_points(Point::mm(0.0, 0.0), Point::mm(30.0, 20.0)));
+    let z = add_zone(
+        &mut b,
+        LayerId::TOP_COPPER,
+        "GND",
+        Rect::from_points(Point::mm(-5.0, -5.0), Point::mm(35.0, 25.0)),
+        0,
+    );
+    (b, fps, z)
+}
+
+#[test]
+fn zones_connect_their_net() {
+    let (b, [f1, f2], z) = grounded();
+    let bc = b.bc();
+    let fill = bc.fills.iter().find(|f| f.zone == z).unwrap();
+    assert_eq!(fill.shapes.len(), 1, "one connected fill");
+    // GND (R1.1, R2.2) is connected by the zone; only R1.2–R2.1 remains.
+    assert_eq!(bc.unrouted(), 1, "{:?}", bc.ratsnest);
+    assert_eq!(bc.nets[bc.ratsnest[0].net as usize], "Net-(R1-2)");
+    assert!(bc.shorts.is_empty());
+    let zone_item = bc.get(CopperItem::Zone { zone: z, part: 0 }).unwrap();
+    assert_eq!(bc.net_of(zone_item.item), Some("GND"));
+    let _ = (f1, f2);
+}
+
+#[test]
+fn zone_fill_keeps_clearance_and_edge_distance() {
+    let (mut b, [f1, f2], _) = grounded();
+    // Route the other net through the zone.
+    let (p1, p2) = (b.pad(f1, "2"), b.pad(f2, "1"));
+    b.track(LayerId::TOP_COPPER, &[p1, p1 + Point::mm(0.0, 4.0), p2 + Point::mm(0.0, 4.0), p2]);
+    let bc = b.bc();
+    assert_eq!(bc.unrouted(), 0);
+    assert!(bc.shorts.is_empty());
+    let clearance = b.ed.project().board.rules.clearance as f64;
+    let zones: Vec<_> = bc.items.iter().filter(|c| matches!(c.item, CopperItem::Zone { .. })).collect();
+    for other in bc.items.iter().filter(|c| c.net != zones[0].net && !matches!(c.item, CopperItem::Zone { .. })) {
+        for z in &zones {
+            let d = z.geo.distance(&other.geo);
+            assert!(d >= clearance - 1_000.0, "{:?} is {d} nm from the zone", other.item);
+        }
+    }
+    // Inside the board outline by the clearance.
+    for z in &zones {
+        let r = z.geo.bounds();
+        assert!(r.min.x >= mm(0.2) - 1_000 && r.min.y >= mm(0.2) - 1_000, "{r:?}");
+        assert!(r.max.x <= mm(29.8) + 1_000 && r.max.y <= mm(19.8) + 1_000, "{r:?}");
+    }
+}
+
+#[test]
+fn own_pads_get_thermal_reliefs() {
+    let (b, [f1, _], z) = grounded();
+    let bc = b.bc();
+    let zone = &bc.get(CopperItem::Zone { zone: z, part: 0 }).unwrap().geo;
+    let c = b.pad(f1, "1");
+    let fp = b.ed.project().board.footprints.get(f1).unwrap();
+    let pad = editor_core::query::footprint_of_instance(b.ed.project(), fp)
+        .unwrap()
+        .pads
+        .iter()
+        .find(|p| p.name == "1")
+        .unwrap()
+        .clone();
+    let (hw, hh) = (pad.size.w / 2, pad.size.h / 2);
+    let gap = b.ed.project().board.rules.thermal_gap;
+    // In the gap diagonally: no copper. On the spoke: copper.
+    assert!(!zone.contains(c + Point::new(hw + gap / 2, hh + gap / 2)));
+    assert!(zone.contains(c + Point::new(hw + gap / 2, 0)));
+    assert!(zone.contains(c + Point::new(0, -(hh + gap / 2))));
+    // And around it the zone is solid again.
+    assert!(zone.contains(c + Point::new(hw + gap * 2, hh + gap * 2)));
+}
+
+#[test]
+fn islands_without_their_net_are_removed() {
+    let (mut b, _) = series();
+    // A zone of a net that has no copper in it fills nothing.
+    let z =
+        add_zone(&mut b, LayerId::TOP_COPPER, "IN", Rect::from_points(Point::mm(50.0, 50.0), Point::mm(60.0, 60.0)), 0);
+    let bc = b.bc();
+    assert!(bc.fills.iter().find(|f| f.zone == z).unwrap().shapes.is_empty());
+}
+
+#[test]
+fn higher_priority_zones_win() {
+    let (mut b, [_, f2], z_gnd) = grounded();
+    // A small zone of R2.1's net around R2, with higher priority.
+    let p = b.pad(f2, "1");
+    let r = Rect::from_points(p - Point::mm(3.0, 3.0), p + Point::mm(1.0, 3.0));
+    let z_hi = add_zone(&mut b, LayerId::TOP_COPPER, "Net-(R1-2)", r, 5);
+    let bc = b.bc();
+    let hi = bc.fills.iter().find(|f| f.zone == z_hi).unwrap();
+    assert!(!hi.shapes.is_empty());
+    // The GND zone keeps its clearance from the higher-priority fill.
+    let clearance = b.ed.project().board.rules.clearance as f64;
+    let gnd_parts: Vec<_> =
+        bc.items.iter().filter(|c| matches!(c.item, CopperItem::Zone { zone, .. } if zone == z_gnd)).collect();
+    let hi_part = bc.get(CopperItem::Zone { zone: z_hi, part: 0 }).unwrap();
+    for g in gnd_parts {
+        assert!(g.geo.distance(&hi_part.geo) >= clearance - 1_000.0);
+    }
+    assert!(bc.shorts.is_empty(), "{:?}", bc.shorts);
+}
+
+#[test]
+fn stitching_vias_join_the_zone() {
+    let (mut b, _, _) = grounded();
+    let via = b.via(Point::mm(5.0, 5.0));
+    let bc = b.bc();
+    assert_eq!(bc.net_of(CopperItem::Via(via)), Some("GND"));
+    assert!(bc.flagged().next().is_none());
+}
