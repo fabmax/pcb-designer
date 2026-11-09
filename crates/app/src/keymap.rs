@@ -44,6 +44,7 @@ pub enum Action {
     PcbRoute,
     PcbVia,
     PcbOutline,
+    PcbZone,
     PcbNextLayer,
 }
 
@@ -86,6 +87,7 @@ impl Action {
         Action::PcbRoute,
         Action::PcbVia,
         Action::PcbOutline,
+        Action::PcbZone,
         Action::PcbNextLayer,
     ];
 
@@ -120,6 +122,7 @@ impl Action {
             Action::PcbRoute => "Route tool (PCB)",
             Action::PcbVia => "Via tool (PCB)",
             Action::PcbOutline => "Board outline tool (PCB)",
+            Action::PcbZone => "Copper zone tool (PCB)",
             Action::PcbNextLayer => "Next copper layer; adds a via while routing (PCB)",
         }
     }
@@ -135,7 +138,9 @@ impl Action {
             | Action::NavigateBack
             | Action::NavigateForward => Some(Context::Library),
             Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction => Some(Context::Schematic),
-            Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbNextLayer => Some(Context::Board),
+            Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => {
+                Some(Context::Board)
+            }
             _ => None,
         }
     }
@@ -296,6 +301,7 @@ impl Default for Keymap {
             (Action::PcbRoute, vec![S::key(Key::T)]),
             (Action::PcbVia, vec![S::shift(Key::V)]),
             (Action::PcbOutline, vec![S::key(Key::O)]),
+            (Action::PcbZone, vec![S::key(Key::Z)]),
             (Action::PcbNextLayer, vec![S::key(Key::L)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }

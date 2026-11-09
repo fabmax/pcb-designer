@@ -204,6 +204,20 @@ pub struct DesignRules {
     pub via_drill: Coord,
     pub min_track_width: Coord,
     pub min_drill: Coord,
+    /// Gap between a pad and the surrounding zone of its own net (thermal relief).
+    #[serde(default = "default_thermal_gap")]
+    pub thermal_gap: Coord,
+    /// Width of the thermal relief spokes.
+    #[serde(default = "default_thermal_spoke")]
+    pub thermal_spoke: Coord,
+}
+
+fn default_thermal_gap() -> Coord {
+    mm(0.5)
+}
+
+fn default_thermal_spoke() -> Coord {
+    mm(0.5)
 }
 
 impl Default for DesignRules {
@@ -215,6 +229,8 @@ impl Default for DesignRules {
             via_drill: mm(0.3),
             min_track_width: mm(0.15),
             min_drill: mm(0.2),
+            thermal_gap: default_thermal_gap(),
+            thermal_spoke: default_thermal_spoke(),
         }
     }
 }

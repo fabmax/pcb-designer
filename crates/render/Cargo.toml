@@ -12,3 +12,4 @@ pollster.workspace = true
 png.workspace = true
 rustc-hash.workspace = true
 smallvec.workspace = true
+i_triangle.workspace = true

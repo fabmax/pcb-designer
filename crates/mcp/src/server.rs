@@ -141,6 +141,12 @@ pub struct GetObjectsParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct DrcParams {
+    /// Maximum number of violations to list (default 200; the counts cover all).
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ComponentParams {
     /// Reference designator, e.g. "R1".
     pub refdes: String,
@@ -311,6 +317,15 @@ impl PcbTools {
         net from the pads they touch) and add_via (through, connects all layers).")]
     async fn get_routing(&self) -> Result<CallToolResult, ErrorData> {
         self.call(Request::Routing).await
+    }
+
+    #[tool(description = "Run the design rule check on the board: shorts, clearance between \
+        copper of different nets, copper at or outside the board edge, overlapping courtyards, \
+        track width and drill below the minimums, copper touching no pad, unrouted connections. \
+        Violations are sorted most severe first, with a message, position (nm) and the objects \
+        involved (footprints for pads). The GUI marks them too.")]
+    async fn run_drc(&self, Parameters(p): Parameters<DrcParams>) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::Drc { limit: p.limit.unwrap_or(200) }).await
     }
 
     #[tool(description = "Execute editing commands (the same ones the GUI uses) as a single undo \

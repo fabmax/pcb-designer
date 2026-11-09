@@ -20,7 +20,7 @@ pub mod style;
 pub mod tools;
 pub mod view;
 
-pub use document::{Document, ProjectTarget};
+pub use document::{Document, DrcReport, ProjectTarget};
 pub use interaction::{Edit, Interaction, KeyAction, PointerInput, Target};
 pub use item::{Elem, Item, ItemTarget, ItemView};
 pub use library_doc::LibraryDoc;

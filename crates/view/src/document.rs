@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use editor_core::connectivity::Connectivity;
 use editor_core::copper::BoardConnectivity;
+use editor_core::drc::{self, Violation};
 use editor_core::{ChangeSet, Command, CommandError, Editor};
 use model::io::{FileError, load_project, save_project};
 use model::{Coord, ObjectId, Point, Project, Rect};
@@ -28,6 +29,16 @@ pub struct Document {
     /// The board (or the schematic) changed since `copper` was computed.
     copper_stale: bool,
     copper_time: Duration,
+    drc: Option<DrcReport>,
+}
+
+/// Result of the last design rule check.
+#[derive(Clone, Debug)]
+pub struct DrcReport {
+    pub violations: Vec<Violation>,
+    /// [`Document::revision`] it was run at.
+    pub revision: u64,
+    pub time: Duration,
 }
 
 impl Document {
@@ -46,6 +57,7 @@ impl Document {
             copper: BoardConnectivity::default(),
             copper_stale: true,
             copper_time: Duration::ZERO,
+            drc: None,
         };
         doc.update_connectivity(false);
         doc
@@ -72,6 +84,27 @@ impl Document {
     pub fn current_copper(&mut self) -> &BoardConnectivity {
         self.update_connectivity(false);
         &self.copper
+    }
+
+    /// Run the design rule check on the current board and mark the violations.
+    pub fn run_drc(&mut self) -> &DrcReport {
+        self.update_connectivity(false);
+        let t = Instant::now();
+        let violations = drc::run(self.editor.project(), &self.copper);
+        let report = DrcReport { violations, revision: self.revision, time: t.elapsed() };
+        self.board.set_drc(&report.violations);
+        self.drc.insert(report)
+    }
+
+    /// The last design rule check (it may be outdated: compare the revision).
+    pub fn drc(&self) -> Option<&DrcReport> {
+        self.drc.as_ref()
+    }
+
+    /// Forget the design rule check and its markers.
+    pub fn clear_drc(&mut self) {
+        self.drc = None;
+        self.board.set_drc(&[]);
     }
 
     /// Highlight the copper of these nets on the board (empty clears).

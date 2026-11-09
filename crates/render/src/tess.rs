@@ -66,6 +66,64 @@ pub fn fill_polygon(points: &[[f32; 2]], color: Color) -> Vec<Instance> {
         .collect()
 }
 
+/// Instances that fill a polygon with holes (`contours[0]` the outline, then holes; any
+/// winding). Edges along the contours are anti-aliased. Fast for many holes.
+pub fn fill_region(contours: &[Vec<[f32; 2]>], color: Color) -> Vec<Instance> {
+    use i_triangle::i_overlay::i_float::int::point::IntPoint;
+    use i_triangle::int::triangulatable::IntTriangulatable;
+
+    let max = contours.iter().flatten().fold(0f32, |m, p| m.max(p[0].abs()).max(p[1].abs())) as f64;
+    if max == 0.0 {
+        return Vec::new();
+    }
+    // Integer coordinates for the robust triangulator.
+    let scale = 1e9 / max;
+    let shape: Vec<Vec<IntPoint<i32>>> = contours
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.len() >= 3)
+        .map(|(i, c)| {
+            let mut c: Vec<IntPoint<i32>> = c
+                .iter()
+                .map(|p| IntPoint::new((p[0] as f64 * scale).round() as i32, (p[1] as f64 * scale).round() as i32))
+                .collect();
+            // Outline counterclockwise, holes clockwise (non-zero rule).
+            let area: i128 = (0..c.len())
+                .map(|k| {
+                    let (a, b) = (c[k], c[(k + 1) % c.len()]);
+                    a.x as i128 * b.y as i128 - b.x as i128 * a.y as i128
+                })
+                .sum();
+            if (area > 0) != (i == 0) {
+                c.reverse();
+            }
+            c
+        })
+        .collect();
+    let t = shape.triangulate().into_triangulation::<u32>();
+    // Boundary edges belong to one triangle only.
+    let mut uses: rustc_hash::FxHashMap<(u32, u32), u8> = Default::default();
+    for tri in t.indices.as_chunks::<3>().0 {
+        for k in 0..3 {
+            let (a, b) = (tri[k], tri[(k + 1) % 3]);
+            *uses.entry((a.min(b), a.max(b))).or_default() += 1;
+        }
+    }
+    let boundary = |a: u32, b: u32| uses.get(&(a.min(b), a.max(b))) == Some(&1);
+    let pt = |i: u32| {
+        let p = t.points[i as usize];
+        [(p.x as f64 / scale) as f32, (p.y as f64 / scale) as f32]
+    };
+    t.indices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|&[a, b, c]| {
+            Instance::triangle(pt(a), pt(b), pt(c), [boundary(a, b), boundary(b, c), boundary(c, a)], color)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +158,16 @@ mod tests {
         assert!(triangulate(&bow).len() <= 2);
         let dup = [[0.0, 0.0], [1.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
         assert!((area(&dup, &triangulate(&dup)) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn region_with_a_hole() {
+        let outer = vec![[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]];
+        let hole = vec![[1.0, 1.0], [1.0, 3.0], [3.0, 3.0], [3.0, 1.0]];
+        let inst = fill_region(&[outer, hole], Color::rgb(1, 2, 3));
+        assert_eq!(inst.len(), 8);
+        let edges: u32 = inst.iter().map(|i| (i.kind >> 8).count_ones()).sum();
+        assert_eq!(edges, 8, "4 outline + 4 hole edges anti-aliased");
     }
 
     #[test]

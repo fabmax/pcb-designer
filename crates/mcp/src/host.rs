@@ -45,6 +45,10 @@ pub enum Request {
     Netlist,
     /// Board routing state: ratsnest, shorts, layers, rules.
     Routing,
+    /// Design rule check (also marks the violations in the GUI).
+    Drc {
+        limit: usize,
+    },
     Execute {
         commands: Vec<Command>,
     },
@@ -103,6 +107,7 @@ impl Request {
             Request::Component { refdes } => format!("read {refdes}"),
             Request::Netlist => "read netlist".into(),
             Request::Routing => "read routing state".into(),
+            Request::Drc { .. } => "run the design rule check".into(),
             Request::Execute { commands } => match &commands[..] {
                 [one] => one.label(),
                 many => format!("{} commands", many.len()),
@@ -254,6 +259,21 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             let doc = host.document();
             doc.update_connectivity(false);
             routing(doc.project(), doc.copper())
+        }
+        Request::Drc { limit } => {
+            let report = host.document().run_drc();
+            let v = &report.violations;
+            let mut by_kind: std::collections::BTreeMap<&str, usize> = Default::default();
+            for x in v {
+                *by_kind.entry(x.kind.label()).or_default() += 1;
+            }
+            json!({
+                "clean": v.is_empty(),
+                "count": v.len(),
+                "by_kind": by_kind,
+                "violations": &v[..v.len().min(limit)],
+                "truncated": v.len() > limit,
+            })
         }
         Request::KicadSearch { query, footprints, limit } => host.kicad_search(&query, footprints, limit)?,
         Request::KicadImport(_) => unreachable!("answered by the host"),
@@ -519,11 +539,10 @@ fn routing(p: &Project, c: &editor_core::copper::BoardConnectivity) -> Value {
     let flagged: Vec<Value> = c
         .flagged()
         .filter_map(|item| {
-            let id = match item.item {
-                CopperItem::Track(t) => ObjectId::Track(t),
-                CopperItem::Via(v) => ObjectId::Via(v),
-                CopperItem::Pad { .. } => return None,
-            };
+            if matches!(item.item, CopperItem::Pad { .. }) {
+                return None;
+            }
+            let id = item.item.object();
             let problem = match item.flag {
                 Some(Flag::Short) => "short",
                 _ => "unconnected",

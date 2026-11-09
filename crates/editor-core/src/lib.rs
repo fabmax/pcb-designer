@@ -7,12 +7,14 @@
 pub mod command;
 pub mod connectivity;
 pub mod copper;
+pub mod drc;
 pub mod editor;
 pub mod history;
 pub mod query;
 mod rubber_band;
 mod sync;
 pub mod transaction;
+pub mod zones;
 
 pub use command::Command;
 pub use editor::Editor;

@@ -2,6 +2,7 @@
 
 use editor_core::Command;
 use editor_core::copper::{CopperItem, Flag};
+use editor_core::drc::ViolationKind;
 use egui::RichText;
 use model::*;
 use view::Document;
@@ -114,6 +115,31 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
             hint(ui, "Through vias connect all copper layers. Sizes come from the design rules.");
         }
         PcbTool::Outline => hint(ui, "Click two corners. The outline is a graphic on the Board Outline layer."),
+        PcbTool::Zone => {
+            grid(ui, "pcb_tool", |ui| {
+                label(ui, "Layer");
+                layer_combo(ui, "pcb_tool_layer", &mut s.layer, doc);
+                ui.end_row();
+                label(ui, "Net");
+                let text = if s.zone_net.is_empty() { "From the first corner" } else { s.zone_net.as_str() };
+                egui::ComboBox::from_id_salt("zone_net").selected_text(text).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut s.zone_net, String::new(), "From the first corner");
+                    for n in &doc.copper().nets {
+                        ui.selectable_value(&mut s.zone_net, n.clone(), n);
+                    }
+                });
+                ui.end_row();
+                row(ui, "Clearance", format!("{} mm", to_mm(rules.clearance)));
+                row(ui, "Thermal gap", format!("{} mm", to_mm(rules.thermal_gap)));
+                row(ui, "Spoke width", format!("{} mm", to_mm(rules.thermal_spoke)));
+            });
+            ui.add_space(6.0);
+            hint(
+                ui,
+                "Zones fill their outline (inside the board) with copper, keeping the clearance to other nets. \
+                 Pads of the zone's net connect through thermal spokes. Islands without the net are removed.",
+            );
+        }
     }
     ui.add_space(6.0);
     hint(ui, "Esc ends the tool.");
@@ -186,11 +212,8 @@ pub fn problems(ui: &mut egui::Ui, doc: &Document) -> Option<Vec<ObjectId>> {
     let copper = doc.copper();
     let flagged: Vec<ObjectId> = copper
         .flagged()
-        .filter_map(|c| match c.item {
-            CopperItem::Track(t) => Some(ObjectId::Track(t)),
-            CopperItem::Via(v) => Some(ObjectId::Via(v)),
-            CopperItem::Pad { .. } => None,
-        })
+        .filter(|c| matches!(c.item, CopperItem::Track(_) | CopperItem::Via(_)))
+        .map(|c| c.item.object())
         .collect();
     if flagged.is_empty() && copper.shorts.is_empty() {
         return None;
@@ -214,4 +237,60 @@ pub fn problems(ui: &mut egui::Ui, doc: &Document) -> Option<Vec<ObjectId>> {
         },
     );
     select
+}
+
+/// Design rule check: run it, list the violations. Returns a violation's objects and
+/// position when one is clicked.
+pub fn drc(ui: &mut egui::Ui, doc: &mut Document) -> Option<(Vec<ObjectId>, Point)> {
+    let mut chosen = None;
+    ui.add_space(8.0);
+    let title = match doc.drc() {
+        Some(r) if r.violations.is_empty() => {
+            RichText::new("Design rules: no violations").strong().color(theme::SUCCESS)
+        }
+        Some(r) => {
+            RichText::new(format!("Design rules: {} violation(s)", r.violations.len())).strong().color(theme::WARN)
+        }
+        None => RichText::new("Design rule check").strong(),
+    };
+    egui::CollapsingHeader::new(title).id_salt("drc").default_open(true).show(ui, |ui| {
+        ui.horizontal(|ui| {
+            if ui.button("Run DRC").clicked() {
+                doc.run_drc();
+            }
+            if doc.drc().is_some() && ui.small_button("Clear").clicked() {
+                doc.clear_drc();
+            }
+        });
+        let Some(report) = doc.drc() else {
+            hint(ui, "Checks clearances, shorts, unrouted nets, the board edge, courtyards, track widths and drills.");
+            return;
+        };
+        let outdated = report.revision != doc.revision;
+        let status = format!(
+            "{} in {:.1} ms{}",
+            if report.violations.is_empty() { "Clean" } else { "Found problems" },
+            report.time.as_secs_f64() * 1e3,
+            if outdated { " · board changed since" } else { "" }
+        );
+        ui.label(RichText::new(status).color(if outdated { theme::WARN } else { theme::TEXT_DIM }));
+        const SHOWN: usize = 300;
+        let mut kind: Option<ViolationKind> = None;
+        for v in report.violations.iter().take(SHOWN) {
+            if kind != Some(v.kind) {
+                kind = Some(v.kind);
+                let n = report.violations.iter().filter(|w| w.kind == v.kind).count();
+                ui.add_space(4.0);
+                ui.label(RichText::new(format!("{} ({n})", v.kind.label())).strong());
+            }
+            let r = ui.add(egui::Button::selectable(false, &v.message).truncate());
+            if r.on_hover_text(&v.message).clicked() {
+                chosen = Some((v.objects.clone(), v.pos));
+            }
+        }
+        if report.violations.len() > SHOWN {
+            hint(ui, &format!("… and {} more", report.violations.len() - SHOWN));
+        }
+    });
+    chosen
 }
