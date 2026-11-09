@@ -11,8 +11,9 @@
 //! ```
 //!
 //! A library is a single `*.pcblib` JSON file. Every file starts with
-//! `"format": "pcb-designer/<kind>"` and `"version": N`. Older versions are upgraded on
-//! load by the migrations in [`MIGRATIONS`]. Files are written with stable field order,
+//! `"format": "pcb-designer/<kind>"` and `"version": N`. Older versions can be upgraded on
+//! load by the migrations in [`MIGRATIONS`] (none until production use: until then format
+//! changes may break older files). Files are written with stable field order,
 //! integer coordinates, and short scalar arrays (like points) kept on one line, so they
 //! diff well in git. Writes go through a temporary file and a rename.
 

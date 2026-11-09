@@ -16,7 +16,7 @@ Living document. Requirements are in [pcb-designer.md](pcb-designer.md).
 | KiCad import | In scope (symbols `.kicad_sym`, footprints `.kicad_mod`) |
 | MCP interface | In scope (see below) |
 | Theme | Dark first |
-| Files | JSON (serde), pretty-printed, stable ordering, integer coordinates, `format`/`version` header + migrations. **A project is a folder** (`<name>.pcbproj/` with `project.json`, `library.json`, `schematic.json`, `board.json`); a library is a single `*.pcblib` file |
+| Files | JSON (serde), pretty-printed, stable ordering, integer coordinates, `format`/`version` header. **No migrations until production use**: format changes may break older files (the mechanism, `model::io::MIGRATIONS`, exists but stays empty). **A project is a folder** (`<name>.pcbproj/` with `project.json`, `library.json`, `schematic.json`, `board.json`); a library is a single `*.pcblib` file |
 
 ## Architecture (Cargo workspace)
 
