@@ -47,9 +47,6 @@ pub struct LibraryEditor {
     pub it: Interaction<Elem>,
     pub placer: Placer,
     part_form: PartForm,
-    /// Navigation history (browser style): previously shown items and parts.
-    back: Vec<Open>,
-    forward: Vec<Open>,
     fields: Fields,
     filter: String,
     revision: u64,
@@ -68,8 +65,6 @@ impl LibraryEditor {
             it: Interaction::new(mm(1.27)),
             placer: Placer::default(),
             part_form: PartForm::default(),
-            back: Vec::new(),
-            forward: Vec::new(),
             fields: Fields::default(),
             filter: String::new(),
             revision: u64::MAX,
@@ -90,41 +85,10 @@ impl LibraryEditor {
         !self.it.is_idle() || self.placer.in_progress()
     }
 
-    /// Navigate to `open` (the current item goes onto the back stack).
+    /// Show a part, symbol or footprint.
     pub fn show(&mut self, open: Open) {
-        if open == self.open {
-            return;
-        }
-        if self.open != Open::None {
-            self.back.push(self.open);
-        }
-        self.forward.clear();
-        self.set_open(open);
-    }
-
-    pub fn can_go_back(&self) -> bool {
-        !self.back.is_empty()
-    }
-
-    pub fn can_go_forward(&self) -> bool {
-        !self.forward.is_empty()
-    }
-
-    pub fn go_back(&mut self) {
-        if let Some(prev) = self.back.pop() {
-            if self.open != Open::None {
-                self.forward.push(self.open);
-            }
-            self.set_open(prev);
-        }
-    }
-
-    pub fn go_forward(&mut self) {
-        if let Some(next) = self.forward.pop() {
-            if self.open != Open::None {
-                self.back.push(self.open);
-            }
-            self.set_open(next);
+        if open != self.open {
+            self.set_open(open);
         }
     }
 
@@ -135,18 +99,6 @@ impl LibraryEditor {
             Open::Item(Item::Symbol(id)) => lib.symbols.contains(id),
             Open::Item(Item::Footprint(id)) => lib.footprints.contains(id),
             Open::Part(id) => lib.parts.contains(id),
-        }
-    }
-
-    /// "part LED", "symbol LED", "footprint SOIC-8".
-    pub fn describe(&self, open: Open) -> String {
-        let lib = self.lib.library();
-        let name = |n: Option<&String>| n.cloned().unwrap_or_default();
-        match open {
-            Open::None => self.lib.name().to_string(),
-            Open::Part(id) => format!("part {}", name(lib.parts.get(id).map(|p| &p.name))),
-            Open::Item(Item::Symbol(id)) => format!("symbol {}", name(lib.symbols.get(id).map(|s| &s.name))),
-            Open::Item(Item::Footprint(id)) => format!("footprint {}", name(lib.footprints.get(id).map(|f| &f.name))),
         }
     }
 
@@ -204,13 +156,7 @@ impl LibraryEditor {
             return;
         }
         self.revision = self.lib.doc.revision;
-        // Deleted objects disappear from the view and from the history.
-        let mut back = std::mem::take(&mut self.back);
-        let mut forward = std::mem::take(&mut self.forward);
-        back.retain(|o| self.exists(*o));
-        forward.retain(|o| self.exists(*o));
-        back.dedup();
-        (self.back, self.forward) = (back, forward);
+        // Deleted objects disappear from the view.
         if !self.exists(self.open) {
             self.set_open(Open::None);
         }
@@ -433,9 +379,6 @@ impl LibraryEditor {
     pub fn center_ui(&mut self, ui: &mut egui::Ui, keymap: &Keymap) -> bool {
         self.refresh();
         let pressed = ui.rect_contains_pointer(ui.max_rect()) && ui.input(|i| i.pointer.any_pressed());
-        if self.open != Open::None {
-            self.nav_bar(ui);
-        }
         match self.open {
             Open::None => {
                 ui.centered_and_justified(|ui| {
@@ -465,32 +408,6 @@ impl LibraryEditor {
             Open::Item(item) => self.item_ui(ui, item, keymap),
         }
         pressed
-    }
-
-    /// Back / forward and what is shown, above the editor or part form.
-    fn nav_bar(&mut self, ui: &mut egui::Ui) {
-        let width = ui.max_rect().width();
-        egui::Frame::NONE.fill(theme::panel()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
-            ui.set_width(width - 16.0);
-            ui.horizontal(|ui| {
-                let back = self.back.last().map(|o| self.describe(*o));
-                let label = back.as_ref().map_or("Back".to_string(), |b| format!("Back to {b}"));
-                let r = ui.add_enabled(back.is_some(), egui::Button::new(label));
-                if r.clicked() {
-                    self.go_back();
-                    return;
-                }
-                if let Some(next) = self.forward.last().map(|o| self.describe(*o))
-                    && ui.button("Forward").on_hover_text(next).clicked()
-                {
-                    self.go_forward();
-                    return;
-                }
-                ui.separator();
-                let current = self.describe(self.open);
-                ui.add(egui::Label::new(RichText::new(current).strong()).truncate());
-            });
-        });
     }
 
     /// Floating tool strip, grid header and usage hint over the item canvas.
@@ -1154,28 +1071,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn back_and_forward_through_part_and_its_footprint() {
+    fn deleting_the_shown_part_closes_it() {
         let mut ed = LibraryEditor::new(0, LibraryDoc::new(builtin::starter_library()));
         let led = ed.lib.library().parts.get(builtin::PART_LED).unwrap().clone();
-        let part = Open::Part(led.id);
         let fp = Open::Item(Item::Footprint(led.variants[0].footprint));
-        ed.show(part);
+        ed.show(Open::Part(led.id));
         ed.show(fp); // "Edit footprint"
-        assert_eq!(ed.describe(ed.back[0]), "part LED");
-        ed.go_back();
-        assert_eq!(ed.open, part);
-        ed.go_forward();
         assert_eq!(ed.open, fp);
-        // Deleting what the history points to removes it from the history.
-        ed.go_back();
         let copy = ed.lib.duplicate(ObjectId::LibPart(led.id)).unwrap();
         let ObjectId::LibPart(copy) = copy else { panic!() };
         ed.show(Open::Part(copy));
         ed.lib.delete(ObjectId::LibPart(copy)).unwrap();
         ed.refresh();
         assert_eq!(ed.open, Open::None);
-        assert_eq!(ed.back, vec![part]);
-        ed.go_back();
-        assert_eq!(ed.open, part);
     }
 }

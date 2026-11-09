@@ -925,8 +925,6 @@ impl PcbApp {
             | Action::ToolRect
             | Action::ToolCircle
             | Action::ToolText
-            | Action::NavigateBack
-            | Action::NavigateForward
             | Action::SchWire
             | Action::SchLabel
             | Action::SchPower
@@ -972,18 +970,6 @@ impl PcbApp {
             Action::ToolRect => tool_msg(l, Tool::Rect),
             Action::ToolCircle => tool_msg(l, Tool::Circle),
             Action::ToolText => tool_msg(l, Tool::Text),
-            Action::NavigateBack => {
-                if !l.busy() {
-                    l.go_back();
-                }
-                None
-            }
-            Action::NavigateForward => {
-                if !l.busy() {
-                    l.go_forward();
-                }
-                None
-            }
             Action::New | Action::Open | Action::Save | Action::SaveAs | Action::Settings => None,
             Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction | Action::Posture => None,
             Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => None,
@@ -1076,11 +1062,6 @@ impl PcbApp {
             });
             ui.menu_button("View", |ui| {
                 self.menu_item(ui, "Fit view", Action::FitView, true);
-                let lib = self.focus_lib.and_then(|k| self.libraries.iter().find(|l| l.key == k));
-                let (back, forward) = lib.map_or((false, false), |l| (l.can_go_back(), l.can_go_forward()));
-                ui.separator();
-                self.menu_item(ui, "Back", Action::NavigateBack, back);
-                self.menu_item(ui, "Forward", Action::NavigateForward, forward);
                 ui.separator();
                 let side = self.is_side_by_side();
                 if ui.radio(!side, "Tabs").on_hover_text("Schematic and PCB as full-size tabs").clicked() && side {

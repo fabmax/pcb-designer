@@ -724,3 +724,8 @@ and level of detail for tiny primitives.
     contents, so its background blocks clicks on the previous frame's rect.
   - Script step `ui-move x,y` (dev aid): hover a screen position, e.g. to screenshot a
     tooltip.
+- **Library navigation removed.** The Back / Forward bar above library items, its
+  history and the Back / Forward actions (View menu, ⌥← / ⌥→) are gone; the library
+  tree is the navigation, and the item canvas now fills the tab like the others.
+  Saved settings that still bind the removed actions load fine: unknown actions in a
+  keymap are skipped (with a log warning) instead of discarding the whole file.
