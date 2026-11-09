@@ -866,6 +866,7 @@ KiCad's model, so a later KiCad project import maps one to one.
   - The label is its own undo step, after the bus or wire.
 
 - **Dialog style.** `theme::dialog` is a modal with a title bar: `panel_dark` background,
-  a bottom border line, and the title in `accent()` at 17 pt. Content has 18 pt padding.
+  a bottom border line, and the title in `accent()` at 17 pt, bold. egui ships no bold
+  face, so `theme::bold_label` draws the text three times across 0.8 pt. Content has 18 pt padding.
   Use it for new modal dialogs. The Settings and KiCad import windows are still plain
   egui windows.
