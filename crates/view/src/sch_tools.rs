@@ -131,9 +131,10 @@ pub enum SchPrompt {
     /// An unnamed net leaves bus `bus` through an entry; its label goes to `pos`.
     EntryNet {
         bus: String,
-        /// The bus's members, and those that are already a net.
+        /// The bus's members, and for each how many labels name it already (its wires
+        /// elsewhere: a signal leaving the bus and arriving somewhere has two).
         members: Vec<String>,
-        used: Vec<String>,
+        uses: Vec<usize>,
         pos: Point,
         rotation: Angle,
     },
@@ -239,11 +240,11 @@ fn prompt_for(project: &Project, conn: &Connectivity, finished: &[ObjectId], gri
             });
             let (pos, rotation) = leaving
                 .unwrap_or_else(|| (end, if entry.dir.offset().x >= 0 { Angle::ZERO } else { Angle::deg(180.0) }));
-            let used = bus.members.iter().filter(|m| conn.net(m).is_some()).cloned().collect();
+            let uses = bus.members.iter().map(|m| conn.net(m).map_or(0, |n| n.labels.len())).collect();
             return Some(SchPrompt::EntryNet {
                 bus: bus.name.clone(),
                 members: bus.members.clone(),
-                used,
+                uses,
                 pos,
                 rotation,
             });

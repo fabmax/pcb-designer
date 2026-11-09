@@ -11,18 +11,20 @@ pub struct NamePrompt {
     pub prompt: SchPrompt,
     text: String,
     focused: bool,
+    /// The suggested signal was scrolled into view.
+    scrolled: bool,
 }
 
 impl NamePrompt {
     pub fn new(prompt: SchPrompt) -> Self {
-        // Suggest the first member that isn't a net yet.
+        // Suggest the first member that no label names yet.
         let text = match &prompt {
             SchPrompt::BusName { .. } => String::new(),
-            SchPrompt::EntryNet { members, used, .. } => {
-                members.iter().find(|m| !used.contains(m)).cloned().unwrap_or_default()
+            SchPrompt::EntryNet { members, uses, .. } => {
+                members.iter().zip(uses).find(|(_, n)| **n == 0).map(|(m, _)| m.clone()).unwrap_or_default()
             }
         };
-        NamePrompt { prompt, text, focused: false }
+        NamePrompt { prompt, text, focused: false, scrolled: false }
     }
 
     /// Show the dialog. Returns `Some(Some(name))` when confirmed, `Some(None)` when
@@ -54,29 +56,54 @@ impl NamePrompt {
                     ui.add_space(4.0);
                     hint(ui, "Signals leave the bus through bus entries and connect by labels with these names.");
                 }
-                SchPrompt::EntryNet { bus, members, used, .. } => {
+                SchPrompt::EntryNet { bus, members, uses, .. } => {
                     ui.label(format!("This wire leaves bus {bus}. Label it with one of its signals:"));
+                    ui.add_space(6.0);
+                    // Wide buses scroll instead of growing the dialog; at most MAX_SHOWN
+                    // buttons (bus names can list far more), the rest can be typed.
+                    const MAX_SHOWN: usize = 1024;
+                    egui::Frame::NONE
+                        .fill(theme::panel_dark())
+                        .corner_radius(6)
+                        .inner_margin(egui::Margin::same(6))
+                        .show(ui, |ui| {
+                            egui::ScrollArea::vertical().max_height(150.0).auto_shrink([false, true]).show(ui, |ui| {
+                                ui.horizontal_wrapped(|ui| {
+                                    for (m, &n) in members.iter().zip(uses).take(MAX_SHOWN) {
+                                        let selected = self.text.trim() == m;
+                                        let r = ui.selectable_label(selected, signal_text(ui, m, n)).on_hover_text(
+                                            match n {
+                                                0 => "No wire has this name yet".to_string(),
+                                                1 => "1 labelled wire has this name".to_string(),
+                                                n => format!("{n} labelled wires have this name"),
+                                            },
+                                        );
+                                        if selected && !self.scrolled {
+                                            r.scroll_to_me(Some(egui::Align::Center));
+                                            self.scrolled = true;
+                                        }
+                                        if r.clicked() {
+                                            self.text = m.clone();
+                                        }
+                                        if r.double_clicked() {
+                                            outcome = Some(Some(m.clone()));
+                                        }
+                                    }
+                                });
+                            });
+                        });
                     ui.add_space(4.0);
-                    ui.horizontal_wrapped(|ui| {
-                        for m in members.iter().take(256) {
-                            let text = if used.contains(m) {
-                                RichText::new(m).monospace().color(theme::text_dim())
-                            } else {
-                                RichText::new(m).monospace()
-                            };
-                            let r = ui.selectable_label(self.text.trim() == m, text);
-                            let r = if used.contains(m) { r.on_hover_text("Already used") } else { r };
-                            if r.clicked() {
-                                self.text = m.clone();
-                            }
-                            if r.double_clicked() {
-                                outcome = Some(Some(m.clone()));
-                            }
-                        }
-                    });
-                    if !used.is_empty() {
-                        hint(ui, "Dimmed signals are already used elsewhere.");
-                    }
+                    let more = members.len().saturating_sub(MAX_SHOWN);
+                    let text = if more > 0 {
+                        format!(
+                            "{} signals ({more} not shown): ×N counts the wires already labelled with \
+                                 a signal; type a name to use any of them.",
+                            members.len()
+                        )
+                    } else {
+                        "×N counts the wires already labelled with a signal.".to_string()
+                    };
+                    hint(ui, &text);
                 }
             }
             ui.add_space(8.0);
@@ -118,4 +145,17 @@ impl NamePrompt {
         }
         outcome
     }
+}
+
+/// A signal name with a small `×n` badge: how many labelled wires use it.
+fn signal_text(ui: &egui::Ui, name: &str, uses: usize) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    let color = ui.visuals().text_color();
+    let mono = egui::TextStyle::Monospace.resolve(ui.style());
+    job.append(name, 0.0, egui::TextFormat::simple(mono, color));
+    let badge = egui::FontId::proportional(10.0);
+    let dim = if uses == 0 { theme::text_dim().gamma_multiply(0.7) } else { theme::text_dim() };
+    let format = egui::TextFormat { valign: egui::Align::Max, ..egui::TextFormat::simple(badge, dim) };
+    job.append(&format!("×{uses}"), 3.0, format);
+    job
 }

@@ -846,8 +846,14 @@ KiCad's model, so a later KiCad project import maps one to one.
   - Finishing a bus chain (on a bus, by double-click, Esc or switching tools) whose bus
     has no name asks for one.
   - A finished wire chain or a placed entry that leaves an unnamed net with wires or
-    pins on an entry of a named bus asks for the signal. The bus's members are offered;
-    those that are already nets are dimmed, and the first unused one is suggested.
+    pins on an entry of a named bus asks for the signal. The bus's members are offered,
+    and the first that no label names yet is suggested.
+    - Each signal has a `×n` badge: how many net labels already use that name
+      (`SchPrompt::EntryNet::uses`). An entry plus an exit makes ×2. This replaced
+      dimming used signals, which hid the fact that most signals are used twice.
+    - The list sits on a darker inset and scrolls past about five rows. At most 1024
+      buttons are drawn; any other name can be typed. The suggestion is scrolled into
+      view.
   - Named nets are left alone (a wrong name shows up as a problem).
 - **Where the label goes.**
   - Bus: the middle of the longest new segment, snapped to the grid if that stays on the
