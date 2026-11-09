@@ -155,7 +155,7 @@ fn signal_text(ui: &egui::Ui, name: &str, uses: usize) -> egui::text::LayoutJob 
     job.append(name, 0.0, egui::TextFormat::simple(mono, color));
     let badge = egui::FontId::proportional(10.0);
     let dim = if uses == 0 { theme::text_dim().gamma_multiply(0.7) } else { theme::text_dim() };
-    let format = egui::TextFormat { valign: egui::Align::Max, ..egui::TextFormat::simple(badge, dim) };
+    let format = egui::TextFormat { valign: egui::Align::Center, ..egui::TextFormat::simple(badge, dim) };
     job.append(&format!("×{uses}"), 3.0, format);
     job
 }
