@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use editor_core::Command;
-use editor_core::copper::CopperItem;
 use editor_core::query::{PartState, part_statuses};
 use egui::{RichText, WidgetText};
 use egui_tiles::{Behavior, Container, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse};
@@ -128,6 +127,8 @@ pub struct PcbApp {
     sch: SchPlacer,
     /// Board creation tools.
     pcb: PcbPlacer,
+    /// Inputs of the current cross-probe highlights (to skip unchanged frames).
+    probe_key: Option<(ViewKind, Vec<ObjectId>, u64, Option<String>)>,
     script: Option<Script>,
 }
 
@@ -182,6 +183,7 @@ impl PcbApp {
             kicad: KicadImport::new(opts.kicad_paths.clone()),
             sch: SchPlacer::default(),
             pcb: PcbPlacer::default(),
+            probe_key: None,
             script: None,
         };
         match opts.script.as_deref().map(Script::parse) {
@@ -663,6 +665,31 @@ impl PcbApp {
             pane.it.refresh(&mut self.doc.target(ViewKind::Schematic));
         }
         self.sch.set_tool(tool);
+    }
+
+    /// Cross-probing: the active view's selection highlights the matching objects in the
+    /// other view, and nets on the board. The net being routed is highlighted too.
+    fn update_highlights(&mut self) {
+        let from = self.active;
+        let selection = self.panes[from as usize].it.selection.clone();
+        let routing = self.pcb.routing_net().map(str::to_string);
+        let key = Some((from, selection.clone(), self.doc.revision, routing.clone()));
+        if key == self.probe_key {
+            return;
+        }
+        self.probe_key = key;
+        let doc = &mut self.doc;
+        let probe = view::probe::cross_probe(doc.project(), doc.connectivity(), doc.copper(), from, &selection);
+        let other = match from {
+            ViewKind::Schematic => ViewKind::Board,
+            ViewKind::Board => ViewKind::Schematic,
+        };
+        let (project, view) = doc.project_and_view(other);
+        view.set_probe(project, &probe.objects);
+        let (project, view) = doc.project_and_view(from);
+        view.set_probe(project, &[]);
+        let nets = routing.map_or(probe.nets, |n| vec![n]);
+        doc.highlight_nets(&nets);
     }
 
     /// Where keyboard shortcuts go.
@@ -1388,34 +1415,10 @@ impl TreeBehavior<'_> {
             let (project, view) = self.doc.project_and_view(kind);
             view.set_preview(project, &ghosts);
         }
-        if kind == ViewKind::Board {
-            if let Some(ghosts) = self.pcb.take_preview(self.doc) {
-                self.doc.board.set_board_preview(&ghosts);
-            }
-            // Highlight the net being routed, or the nets of selected tracks and vias.
-            let nets: Vec<String> = match self.pcb.routing_net() {
-                Some(n) => vec![n.to_string()],
-                None => {
-                    let copper = self.doc.copper();
-                    let mut nets: Vec<String> = pane
-                        .it
-                        .selection
-                        .iter()
-                        .filter_map(|id| match *id {
-                            ObjectId::Track(t) => copper.net_of(CopperItem::Track(t)),
-                            ObjectId::Via(v) => copper.net_of(CopperItem::Via(v)),
-                            _ => None,
-                        })
-                        .map(str::to_string)
-                        .collect();
-                    nets.sort();
-                    nets.dedup();
-                    nets
-                }
-            };
-            if nets.as_slice() != self.doc.board.highlighted_nets() {
-                self.doc.highlight_nets(&nets);
-            }
+        if kind == ViewKind::Board
+            && let Some(ghosts) = self.pcb.take_preview(self.doc)
+        {
+            self.doc.board.set_board_preview(&ghosts);
         }
         if !pane.it.is_idle() {
             ui.ctx().request_repaint();
@@ -1538,6 +1541,10 @@ impl eframe::App for PcbApp {
                 let mut message = None;
                 self.properties.ui(ui, &mut self.doc, &selection, &mut message);
                 if kind == ViewKind::Board && selection.is_empty() {
+                    if let Some(ids) = pcb_ui::problems(ui, &self.doc) {
+                        let pane = &mut self.panes[kind as usize];
+                        pane.it.set_selection(&mut self.doc.target(kind), ids);
+                    }
                     pcb_ui::board_setup(ui, &mut self.doc, &mut message);
                 }
                 if let Some(m) = message {
@@ -1583,8 +1590,11 @@ impl eframe::App for PcbApp {
         // Junction dots and unconnected pins follow the schematic.
         let busy = self.panes.iter().any(|p| !p.it.is_idle());
         if self.doc.update_connectivity(busy) {
+            self.probe_key = None;
             ctx.request_repaint();
         }
+
+        self.update_highlights();
 
         // Model changed (any source): drop stale selections, refresh highlights.
         if self.doc.revision != self.revision {

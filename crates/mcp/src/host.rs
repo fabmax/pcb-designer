@@ -515,10 +515,27 @@ fn routing(p: &Project, c: &editor_core::copper::BoardConnectivity) -> Value {
         c.ratsnest.iter().map(|r| json!({ "net": c.nets[r.net as usize], "from": r.a, "to": r.b })).collect();
     let shorts: Vec<Value> = c.shorts.iter().map(|(nets, at)| json!({ "nets": nets, "at": at })).collect();
     let layers: Vec<Value> = p.board.copper_layers().map(|l| json!({ "id": l.id, "name": l.name })).collect();
+    use editor_core::copper::{CopperItem, Flag};
+    let flagged: Vec<Value> = c
+        .flagged()
+        .filter_map(|item| {
+            let id = match item.item {
+                CopperItem::Track(t) => ObjectId::Track(t),
+                CopperItem::Via(v) => ObjectId::Via(v),
+                CopperItem::Pad { .. } => return None,
+            };
+            let problem = match item.flag {
+                Some(Flag::Short) => "short",
+                _ => "unconnected",
+            };
+            Some(json!({ "object": id, "problem": problem }))
+        })
+        .collect();
     json!({
         "fully_routed": c.ratsnest.is_empty() && c.shorts.is_empty(),
         "unrouted": unrouted,
         "shorts": shorts,
+        "flagged": flagged,
         "copper_layers": layers,
         "rules": p.board.rules,
     })

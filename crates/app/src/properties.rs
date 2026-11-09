@@ -4,7 +4,7 @@
 //! one undo step; text fields are committed on Enter or when they lose focus.
 
 use editor_core::Command;
-use editor_core::copper::CopperItem;
+use editor_core::copper::{CopperItem, Flag};
 use editor_core::query::pin_pad_names;
 use egui::RichText;
 use model::*;
@@ -416,8 +416,17 @@ fn shape_name(s: &Shape) -> &'static str {
 
 /// Net of board copper (from the pads it touches).
 fn copper_net_row(ui: &mut egui::Ui, doc: &Document, item: CopperItem) {
-    let net = doc.copper().net_of(item).unwrap_or("none (not connected to a pad)");
+    let copper = doc.copper();
+    let net = copper.net_of(item).unwrap_or("none (not connected to a pad)");
     row(ui, "Net", net.to_string());
+    let flag = match copper.get(item).and_then(|c| c.flag) {
+        Some(Flag::Short) => "connects different nets (short)",
+        Some(Flag::Unconnected) => "touches no pad",
+        None => return,
+    };
+    label(ui, "Problem");
+    ui.label(RichText::new(flag).color(theme::WARN));
+    ui.end_row();
 }
 
 /// Net name and the pins on it.

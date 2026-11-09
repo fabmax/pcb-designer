@@ -14,6 +14,7 @@ pub mod interaction;
 pub mod item;
 pub mod library_doc;
 pub mod pcb_tools;
+pub mod probe;
 pub mod sch_tools;
 pub mod style;
 pub mod tools;
