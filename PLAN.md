@@ -751,3 +751,36 @@ and level of detail for tiny primitives.
 - **Tab icons.** Schematic (resistor zigzag), PCB (board with a track) and library
   (books) tabs have an icon. Each is coloured from the palette of what the tab shows:
   schematic wire, top copper, label amber. The icon is dimmed on inactive tabs.
+
+## KiCad library download (2026-11-09)
+
+- **Download instead of a KiCad installation.** `kicad::download` fetches the official
+  `kicad-symbols` and `kicad-footprints` GitLab release archives. These are 12 MB each
+  and about 450 MB unpacked; no 3D models. They are unpacked into
+  `<config>/kicad/<version>/{symbols,footprints}`, which follows `PCB_DESIGNER_CONFIG`.
+  - Only stable tags of `SUPPORTED_MAJOR` (10) that both repositories have are used.
+    Release candidates are skipped, and KiCad 11 waits until the importer is tested
+    against it and the constant is raised.
+  - The download goes into `.download-<version>`, is renamed into place when complete,
+    and older versions are deleted afterwards. A cancel, error or killed process leaves
+    nothing half-installed (a leftover temp folder is replaced on the next try).
+  - Gotcha: cancelling uses its own error and flag. `io::ErrorKind::Interrupted` would
+    be retried forever by `std`'s and `tar`'s read loops.
+  - `download::ensure` is shared by the import window, the app's MCP host and headless
+    mode. With an existing download and no update request it makes no network access.
+  - Libraries searched: the folders added with `--kicad` or "Add folder…", then the
+    download if there is one, else an installed KiCad (`download::library_paths`).
+- **Import window:** offers the download when nothing is found, then shows progress
+  (bytes against an approximate total; GitLab sends no length) with Cancel. Afterwards
+  it shows the downloaded version and "Check for updates" → "Update to x.y.z". Errors
+  get a Retry. The work runs on threads polled each frame (`KicadImport::poll`).
+- **Agents:** `download_kicad_libraries {update}` waits for the download and returns the
+  version, folder and library counts. In the app it joins a download already running
+  from the window. Headless mode now supports `search_kicad`, `import_kicad` and the
+  download. Its imports go into a "KiCad import" library, and their parts straight into
+  the project (`Command::ImportParts`); the `library` parameter is ignored there.
+- **Tests:** `kicad/tests/download.rs` serves generated archives and tag lists from a
+  local HTTP server. It covers version choice, install, keeping a download without an
+  update, update and replacing the old version, cancel, and missing releases. The test
+  against the real gitlab.com is `#[ignore]`d: `cargo test -p kicad --test download --
+  --ignored`. `mcp/tests/kicad_headless.rs` covers headless search and import.

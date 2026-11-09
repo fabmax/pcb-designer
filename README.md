@@ -27,7 +27,7 @@ The server only listens on 127.0.0.1 and rejects requests from web pages (browse
 open project, so only turn it on when you need it.
 
 Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
-`search_kicad`, `import_kicad`, `list_objects`, `get_objects`, `get_component`,
+`search_kicad`, `import_kicad`, `download_kicad_libraries`, `list_objects`, `get_objects`, `get_component`,
 `get_netlist`, `get_routing`, `run_drc`, `execute` (any editor command, as one undo
 step), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (schematic, board
 or the whole window) and `save_project`. Agent edits go through the same commands as the
@@ -45,6 +45,19 @@ claude mcp add pcb-designer -- /path/to/pcb-designer --mcp-stdio ~/boards/my.pcb
 
 (Tools → "Copy Claude Code command (headless)" fills in the paths.) Screenshots are
 rendered offscreen.
+
+## KiCad libraries
+
+**File → Import from KiCad** imports symbols (as parts, with a footprint) and footprints
+from KiCad's libraries. It uses an installed KiCad's libraries, or downloads KiCad's
+official symbol and footprint libraries (about 24 MB, 450 MB on disk, no 3D models) into
+the configuration folder, e.g. `~/Library/Application Support/pcb-designer/kicad/10.0.8/`
+on macOS. The window offers the download when no libraries are found, and "Check for
+updates" afterwards; the app only goes online when you click one of these. Agents use
+`download_kicad_libraries`. `--kicad DIR` adds more library folders.
+
+KiCad's libraries are licensed CC-BY-SA 4.0, with an exception that allows using them in
+your designs without restrictions (see the KiCad library license).
 
 ## Settings
 

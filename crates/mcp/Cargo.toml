@@ -10,6 +10,7 @@ model.workspace = true
 editor-core.workspace = true
 view.workspace = true
 render.workspace = true
+kicad.workspace = true
 rmcp.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

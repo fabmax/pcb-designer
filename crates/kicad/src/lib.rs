@@ -6,6 +6,7 @@
 
 pub mod catalog;
 pub mod common;
+pub mod download;
 pub mod footprint;
 pub mod import;
 pub mod sexpr;

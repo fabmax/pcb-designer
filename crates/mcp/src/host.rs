@@ -79,6 +79,10 @@ pub enum Request {
     },
     /// Import KiCad symbols (as parts) and footprints into an open library.
     KicadImport(KicadImport),
+    /// Download KiCad's libraries (or, with `update`, a newer release).
+    KicadDownload {
+        update: bool,
+    },
 }
 
 /// A KiCad import requested by an agent.
@@ -121,6 +125,8 @@ impl Request {
             Request::Save { .. } => "save".into(),
             Request::KicadSearch { query, .. } => format!("search KiCad for {query:?}"),
             Request::KicadImport(k) => format!("import {} item(s) from KiCad", k.symbols.len() + k.footprints.len()),
+            Request::KicadDownload { update: false } => "download KiCad libraries".into(),
+            Request::KicadDownload { update: true } => "update KiCad libraries".into(),
         }
     }
 
@@ -175,6 +181,75 @@ pub trait Host {
     fn kicad_import(&mut self, _request: KicadImport, reply: Responder) {
         let _ = reply.send(Err("KiCad libraries are not available in this host".into()));
     }
+    /// Download KiCad's libraries; the host may answer later (it may download in the
+    /// background).
+    fn kicad_download(&mut self, _update: bool, reply: Responder) {
+        let _ = reply.send(Err("KiCad libraries can't be downloaded in this host".into()));
+    }
+}
+
+/// Resolve an agent's import: symbols without footprints get their suggested ones.
+pub fn kicad_request(
+    job: &KicadImport,
+    mut suggested: impl FnMut(&str) -> Result<Vec<String>, String>,
+) -> Result<kicad::Request, String> {
+    let mut req = kicad::Request { symbols: Vec::new(), footprints: job.footprints.clone() };
+    for (symbol, fps) in &job.symbols {
+        let fps = match fps {
+            Some(f) => f.clone(),
+            None => suggested(symbol)?,
+        };
+        req.symbols.push((symbol.clone(), fps));
+    }
+    Ok(req)
+}
+
+/// Reply to an import: what was imported into `library`, with notes.
+pub fn kicad_import_reply(
+    library: &str,
+    added: usize,
+    replaced: usize,
+    imported: &kicad::Imported,
+    req: &kicad::Request,
+) -> Value {
+    let parts: Vec<Value> = imported
+        .parts
+        .iter()
+        .map(|p| {
+            let variants: Vec<Value> = p
+                .variants
+                .iter()
+                .map(|v| json!({ "id": v.id, "footprint": v.name, "connected_pads": v.connections.len() }))
+                .collect();
+            json!({ "id": p.id, "name": p.name, "units": p.units.len(), "variants": variants })
+        })
+        .collect();
+    let footprints: Vec<&str> = imported.footprints.iter().map(|f| f.name.as_str()).collect();
+    let symbols_only: Vec<&str> = req.symbols.iter().filter(|s| s.1.is_empty()).map(|s| s.0.as_str()).collect();
+    json!({
+        "library": library,
+        "added": added,
+        "updated": replaced,
+        "parts": parts,
+        "footprints": footprints,
+        "symbols_without_part": symbols_only,
+        "notes": imported.warnings,
+        "errors": imported.errors,
+    })
+}
+
+/// Reply to a download: the version, where it is and what it holds.
+pub fn kicad_download_reply(installed: &kicad::download::Installed, downloaded: bool) -> Value {
+    let catalog = kicad::Catalog::scan(&installed.paths());
+    json!({
+        "version": installed.version,
+        "path": installed.dir,
+        "downloaded": downloaded,
+        "symbol_libraries": catalog.symbol_libs.len(),
+        "footprint_libraries": catalog.footprint_libs.len(),
+        "symbols": catalog.symbol_count(),
+        "footprints": catalog.footprint_count(),
+    })
 }
 
 /// Answer one call. Window screenshots may be answered later by the host.
@@ -183,6 +258,7 @@ pub fn handle(call: Call, host: &mut dyn Host) {
     let request = match request {
         Request::Screenshot { target: None, .. } => return host.window_screenshot(reply),
         Request::KicadImport(k) => return host.kicad_import(k, reply),
+        Request::KicadDownload { update } => return host.kicad_download(update, reply),
         r => r,
     };
     let result = respond(request, host);
@@ -276,7 +352,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             })
         }
         Request::KicadSearch { query, footprints, limit } => host.kicad_search(&query, footprints, limit)?,
-        Request::KicadImport(_) => unreachable!("answered by the host"),
+        Request::KicadImport(_) | Request::KicadDownload { .. } => unreachable!("answered by the host"),
         Request::Execute { commands } => execute(host.document(), commands)?,
         Request::Undo => {
             let doc = host.document();

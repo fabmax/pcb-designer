@@ -104,7 +104,7 @@ fn main() -> eframe::Result {
 
     if stdio {
         let startup = if startup_given { opts.startup } else { Startup::Empty };
-        if let Err(e) = run_stdio(startup) {
+        if let Err(e) = run_stdio(startup, opts.kicad_paths.clone()) {
             eprintln!("pcb-designer: {e}");
             std::process::exit(1);
         }
@@ -128,7 +128,7 @@ fn main() -> eframe::Result {
 }
 
 /// Headless MCP server on stdin/stdout.
-fn run_stdio(startup: Startup) -> Result<(), String> {
+fn run_stdio(startup: Startup, kicad_paths: Vec<std::path::PathBuf>) -> Result<(), String> {
     use model::Project;
     use view::Document;
     let doc = match startup {
@@ -147,5 +147,7 @@ fn run_stdio(startup: Startup) -> Result<(), String> {
     };
     log::info!("MCP on stdio: {}", doc.title());
     let mut host = mcp::headless::HeadlessHost::new(doc);
+    host.kicad_root = settings::kicad_dir();
+    host.kicad_paths = kicad_paths;
     mcp::stdio::serve_stdio(&mut host)
 }

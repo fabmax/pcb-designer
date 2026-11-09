@@ -41,6 +41,11 @@ pub fn config_dir() -> Option<PathBuf> {
     base.map(|b| b.join("pcb-designer"))
 }
 
+/// Where KiCad's libraries are downloaded to (`<config>/kicad/<version>/`).
+pub fn kicad_dir() -> Option<PathBuf> {
+    config_dir().map(|d| d.join("kicad"))
+}
+
 impl Settings {
     pub fn path() -> Option<PathBuf> {
         config_dir().map(|d| d.join("settings.json"))

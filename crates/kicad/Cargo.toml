@@ -8,8 +8,11 @@ description = "Import of KiCad symbol and footprint libraries"
 [dependencies]
 model.workspace = true
 thiserror.workspace = true
+serde_json.workspace = true
+ureq.workspace = true
+flate2.workspace = true
+tar.workspace = true
 
 [dev-dependencies]
 view.workspace = true
-serde_json.workspace = true
 tempfile.workspace = true
