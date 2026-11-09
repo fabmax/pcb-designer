@@ -28,8 +28,8 @@ open project, so only turn it on when you need it.
 
 Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `search_kicad`, `import_kicad`, `download_kicad_libraries`, `list_objects`, `get_objects`, `get_component`,
-`get_netlist`, `get_routing`, `run_drc`, `execute` (any editor command, as one undo
-step), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (schematic, board
+`get_netlist` (nets, buses and their members, schematic problems), `get_routing`,
+`run_drc`, `execute` (any editor command, as one undo step), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (schematic, board
 or the whole window) and `save_project`. Agent edits go through the same commands as the
 GUI, so they can be undone with ⌘Z, and the status bar shows what the agent just did.
 

@@ -1,5 +1,6 @@
-//! Schematic creation tools: wires, net labels, power ports, junctions and part
-//! placement, with a ghost preview under the cursor. Independent of the GUI toolkit.
+//! Schematic creation tools: wires, buses, bus entries, net labels, power ports, junctions
+//! and part placement, with a ghost preview under the cursor. Independent of the GUI
+//! toolkit.
 
 use editor_core::Command;
 use editor_core::connectivity::{Connectivity, on_segment_inside};
@@ -12,6 +13,8 @@ use crate::tools::increment_name;
 pub enum SchTool {
     Select,
     Wire,
+    Bus,
+    BusEntry,
     Label,
     Power,
     Junction,
@@ -21,12 +24,22 @@ pub enum SchTool {
 
 impl SchTool {
     /// Tools offered in the toolbar (placement starts from the library).
-    pub const BAR: &[SchTool] = &[SchTool::Select, SchTool::Wire, SchTool::Label, SchTool::Power, SchTool::Junction];
+    pub const BAR: &[SchTool] = &[
+        SchTool::Select,
+        SchTool::Wire,
+        SchTool::Bus,
+        SchTool::BusEntry,
+        SchTool::Label,
+        SchTool::Power,
+        SchTool::Junction,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             SchTool::Select => "Select",
             SchTool::Wire => "Wire",
+            SchTool::Bus => "Bus",
+            SchTool::BusEntry => "Bus entry",
             SchTool::Label => "Label",
             SchTool::Power => "Power",
             SchTool::Junction => "Junction",
@@ -39,6 +52,10 @@ impl SchTool {
         match self {
             SchTool::Select => "Click/box to select · drag to move (wires follow) · R rotate · X mirror · Del delete",
             SchTool::Wire => "Click to start · click corners · ends on a pin or wire · / corner direction · Esc done",
+            SchTool::Bus => {
+                "Click to start · click corners · ends on a bus · / corner direction · name it with a label like D[0..7]"
+            }
+            SchTool::BusEntry => "Click on a bus to place an entry · R rotate · X mirror · Esc done",
             SchTool::Label | SchTool::Power => "Click to place · R rotate · Esc done",
             SchTool::Junction => "Click to place a junction · Esc done",
             SchTool::Place => "Click to place · R rotate · X mirror · Esc done",
@@ -66,6 +83,8 @@ pub struct SchSettings {
     pub mirror: bool,
     /// Wire corners go vertical first (toggled with `/`).
     pub vertical_first: bool,
+    /// Direction of new bus entries.
+    pub entry: EntryDir,
 }
 
 impl Default for SchSettings {
@@ -76,6 +95,7 @@ impl Default for SchSettings {
             rotation: Angle::ZERO,
             mirror: false,
             vertical_first: false,
+            entry: EntryDir::UpRight,
         }
     }
 }
@@ -87,6 +107,9 @@ pub const POWER_NAMES: &[&str] = &["GND", "+3V3", "+5V", "+12V", "VCC", "VDD", "
 #[derive(Clone, Debug, PartialEq)]
 pub enum SchGhost {
     Wire(Point, Point),
+    Bus(Point, Point),
+    /// A bus entry's bus end and direction.
+    Entry(Point, EntryDir),
     Junction(Point),
     Label(NetLabel),
     Symbol {
@@ -149,13 +172,22 @@ pub fn wire_path(a: Point, b: Point, vertical_first: bool) -> Vec<Point> {
     vec![a, corner, b]
 }
 
-/// Is `p` a connection point: a pin, wire end or wire interior, label or junction?
+/// Is `p` a connection point: a pin, wire end or wire interior, label, junction or a bus
+/// entry's wire end?
 pub fn connects(project: &Project, conn: &Connectivity, p: Point) -> bool {
     let s = &project.schematic;
     s.wires.iter().any(|w| w.a == p || w.b == p || on_segment_inside(p, w.a, w.b))
         || s.labels.iter().any(|l| l.pos == p)
         || s.junctions.iter().any(|j| j.pos == p)
+        || s.bus_entries.iter().any(|e| e.wire_end() == p)
         || conn.nets.iter().any(|n| n.pins.iter().any(|pin| pin.pos == p))
+}
+
+/// Is `p` on a bus: a bus wire's end or interior, or a bus entry's bus end?
+pub fn on_bus(project: &Project, p: Point) -> bool {
+    let s = &project.schematic;
+    s.bus_wires.iter().any(|w| w.a == p || w.b == p || on_segment_inside(p, w.a, w.b))
+        || s.bus_entries.iter().any(|e| e.pos == p)
 }
 
 impl Document {
@@ -200,10 +232,20 @@ impl SchPlacer {
     }
 
     pub fn rotate(&mut self) {
+        if self.tool == SchTool::BusEntry {
+            // Counter-clockwise, like rotating placed objects.
+            self.settings.entry = EntryDir::of_offset(self.settings.entry.offset().rotated(Angle::DEG90));
+            return;
+        }
         self.settings.rotation = self.settings.rotation.rotated_by(Angle::DEG90);
     }
 
     pub fn mirror(&mut self) {
+        if self.tool == SchTool::BusEntry {
+            let o = self.settings.entry.offset();
+            self.settings.entry = EntryDir::of_offset(Point::new(-o.x, o.y));
+            return;
+        }
         self.settings.mirror = !self.settings.mirror;
     }
 
@@ -224,7 +266,11 @@ impl SchPlacer {
     pub fn hover(&mut self, doc: &mut Document, p: Option<Point>) {
         if p != self.cursor {
             self.cursor = p;
-            self.on_target = self.tool == SchTool::Wire && p.is_some_and(|p| doc.connects(p));
+            self.on_target = match self.tool {
+                SchTool::Wire => p.is_some_and(|p| doc.connects(p)),
+                SchTool::Bus | SchTool::BusEntry => p.is_some_and(|p| on_bus(doc.project(), p)),
+                _ => false,
+            };
         }
     }
 
@@ -251,6 +297,22 @@ impl SchPlacer {
                 placed.finished = ends;
                 Command::AddWire { sheet: None, points: wire_path(start, p, s.vertical_first) }
             }
+            SchTool::Bus => {
+                let Some(start) = self.start else {
+                    self.start = Some(p);
+                    return Ok(placed);
+                };
+                if start == p {
+                    self.start = None;
+                    placed.finished = true;
+                    return Ok(placed);
+                }
+                let ends = on_bus(doc.project(), p);
+                self.start = if ends { None } else { Some(p) };
+                placed.finished = ends;
+                Command::AddBus { sheet: None, points: wire_path(start, p, s.vertical_first) }
+            }
+            SchTool::BusEntry => Command::AddBusEntry { sheet: None, pos: p, dir: s.entry },
             SchTool::Label => Command::AddLabel {
                 sheet: None,
                 pos: p,
@@ -338,12 +400,20 @@ impl SchPlacer {
         let s = &self.settings;
         match self.tool {
             SchTool::Select => Vec::new(),
-            SchTool::Wire => {
+            SchTool::Wire | SchTool::Bus => {
                 let mut g = Vec::new();
                 if let Some(start) = self.start {
                     let path = wire_path(start, p, s.vertical_first);
-                    g.extend(path.windows(2).map(|w| SchGhost::Wire(w[0], w[1])));
+                    let ghost = if self.tool == SchTool::Bus { SchGhost::Bus } else { SchGhost::Wire };
+                    g.extend(path.windows(2).map(|w| ghost(w[0], w[1])));
                 }
+                if self.on_target {
+                    g.push(SchGhost::Target(p));
+                }
+                g
+            }
+            SchTool::BusEntry => {
+                let mut g = vec![SchGhost::Entry(p, s.entry)];
                 if self.on_target {
                     g.push(SchGhost::Target(p));
                 }

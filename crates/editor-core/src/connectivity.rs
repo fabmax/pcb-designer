@@ -6,6 +6,9 @@
 //!   (T connection). Two wires that merely cross do not connect unless a junction sits
 //!   on the crossing.
 //! * Labels with the same name connect, whatever their kind (net label or power port).
+//! * Buses never connect anything. Touching bus wires form a [`Bus`] whose members come
+//!   from the bus labels on it (labels with bus names, see [`crate::bus`]); those labels
+//!   create no nets. A bus entry's wire end joins the net there, so it knows its signal.
 //!
 //! Nets are named after their labels (power ports first). Unnamed nets with pins are
 //! called `Net-(R1-1)` after their first pin (reference and pad), like KiCad does.
@@ -50,6 +53,35 @@ pub struct Net {
     pub wires: Vec<Id>,
     pub labels: Vec<Id>,
     pub junctions: Vec<Id>,
+    /// Bus entries whose wire end is on this net.
+    pub entries: Vec<Id>,
+}
+
+/// Touching bus wires with their labels and entries.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Bus {
+    /// Name of its first bus label; empty if it has none.
+    pub name: String,
+    pub sheet: Id,
+    /// Signals of all its bus labels, in order.
+    pub members: Vec<String>,
+    pub wires: Vec<Id>,
+    pub labels: Vec<Id>,
+    pub entries: Vec<Id>,
+}
+
+/// Something wrong in the schematic, with the objects involved.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct Problem {
+    pub message: String,
+    pub objects: Vec<ObjectId>,
+    pub pos: Option<Point>,
+}
+
+impl Problem {
+    fn new(message: String, objects: Vec<ObjectId>, pos: Option<Point>) -> Self {
+        Problem { message, objects, pos }
+    }
 }
 
 /// Connectivity of a whole schematic.
@@ -60,13 +92,16 @@ pub struct Connectivity {
     pub nets: Vec<Net>,
     net_of: HashMap<ObjectId, usize>,
     pin_net: HashMap<(Id, Id), usize>,
+    /// Buses sorted by name, unnamed ones last.
+    pub buses: Vec<Bus>,
+    bus_of: HashMap<ObjectId, usize>,
     /// Automatic junction dots: (sheet, point) where three or more wire ends / pins meet,
     /// or where something connects to the inside of a wire.
     pub dots: Vec<(Id, Point)>,
     /// Pins connected to nothing: (symbol instance, pin, position).
     pub unconnected: Vec<(Id, Id, Point)>,
-    /// Nets with conflicting names and similar problems.
-    pub problems: Vec<String>,
+    /// Nets with conflicting names, misused buses and similar problems.
+    pub problems: Vec<Problem>,
 }
 
 struct UnionFind(Vec<u32>);
@@ -95,6 +130,7 @@ enum Node {
     Wire(Id),
     Label(Id),
     Junction(Id),
+    Entry(Id),
 }
 
 /// Grid cell size for finding wires through a point.
@@ -102,6 +138,36 @@ const CELL: Coord = 10 * MM;
 
 fn cell(p: Point) -> (i64, i64) {
     (p.x.div_euclid(CELL), p.y.div_euclid(CELL))
+}
+
+/// Segments (of one kind) by grid cell, to find those through a point.
+struct SegmentGrid {
+    segments: Vec<(Id, Point, Point)>,
+    cells: HashMap<(Id, (i64, i64)), Vec<usize>>,
+}
+
+impl SegmentGrid {
+    fn new(segments: impl Iterator<Item = (Id, Point, Point)>) -> Self {
+        let segments: Vec<_> = segments.collect();
+        let mut cells: HashMap<(Id, (i64, i64)), Vec<usize>> = HashMap::default();
+        for (i, &(sheet, a, b)) in segments.iter().enumerate() {
+            let (c0, c1) = (cell(a), cell(b));
+            for x in c0.0.min(c1.0)..=c0.0.max(c1.0) {
+                for y in c0.1.min(c1.1)..=c0.1.max(c1.1) {
+                    cells.entry((sheet, (x, y))).or_default().push(i);
+                }
+            }
+        }
+        SegmentGrid { segments, cells }
+    }
+
+    /// Segments touching `p` (at an end or inside), with whether `p` is inside.
+    fn at(&self, sheet: Id, p: Point) -> impl Iterator<Item = (usize, bool)> + '_ {
+        self.cells.get(&(sheet, cell(p))).into_iter().flatten().filter_map(move |&i| {
+            let (_, a, b) = self.segments[i];
+            if p == a || p == b { Some((i, false)) } else { on_segment_inside(p, a, b).then_some((i, true)) }
+        })
+    }
 }
 
 /// `p` lies on segment a-b, excluding the end points.
@@ -160,10 +226,18 @@ impl Connectivity {
                 pin_sheet.push(inst.sheet);
             }
         }
+        let bus_pins: Vec<(Id, Point, Id, String)> = if s.bus_wires.is_empty() {
+            Vec::new()
+        } else {
+            pins.iter().zip(&pin_sheet).map(|(p, &sheet)| (p.symbol, p.pos, sheet, p.label())).collect()
+        };
         let mut nodes: Vec<Node> = (0..pins.len()).map(Node::Pin).collect();
         nodes.extend(s.wires.ids().map(Node::Wire));
-        nodes.extend(s.labels.ids().map(Node::Label));
+        // Bus labels name buses, not nets.
+        let bus_label = |l: &NetLabel| crate::bus::is_bus_name(&l.name);
+        nodes.extend(s.labels.iter().filter(|l| !bus_label(l)).map(|l| Node::Label(l.id)));
         nodes.extend(s.junctions.ids().map(Node::Junction));
+        nodes.extend(s.bus_entries.ids().map(Node::Entry));
         let index: HashMap<Node, usize> = nodes.iter().enumerate().map(|(i, &n)| (n, i)).collect();
         let mut uf = UnionFind((0..nodes.len() as u32).collect());
 
@@ -189,8 +263,11 @@ impl Connectivity {
                 at.wire_ends += 1;
             }
         }
-        for l in s.labels.iter() {
+        for l in s.labels.iter().filter(|l| !bus_label(l)) {
             points.entry((l.sheet, l.pos)).or_default().nodes.push(index[&Node::Label(l.id)]);
+        }
+        for e in s.bus_entries.iter() {
+            points.entry((e.sheet, e.wire_end())).or_default().nodes.push(index[&Node::Entry(e.id)]);
         }
         for j in s.junctions.iter() {
             let at = points.entry((j.sheet, j.pos)).or_default();
@@ -233,7 +310,7 @@ impl Connectivity {
 
         // ---- Labels with the same name
         let mut by_name: HashMap<&str, usize> = HashMap::default();
-        for l in s.labels.iter() {
+        for l in s.labels.iter().filter(|l| !bus_label(l)) {
             let n = index[&Node::Label(l.id)];
             match by_name.get(l.name.as_str()) {
                 Some(&first) => uf.union(first, n),
@@ -253,6 +330,7 @@ impl Connectivity {
                 Node::Wire(id) => net.wires.push(id),
                 Node::Label(id) => net.labels.push(id),
                 Node::Junction(id) => net.junctions.push(id),
+                Node::Entry(id) => net.entries.push(id),
             }
         }
         let mut problems = Vec::new();
@@ -262,7 +340,12 @@ impl Connectivity {
             if net.pins.len() > 1 {
                 net.pins.sort_by_cached_key(|p| (natural_key(&p.refdes), natural_key(&pin_key(p))));
             }
-            if net.pins.len() == 1 && net.wires.is_empty() && net.labels.is_empty() && net.junctions.is_empty() {
+            if net.pins.len() == 1
+                && net.wires.is_empty()
+                && net.labels.is_empty()
+                && net.junctions.is_empty()
+                && net.entries.is_empty()
+            {
                 let p = &net.pins[0];
                 unconnected.push((p.symbol, p.pin, p.pos));
             }
@@ -278,7 +361,9 @@ impl Connectivity {
             if let Some(&(_, name)) = names.first() {
                 if names.len() > 1 {
                     let all: Vec<&str> = names.iter().map(|n| n.1).collect();
-                    problems.push(format!("net has several names: {}", all.join(", ")));
+                    let objects: Vec<ObjectId> = net.labels.iter().map(|&l| ObjectId::Label(l)).collect();
+                    let pos = net.labels.first().and_then(|&l| s.labels.get(l)).map(|l| l.pos);
+                    problems.push(Problem::new(format!("Net has several names: {}", all.join(", ")), objects, pos));
                 }
                 net.name = name.to_string();
                 net.named = true;
@@ -303,14 +388,197 @@ impl Connectivity {
             for &j in &net.junctions {
                 net_of.insert(ObjectId::Junction(j), i);
             }
+            for &e in &net.entries {
+                net_of.insert(ObjectId::BusEntry(e), i);
+            }
             for p in &net.pins {
                 pin_net.insert((p.symbol, p.pin), i);
             }
         }
-        Connectivity { nets, net_of, pin_net, dots, unconnected, problems }
+        let mut c = Connectivity {
+            nets,
+            net_of,
+            pin_net,
+            buses: Vec::new(),
+            bus_of: HashMap::default(),
+            dots,
+            unconnected,
+            problems,
+        };
+        c.build_buses(project, &bus_pins);
+        c
     }
 
-    /// Net of a wire, label or junction.
+    /// Group bus wires into buses, attach their labels and entries, and check how they
+    /// are used.
+    fn build_buses(&mut self, project: &Project, pins: &[(Id, Point, Id, String)]) {
+        let s = &project.schematic;
+        if s.bus_wires.is_empty()
+            && s.bus_entries.is_empty()
+            && !s.labels.iter().any(|l| crate::bus::is_bus_name(&l.name))
+        {
+            return;
+        }
+        let wires: Vec<&BusWire> = s.bus_wires.iter().collect();
+        let grid = SegmentGrid::new(wires.iter().map(|w| (w.sheet, w.a, w.b)));
+        let mut uf = UnionFind((0..wires.len() as u32).collect());
+
+        // Touching ends, T-joints and junctions join bus wires.
+        let mut ends: HashMap<(Id, Point), u32> = HashMap::default();
+        for w in &wires {
+            *ends.entry((w.sheet, w.a)).or_default() += 1;
+            *ends.entry((w.sheet, w.b)).or_default() += 1;
+        }
+        let junctions: Vec<(Id, Point)> = s.junctions.iter().map(|j| (j.sheet, j.pos)).collect();
+        for (&(sheet, p), &n) in &ends {
+            let on: Vec<(usize, bool)> = grid.at(sheet, p).collect();
+            for w in on.windows(2) {
+                uf.union(w[0].0, w[1].0);
+            }
+            let inside = on.iter().filter(|o| o.1).count() as u32;
+            if n + 2 * inside >= 3 && !junctions.contains(&(sheet, p)) {
+                self.dots.push((sheet, p));
+            }
+        }
+        for &(sheet, p) in &junctions {
+            let on: Vec<usize> = grid.at(sheet, p).map(|o| o.0).collect();
+            for w in on.windows(2) {
+                uf.union(w[0], w[1]);
+            }
+        }
+        self.dots.sort_by_key(|&(s, p)| (s, p.x, p.y));
+        self.dots.dedup();
+
+        let mut groups: HashMap<usize, Bus> = HashMap::default();
+        for (i, w) in wires.iter().enumerate() {
+            let bus = groups.entry(uf.find(i)).or_insert_with(|| Bus {
+                name: String::new(),
+                sheet: w.sheet,
+                members: Vec::new(),
+                wires: Vec::new(),
+                labels: Vec::new(),
+                entries: Vec::new(),
+            });
+            bus.wires.push(w.id);
+        }
+        let mut problems = Vec::new();
+        let first_wire = |sheet: Id, p: Point| grid.at(sheet, p).next().map(|o| o.0);
+        for l in s.labels.iter() {
+            let Some(members) = crate::bus::members(&l.name) else { continue };
+            match first_wire(l.sheet, l.pos) {
+                Some(w) => {
+                    let bus = groups.get_mut(&uf.find(w)).unwrap();
+                    bus.labels.push(l.id);
+                    for m in members {
+                        if !bus.members.contains(&m) {
+                            bus.members.push(m);
+                        }
+                    }
+                }
+                None => problems.push(Problem::new(
+                    format!("Bus label {} is not on a bus", l.name),
+                    vec![ObjectId::Label(l.id)],
+                    Some(l.pos),
+                )),
+            }
+        }
+        for e in s.bus_entries.iter() {
+            match first_wire(e.sheet, e.pos) {
+                Some(w) => groups.get_mut(&uf.find(w)).unwrap().entries.push(e.id),
+                None => problems.push(Problem::new(
+                    "Bus entry is not on a bus".into(),
+                    vec![ObjectId::BusEntry(e.id)],
+                    Some(e.pos),
+                )),
+            }
+        }
+        let mut buses: Vec<Bus> = groups.into_values().collect();
+        for bus in &mut buses {
+            bus.name = bus.labels.first().and_then(|&l| s.labels.get(l)).map_or(String::new(), |l| l.name.clone());
+        }
+        buses.sort_by_cached_key(|b| (b.name.is_empty(), natural_key(&b.name), b.wires.first().copied()));
+        for (i, bus) in buses.iter().enumerate() {
+            let ids = bus
+                .wires
+                .iter()
+                .map(|&w| ObjectId::BusWire(w))
+                .chain(bus.labels.iter().map(|&l| ObjectId::Label(l)))
+                .chain(bus.entries.iter().map(|&e| ObjectId::BusEntry(e)));
+            for id in ids {
+                self.bus_of.insert(id, i);
+            }
+        }
+        let bus_at = |sheet: Id, p: Point| grid.at(sheet, p).next().map(|o| wires[o.0].id);
+        let name_of = |w: Id| {
+            let bus = &buses[self.bus_of[&ObjectId::BusWire(w)]];
+            if bus.name.is_empty() { "an unnamed bus".to_string() } else { format!("bus {}", bus.name) }
+        };
+
+        // Wires and pins must not touch a bus: signals leave it through entries.
+        for w in s.wires.iter() {
+            for p in [w.a, w.b] {
+                if let Some(b) = bus_at(w.sheet, p) {
+                    problems.push(Problem::new(
+                        format!("Wire touches {} directly; connect it through a bus entry", name_of(b)),
+                        vec![ObjectId::Wire(w.id), ObjectId::BusWire(b)],
+                        Some(p),
+                    ));
+                }
+            }
+        }
+        for (symbol, p, sheet, pin) in pins {
+            if let Some(b) = bus_at(*sheet, *p) {
+                problems.push(Problem::new(
+                    format!("Pin {pin} touches {} directly; connect it through a bus entry", name_of(b)),
+                    vec![ObjectId::Symbol(*symbol), ObjectId::BusWire(b)],
+                    Some(*p),
+                ));
+            }
+        }
+        for bus in &buses {
+            if bus.name.is_empty() {
+                let pos = s.bus_wires.get(bus.wires[0]).map(|w| w.a);
+                problems.push(Problem::new(
+                    "Bus has no bus label (like D[0..7] or {SDA SCL})".into(),
+                    bus.wires.iter().map(|&w| ObjectId::BusWire(w)).collect(),
+                    pos,
+                ));
+            }
+            // Signals leaving through entries need a label naming a member.
+            for &e in &bus.entries {
+                let Some(net) = self.net_of(ObjectId::BusEntry(e)) else { continue };
+                if net.wires.is_empty() && net.pins.is_empty() {
+                    continue;
+                }
+                let pos = s.bus_entries.get(e).map(|e| e.wire_end());
+                let mut objects = vec![ObjectId::BusEntry(e)];
+                objects.extend(net.wires.iter().map(|&w| ObjectId::Wire(w)));
+                if !net.named {
+                    problems.push(Problem::new(
+                        format!("Wire from a bus entry of {} has no label", name_of(bus.wires[0])),
+                        objects,
+                        pos,
+                    ));
+                } else if !bus.members.is_empty() && !bus.members.contains(&net.name) {
+                    objects.extend(net.labels.iter().map(|&l| ObjectId::Label(l)));
+                    problems.push(Problem::new(
+                        format!("{} is not a member of {}", net.name, name_of(bus.wires[0])),
+                        objects,
+                        pos,
+                    ));
+                }
+            }
+        }
+        self.buses = buses;
+        self.problems.extend(problems);
+    }
+
+    /// Bus of a bus wire, bus entry or bus label.
+    pub fn bus_of(&self, id: ObjectId) -> Option<&Bus> {
+        self.bus_of.get(&id).map(|&i| &self.buses[i])
+    }
+
+    /// Net of a wire, label, junction or bus entry (its wire end).
     pub fn net_of(&self, id: ObjectId) -> Option<&Net> {
         self.net_of.get(&id).map(|&i| &self.nets[i])
     }

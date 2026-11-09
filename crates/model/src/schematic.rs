@@ -1,4 +1,4 @@
-//! Schematic: components and their symbol placements, wires, junctions, labels.
+//! Schematic: components and their symbol placements, wires, buses, junctions, labels.
 //!
 //! Components are design-wide (one per reference designator). Each component's units are
 //! placed as [`SymbolInstance`]s on a sheet. Graphical objects carry their sheet id, so
@@ -64,6 +64,80 @@ pub struct Wire {
     pub b: Point,
 }
 
+/// Straight bus segment. A bus groups signals; it never connects anything electrically.
+/// Touching bus wires form one bus, named by the bus labels on it (see
+/// `editor_core::bus`). Signals leave it through [`BusEntry`]s and connect by label.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct BusWire {
+    pub id: Id,
+    pub sheet: Id,
+    pub a: Point,
+    pub b: Point,
+}
+
+/// Where a bus entry goes from the bus.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EntryDir {
+    #[default]
+    UpRight,
+    DownRight,
+    DownLeft,
+    UpLeft,
+}
+
+impl EntryDir {
+    /// Clockwise order (as seen on screen), starting at [`EntryDir::UpRight`].
+    pub const ALL: [EntryDir; 4] = [EntryDir::UpRight, EntryDir::DownRight, EntryDir::DownLeft, EntryDir::UpLeft];
+
+    /// Offset from the bus end to the wire end.
+    pub fn offset(self) -> Point {
+        let s = BusEntry::SIZE;
+        match self {
+            EntryDir::UpRight => Point::new(s, s),
+            EntryDir::DownRight => Point::new(s, -s),
+            EntryDir::DownLeft => Point::new(-s, -s),
+            EntryDir::UpLeft => Point::new(-s, s),
+        }
+    }
+
+    /// The direction closest to `offset`.
+    pub fn of_offset(offset: Point) -> EntryDir {
+        match (offset.x >= 0, offset.y >= 0) {
+            (true, true) => EntryDir::UpRight,
+            (true, false) => EntryDir::DownRight,
+            (false, false) => EntryDir::DownLeft,
+            (false, true) => EntryDir::UpLeft,
+        }
+    }
+
+    /// [`EntryDir::UpRight`] rotated by `angle` (like the rotate command turns entries).
+    pub fn from_rotation(angle: Angle) -> EntryDir {
+        EntryDir::of_offset(EntryDir::UpRight.offset().rotated(angle))
+    }
+}
+
+/// A short diagonal from a bus to the wire of one of its signals.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct BusEntry {
+    pub id: Id,
+    pub sheet: Id,
+    /// The end on the bus.
+    pub pos: Point,
+    #[serde(default)]
+    pub dir: EntryDir,
+}
+
+impl BusEntry {
+    /// Width and height of the diagonal: 100 mil.
+    pub const SIZE: crate::units::Coord = 2_540_000;
+
+    /// The end where the signal's wire attaches.
+    pub fn wire_end(&self) -> Point {
+        self.pos + self.dir.offset()
+    }
+}
+
 /// Explicit connection dot where wires cross.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Junction {
@@ -102,7 +176,7 @@ pub struct SchText {
     pub text: Text,
 }
 
-has_id!(Sheet, Component, SymbolInstance, Wire, Junction, NetLabel, SchText);
+has_id!(Sheet, Component, SymbolInstance, Wire, BusWire, BusEntry, Junction, NetLabel, SchText);
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Schematic {
@@ -113,6 +187,10 @@ pub struct Schematic {
     pub symbols: Store<SymbolInstance>,
     #[serde(default)]
     pub wires: Store<Wire>,
+    #[serde(default, skip_serializing_if = "Store::is_empty")]
+    pub bus_wires: Store<BusWire>,
+    #[serde(default, skip_serializing_if = "Store::is_empty")]
+    pub bus_entries: Store<BusEntry>,
     #[serde(default)]
     pub junctions: Store<Junction>,
     #[serde(default)]

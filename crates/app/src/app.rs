@@ -791,6 +791,8 @@ impl PcbApp {
     fn sch_action(&mut self, action: Action) -> bool {
         let tool = match action {
             Action::SchWire => SchTool::Wire,
+            Action::SchBus => SchTool::Bus,
+            Action::SchBusEntry => SchTool::BusEntry,
             Action::SchLabel => SchTool::Label,
             Action::SchPower => SchTool::Power,
             Action::SchJunction => SchTool::Junction,
@@ -898,6 +900,8 @@ impl PcbApp {
             | Action::ToolCircle
             | Action::ToolText
             | Action::SchWire
+            | Action::SchBus
+            | Action::SchBusEntry
             | Action::SchLabel
             | Action::SchPower
             | Action::SchJunction
@@ -943,7 +947,13 @@ impl PcbApp {
             Action::ToolCircle => tool_msg(l, Tool::Circle),
             Action::ToolText => tool_msg(l, Tool::Text),
             Action::New | Action::Open | Action::Save | Action::SaveAs | Action::Settings => None,
-            Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction | Action::Posture => None,
+            Action::SchWire
+            | Action::SchBus
+            | Action::SchBusEntry
+            | Action::SchLabel
+            | Action::SchPower
+            | Action::SchJunction
+            | Action::Posture => None,
             Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => None,
         };
         if let Some(m) = msg {
@@ -1876,6 +1886,16 @@ impl eframe::App for PcbApp {
                     let selection = pane.it.selection.clone();
                     let mut message = None;
                     self.properties.ui(ui, &mut self.doc, &selection, &mut message);
+                    if kind == ViewKind::Schematic
+                        && selection.is_empty()
+                        && let Some((ids, pos)) = sch_ui::problems(ui, &self.doc)
+                    {
+                        let pane = &mut self.panes[kind as usize];
+                        pane.it.set_selection(&mut self.doc.target(kind), ids);
+                        if let Some(pos) = pos {
+                            pane.canvas.camera.center = [to_mm(pos.x), to_mm(pos.y)];
+                        }
+                    }
                     if kind == ViewKind::Board && selection.is_empty() {
                         if let Some(ids) = pcb_ui::problems(ui, &self.doc) {
                             let pane = &mut self.panes[kind as usize];

@@ -26,7 +26,13 @@ impl ViewKind {
         match self {
             ViewKind::Schematic => matches!(
                 kind,
-                ObjectKind::Symbol | ObjectKind::Wire | ObjectKind::Junction | ObjectKind::Label | ObjectKind::SchText
+                ObjectKind::Symbol
+                    | ObjectKind::Wire
+                    | ObjectKind::BusWire
+                    | ObjectKind::BusEntry
+                    | ObjectKind::Junction
+                    | ObjectKind::Label
+                    | ObjectKind::SchText
             ),
             ViewKind::Board => kind.is_board(),
         }
@@ -266,6 +272,8 @@ impl View {
                     .ids()
                     .map(ObjectId::Symbol)
                     .chain(s.wires.ids().map(ObjectId::Wire))
+                    .chain(s.bus_wires.ids().map(ObjectId::BusWire))
+                    .chain(s.bus_entries.ids().map(ObjectId::BusEntry))
                     .chain(s.junctions.ids().map(ObjectId::Junction))
                     .chain(s.labels.ids().map(ObjectId::Label))
                     .chain(s.texts.ids().map(ObjectId::SchText))
@@ -377,6 +385,8 @@ impl View {
         for g in ghosts {
             match g {
                 SchGhost::Wire(a, b) => p.line(l.wires, *a, *b, WIRE_WIDTH, pal().sch_wire),
+                SchGhost::Bus(a, b) => p.line(l.wires, *a, *b, BUS_WIDTH, pal().sch_bus),
+                SchGhost::Entry(pos, dir) => p.line(l.wires, *pos, *pos + dir.offset(), BUS_WIDTH, pal().sch_bus),
                 SchGhost::Junction(pos) => p.circle(l.wires, *pos, 450_000, pal().sch_junction),
                 SchGhost::Target(pos) => {
                     p.push(l.wires, Instance::circle_outline(mmf(*pos), 0.6, 0.12, pal().hover.with_alpha(0xc0)))
@@ -626,6 +636,8 @@ impl View {
         for id in self.index.near(p, tol) {
             let score = match id {
                 ObjectId::Wire(w) => project.schematic.wires.get(w).map(|w| (w.a, w.b, WIRE_WIDTH)),
+                ObjectId::BusWire(w) => project.schematic.bus_wires.get(w).map(|w| (w.a, w.b, BUS_WIDTH)),
+                ObjectId::BusEntry(e) => project.schematic.bus_entries.get(e).map(|e| (e.pos, e.wire_end(), BUS_WIDTH)),
                 ObjectId::Track(t) => project.board.tracks.get(t).map(|t| (t.a, t.b, t.width)),
                 _ => None,
             }
@@ -685,6 +697,18 @@ impl View {
             (Layers::Sch(l), ObjectId::Wire(i)) => {
                 project.schematic.wires.get(i).map(|w| p.line(l.wires, w.a, w.b, WIRE_WIDTH, pal().sch_wire)).is_some()
             }
+            (Layers::Sch(l), ObjectId::BusWire(i)) => project
+                .schematic
+                .bus_wires
+                .get(i)
+                .map(|w| p.line(l.wires, w.a, w.b, BUS_WIDTH, pal().sch_bus))
+                .is_some(),
+            (Layers::Sch(l), ObjectId::BusEntry(i)) => project
+                .schematic
+                .bus_entries
+                .get(i)
+                .map(|e| p.line(l.wires, e.pos, e.wire_end(), BUS_WIDTH, pal().sch_bus))
+                .is_some(),
             (Layers::Sch(l), ObjectId::Junction(i)) => project
                 .schematic
                 .junctions

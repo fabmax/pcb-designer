@@ -1,11 +1,14 @@
 //! Schematic tool bar and tool settings (right panel).
 
+use egui::RichText;
+use model::{EntryDir, ObjectId, Point};
 use view::Document;
 use view::sch_tools::{POWER_NAMES, SchPlacer, SchTool};
 
 use crate::fields::{self, grid, hint, label, row};
 use crate::icons::Icon;
 use crate::keymap::{Action, Keymap};
+use crate::theme;
 use crate::toolbar::{self, ToolButton};
 
 const LABEL_SIDES: [&str; 4] = ["0°", "90°", "180°", "270°"];
@@ -22,6 +25,18 @@ pub fn toolbar(ui: &mut egui::Ui, canvas: egui::Rect, sch: &SchPlacer, keymap: &
     )];
     let draw = [
         b(SchTool::Wire, Icon::Wire, "Draw wires between pins.", Action::SchWire),
+        b(
+            SchTool::Bus,
+            Icon::Bus,
+            "Draw a bus: groups signals, named by a label like D[0..7] on it. Never connects by itself.",
+            Action::SchBus,
+        ),
+        b(
+            SchTool::BusEntry,
+            Icon::BusEntry,
+            "Place a bus entry: a signal's wire leaves the bus here and connects by its label.",
+            Action::SchBusEntry,
+        ),
         b(SchTool::Label, Icon::Label, "Name a net: labels with the same name are connected.", Action::SchLabel),
         b(SchTool::Power, Icon::Power, "Place a power port (GND, +3V3, ...): connects to its net.", Action::SchPower),
         b(SchTool::Junction, Icon::Junction, "Connect crossing wires with a junction dot.", Action::SchJunction),
@@ -60,6 +75,33 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
             ui.add_space(6.0);
             hint(ui, "Wires end automatically on pins, wires, labels and junctions. / switches the corner.");
         }
+        SchTool::Bus => {
+            grid(ui, "sch_tool", |ui| {
+                label(ui, "Corner");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut s.vertical_first, false, "Horizontal first");
+                    ui.selectable_value(&mut s.vertical_first, true, "Vertical first");
+                });
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            hint(
+                ui,
+                "Name a bus with a label on it: D[0..7], {SDA SCL} or I2C{SDA SCL} (members I2C.SDA, \
+                 I2C.SCL). Signals leave through bus entries and connect by their labels.",
+            );
+        }
+        SchTool::BusEntry => {
+            grid(ui, "sch_tool", |ui| {
+                label(ui, "Direction");
+                if let Some(dir) = entry_dir_picker(ui, s.entry) {
+                    s.entry = dir;
+                }
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            hint(ui, "Click on a bus. Label the wire leaving the entry with a member of the bus. R rotates.");
+        }
         SchTool::Label => {
             grid(ui, "sch_tool", |ui| {
                 label(ui, "Name");
@@ -72,7 +114,11 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 ui.end_row();
             });
             ui.add_space(6.0);
-            hint(ui, "Labels with the same name are connected. A trailing number counts up.");
+            hint(
+                ui,
+                "Labels with the same name are connected. A trailing number counts up. On a bus, use a \
+                 bus name like D[0..7].",
+            );
         }
         SchTool::Power => {
             grid(ui, "sch_tool", |ui| {
@@ -125,4 +171,60 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
     }
     ui.add_space(6.0);
     hint(ui, "Esc ends the tool.");
+}
+
+/// Schematic problems (connectivity and bus checks), shown with nothing selected.
+/// Returns the objects and position of a clicked problem.
+pub fn problems(ui: &mut egui::Ui, doc: &Document) -> Option<(Vec<ObjectId>, Option<Point>)> {
+    let problems = &doc.connectivity().problems;
+    if problems.is_empty() {
+        return None;
+    }
+    let mut chosen = None;
+    ui.add_space(8.0);
+    let title = RichText::new(format!("Schematic problems ({})", problems.len())).strong().color(theme::warn());
+    egui::CollapsingHeader::new(title).id_salt("sch_problems").default_open(true).show(ui, |ui| {
+        const SHOWN: usize = 300;
+        for p in problems.iter().take(SHOWN) {
+            let r = ui.add(egui::Button::selectable(false, &p.message).truncate());
+            if r.on_hover_text(&p.message).clicked() {
+                chosen = Some((p.objects.clone(), p.pos));
+            }
+        }
+        if problems.len() > SHOWN {
+            hint(ui, &format!("… and {} more", problems.len() - SHOWN));
+        }
+    });
+    chosen
+}
+
+/// Four buttons showing the bus entry directions. Returns a newly picked one.
+pub fn entry_dir_picker(ui: &mut egui::Ui, current: EntryDir) -> Option<EntryDir> {
+    let mut picked = None;
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        for dir in EntryDir::ALL {
+            let (rect, r) = ui.allocate_exact_size(egui::vec2(26.0, 22.0), egui::Sense::click());
+            let selected = dir == current;
+            let v = ui.style().interact_selectable(&r, selected);
+            ui.painter().rect_filled(rect, 4.0, v.weak_bg_fill);
+            // The diagonal, from the bus end (dot) towards the wire end; y up like the canvas.
+            let o = dir.offset();
+            let d = egui::vec2(o.x.signum() as f32, -(o.y.signum() as f32)) * 5.0;
+            let c = rect.center();
+            let stroke = egui::Stroke::new(2.0, v.fg_stroke.color);
+            ui.painter().line_segment([c - d, c + d], stroke);
+            ui.painter().circle_filled(c - d, 2.0, v.fg_stroke.color);
+            let name = match dir {
+                EntryDir::UpRight => "Up right",
+                EntryDir::DownRight => "Down right",
+                EntryDir::DownLeft => "Down left",
+                EntryDir::UpLeft => "Up left",
+            };
+            if r.on_hover_text(name).clicked() && !selected {
+                picked = Some(dir);
+            }
+        }
+    });
+    picked
 }

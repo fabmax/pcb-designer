@@ -133,3 +133,49 @@ fn multi_unit_parts_place_unit_by_unit() {
     assert_eq!(s.symbols_of(first).count(), 2);
     assert_eq!(s.symbols.len(), 3);
 }
+
+#[test]
+fn draw_a_bus_with_entries() {
+    let mut doc = Document::new(Project::new("T"));
+    let mut t = SchPlacer::default();
+    let p = Point::mm;
+
+    // A bus chain continues in free space and ends on another bus.
+    t.set_tool(SchTool::Bus);
+    t.click(&mut doc, p(0.0, 0.0)).unwrap();
+    t.hover(&mut doc, Some(p(0.0, 25.4)));
+    assert_eq!(t.ghosts(), vec![SchGhost::Bus(p(0.0, 0.0), p(0.0, 25.4))]);
+    assert!(!t.click(&mut doc, p(0.0, 25.4)).unwrap().finished);
+    assert!(t.click(&mut doc, p(0.0, 25.4)).unwrap().finished);
+    t.click(&mut doc, p(10.16, 10.16)).unwrap();
+    t.hover(&mut doc, Some(p(0.0, 10.16)));
+    assert!(t.ghosts().contains(&SchGhost::Target(p(0.0, 10.16))), "the bus is a target");
+    assert!(t.click(&mut doc, p(0.0, 10.16)).unwrap().finished, "ends on the bus");
+    assert_eq!(doc.project().schematic.bus_wires.len(), 2);
+    assert!(doc.project().schematic.wires.is_empty());
+
+    // Entries: R turns them counter-clockwise, X mirrors.
+    t.set_tool(SchTool::BusEntry);
+    t.hover(&mut doc, Some(p(0.0, 5.08)));
+    assert_eq!(t.ghosts(), vec![SchGhost::Entry(p(0.0, 5.08), EntryDir::UpRight), SchGhost::Target(p(0.0, 5.08))]);
+    t.rotate();
+    assert_eq!(t.settings.entry, EntryDir::UpLeft);
+    t.mirror();
+    assert_eq!(t.settings.entry, EntryDir::UpRight);
+    t.click(&mut doc, p(0.0, 5.08)).unwrap();
+
+    // A wire drawn from the entry's free end ends on the next connection point.
+    t.set_tool(SchTool::Wire);
+    t.click(&mut doc, p(10.16, 7.62)).unwrap();
+    assert!(t.click(&mut doc, p(2.54, 7.62)).unwrap().finished, "ends on the entry");
+    t.set_tool(SchTool::Label);
+    t.settings.label = "D[0..3]".into();
+    t.click(&mut doc, p(0.0, 20.32)).unwrap();
+    t.settings.label = "D2".into();
+    t.click(&mut doc, p(10.16, 7.62)).unwrap();
+    let c = doc.current_connectivity();
+    assert_eq!(c.buses.len(), 1);
+    assert_eq!(c.buses[0].members, ["D0", "D1", "D2", "D3"]);
+    assert!(c.problems.is_empty(), "{:?}", c.problems);
+    assert_eq!(c.nets.iter().filter(|n| n.named).map(|n| n.name.as_str()).collect::<Vec<_>>(), ["D2"]);
+}

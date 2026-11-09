@@ -9,6 +9,11 @@ fn every_object_kind_round_trips() {
     let mut p = demo_project();
     let sheet = p.schematic.first_sheet().unwrap();
     p.put(Object::Junction(Junction { id: Id::new(), sheet, pos: Point::mm(1.0, 2.0) }), None);
+    p.put(Object::BusWire(BusWire { id: Id::new(), sheet, a: Point::mm(0.0, 0.0), b: Point::mm(0.0, 5.08) }), None);
+    p.put(
+        Object::BusEntry(BusEntry { id: Id::new(), sheet, pos: Point::mm(0.0, 2.54), dir: EntryDir::DownLeft }),
+        None,
+    );
     let text = Text::new("REV A", Point::mm(3.0, 3.0), mm(1.0));
     p.put(Object::BoardText(BoardText { id: Id::new(), layer: LayerId::TOP_SILK, text }), None);
 
