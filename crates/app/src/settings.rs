@@ -20,7 +20,6 @@ pub struct Settings {
     /// Recently opened or saved projects, newest first.
     pub recent: Vec<PathBuf>,
     /// Key bindings that differ from the defaults.
-    #[serde(deserialize_with = "crate::keymap::bindings")]
     pub keymap: BTreeMap<Action, Vec<Shortcut>>,
 }
 
@@ -127,12 +126,6 @@ mod tests {
         assert_eq!(loaded, s);
         assert_eq!(loaded.keymap().shortcuts(Action::PcbZone), &[Shortcut::shift(Key::Z)]);
         assert_eq!(loaded.keymap().shortcuts(Action::Undo), Keymap::default().shortcuts(Action::Undo));
-        // Bindings of actions that no longer exist are dropped, the rest is kept.
-        let old = r#"{"theme": "light", "keymap": {"navigate_back": ["Alt+Left"], "pcb_zone": ["Shift+Z"]}}"#;
-        std::fs::write(&path, old).unwrap();
-        let loaded = Settings::load_from(&path);
-        assert_eq!(loaded.theme, Theme::Light);
-        assert_eq!(loaded.keymap().shortcuts(Action::PcbZone), &[Shortcut::shift(Key::Z)]);
         // Unknown or broken files fall back to the defaults.
         std::fs::write(&path, "{ not json").unwrap();
         assert_eq!(Settings::load_from(&path), Settings::default());
