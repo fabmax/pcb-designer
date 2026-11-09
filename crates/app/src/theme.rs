@@ -79,7 +79,7 @@ pub fn dialog<R>(
             .inner_margin(Margin { left: PAD, right: PAD, top: 11, bottom: 10 })
             .show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
-                ui.label(egui::RichText::new(title).size(17.0).strong().color(accent()));
+                bold_label(ui, title, 17.0, accent());
             });
         let line = bar.response.rect;
         ui.painter().hline(line.x_range(), line.bottom(), Stroke::new(1.0, border()));
@@ -91,6 +91,17 @@ pub fn dialog<R>(
             })
             .inner
     })
+}
+
+/// Text in a bolder weight. egui ships no bold face, so the text is drawn three times,
+/// smeared sideways by `BOLD` points.
+pub fn bold_label(ui: &mut egui::Ui, text: &str, size: f32, color: Color32) {
+    const BOLD: f32 = 0.8;
+    let galley = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(size), color);
+    let (rect, _) = ui.allocate_exact_size(galley.size() + egui::vec2(BOLD, 0.0), egui::Sense::hover());
+    for dx in [0.0, BOLD / 2.0, BOLD] {
+        ui.painter().galley(rect.min + egui::vec2(dx, 0.0), galley.clone(), color);
+    }
 }
 
 /// Round the corners of `rect` after its content was painted (content that can't be
