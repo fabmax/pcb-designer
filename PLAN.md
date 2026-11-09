@@ -80,8 +80,8 @@ effect on the board.
 - The running app hosts an **MCP server (Streamable HTTP on 127.0.0.1, opt-in via the
   Tools menu or `--mcp`)** using the official Rust SDK (`rmcp`). Agents operate on the open project,
   and the user watches the changes live.
-- A headless mode (`pcb-designer --mcp-stdio project.pcbproj`) for agents without a GUI is
-  added later.
+- A headless mode (`pcb-designer --mcp-stdio project.pcbproj`) serves agents without a
+  GUI (M10).
 - **Every MCP tool goes through the editor-core command API**, the same path as the GUI.
   Undo, live sync and validation therefore work the same way for agents and humans.
 - Threading: the server runs on a tokio runtime. Requests travel over a channel to the app
@@ -112,7 +112,7 @@ effect on the board.
 | 7 | **PCB editor:** outline, layer stack (N layers, 2 by default), live footprint sync, ratsnest, manual routing (45°/90°), vias, net highlighting | A small board can be fully routed |
 | 8 | Sync edge cases (flagged tracks, swaps), cross-probing | Schematic edits update the PCB correctly in all cases |
 | 9 | **Copper zones** (fill with clearance, thermal reliefs) + **DRC** (clearance, unrouted, overlaps) | Zones fill correctly; DRC finds seeded errors |
-| 10 | UX polish, theming, headless MCP mode | |
+| 10 | UX polish, theming, headless MCP mode | An agent edits, checks and saves a project over stdio without a window; dark/light themes recolour everything and persist with key bindings and recent projects |
 
 **Later:** multi-sheet/hierarchical schematics, buses, Gerber export,
 autoplacement, autorouting, simulation.
@@ -626,3 +626,55 @@ and level of detail for tiny primitives.
   - Per-net clearance classes.
 - Dev aid: `cargo run -p mcp --example render_board -- out.png` renders the demo board
   offscreen after a DRC. It needs no window, which helps when the display is asleep.
+
+## Milestone 10 results (2026-11-09)
+
+- **Headless MCP mode:** `pcb-designer --mcp-stdio [PROJECT_DIR | --demo]`.
+  - `mcp::stdio::serve` runs the protocol on a background thread (current-thread tokio
+    runtime). The calling thread owns the `HeadlessHost` and answers calls until the
+    client disconnects.
+  - It serves the same tools as the GUI server; its instructions say it is headless.
+  - A folder that doesn't exist yet becomes a new project, saved there by
+    `save_project`.
+  - Screenshots render offscreen, and logs go to stderr.
+  - `mcp/tests/stdio.rs` drives a whole session over an in-memory pipe: read, route,
+    DRC, screenshot, save, reload from disk.
+  - The release binary was smoke-tested with raw JSON-RPC over real stdin/stdout.
+  - Tools → "Copy Claude Code command (headless)" gives the `claude mcp add … --
+    pcb-designer --mcp-stdio PROJECT` line.
+- **Themes (dark and light):**
+  - Canvas colours moved from constants into `view::style::Palette`, with `DARK` and
+    `LIGHT` palettes.
+  - The active palette is a global (`set_theme`, `pal()`). It is baked into scene
+    instances when objects are drawn.
+  - `Document::restyle` rebuilds both views with their overlays: connectivity, copper
+    and fills, net highlights, cross-probe, DRC markers. `ItemView::restyle` does the
+    same for library editors.
+  - Canvas backgrounds come from the palette too.
+  - App chrome colours are functions of the same theme, so chrome and canvases always
+    match.
+  - Switch with View → Dark/Light theme, or in Settings.
+  - `view/tests/theme.rs`: after a restyle, colours per layer equal a fresh build in
+    the new theme, and switching back restores the old colours.
+- **Settings** (`app::settings`, JSON in the platform configuration folder;
+  `PCB_DESIGNER_CONFIG` overrides it):
+  - Saves the theme, recent projects (newest first, 10) and the key bindings that
+    differ from the defaults. Broken files fall back to the defaults.
+  - **Edit → Settings…** (⌘,) has the theme and an editable shortcut list: `×` removes
+    a shortcut, `+` records the next key press with its modifiers (Esc cancels). It
+    warns about conflicts and can reset to the defaults. Help → Keyboard shortcuts
+    opens the same window.
+  - `--keymap FILE` still applies for one session.
+  - **File → Open recent** lists the projects; opening and saving add to the list.
+- **Small things:**
+  - Tools → Run design rule check.
+  - The README covers headless mode and settings.
+  - `render_board` example: `--light` and `--schematic`.
+- **Verification:** light-theme renders of board and schematic, made offscreen with
+  `cargo run -p mcp --example render_board -- out.png --light [--schematic]`. Window
+  screenshots weren't possible in this session: the display was asleep and eframe drew
+  no frames. The settings window and theme switch in the GUI still need a manual look.
+- **Not yet:**
+  - Saved window layout and pane sizes. The eframe persistence feature is off.
+  - Per-layer colour customisation.
+  - UI scale.

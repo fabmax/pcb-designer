@@ -16,7 +16,7 @@ use crate::theme;
 pub fn toolbar(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) -> Option<PcbTool> {
     let mut chosen = None;
     let full = ui.max_rect();
-    egui::Frame::NONE.fill(theme::PANEL_DARK).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+    egui::Frame::NONE.fill(theme::panel_dark()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
         ui.set_width(full.width() - 16.0);
         ui.horizontal(|ui| {
             for &tool in PcbTool::ALL {
@@ -29,22 +29,22 @@ pub fn toolbar(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) -> Option
             ui.separator();
             let copper = doc.copper();
             let text = match copper.unrouted() {
-                0 => RichText::new("Fully routed").color(theme::SUCCESS),
-                n => RichText::new(format!("{n} unrouted")).color(theme::TEXT_DIM),
+                0 => RichText::new("Fully routed").color(theme::success()),
+                n => RichText::new(format!("{n} unrouted")).color(theme::text_dim()),
             };
             ui.label(text);
             let flagged = copper.flagged().count();
             if flagged > 0 {
-                ui.label(RichText::new(format!("{flagged} flagged")).color(theme::WARN))
+                ui.label(RichText::new(format!("{flagged} flagged")).color(theme::warn()))
                     .on_hover_text("Tracks and vias in a short, or touching no pad (see Board problems)");
             }
             if !copper.shorts.is_empty() {
                 let tip: Vec<String> = copper.shorts.iter().map(|(nets, _)| nets.join(" ↔ ")).collect();
-                ui.label(RichText::new(format!("{} short(s)", copper.shorts.len())).color(theme::WARN))
+                ui.label(RichText::new(format!("{} short(s)", copper.shorts.len())).color(theme::warn()))
                     .on_hover_text(tip.join("\n"));
             }
             ui.separator();
-            ui.add(egui::Label::new(RichText::new(pcb.tool().hint()).color(theme::TEXT_DIM)).truncate());
+            ui.add(egui::Label::new(RichText::new(pcb.tool().hint()).color(theme::text_dim())).truncate());
         });
     });
     chosen
@@ -220,7 +220,7 @@ pub fn problems(ui: &mut egui::Ui, doc: &Document) -> Option<Vec<ObjectId>> {
     }
     let mut select = None;
     ui.add_space(8.0);
-    egui::CollapsingHeader::new(RichText::new("Board problems").strong().color(theme::WARN)).default_open(true).show(
+    egui::CollapsingHeader::new(RichText::new("Board problems").strong().color(theme::warn())).default_open(true).show(
         ui,
         |ui| {
             for (nets, at) in &copper.shorts {
@@ -246,10 +246,10 @@ pub fn drc(ui: &mut egui::Ui, doc: &mut Document) -> Option<(Vec<ObjectId>, Poin
     ui.add_space(8.0);
     let title = match doc.drc() {
         Some(r) if r.violations.is_empty() => {
-            RichText::new("Design rules: no violations").strong().color(theme::SUCCESS)
+            RichText::new("Design rules: no violations").strong().color(theme::success())
         }
         Some(r) => {
-            RichText::new(format!("Design rules: {} violation(s)", r.violations.len())).strong().color(theme::WARN)
+            RichText::new(format!("Design rules: {} violation(s)", r.violations.len())).strong().color(theme::warn())
         }
         None => RichText::new("Design rule check").strong(),
     };
@@ -273,7 +273,7 @@ pub fn drc(ui: &mut egui::Ui, doc: &mut Document) -> Option<(Vec<ObjectId>, Poin
             report.time.as_secs_f64() * 1e3,
             if outdated { " · board changed since" } else { "" }
         );
-        ui.label(RichText::new(status).color(if outdated { theme::WARN } else { theme::TEXT_DIM }));
+        ui.label(RichText::new(status).color(if outdated { theme::warn() } else { theme::text_dim() }));
         const SHOWN: usize = 300;
         let mut kind: Option<ViolationKind> = None;
         for v in report.violations.iter().take(SHOWN) {

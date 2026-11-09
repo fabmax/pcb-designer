@@ -39,7 +39,7 @@ tempfile = "3"
 rstar = "0.14"
 rfd = "0.18"
 schemars = { version = "1.0", features = ["derive", "uuid1"] }
-rmcp = { version = "3.9", default-features = false, features = ["server", "macros", "base64", "transport-streamable-http-server"] }
+rmcp = { version = "3.9", default-features = false, features = ["server", "macros", "base64", "transport-streamable-http-server", "transport-io"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
 tokio-util = "0.7"
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }

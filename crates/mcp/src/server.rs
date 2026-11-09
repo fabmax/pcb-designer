@@ -31,6 +31,15 @@ pub type Waker = Arc<dyn Fn() + Send + Sync>;
 
 const INSTRUCTIONS: &str = "\
 PCB Designer: inspect and edit the project open in the app. The user sees every change live.
+";
+
+const HEADLESS_INSTRUCTIONS: &str = "\
+PCB Designer (headless): inspect and edit the project this server was started with. Nothing is \
+shown on screen; screenshot renders views offscreen. save_project writes the project folder \
+(pass a path if it was started without one).
+";
+
+const COMMON_INSTRUCTIONS: &str = "
 
 Units: coordinates and sizes are integers in nanometers (1 mm = 1000000, 1 mil = 25400); \
 angles are degrees, counter-clockwise; Y points up.
@@ -196,13 +205,19 @@ pub struct SaveParams {
 pub struct PcbTools {
     calls: Sender<Call>,
     wake: Waker,
+    headless: bool,
     #[allow(dead_code, reason = "read by the tool_handler macro")]
     tool_router: ToolRouter<Self>,
 }
 
 impl PcbTools {
     pub fn new(calls: Sender<Call>, wake: Waker) -> Self {
-        PcbTools { calls, wake, tool_router: Self::tool_router() }
+        PcbTools { calls, wake, headless: false, tool_router: Self::tool_router() }
+    }
+
+    /// Tools for a host without a window (the instructions say so).
+    pub fn headless(calls: Sender<Call>) -> Self {
+        PcbTools { headless: true, ..Self::new(calls, Arc::new(|| {})) }
     }
 
     async fn call(&self, request: Request) -> Result<CallToolResult, ErrorData> {
@@ -381,7 +396,10 @@ impl ServerHandler for PcbTools {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new("pcb-designer", env!("CARGO_PKG_VERSION")))
-            .with_instructions(INSTRUCTIONS)
+            .with_instructions(format!(
+                "{}{COMMON_INSTRUCTIONS}",
+                if self.headless { HEADLESS_INSTRUCTIONS } else { INSTRUCTIONS }
+            ))
     }
 }
 

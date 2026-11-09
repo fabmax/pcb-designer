@@ -252,7 +252,7 @@ impl Properties {
         let target = ObjectId::Component(c.id);
         heading(ui, &c.refdes, &part.name);
         if !part.description.is_empty() {
-            ui.label(RichText::new(&part.description).color(theme::TEXT_DIM));
+            ui.label(RichText::new(&part.description).color(theme::text_dim()));
         }
         ui.add_space(4.0);
         grid(ui, |ui| {
@@ -309,7 +309,7 @@ impl Properties {
         let Some(c) = project.schematic.components.get(f.component).cloned() else { return };
         let fp_name = project.library.footprint_of(c.part, c.variant).map_or("?".into(), |fp| fp.name.clone());
         heading(ui, &c.refdes, &fp_name);
-        ui.label(RichText::new("Reference, value and footprint are edited in the schematic.").color(theme::TEXT_DIM));
+        ui.label(RichText::new("Reference, value and footprint are edited in the schematic.").color(theme::text_dim()));
         ui.add_space(4.0);
         grid(ui, |ui| {
             row(ui, "Value", c.value.clone());
@@ -357,7 +357,7 @@ fn heading(ui: &mut egui::Ui, title: &str, subtitle: &str) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(title).strong().size(16.0));
         if !subtitle.is_empty() {
-            ui.label(RichText::new(subtitle).color(theme::TEXT_DIM));
+            ui.label(RichText::new(subtitle).color(theme::text_dim()));
         }
     });
 }
@@ -367,7 +367,7 @@ fn grid(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
 }
 
 fn label(ui: &mut egui::Ui, text: &str) {
-    ui.label(RichText::new(text).color(theme::TEXT_DIM));
+    ui.label(RichText::new(text).color(theme::text_dim()));
 }
 
 fn row(ui: &mut egui::Ui, k: &str, v: String) {
@@ -425,7 +425,7 @@ fn copper_net_row(ui: &mut egui::Ui, doc: &Document, item: CopperItem) {
         None => return,
     };
     label(ui, "Problem");
-    ui.label(RichText::new(flag).color(theme::WARN));
+    ui.label(RichText::new(flag).color(theme::warn()));
     ui.end_row();
 }
 
@@ -517,14 +517,14 @@ fn multiple(ui: &mut egui::Ui, ids: &[ObjectId]) {
         }
     });
     ui.add_space(6.0);
-    ui.label(RichText::new("R rotate · X mirror · F flip · Del delete").color(theme::TEXT_DIM));
+    ui.label(RichText::new("R rotate · X mirror · F flip · Del delete").color(theme::text_dim()));
 }
 
 fn project_summary(ui: &mut egui::Ui, doc: &Document) {
     let p = doc.project();
     heading(ui, &p.name, "");
     if let Some(path) = &doc.path {
-        ui.label(RichText::new(path.display().to_string()).color(theme::TEXT_DIM).small());
+        ui.label(RichText::new(path.display().to_string()).color(theme::text_dim()).small());
     }
     ui.add_space(4.0);
     grid(ui, |ui| {
@@ -540,5 +540,5 @@ fn project_summary(ui: &mut egui::Ui, doc: &Document) {
         row(ui, "Library parts", p.library.parts.len().to_string());
     });
     ui.add_space(8.0);
-    ui.label(RichText::new("Nothing selected").color(theme::TEXT_DIM));
+    ui.label(RichText::new("Nothing selected").color(theme::text_dim()));
 }

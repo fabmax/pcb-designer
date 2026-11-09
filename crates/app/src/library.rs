@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use egui::RichText;
 use model::*;
-use render::gpu::Background;
 use view::item::{Content, Elem, Item, ItemTarget, ItemView};
 use view::tools::{Placer, Tool};
 use view::{Interaction, KeyAction, LibraryDoc};
@@ -56,7 +55,7 @@ pub struct LibraryEditor {
 
 impl LibraryEditor {
     pub fn new(key: u64, lib: LibraryDoc) -> Self {
-        let canvas = Canvas::new(1000 + key, Background { grid: 1.27, ..Default::default() });
+        let canvas = Canvas::new(1000 + key, view::style::background(1.27));
         LibraryEditor {
             key,
             lib,
@@ -265,11 +264,11 @@ impl LibraryEditor {
         ui.horizontal(|ui| {
             ui.label(RichText::new(self.lib.name()).strong().size(16.0));
             if self.lib.is_modified() {
-                ui.label(RichText::new("modified").color(theme::WARN).small());
+                ui.label(RichText::new("modified").color(theme::warn()).small());
             }
         });
         let path = self.path().map_or("Not saved yet".to_string(), |p| p.display().to_string());
-        ui.label(RichText::new(path).color(theme::TEXT_DIM).small());
+        ui.label(RichText::new(path).color(theme::text_dim()).small());
         ui.horizontal(|ui| {
             if ui.button("Save").clicked() {
                 event = Some(LibEvent::Save);
@@ -442,12 +441,12 @@ impl LibraryEditor {
                             "{}\n\nOpen a part, symbol or footprint from the list on the left, or create one with +.",
                             self.lib.name()
                         ))
-                        .color(theme::TEXT_DIM),
+                        .color(theme::text_dim()),
                     );
                 });
             }
             Open::Part(id) => {
-                let frame = egui::Frame::NONE.fill(theme::PANEL).inner_margin(egui::Margin::same(16));
+                let frame = egui::Frame::NONE.fill(theme::panel()).inner_margin(egui::Margin::same(16));
                 frame.show(ui, |ui| {
                     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                         let mut message = None;
@@ -468,7 +467,7 @@ impl LibraryEditor {
     /// Back / forward and what is shown, above the editor or part form.
     fn nav_bar(&mut self, ui: &mut egui::Ui) {
         let width = ui.max_rect().width();
-        egui::Frame::NONE.fill(theme::PANEL_DARK).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+        egui::Frame::NONE.fill(theme::panel_dark()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
             ui.set_width(width - 16.0);
             ui.horizontal(|ui| {
                 let back = self.back.last().map(|o| self.describe(*o));
@@ -493,7 +492,7 @@ impl LibraryEditor {
 
     fn item_ui(&mut self, ui: &mut egui::Ui, item: Item) {
         let full = ui.max_rect();
-        egui::Frame::NONE.fill(theme::PANEL_DARK).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+        egui::Frame::NONE.fill(theme::panel_dark()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
             ui.set_width(full.width() - 16.0);
             ui.horizontal_wrapped(|ui| {
                 for &tool in Tool::for_item(item) {
@@ -534,7 +533,7 @@ impl LibraryEditor {
                     _ => "Click to place · R rotate · Esc done",
                 };
                 // Truncated so a narrow tab never grows wider than its tile.
-                ui.add(egui::Label::new(RichText::new(tip).color(theme::TEXT_DIM)).truncate());
+                ui.add(egui::Label::new(RichText::new(tip).color(theme::text_dim())).truncate());
             });
         });
 
@@ -933,9 +932,9 @@ pub fn issues_ui(ui: &mut egui::Ui, issues: &[String]) {
         return;
     }
     ui.add_space(8.0);
-    ui.label(RichText::new(format!("{} problem(s)", issues.len())).color(theme::WARN).strong());
+    ui.label(RichText::new(format!("{} problem(s)", issues.len())).color(theme::warn()).strong());
     for i in issues {
-        ui.label(RichText::new(i).color(theme::WARN));
+        ui.label(RichText::new(i).color(theme::warn()));
     }
 }
 

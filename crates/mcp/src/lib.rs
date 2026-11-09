@@ -10,6 +10,7 @@
 pub mod headless;
 pub mod host;
 pub mod server;
+pub mod stdio;
 
 pub use host::{Call, Host, Reply, Request, handle};
 pub use server::{McpServer, Waker};

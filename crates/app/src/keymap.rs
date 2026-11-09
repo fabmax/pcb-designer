@@ -46,6 +46,7 @@ pub enum Action {
     PcbOutline,
     PcbZone,
     PcbNextLayer,
+    Settings,
 }
 
 /// Where an action's shortcut applies. Actions of different contexts may share a key.
@@ -89,6 +90,7 @@ impl Action {
         Action::PcbOutline,
         Action::PcbZone,
         Action::PcbNextLayer,
+        Action::Settings,
     ];
 
     pub fn label(self) -> &'static str {
@@ -124,6 +126,7 @@ impl Action {
             Action::PcbOutline => "Board outline tool (PCB)",
             Action::PcbZone => "Copper zone tool (PCB)",
             Action::PcbNextLayer => "Next copper layer; adds a via while routing (PCB)",
+            Action::Settings => "Settings",
         }
     }
 
@@ -303,6 +306,7 @@ impl Default for Keymap {
             (Action::PcbOutline, vec![S::key(Key::O)]),
             (Action::PcbZone, vec![S::key(Key::Z)]),
             (Action::PcbNextLayer, vec![S::key(Key::L)]),
+            (Action::Settings, vec![S::cmd(Key::Comma)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
     }
@@ -319,6 +323,11 @@ impl Keymap {
 
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("keymap serializes")
+    }
+
+    /// Replace the shortcuts of an action (empty: unbound).
+    pub fn set(&mut self, action: Action, shortcuts: Vec<Shortcut>) {
+        self.bindings.insert(action, shortcuts);
     }
 
     pub fn shortcuts(&self, action: Action) -> &[Shortcut] {

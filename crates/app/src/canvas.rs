@@ -232,7 +232,7 @@ pub fn draw_box(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, r: model::Rect
     let a = canvas.world_to_screen(r.min.to_mm());
     let b = canvas.world_to_screen(r.max.to_mm());
     let rect = egui::Rect::from_two_pos(a, b);
-    let color = if crossing { theme::SUCCESS } else { theme::ACCENT };
+    let color = if crossing { theme::success() } else { theme::accent() };
     let painter = ui.painter_at(clip);
     painter.rect_filled(rect, 0.0, color.gamma_multiply(0.12));
     if crossing {

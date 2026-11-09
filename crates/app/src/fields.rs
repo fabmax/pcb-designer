@@ -114,7 +114,7 @@ pub fn heading(ui: &mut egui::Ui, title: &str, subtitle: &str) {
     ui.horizontal(|ui| {
         ui.label(RichText::new(title).strong().size(16.0));
         if !subtitle.is_empty() {
-            ui.label(RichText::new(subtitle).color(theme::TEXT_DIM));
+            ui.label(RichText::new(subtitle).color(theme::text_dim()));
         }
     });
 }
@@ -124,7 +124,7 @@ pub fn grid(ui: &mut egui::Ui, salt: &str, add: impl FnOnce(&mut egui::Ui)) {
 }
 
 pub fn label(ui: &mut egui::Ui, text: &str) {
-    ui.label(RichText::new(text).color(theme::TEXT_DIM));
+    ui.label(RichText::new(text).color(theme::text_dim()));
 }
 
 pub fn row(ui: &mut egui::Ui, k: &str, v: String) {
@@ -134,7 +134,7 @@ pub fn row(ui: &mut egui::Ui, k: &str, v: String) {
 }
 
 pub fn hint(ui: &mut egui::Ui, text: &str) {
-    ui.label(RichText::new(text).color(theme::TEXT_DIM));
+    ui.label(RichText::new(text).color(theme::text_dim()));
 }
 
 /// Quarter-turn picker. Returns the new angle if changed.

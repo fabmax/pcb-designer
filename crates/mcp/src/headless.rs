@@ -26,7 +26,7 @@ pub fn background(view: ViewKind) -> Background {
         ViewKind::Schematic => 2.54,
         ViewKind::Board => 1.0,
     };
-    Background { grid, ..Default::default() }
+    view::style::background(grid)
 }
 
 impl Host for HeadlessHost {

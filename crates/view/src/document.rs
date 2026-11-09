@@ -107,6 +107,19 @@ impl Document {
         self.board.set_drc(&[]);
     }
 
+    /// Redraw both views and their overlays in the current palette (after
+    /// [`crate::style::set_theme`]).
+    pub fn restyle(&mut self) {
+        let project = self.editor.project();
+        for view in [&mut self.schematic, &mut self.board] {
+            let probed = view.probed().to_vec();
+            view.rebuild(project);
+            view.set_probe(project, &probed);
+        }
+        self.schematic.set_connectivity(&self.connectivity);
+        self.board.set_copper(project, &self.copper);
+    }
+
     /// Highlight the copper of these nets on the board (empty clears).
     pub fn highlight_nets(&mut self, nets: &[String]) {
         self.board.set_nets(&self.copper, nets);

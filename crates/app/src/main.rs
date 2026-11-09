@@ -6,6 +6,10 @@
 //!                     [--kicad DIR]... [--kicad-pick [footprint:]LIB:NAME]... [--kicad-import]
 //!                     [--kicad-search [footprint:]TEXT]
 //!                     [--screenshot FILE.png [--frames N] [--select all|REFDES]]
+//!        pcb-designer --mcp-stdio [PROJECT_DIR | --demo]
+//!
+//! `--mcp-stdio` runs without a window: an MCP server on stdin/stdout for agents. A
+//! project folder that doesn't exist yet becomes a new project saved there.
 //!
 //! `--show NAME` opens a part, symbol or footprint of the last opened (or starter)
 //! library in its editor tab; repeat it to navigate several steps.
@@ -28,6 +32,7 @@ mod pcb_ui;
 mod properties;
 mod sch_ui;
 mod script;
+mod settings;
 mod theme;
 
 use app::{Options, Startup};
@@ -39,7 +44,7 @@ fn main() -> eframe::Result {
         screenshot: None,
         screenshot_frames: 30,
         select: None,
-        keymap: keymap::Keymap::default(),
+        keymap: None,
         mcp: None,
         library: Vec::new(),
         show: Vec::new(),
@@ -50,11 +55,14 @@ fn main() -> eframe::Result {
         script: None,
     };
     let mut vsync = true;
+    let mut stdio = false;
+    let mut startup_given = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--demo" => opts.startup = Startup::Demo,
-            "--new" => opts.startup = Startup::Empty,
+            "--demo" => (opts.startup, startup_given) = (Startup::Demo, true),
+            "--new" => (opts.startup, startup_given) = (Startup::Empty, true),
+            "--mcp-stdio" => stdio = true,
             "--stress" => opts.startup = Startup::Stress(args.next().and_then(|v| v.parse().ok()).unwrap_or(2_000)),
             "--no-vsync" => vsync = false,
             "--screenshot" => opts.screenshot = args.next(),
@@ -79,14 +87,23 @@ fn main() -> eframe::Result {
                         for (shortcut, actions) in map.conflicts() {
                             eprintln!("keymap: {shortcut} is bound to several actions: {actions:?}");
                         }
-                        opts.keymap = map;
+                        opts.keymap = Some(map);
                     }
                     Err(e) => eprintln!("keymap {path:?} not loaded: {e}"),
                 }
             }
-            other if !other.starts_with("--") => opts.startup = Startup::Open(other.into()),
+            other if !other.starts_with("--") => (opts.startup, startup_given) = (Startup::Open(other.into()), true),
             other => eprintln!("ignoring unknown argument {other:?}"),
         }
+    }
+
+    if stdio {
+        let startup = if startup_given { opts.startup } else { Startup::Empty };
+        if let Err(e) = run_stdio(startup) {
+            eprintln!("pcb-designer: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
     }
 
     let mut wgpu_options = egui_wgpu::WgpuConfiguration::default();
@@ -103,4 +120,27 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native("PCB Designer", options, Box::new(move |cc| Ok(Box::new(app::PcbApp::new(cc, opts)))))
+}
+
+/// Headless MCP server on stdin/stdout.
+fn run_stdio(startup: Startup) -> Result<(), String> {
+    use model::Project;
+    use view::Document;
+    let doc = match startup {
+        Startup::Open(path) if path.exists() => {
+            Document::open(&path).map_err(|e| format!("cannot open {}: {e}", path.display()))?
+        }
+        Startup::Open(path) => {
+            let name = path.file_stem().map_or("Untitled".into(), |n| n.to_string_lossy().into_owned());
+            let mut doc = Document::new(Project::new(&name));
+            doc.path = Some(path);
+            doc
+        }
+        Startup::Demo => Document::new(view::demo::demo_project()),
+        Startup::Empty => Document::new(Project::new("Untitled")),
+        Startup::Stress(n) => Document::new(view::demo::stress_project(n)),
+    };
+    log::info!("MCP on stdio: {}", doc.title());
+    let mut host = mcp::headless::HeadlessHost::new(doc);
+    mcp::stdio::serve_stdio(&mut host)
 }
