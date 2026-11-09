@@ -16,7 +16,7 @@ use crate::theme;
 pub fn toolbar(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) -> Option<PcbTool> {
     let mut chosen = None;
     let full = ui.max_rect();
-    egui::Frame::NONE.fill(theme::panel_dark()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
+    egui::Frame::NONE.fill(theme::panel()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
         ui.set_width(full.width() - 16.0);
         ui.horizontal(|ui| {
             for &tool in PcbTool::ALL {
