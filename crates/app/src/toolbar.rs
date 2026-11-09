@@ -263,8 +263,9 @@ pub fn layer_menu(ui: &mut Ui, scene: &mut Scene, entries: &[LayerEntry]) {
     }
 }
 
-/// Grid menu: display unit, grid size (presets for `kind` or any value) and visibility.
-pub fn grid_menu(ui: &mut Ui, grid: &mut Coord, background: &mut Background, kind: GridKind) {
+/// Grid menu: display unit, grid size (presets for `kind` or any value), snapping and
+/// visibility.
+pub fn grid_menu(ui: &mut Ui, grid: &mut Coord, snap: &mut bool, background: &mut Background, kind: GridKind) {
     let mut set = |grid: &mut Coord, g: Coord| {
         *grid = g;
         background.grid = Unit::Mm.value(g) as f32;
@@ -312,6 +313,7 @@ pub fn grid_menu(ui: &mut Ui, grid: &mut Coord, background: &mut Background, kin
         }
     }
     ui.separator();
+    ui.checkbox(snap, "Snap to grid").on_hover_text("Off: place and move freely, to the nanometre");
     ui.checkbox(&mut background.show_grid, "Show grid");
 }
 

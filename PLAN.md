@@ -743,3 +743,8 @@ and level of detail for tiny primitives.
   - The unit is global (`app/src/units.rs`, like the theme) and saved in settings.json.
     It applies everywhere lengths are shown or typed: property fields, tool settings,
     design rules, the board problems list and the status bar. The model stays in nm.
+- **Snap to grid toggle** in the grid menu (per editor, `Interaction::snap`). Off:
+  pointer positions are used as they are, to the nm. The grid keeps its size and stays
+  visible, so turning snapping back on restores the spacing. The status bar shows
+  "no snap" while it is off. Copper snapping in the router (`snap_to_copper`) is
+  separate and stays on.
