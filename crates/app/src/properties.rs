@@ -105,6 +105,29 @@ impl Properties {
                     net_rows(ui, cx.doc, id);
                 });
             }
+            Object::BusWire(w) => {
+                heading(ui, "Bus", "");
+                grid(ui, |ui| {
+                    row(ui, "Start", fmt_point(w.a));
+                    row(ui, "End", fmt_point(w.b));
+                    row(ui, "Length", units::fmt((w.b - w.a).length().round() as Coord));
+                    bus_rows(ui, cx.doc, id);
+                });
+            }
+            Object::BusEntry(mut e) => {
+                heading(ui, "Bus entry", "");
+                grid(ui, |ui| {
+                    row(ui, "Position", fmt_point(e.pos));
+                    label(ui, "Direction");
+                    if let Some(dir) = crate::sch_ui::entry_dir_picker(ui, e.dir) {
+                        e.dir = dir;
+                        self.update(cx, Object::BusEntry(e.clone()), false);
+                    }
+                    ui.end_row();
+                    bus_rows(ui, cx.doc, id);
+                    net_rows(ui, cx.doc, id);
+                });
+            }
             Object::Junction(j) => {
                 heading(ui, "Junction", "");
                 grid(ui, |ui| {
@@ -113,7 +136,8 @@ impl Properties {
                 });
             }
             Object::Label(mut l) => {
-                heading(ui, "Net label", "");
+                let bus = editor_core::bus::is_bus_name(&l.name);
+                heading(ui, if bus { "Bus label" } else { "Net label" }, "");
                 grid(ui, |ui| {
                     label(ui, "Name");
                     if let Some(name) = self.text(ui, id, "name", &l.name) {
@@ -133,7 +157,11 @@ impl Properties {
                     }
                     ui.end_row();
                     row(ui, "Position", fmt_point(l.pos));
-                    net_rows(ui, cx.doc, id);
+                    if bus {
+                        bus_rows(ui, cx.doc, id);
+                    } else {
+                        net_rows(ui, cx.doc, id);
+                    }
                 });
             }
             Object::SchText(mut t) => {
@@ -433,6 +461,34 @@ fn copper_net_row(ui: &mut egui::Ui, doc: &Document, item: CopperItem) {
     ui.end_row();
 }
 
+/// Name and members of the bus of a bus wire, entry or label.
+fn bus_rows(ui: &mut egui::Ui, doc: &Document, id: ObjectId) {
+    let Some(bus) = doc.connectivity().bus_of(id) else {
+        if matches!(id, ObjectId::BusEntry(_) | ObjectId::Label(_)) {
+            label(ui, "Problem");
+            ui.label(RichText::new("not on a bus").color(theme::warn()));
+            ui.end_row();
+        }
+        return;
+    };
+    if bus.name.is_empty() {
+        label(ui, "Bus");
+        ui.label(RichText::new("unnamed (add a label like D[0..7])").color(theme::warn()));
+        ui.end_row();
+        return;
+    }
+    row(ui, "Bus", bus.name.clone());
+    const MAX: usize = 64;
+    let mut members: Vec<&str> = bus.members.iter().take(MAX).map(String::as_str).collect();
+    let more = format!("… {} more", bus.members.len().saturating_sub(MAX));
+    if bus.members.len() > MAX {
+        members.push(&more);
+    }
+    label(ui, &format!("Members ({})", bus.members.len()));
+    ui.add(egui::Label::new(RichText::new(members.join(" ")).monospace()).wrap());
+    ui.end_row();
+}
+
 /// Net name and the pins on it.
 fn net_rows(ui: &mut egui::Ui, doc: &Document, id: ObjectId) {
     let Some(net) = doc.connectivity().net_of(id) else { return };
@@ -535,6 +591,9 @@ fn project_summary(ui: &mut egui::Ui, doc: &Document) {
         row(ui, "Components", p.schematic.components.len().to_string());
         row(ui, "Wires", p.schematic.wires.len().to_string());
         row(ui, "Labels", p.schematic.labels.len().to_string());
+        if !p.schematic.bus_wires.is_empty() {
+            row(ui, "Buses", doc.connectivity().buses.len().to_string());
+        }
         let conn = doc.connectivity();
         row(ui, "Nets", conn.netlist().filter(|n| n.pins.len() > 1 || n.named).count().to_string());
         row(ui, "Unconnected pins", conn.unconnected.len().to_string());

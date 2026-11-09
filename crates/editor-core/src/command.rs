@@ -58,6 +58,22 @@ pub enum Command {
         sheet: Option<Id>,
         points: Vec<Point>,
     },
+    /// Polyline of bus segments. Name the bus with a label whose name uses bus syntax
+    /// (`D[0..7]`, `{SDA SCL}`, `I2C{SDA SCL}`) placed on it.
+    AddBus {
+        #[serde(default)]
+        sheet: Option<Id>,
+        points: Vec<Point>,
+    },
+    /// Bus entry with its bus end at `pos`; a signal's wire attaches at the other end,
+    /// 2.54 mm away diagonally in direction `dir`.
+    AddBusEntry {
+        #[serde(default)]
+        sheet: Option<Id>,
+        pos: Point,
+        #[serde(default)]
+        dir: EntryDir,
+    },
     AddJunction {
         #[serde(default)]
         sheet: Option<Id>,
@@ -158,6 +174,8 @@ impl Command {
             Command::PlacePart { .. } => "Place part".into(),
             Command::PlaceUnit { .. } => "Place unit".into(),
             Command::AddWire { .. } => "Add wire".into(),
+            Command::AddBus { .. } => "Add bus".into(),
+            Command::AddBusEntry { .. } => "Add bus entry".into(),
             Command::AddJunction { .. } => "Add junction".into(),
             Command::AddLabel { name, .. } => format!("Add label {name}"),
             Command::SetComponent { .. } => "Edit component".into(),
@@ -212,6 +230,21 @@ impl Command {
                     tx.insert(Object::Wire(Wire { id: Id::new(), sheet, a: w[0], b: w[1] }))?;
                 }
                 Ok(())
+            }
+            Command::AddBus { sheet, points } => {
+                let sheet = resolve_sheet(tx, sheet)?;
+                let segments: Vec<_> = points.windows(2).filter(|w| w[0] != w[1]).collect();
+                if segments.is_empty() {
+                    return Err(CommandError::Invalid("a bus needs two distinct points".into()));
+                }
+                for w in segments {
+                    tx.insert(Object::BusWire(BusWire { id: Id::new(), sheet, a: w[0], b: w[1] }))?;
+                }
+                Ok(())
+            }
+            Command::AddBusEntry { sheet, pos, dir } => {
+                let sheet = resolve_sheet(tx, sheet)?;
+                tx.insert(Object::BusEntry(BusEntry { id: Id::new(), sheet, pos, dir })).map(drop)
             }
             Command::AddJunction { sheet, pos } => {
                 let sheet = resolve_sheet(tx, sheet)?;
@@ -547,25 +580,36 @@ fn transform_connected(
     if !keep_connected {
         return transform_objects(tx, ids, t, edit);
     }
-    let moved = connection_points(tx.project(), ids);
+    use crate::rubber_band::{Kind, follow};
+    let wire_points = connection_points(tx.project(), ids, Kind::Wire);
+    let bus_points = connection_points(tx.project(), ids, Kind::Bus);
     transform_objects(tx, ids, t, edit)?;
-    crate::rubber_band::follow(tx, ids, &moved, &t)
+    follow(tx, Kind::Wire, ids, &wire_points, &t)?;
+    follow(tx, Kind::Bus, ids, &bus_points, &t)
 }
 
-/// Connection points of schematic objects: (sheet, point).
-fn connection_points(p: &Project, ids: &[ObjectId]) -> Vec<(Id, Point)> {
+/// Points of schematic objects where wires (or bus wires) attach: (sheet, point).
+fn connection_points(p: &Project, ids: &[ObjectId], kind: crate::rubber_band::Kind) -> Vec<(Id, Point)> {
+    use crate::rubber_band::Kind;
     let s = &p.schematic;
     let mut out = Vec::new();
     for &id in ids {
-        match id {
-            ObjectId::Symbol(i) => {
+        match (kind, id) {
+            (Kind::Wire, ObjectId::Symbol(i)) => {
                 if let Some(inst) = s.symbols.get(i) {
                     out.extend(crate::query::pin_positions(p, i).into_iter().map(|(_, _, pt)| (inst.sheet, pt)));
                 }
             }
-            ObjectId::Wire(i) => out.extend(s.wires.get(i).into_iter().flat_map(|w| [(w.sheet, w.a), (w.sheet, w.b)])),
-            ObjectId::Label(i) => out.extend(s.labels.get(i).map(|l| (l.sheet, l.pos))),
-            ObjectId::Junction(i) => out.extend(s.junctions.get(i).map(|j| (j.sheet, j.pos))),
+            (Kind::Wire, ObjectId::Wire(i)) => {
+                out.extend(s.wires.get(i).into_iter().flat_map(|w| [(w.sheet, w.a), (w.sheet, w.b)]))
+            }
+            (Kind::Bus, ObjectId::BusWire(i)) => {
+                out.extend(s.bus_wires.get(i).into_iter().flat_map(|w| [(w.sheet, w.a), (w.sheet, w.b)]))
+            }
+            (Kind::Wire, ObjectId::BusEntry(i)) => out.extend(s.bus_entries.get(i).map(|e| (e.sheet, e.wire_end()))),
+            (Kind::Bus, ObjectId::BusEntry(i)) => out.extend(s.bus_entries.get(i).map(|e| (e.sheet, e.pos))),
+            (_, ObjectId::Label(i)) => out.extend(s.labels.get(i).map(|l| (l.sheet, l.pos))),
+            (_, ObjectId::Junction(i)) => out.extend(s.junctions.get(i).map(|j| (j.sheet, j.pos))),
             _ => {}
         }
     }
@@ -595,6 +639,15 @@ fn transform_objects(tx: &mut Transaction, ids: &[ObjectId], t: Transform, edit:
                 Object::Wire(w) => {
                     w.a = t.point(w.a);
                     w.b = t.point(w.b);
+                }
+                Object::BusWire(w) => {
+                    w.a = t.point(w.a);
+                    w.b = t.point(w.b);
+                }
+                Object::BusEntry(e) => {
+                    let end = t.point(e.wire_end());
+                    e.pos = t.point(e.pos);
+                    e.dir = EntryDir::of_offset(end - e.pos);
                 }
                 Object::Junction(j) => j.pos = t.point(j.pos),
                 Object::Label(l) => {
@@ -677,6 +730,8 @@ fn delete(tx: &mut Transaction, ids: &[ObjectId]) -> Result<(), CommandError> {
                 }
                 let used = sch.symbols.iter().any(|o| o.sheet == s)
                     || sch.wires.iter().any(|o| o.sheet == s)
+                    || sch.bus_wires.iter().any(|o| o.sheet == s)
+                    || sch.bus_entries.iter().any(|o| o.sheet == s)
                     || sch.labels.iter().any(|o| o.sheet == s)
                     || sch.junctions.iter().any(|o| o.sheet == s)
                     || sch.texts.iter().any(|o| o.sheet == s);
@@ -757,6 +812,8 @@ fn check_references(p: &Project, o: &Object) -> Result<(), CommandError> {
             }
         }
         Object::Wire(Wire { sheet, .. })
+        | Object::BusWire(BusWire { sheet, .. })
+        | Object::BusEntry(BusEntry { sheet, .. })
         | Object::Junction(Junction { sheet, .. })
         | Object::Label(NetLabel { sheet, .. })
         | Object::SchText(SchText { sheet, .. }) => {

@@ -136,6 +136,33 @@ async fn agent_session() {
     assert!(netlist["unconnected_pins"].is_array());
     ok_json(call("undo", Value::Null).await);
 
+    // A bus named D[0..1]; pin 1 leaves it through an entry on a wire labelled D0.
+    let pin = pins[0]["pos"].as_array().unwrap();
+    let (x, y) = (pin[0].as_i64().unwrap(), pin[1].as_i64().unwrap());
+    let bus_x = x - 20_320_000;
+    let r = ok_json(
+        call(
+            "execute",
+            json!({ "commands": [
+                { "command": "add_bus", "points": [[bus_x, y - 10_160_000], [bus_x, y + 10_160_000]] },
+                { "command": "add_label", "pos": [bus_x, y + 5_080_000], "name": "D[0..1]" },
+                { "command": "add_bus_entry", "pos": [bus_x, y - 2_540_000], "dir": "up_right" },
+                { "command": "add_wire", "points": [[bus_x + 2_540_000, y], [x, y]] },
+                { "command": "add_label", "pos": [x, y], "name": "D0" }
+            ]}),
+        )
+        .await,
+    );
+    assert_eq!(r["created"].as_array().unwrap().len(), 5);
+    let netlist = ok_json(call("get_netlist", Value::Null).await);
+    let bus = &netlist["buses"][0];
+    assert_eq!(bus["name"], "D[0..1]", "{netlist}");
+    assert_eq!(bus["members"][0]["net"], "D0");
+    assert_eq!(bus["members"][0]["pins"][0], format!("{refdes}.1"));
+    assert_eq!(bus["members"][1]["net"], Value::Null);
+    assert_eq!(netlist["problems"], json!([]), "{netlist}");
+    ok_json(call("undo", Value::Null).await);
+
     // The demo board is partly routed; route one ratsnest line with a track.
     let routing = ok_json(call("get_routing", Value::Null).await);
     let lines = routing["unrouted"].as_array().unwrap().clone();

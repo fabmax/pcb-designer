@@ -377,6 +377,8 @@ pub fn reference_point(project: &Project, id: ObjectId) -> Option<Point> {
     match id {
         ObjectId::Symbol(i) => s.symbols.get(i).map(|o| o.pos),
         ObjectId::Wire(i) => s.wires.get(i).map(|o| o.a),
+        ObjectId::BusWire(i) => s.bus_wires.get(i).map(|o| o.a),
+        ObjectId::BusEntry(i) => s.bus_entries.get(i).map(|o| o.pos),
         ObjectId::Junction(i) => s.junctions.get(i).map(|o| o.pos),
         ObjectId::Label(i) => s.labels.get(i).map(|o| o.pos),
         ObjectId::SchText(i) => s.texts.get(i).map(|o| o.text.pos),

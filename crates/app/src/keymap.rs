@@ -35,6 +35,8 @@ pub enum Action {
     ToolCircle,
     ToolText,
     SchWire,
+    SchBus,
+    SchBusEntry,
     SchLabel,
     SchPower,
     SchJunction,
@@ -77,6 +79,8 @@ impl Action {
         Action::ToolCircle,
         Action::ToolText,
         Action::SchWire,
+        Action::SchBus,
+        Action::SchBusEntry,
         Action::SchLabel,
         Action::SchPower,
         Action::SchJunction,
@@ -111,6 +115,8 @@ impl Action {
             Action::ToolCircle => "Circle tool",
             Action::ToolText => "Text tool",
             Action::SchWire => "Wire tool (schematic)",
+            Action::SchBus => "Bus tool (schematic)",
+            Action::SchBusEntry => "Bus entry tool (schematic)",
             Action::SchLabel => "Net label tool (schematic)",
             Action::SchPower => "Power port tool (schematic)",
             Action::SchJunction => "Junction tool (schematic)",
@@ -130,7 +136,12 @@ impl Action {
             Action::ToolPin | Action::ToolLine | Action::ToolRect | Action::ToolCircle | Action::ToolText => {
                 Some(Context::Library)
             }
-            Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction => Some(Context::Schematic),
+            Action::SchWire
+            | Action::SchBus
+            | Action::SchBusEntry
+            | Action::SchLabel
+            | Action::SchPower
+            | Action::SchJunction => Some(Context::Schematic),
             Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => {
                 Some(Context::Board)
             }
@@ -281,6 +292,8 @@ impl Default for Keymap {
             (Action::ToolCircle, vec![S::key(Key::C)]),
             (Action::ToolText, vec![S::key(Key::T)]),
             (Action::SchWire, vec![S::key(Key::W)]),
+            (Action::SchBus, vec![S::key(Key::B)]),
+            (Action::SchBusEntry, vec![S::key(Key::E)]),
             (Action::SchLabel, vec![S::key(Key::L)]),
             (Action::SchPower, vec![S::key(Key::P)]),
             (Action::SchJunction, vec![S::key(Key::J)]),

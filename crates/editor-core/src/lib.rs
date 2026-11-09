@@ -4,6 +4,7 @@
 //! Every command records object-level [`Change`]s (before/after snapshots). Undo and redo
 //! replay them, and the same change sets tell views what to update.
 
+pub mod bus;
 pub mod command;
 pub mod connectivity;
 pub mod copper;

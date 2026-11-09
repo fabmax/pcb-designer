@@ -114,7 +114,7 @@ effect on the board.
 | 9 | **Copper zones** (fill with clearance, thermal reliefs) + **DRC** (clearance, unrouted, overlaps) | Zones fill correctly; DRC finds seeded errors |
 | 10 | UX polish, theming, headless MCP mode | An agent edits, checks and saves a project over stdio without a window; dark/light themes recolour everything and persist with key bindings and recent projects |
 
-**Later:** multi-sheet/hierarchical schematics, buses, Gerber export,
+**Later:** multi-sheet/hierarchical schematics (buses are done, see below), Gerber export,
 autoplacement, autorouting, simulation.
 
 ## Milestone 0 results (2026-11-08, Apple M4, release build)
@@ -784,3 +784,59 @@ and level of detail for tiny primitives.
   update, update and replacing the old version, cancel, and missing releases. The test
   against the real gitlab.com is `#[ignore]`d: `cargo test -p kicad --test download --
   --ignored`. `mcp/tests/kicad_headless.rs` covers headless search and import.
+
+## Buses (2026-11-09)
+
+KiCad's model, so a later KiCad project import maps one to one.
+
+- **Meaning.** A bus only groups signals. Bus wires and bus entries never join nets, and a
+  wire or pin touching a bus stays separate (and is flagged). Signals connect only through
+  same-named labels, exactly as before.
+- **Model.**
+  - `BusWire {id, sheet, a, b}` is a straight segment like `Wire`.
+  - `BusEntry {id, sheet, pos, dir}`: `pos` is the bus end. The wire end is
+    `pos + dir.offset()`, a fixed 2.54 × 2.54 mm diagonal (`EntryDir`: up/down × left/right,
+    world Y up). Rotate and mirror move both ends and re-derive `dir` (`EntryDir::of_offset`).
+  - Both live in `schematic.bus_wires` / `bus_entries` (left out of the JSON when empty).
+    Agents add them with `add_bus` / `add_bus_entry`.
+- **Bus names.** `editor_core::bus::members` parses KiCad syntax:
+  - vectors `D[0..7]`, also counting down;
+  - groups `{SDA SCL}`, whose members may be vectors;
+  - named groups `I2C{SDA SCL}` → `I2C.SDA`, `I2C.SCL`.
+
+  A label whose name parses is a bus label. It stays an ordinary `NetLabel` (placed with
+  the Label tool), but connectivity skips it for nets. Vectors are capped at 1024
+  members.
+- **Connectivity** (`Connectivity::buses`, `bus_of`).
+  - Bus wires touching at ends, T-joints or junctions form one `Bus`. Its members are
+    the union of its bus labels' members, and its name is the first label's.
+  - Bus T-joints get automatic dots like wires.
+  - An entry's *wire end* is a node in the net graph (`Node::Entry`), so `net_of(entry)`
+    tells which signal leaves there. Its bus end is not.
+- **Problems** became `Problem {message, objects, pos}` (they were strings). They feed
+  the new "Schematic problems" list (right panel, nothing selected; clicking selects the
+  objects and centres the view) and `get_netlist`'s `problems`. Bus checks:
+  - a wire end or pin on a bus;
+  - a bus without a bus label;
+  - a wire leaving an entry without a label, or with a label that isn't a member;
+  - an entry or bus label that isn't on a bus.
+- **Editing.**
+  - The Bus tool (B) draws like the wire tool and ends on a bus. The Bus entry tool (E)
+    places entries: R turns them counter-clockwise, X mirrors, and the direction is also
+    in the tool settings.
+  - The wire tool ends on an entry's wire end.
+  - Dragging: `rubber_band` is now generic over `Kind::{Wire, Bus}`. Bus wires follow
+    moved bus-wire ends, entries' bus ends, labels and junctions. Wires follow pins,
+    wire ends, entries' wire ends, labels and junctions. Entries themselves only move
+    when selected.
+- **Drawing.** Buses and entries are 2.5 wire widths (`BUS_WIDTH`) in `sch_bus` (blue)
+  on the wires layer.
+  - The stroke font gained `[ ] { } < > ~ # * ' " &`, needed for bus names.
+  - The UI font has no arrow glyphs, so entry directions are painted buttons
+    (`sch_ui::entry_dir_picker`).
+- **Agents.** `get_netlist` has `buses: [{name, members: [{name, net, pins}], bus_wires,
+  entries}]`. `net` is null when no net of that name exists. The MCP instructions
+  explain the syntax.
+- **Not yet:** KiCad's "unfold bus" and buses across sheets (sheet pins and hierarchical
+  labels come with multi-sheet schematics).
+

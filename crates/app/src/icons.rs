@@ -7,6 +7,8 @@ use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, vec2};
 pub enum Icon {
     Select,
     Wire,
+    Bus,
+    BusEntry,
     Label,
     Power,
     Junction,
@@ -71,6 +73,20 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             open(vec![p(0.1, 0.8), p(0.5, 0.8), p(0.5, 0.2), p(0.9, 0.2)], line);
             dot(p(0.1, 0.8), 0.08);
             dot(p(0.9, 0.2), 0.08);
+        }
+        Icon::Bus => {
+            // A thick bus with two signals leaving it.
+            seg(p(0.08, 0.3), p(0.92, 0.3), Stroke::new(w * 2.4, color));
+            for x in [0.3, 0.62] {
+                open(vec![p(x, 0.3), p(x + 0.16, 0.5), p(x + 0.16, 0.9)], line);
+            }
+        }
+        Icon::BusEntry => {
+            // The diagonal from a (faint) bus to a wire.
+            seg(p(0.2, 0.08), p(0.2, 0.92), Stroke::new(w * 2.4, faint));
+            seg(p(0.2, 0.62), p(0.52, 0.3), Stroke::new(w * 2.0, color));
+            seg(p(0.52, 0.3), p(0.92, 0.3), line);
+            dot(p(0.92, 0.3), 0.07);
         }
         Icon::Label => {
             let pts = vec![p(0.08, 0.3), p(0.62, 0.3), p(0.92, 0.5), p(0.62, 0.7), p(0.08, 0.7)];

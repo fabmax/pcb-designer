@@ -44,6 +44,8 @@ pub struct Palette {
     pub sch_power: Color,
     pub sch_text: Color,
     pub sch_junction: Color,
+    /// Bus wires and bus entries.
+    pub sch_bus: Color,
 
     pub selection: Color,
     pub selection_fill: Color,
@@ -98,6 +100,7 @@ pub static DARK: Palette = Palette {
     sch_power: Color::rgb(0xe0, 0x80, 0x80),
     sch_text: Color::rgb(0x9f, 0xb4, 0xff),
     sch_junction: Color::rgb(0x5f, 0xd3, 0xa0),
+    sch_bus: Color::rgb(0x7c, 0x8a, 0xff),
 
     selection: Color::rgba(0x4c, 0x9a, 0xff, 0xe0),
     selection_fill: Color::rgba(0x4c, 0x9a, 0xff, 0x28),
@@ -149,6 +152,7 @@ pub static LIGHT: Palette = Palette {
     sch_power: Color::rgb(0xa0, 0x20, 0x20),
     sch_text: Color::rgb(0x1a, 0x3a, 0xb0),
     sch_junction: Color::rgb(0x0f, 0x7a, 0x4a),
+    sch_bus: Color::rgb(0x22, 0x30, 0xa0),
 
     selection: Color::rgba(0x1f, 0x6f, 0xe0, 0xe0),
     selection_fill: Color::rgba(0x1f, 0x6f, 0xe0, 0x22),
@@ -219,6 +223,8 @@ pub const JUNCTION_RADIUS: f32 = 0.45;
 
 /// Schematic wire width.
 pub const WIRE_WIDTH: Coord = 152_400;
+/// Bus wires and entries: 2.5 wire widths.
+pub const BUS_WIDTH: Coord = WIRE_WIDTH * 5 / 2;
 
 pub fn board_layer_color(layer: LayerId) -> Color {
     let p = pal();

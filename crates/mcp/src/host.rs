@@ -603,7 +603,27 @@ fn netlist(c: &editor_core::connectivity::Connectivity) -> Value {
     let open: std::collections::HashSet<(Id, Id)> = c.unconnected.iter().map(|&(s, p, _)| (s, p)).collect();
     let unconnected: Vec<String> =
         c.nets.iter().flat_map(|n| &n.pins).filter(|p| open.contains(&(p.symbol, p.pin))).map(|p| p.label()).collect();
-    json!({ "nets": nets, "unconnected_pins": unconnected, "problems": c.problems })
+    let buses: Vec<Value> = c
+        .buses
+        .iter()
+        .map(|b| {
+            let members: Vec<Value> = b
+                .members
+                .iter()
+                .map(|m| {
+                    let pins: Option<Vec<String>> = c.net(m).map(|n| n.pins.iter().map(|p| p.label()).collect());
+                    json!({ "name": m, "net": c.net(m).map(|_| m), "pins": pins.unwrap_or_default() })
+                })
+                .collect();
+            json!({
+                "name": b.name,
+                "members": members,
+                "bus_wires": b.wires,
+                "entries": b.entries.len(),
+            })
+        })
+        .collect();
+    json!({ "nets": nets, "buses": buses, "unconnected_pins": unconnected, "problems": c.problems })
 }
 
 fn routing(p: &Project, c: &editor_core::copper::BoardConnectivity) -> Value {

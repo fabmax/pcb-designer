@@ -55,7 +55,11 @@ Typical workflow:
 Schematic and board are linked: placing a part creates its footprint on the board automatically \
 (in a staging area right of the board outline), deleting the component removes it. Footprints \
 cannot be created or deleted directly, only moved/rotated/flipped. Schematic connectivity is \
-by wire endpoints touching pin ends and by labels with equal names.";
+by wire endpoints touching pin ends and by labels with equal names. Buses (add_bus, \
+add_bus_entry) only group signals: name a bus with a label whose name is a bus name \
+(D[0..7], {SDA SCL}, I2C{SDA SCL} with members I2C.SDA, I2C.SCL) placed on a bus wire; signals \
+leave through bus entries on wires labelled with a member name. Bus wires never connect \
+to wires or pins.";
 
 #[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -339,9 +343,11 @@ impl PcbTools {
 
     #[tool(description = "Schematic netlist: every net with at least two pins or a label, with \
         its pins (reference, pin name, footprint pads, position), plus unconnected pins and \
-        connectivity problems (e.g. two different labels on one net). Pins connect where wire \
-        ends, pins, labels and junctions coincide, where a wire ends on another wire, and \
-        through same-named labels; crossing wires connect only with a junction.")]
+        connectivity problems (e.g. two different labels on one net, misused buses; each with \
+        message, objects and position). Pins connect where wire ends, pins, labels and \
+        junctions coincide, where a wire ends on another wire, and through same-named labels; \
+        crossing wires connect only with a junction. Also lists buses with their members and \
+        the net and pins of each member (null if no such net).")]
     async fn get_netlist(&self) -> Result<CallToolResult, ErrorData> {
         self.call(Request::Netlist).await
     }
