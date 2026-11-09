@@ -291,7 +291,8 @@ pub fn grid_menu(ui: &mut Ui, grid: &mut Coord, background: &mut Background, kin
     ui.separator();
     ui.horizontal(|ui| {
         dim(ui, "Grid size");
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        // Main align Max: the value is right-aligned in its field (shown and edited).
+        ui.with_layout(Layout::right_to_left(Align::Center).with_main_align(Align::Max), |ui| {
             ui.spacing_mut().button_padding = vec2(8.0, 3.0);
             ui.spacing_mut().interact_size.x = 84.0;
             // Menus draw widgets without a frame: give the field one.
