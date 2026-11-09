@@ -36,6 +36,19 @@ pub enum Action {
     ToolText,
     NavigateBack,
     NavigateForward,
+    SchWire,
+    SchLabel,
+    SchPower,
+    SchJunction,
+    SchPosture,
+}
+
+/// Where an action's shortcut applies. Actions of different contexts may share a key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Context {
+    Library,
+    Schematic,
+    Board,
 }
 
 impl Action {
@@ -61,6 +74,11 @@ impl Action {
         Action::ToolText,
         Action::NavigateBack,
         Action::NavigateForward,
+        Action::SchWire,
+        Action::SchLabel,
+        Action::SchPower,
+        Action::SchJunction,
+        Action::SchPosture,
     ];
 
     pub fn label(self) -> &'static str {
@@ -86,6 +104,40 @@ impl Action {
             Action::ToolText => "Text tool",
             Action::NavigateBack => "Back (library editor)",
             Action::NavigateForward => "Forward (library editor)",
+            Action::SchWire => "Wire tool (schematic)",
+            Action::SchLabel => "Net label tool (schematic)",
+            Action::SchPower => "Power port tool (schematic)",
+            Action::SchJunction => "Junction tool (schematic)",
+            Action::SchPosture => "Wire corner direction (schematic)",
+        }
+    }
+
+    /// The only context the action works in (`None`: everywhere).
+    pub fn context(self) -> Option<Context> {
+        match self {
+            Action::ToolPin
+            | Action::ToolLine
+            | Action::ToolRect
+            | Action::ToolCircle
+            | Action::ToolText
+            | Action::NavigateBack
+            | Action::NavigateForward => Some(Context::Library),
+            Action::SchWire | Action::SchLabel | Action::SchPower | Action::SchJunction | Action::SchPosture => {
+                Some(Context::Schematic)
+            }
+            _ => None,
+        }
+    }
+
+    fn applies(self, context: Context) -> bool {
+        self.context().is_none_or(|c| c == context)
+    }
+
+    /// Could both actions be triggered in the same context?
+    fn overlaps(self, other: Action) -> bool {
+        match (self.context(), other.context()) {
+            (Some(a), Some(b)) => a == b,
+            _ => true,
         }
     }
 
@@ -221,6 +273,11 @@ impl Default for Keymap {
             (Action::ToolText, vec![S::key(Key::T)]),
             (Action::NavigateBack, vec![S::alt(Key::ArrowLeft), S::cmd(Key::OpenBracket)]),
             (Action::NavigateForward, vec![S::alt(Key::ArrowRight), S::cmd(Key::CloseBracket)]),
+            (Action::SchWire, vec![S::key(Key::W)]),
+            (Action::SchLabel, vec![S::key(Key::L)]),
+            (Action::SchPower, vec![S::key(Key::P)]),
+            (Action::SchJunction, vec![S::key(Key::J)]),
+            (Action::SchPosture, vec![S::key(Key::Slash)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
     }
@@ -243,12 +300,15 @@ impl Keymap {
         self.bindings.get(&action).map_or(&[], Vec::as_slice)
     }
 
-    /// The action bound to `key` + `modifiers`, if any.
-    pub fn lookup(&self, key: Key, modifiers: Modifiers) -> Option<Action> {
-        self.bindings.iter().find(|(_, s)| s.iter().any(|s| s.matches(key, modifiers))).map(|(a, _)| *a)
+    /// The action bound to `key` + `modifiers` in `context`, if any.
+    pub fn lookup(&self, key: Key, modifiers: Modifiers, context: Context) -> Option<Action> {
+        self.bindings
+            .iter()
+            .find(|(a, s)| a.applies(context) && s.iter().any(|s| s.matches(key, modifiers)))
+            .map(|(a, _)| *a)
     }
 
-    /// Shortcuts bound to more than one action.
+    /// Shortcuts bound to more than one action of the same context.
     pub fn conflicts(&self) -> Vec<(Shortcut, Vec<Action>)> {
         let mut by_shortcut: BTreeMap<String, (Shortcut, Vec<Action>)> = BTreeMap::new();
         for (&action, shortcuts) in &self.bindings {
@@ -256,7 +316,10 @@ impl Keymap {
                 by_shortcut.entry(s.to_string()).or_insert((s, Vec::new())).1.push(action);
             }
         }
-        by_shortcut.into_values().filter(|(_, a)| a.len() > 1).collect()
+        by_shortcut
+            .into_values()
+            .filter(|(_, a)| a.iter().enumerate().any(|(i, x)| a[i + 1..].iter().any(|y| x.overlaps(*y))))
+            .collect()
     }
 
     /// Text for menus, e.g. "⌘⇧Z" on macOS.
@@ -266,13 +329,13 @@ impl Keymap {
 
     /// Actions triggered by this frame's key presses. Matched key events are consumed so
     /// egui widgets don't also react to them.
-    pub fn triggered(&self, ctx: &egui::Context) -> Vec<Action> {
+    pub fn triggered(&self, ctx: &egui::Context, context: Context) -> Vec<Action> {
         let typing = ctx.egui_wants_keyboard_input();
         let mut actions = Vec::new();
         ctx.input_mut(|i| {
             i.events.retain(|e| {
                 let egui::Event::Key { key, pressed: true, repeat, modifiers, .. } = e else { return true };
-                let Some(action) = self.lookup(*key, *modifiers) else { return true };
+                let Some(action) = self.lookup(*key, *modifiers, context) else { return true };
                 if (typing && !action.works_while_typing()) || (*repeat && !action.repeats()) {
                     return true;
                 }
@@ -300,10 +363,25 @@ mod tests {
     #[test]
     fn exact_modifier_matching() {
         let map = Keymap::default();
-        assert_eq!(map.lookup(Key::Z, Modifiers::COMMAND), Some(Action::Undo));
-        assert_eq!(map.lookup(Key::Z, Modifiers::COMMAND | Modifiers::SHIFT), Some(Action::Redo));
-        assert_eq!(map.lookup(Key::R, Modifiers::NONE), Some(Action::Rotate));
-        assert_eq!(map.lookup(Key::R, Modifiers::COMMAND), None);
+        let sch = Context::Schematic;
+        assert_eq!(map.lookup(Key::Z, Modifiers::COMMAND, sch), Some(Action::Undo));
+        assert_eq!(map.lookup(Key::Z, Modifiers::COMMAND | Modifiers::SHIFT, sch), Some(Action::Redo));
+        assert_eq!(map.lookup(Key::R, Modifiers::NONE, sch), Some(Action::Rotate));
+        assert_eq!(map.lookup(Key::R, Modifiers::COMMAND, sch), None);
+    }
+
+    #[test]
+    fn contexts_share_keys() {
+        let map = Keymap::default();
+        assert_eq!(map.lookup(Key::L, Modifiers::NONE, Context::Library), Some(Action::ToolLine));
+        assert_eq!(map.lookup(Key::L, Modifiers::NONE, Context::Schematic), Some(Action::SchLabel));
+        assert_eq!(map.lookup(Key::L, Modifiers::NONE, Context::Board), None);
+        // Same context: a conflict.
+        let map = Keymap::from_json(r#"{"sch_wire": ["L"]}"#).unwrap();
+        assert_eq!(map.conflicts().len(), 1);
+        // A global action clashes with every context.
+        let map = Keymap::from_json(r#"{"rotate": ["W"]}"#).unwrap();
+        assert_eq!(map.conflicts()[0].1, vec![Action::Rotate, Action::SchWire]);
     }
 
     #[test]
@@ -319,10 +397,11 @@ mod tests {
     #[test]
     fn json_overrides_keep_other_defaults() {
         let map = Keymap::from_json(r#"{"rotate": ["Space"], "delete": []}"#).unwrap();
-        assert_eq!(map.lookup(Key::Space, Modifiers::NONE), Some(Action::Rotate));
-        assert_eq!(map.lookup(Key::R, Modifiers::NONE), None);
-        assert_eq!(map.lookup(Key::Delete, Modifiers::NONE), None);
-        assert_eq!(map.lookup(Key::Z, Modifiers::COMMAND), Some(Action::Undo));
+        let b = Context::Board;
+        assert_eq!(map.lookup(Key::Space, Modifiers::NONE, b), Some(Action::Rotate));
+        assert_eq!(map.lookup(Key::R, Modifiers::NONE, b), None);
+        assert_eq!(map.lookup(Key::Delete, Modifiers::NONE, b), None);
+        assert_eq!(map.lookup(Key::Z, Modifiers::COMMAND, b), Some(Action::Undo));
         let round = Keymap::from_json(&map.to_json()).unwrap();
         assert_eq!(round, map);
     }

@@ -44,7 +44,7 @@ fn stub_label(ed: &mut Editor, component: Id, pin: &str, net: &str) {
     ed.execute(Command::AddWire { sheet: None, points: vec![at, end] }).unwrap();
     let power = net == "GND" || net.starts_with('+') || net.starts_with("VCC");
     let kind = if power { LabelKind::Power } else { LabelKind::Net };
-    ed.execute(Command::AddLabel { sheet: None, pos: end, name: net.into(), kind }).unwrap();
+    ed.execute(Command::AddLabel { sheet: None, pos: end, name: net.into(), kind, rotation: Angle::ZERO }).unwrap();
 }
 
 fn pad(p: &Project, footprint: Id, name: &str) -> Point {
@@ -54,9 +54,9 @@ fn pad(p: &Project, footprint: Id, name: &str) -> Point {
 fn move_footprint(ed: &mut Editor, footprint: Id, to: Point, rotation: Angle) {
     let from = ed.project().board.footprints.get(footprint).unwrap().pos;
     let ids = vec![ObjectId::Footprint(footprint)];
-    ed.execute(Command::Move { ids: ids.clone(), delta: to - from }).unwrap();
+    ed.execute(Command::Move { ids: ids.clone(), delta: to - from, keep_connected: false }).unwrap();
     if rotation != Angle::ZERO {
-        ed.execute(Command::Rotate { ids, center: to, angle: rotation }).unwrap();
+        ed.execute(Command::Rotate { ids, center: to, angle: rotation, keep_connected: false }).unwrap();
     }
 }
 
@@ -178,12 +178,13 @@ pub fn stress_project(n: usize) -> Project {
         } else {
             let name = if (row as usize).is_multiple_of(2) { "GND".to_string() } else { format!("N{}", row as usize) };
             let kind = if name == "GND" { LabelKind::Power } else { LabelKind::Net };
-            ed.execute(Command::AddLabel { sheet: None, pos: right, name, kind }).unwrap();
+            ed.execute(Command::AddLabel { sheet: None, pos: right, name, kind, rotation: Angle::ZERO }).unwrap();
         }
         let f = footprint_of(ed.project(), c);
         let to = Point::mm(col * 4.0, row * 4.0);
         let from = ed.project().board.footprints.get(f).unwrap().pos;
-        ed.execute(Command::Move { ids: vec![ObjectId::Footprint(f)], delta: to - from }).unwrap();
+        ed.execute(Command::Move { ids: vec![ObjectId::Footprint(f)], delta: to - from, keep_connected: false })
+            .unwrap();
     }
     ed.into_project()
 }

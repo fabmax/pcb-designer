@@ -125,8 +125,10 @@ fn incremental_views_match_rebuild() {
     doc.undo();
     it.set_selection(&mut doc.target(ViewKind::Schematic), vec![]);
 
+    doc.update_connectivity(false);
     for kind in [ViewKind::Schematic, ViewKind::Board] {
-        let fresh = view::View::new(kind, doc.project());
+        let mut fresh = view::View::new(kind, doc.project());
+        fresh.set_connectivity(doc.connectivity());
         let live = doc.view(kind);
         assert_eq!(live.scene.instance_count(), fresh.scene.instance_count(), "{kind:?}");
         assert_eq!(live.index.len(), fresh.index.len(), "{kind:?}");
@@ -156,6 +158,7 @@ fn save_and_reopen_document() {
     assert!(!doc.is_modified());
     let reopened = Document::open(&path).unwrap();
     assert_eq!(reopened.project(), doc.project());
-    let fresh = view::View::new(ViewKind::Schematic, doc.project());
+    let mut fresh = view::View::new(ViewKind::Schematic, doc.project());
+    fresh.set_connectivity(reopened.connectivity());
     assert_eq!(reopened.schematic.scene.instance_count(), fresh.scene.instance_count());
 }

@@ -1,7 +1,9 @@
 //! An open project: editor (model + history), file location and both views.
 
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
+use editor_core::connectivity::Connectivity;
 use editor_core::{ChangeSet, Command, CommandError, Editor};
 use model::io::{FileError, load_project, save_project};
 use model::{Coord, ObjectId, Point, Project, Rect};
@@ -17,13 +19,54 @@ pub struct Document {
     pub board: View,
     /// Bumped on every model change, so UI caches can tell when to refresh.
     pub revision: u64,
+    connectivity: Connectivity,
+    /// The schematic changed since `connectivity` was computed.
+    connectivity_stale: bool,
+    connectivity_time: Duration,
 }
 
 impl Document {
     pub fn new(project: Project) -> Self {
         let schematic = View::new(ViewKind::Schematic, &project);
         let board = View::new(ViewKind::Board, &project);
-        Document { editor: Editor::new(project), path: None, schematic, board, revision: 0 }
+        let mut doc = Document {
+            editor: Editor::new(project),
+            path: None,
+            schematic,
+            board,
+            revision: 0,
+            connectivity: Connectivity::default(),
+            connectivity_stale: true,
+            connectivity_time: Duration::ZERO,
+        };
+        doc.update_connectivity(false);
+        doc
+    }
+
+    /// Schematic connectivity as of the last [`update_connectivity`](Self::update_connectivity).
+    pub fn connectivity(&self) -> &Connectivity {
+        &self.connectivity
+    }
+
+    /// Up-to-date connectivity (recomputed if the schematic changed).
+    pub fn current_connectivity(&mut self) -> &Connectivity {
+        self.update_connectivity(false);
+        &self.connectivity
+    }
+
+    /// Recompute connectivity if the schematic changed, and show junction dots and
+    /// unconnected pins. While `busy` (dragging), large projects whose connectivity
+    /// takes long are only updated afterwards. Returns true if it was recomputed.
+    pub fn update_connectivity(&mut self, busy: bool) -> bool {
+        if !self.connectivity_stale || (busy && self.connectivity_time > Duration::from_millis(4)) {
+            return false;
+        }
+        let t = Instant::now();
+        self.connectivity = Connectivity::build(self.editor.project());
+        self.connectivity_time = t.elapsed();
+        self.connectivity_stale = false;
+        self.schematic.set_connectivity(&self.connectivity);
+        true
     }
 
     pub fn open(dir: impl AsRef<Path>) -> Result<Self, FileError> {
@@ -130,6 +173,9 @@ impl Document {
             return;
         }
         self.revision += 1;
+        if changes.touches_schematic() || changes.ids().any(|id| id.kind().is_library()) {
+            self.connectivity_stale = true;
+        }
         let project = self.editor.project();
         self.schematic.apply(project, changes);
         self.board.apply(project, changes);
@@ -187,11 +233,15 @@ impl Target for ProjectTarget<'_> {
 
     fn edit(&mut self, edit: Edit<ObjectId>, group: Option<u64>) -> Result<Option<String>, String> {
         let is_fp = |id: &ObjectId| matches!(id, ObjectId::Footprint(_));
+        // Wires stay attached to what moves in the schematic.
+        let sch = self.kind == ViewKind::Schematic;
         match edit {
-            Edit::Move { ids, delta } => self.run(Command::Move { ids, delta }, group)?,
-            Edit::Rotate { ids, center, angle } => self.run(Command::Rotate { ids, center, angle }, group)?,
+            Edit::Move { ids, delta } => self.run(Command::Move { ids, delta, keep_connected: sch }, group)?,
+            Edit::Rotate { ids, center, angle } => {
+                self.run(Command::Rotate { ids, center, angle, keep_connected: sch }, group)?
+            }
             Edit::Mirror { ids, axis_x } | Edit::Flip { ids, axis_x } => match self.kind {
-                ViewKind::Schematic => self.run(Command::Mirror { ids, axis_x }, group)?,
+                ViewKind::Schematic => self.run(Command::Mirror { ids, axis_x, keep_connected: true }, group)?,
                 ViewKind::Board => {
                     let ids: Vec<ObjectId> = ids.into_iter().filter(is_fp).collect();
                     if ids.is_empty() {

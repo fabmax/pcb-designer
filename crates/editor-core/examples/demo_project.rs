@@ -28,6 +28,7 @@ fn main() {
         pos: Point::mm(20.32, 0.0),
         name: "GND".into(),
         kind: LabelKind::Power,
+        rotation: Angle::ZERO,
     })
     .unwrap();
     model::io::save_project(ed.project(), &dir).unwrap();

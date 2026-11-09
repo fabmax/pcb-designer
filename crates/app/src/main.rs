@@ -25,6 +25,8 @@ mod kicad_import;
 mod library;
 mod part_form;
 mod properties;
+mod sch_ui;
+mod script;
 mod theme;
 
 use app::{Options, Startup};
@@ -44,6 +46,7 @@ fn main() -> eframe::Result {
         kicad_pick: Vec::new(),
         kicad_import: false,
         kicad_query: None,
+        script: None,
     };
     let mut vsync = true;
     let mut args = std::env::args().skip(1);
@@ -56,6 +59,7 @@ fn main() -> eframe::Result {
             "--screenshot" => opts.screenshot = args.next(),
             "--frames" => opts.screenshot_frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(30),
             "--select" => opts.select = args.next(),
+            "--script" => opts.script = args.next(),
             "--library" => opts.library.extend(args.next().map(Into::into)),
             "--show" => opts.show.extend(args.next()),
             "--kicad" => opts.kicad_paths.extend(args.next().map(Into::into)),

@@ -114,7 +114,7 @@ effect on the board.
 | 9 | **Copper zones** (fill with clearance, thermal reliefs) + **DRC** (clearance, unrouted, overlaps) | Zones fill correctly; DRC finds seeded errors |
 | 10 | UX polish, theming, headless MCP mode | |
 
-**Later:** multi-sheet/hierarchical schematics, buses, multi-unit parts, Gerber export,
+**Later:** multi-sheet/hierarchical schematics, buses, Gerber export,
 autoplacement, autorouting, simulation.
 
 ## Milestone 0 results (2026-11-08, Apple M4, release build)
@@ -414,3 +414,60 @@ and level of detail for tiny primitives.
   - Oval drills (approximated).
   - 3D models.
   - Symbol and footprint preview inside the import window (the editor shows the result).
+
+## Milestone 6 results (2026-11-09)
+
+- **Connectivity** (`editor_core::connectivity`, rebuilt from the project):
+  - Union-find over pins, wire ends, labels and junctions. Points that coincide
+    connect. A wire end, pin, label or junction lying inside a wire connects to it
+    (T connection). Crossing wires connect only with a junction. Labels connect by name.
+  - Net names: power label, then net label, else `Net-(R1-1)` from the lowest
+    reference and pad. Two different label names on one net are reported as a problem.
+  - Junction dots are drawn automatically where three or more connections meet, and
+    unconnected pins get a ring. Both are a separate scene item, updated after each change.
+  - A full rebuild takes about 13 ms at 10k components (release). The document skips
+    recomputing during a drag when a build takes over 4 ms, and catches up afterwards.
+    An incremental version is deferred until it's needed.
+- **Dragging keeps wires attached** (`keep_connected` on `Move`/`Rotate`/`Mirror`; the
+  schematic view sets it, commands default to false):
+  - Horizontal and vertical wires attached at one end shift sideways and stay
+    orthogonal. At the far end, the single aligned neighbour stretches, or a dogleg wire
+    is inserted where something else is attached.
+  - All other wires, and every wire on rotate/mirror, stretch. Zero-length wires are
+    deleted.
+  - Stable over many small drag steps; the whole drag stays one undo step.
+- **Schematic tools** (`view::sch_tools`, toolbar above the schematic, settings in the
+  right panel):
+  - **Wire (W):** orthogonal L segments with a ghost. A chain ends on a pin, wire, label
+    or junction (that target is highlighted), on a repeated click, or with Esc. `/`
+    switches horizontal-first and vertical-first corners.
+  - **Label (L):** a trailing number counts up (NET1, NET2, …).
+  - **Power (P):** GND, +3V3, +5V and so on; any name works.
+  - **Junction (J).**
+  - **Place:** started from the library panel's Place button. The ghost follows the
+    cursor; R rotates and X mirrors. Clicks place repeatedly; multi-unit parts place
+    unit A, B, … of one component (new `PlaceUnit` command), then start a new component.
+  - New `AddLabel.rotation`.
+- **Context-dependent shortcuts:** each action is global or belongs to the library, the
+  schematic or the board. Contexts may share keys (L = line in the symbol editor, label
+  in the schematic). Conflicts are reported only within a context.
+- **Properties:**
+  - A selected wire, label or junction shows its net and pins.
+  - Symbols and footprints list pin, pad and net.
+  - The project summary counts nets and unconnected pins.
+- **MCP:** a `get_netlist` tool returns nets with pins (reference, pin, pads, position),
+  unconnected pins and connectivity problems.
+- **Tests:**
+  - `editor-core/tests/netlist.rs`: sample circuits (LED + resistor, inverting op amp,
+    dual op amp across units), T connections, crossings, labels, touching pins, and drag
+    behaviour.
+  - `view/tests/sch_tools.rs`: a circuit drawn with the tools, wire-chain rules,
+    unit-by-unit placement.
+  - MCP e2e: `get_netlist`.
+- **Development aid:** `--script "key W; click 7.62,15.24; move 17.78,22.86"` feeds input
+  events (schematic mm, or `ui-click x,y` in screen points) before `--screenshot`.
+- **Not yet:**
+  - Bus wires, sheet pins and hierarchical labels.
+  - ERC (pin type checks).
+  - Wire posture that flips automatically with the cursor.
+  - Drag of wire segments themselves (moving a wire moves it and drags its neighbours).

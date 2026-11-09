@@ -12,6 +12,17 @@ fn main() {
     let t = Instant::now();
     let mut doc = Document::new(stress_project(n));
     println!("{n} components: generate + build views {:?}", t.elapsed());
+    for _ in 0..3 {
+        let t = Instant::now();
+        let c = editor_core::connectivity::Connectivity::build(doc.project());
+        println!(
+            "connectivity: {} nets, {} dots, {} unconnected pins in {:?}",
+            c.nets.len(),
+            c.dots.len(),
+            c.unconnected.len(),
+            t.elapsed()
+        );
+    }
     println!(
         "  schematic {} prims, board {} prims",
         doc.schematic.scene.instance_count(),
@@ -76,7 +87,9 @@ fn main() {
     let ids = it.selection.clone();
     let mut ed = editor_core::Editor::new(doc.project().clone());
     let t = Instant::now();
-    let changes = ed.execute(editor_core::Command::Rotate { ids, center: Point::ZERO, angle: Angle::DEG90 }).unwrap();
+    let changes = ed
+        .execute(editor_core::Command::Rotate { ids, center: Point::ZERO, angle: Angle::DEG90, keep_connected: false })
+        .unwrap();
     println!("  editor only: {:?} ({} changes)", t.elapsed(), changes.changes.len());
     let mut v = view::View::new(ViewKind::Schematic, ed.project());
     let t = Instant::now();
