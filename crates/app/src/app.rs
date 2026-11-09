@@ -1578,13 +1578,19 @@ struct TreeBehavior<'a> {
     sch: &'a mut SchPlacer,
     pcb: &'a mut PcbPlacer,
     status: &'a mut Option<(String, Instant)>,
+    keymap: &'a Keymap,
 }
 
 impl TreeBehavior<'_> {
     fn view_ui(&mut self, ui: &mut egui::Ui, kind: ViewKind) {
-        let full = ui.max_rect();
+        // The canvas fills the tab; the tool bars float over it.
+        let rect = ui.max_rect();
+        let pane = &mut self.panes[kind as usize];
+        let scene = &mut self.doc.view_mut(kind).scene;
+        let canvas = &mut pane.canvas;
+        let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
         if kind == ViewKind::Schematic
-            && let Some(tool) = sch_ui::toolbar(ui, self.sch)
+            && let Some(tool) = sch_ui::toolbar(ui, rect, self.sch, self.keymap)
         {
             let pane = &mut self.panes[kind as usize];
             if tool != SchTool::Select {
@@ -1596,7 +1602,7 @@ impl TreeBehavior<'_> {
             *self.focus_lib = None;
         }
         if kind == ViewKind::Board
-            && let Some(tool) = pcb_ui::toolbar(ui, self.pcb, self.doc)
+            && let Some(tool) = pcb_ui::toolbar(ui, rect, self.pcb, self.doc, self.keymap)
         {
             let pane = &mut self.panes[kind as usize];
             if tool != PcbTool::Select {
@@ -1607,14 +1613,7 @@ impl TreeBehavior<'_> {
             *self.active = kind;
             *self.focus_lib = None;
         }
-        // The canvas fills the rest of the tab, right below the tool bar.
-        let top = ui.min_rect().bottom();
-        ui.painter().hline(full.x_range(), top, egui::Stroke::new(1.0, theme::border()));
-        let rect = egui::Rect::from_min_max(egui::pos2(full.left(), top + 1.0), full.max);
         let pane = &mut self.panes[kind as usize];
-        let scene = &mut self.doc.view_mut(kind).scene;
-        let canvas = &mut pane.canvas;
-        let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
         if response.hovered() {
             *self.hovered = Some(kind);
         }
@@ -1710,7 +1709,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
             Tab::View(kind) => self.view_ui(ui, kind),
             Tab::Library(key) => {
                 if let Some(l) = self.libraries.iter_mut().find(|l| l.key == key)
-                    && l.center_ui(ui)
+                    && l.center_ui(ui, self.keymap)
                 {
                     *self.focus_lib = Some(key);
                 }
@@ -1955,6 +1954,7 @@ impl eframe::App for PcbApp {
                 sch: &mut self.sch,
                 pcb: &mut self.pcb,
                 status: &mut self.status,
+                keymap: &self.keymap,
             };
             self.tree.ui(&mut behavior, ui);
         });

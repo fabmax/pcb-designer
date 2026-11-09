@@ -704,3 +704,23 @@ and level of detail for tiny primitives.
   - Tabs are rounded pills: the active one is filled and the others highlight on hover.
     The tool bars share the tab bar's colour, with a hairline to the canvas.
   - `--side-by-side` starts in the split layout.
+- **Floating tool bars (Blender-like).** The canvas fills the whole tab; the tools float
+  over it (`toolbar.rs`).
+  - Icon buttons in a vertical strip at the top left, in rounded groups:
+    - Schematic: Select | Wire, Label, Power, Junction | Place (while placing).
+    - PCB: Select | Route, Via | Outline, Zone.
+    - Library: Select | Pin or Pad | Line, Rect, Circle, Text.
+  - The icons are vectors drawn with egui's painter (`icons.rs`), so they stay crisp
+    and follow the theme. The active tool is filled with the accent colour.
+  - Tooltips open to the right of the button. They show the name, the shortcut from
+    the keymap (so rebinding shows up) and a sentence on what the tool does.
+  - A header next to the strip holds the tool options. PCB: active layer and routing
+    status. Library: grid and Fit. The usage hint sits at the bottom left as a
+    non-interactive pill.
+  - Blocks have a soft shadow and a faint outline, so they read against any canvas.
+  - The bars are drawn after the canvas in the same layer, so they win egui's hit test.
+    They sense click and drag, so a press on them never reaches the canvas and starts
+    no box selection or placement. The header's size is only known after its
+    contents, so its background blocks clicks on the previous frame's rect.
+  - Script step `ui-move x,y` (dev aid): hover a screen position, e.g. to screenshot a
+    tooltip.

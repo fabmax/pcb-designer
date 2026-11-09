@@ -1,7 +1,7 @@
 //! Scripted input for screenshots and manual testing (development aid):
 //! `--script "key W; click 0,0; move 10.16,5.08; wait 5"`. Coordinates are schematic
 //! world millimetres (`board` switches to the board tab and coordinates, `schematic` back; `ui-click
-//! x,y` clicks at a screen position in points); each step runs a few frames after the previous one.
+//! x,y` clicks at a screen position in points, `ui-move x,y` hovers there); each step runs a few frames after the previous one.
 
 use std::collections::VecDeque;
 use view::ViewKind;
@@ -64,6 +64,10 @@ impl Script {
                     let [x, y] = point()?;
                     let p = Pos2::new(x as f32, y as f32);
                     steps.extend([Step2::Move(p), Step2::Press(p), Step2::Release(p)].map(Step::Screen));
+                }
+                "ui-move" => {
+                    let [x, y] = point()?;
+                    steps.push_back(Step::Screen(Step2::Move(Pos2::new(x as f32, y as f32))));
                 }
                 "board" => steps.push_back(Step::Board(true)),
                 "schematic" => steps.push_back(Step::Board(false)),
@@ -128,8 +132,8 @@ mod tests {
 
     #[test]
     fn parse_steps() {
-        let s = Script::parse("key W; click 1.27,-2.54; wait 4").unwrap();
-        assert_eq!(s.steps.len(), 6);
+        let s = Script::parse("key W; click 1.27,-2.54; wait 4; ui-move 10,20").unwrap();
+        assert_eq!(s.steps.len(), 7);
         assert!(Script::parse("jump 1,2").is_err());
         assert!(Script::parse("click 1").is_err());
         assert!(Script::parse("key NoSuchKey").is_err());

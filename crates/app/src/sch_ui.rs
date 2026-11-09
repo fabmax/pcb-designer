@@ -1,34 +1,43 @@
 //! Schematic tool bar and tool settings (right panel).
 
-use egui::RichText;
 use view::Document;
 use view::sch_tools::{POWER_NAMES, SchPlacer, SchTool};
 
 use crate::fields::{self, grid, hint, label, row};
-use crate::theme;
+use crate::icons::Icon;
+use crate::keymap::{Action, Keymap};
+use crate::toolbar::{self, ToolButton};
 
 const LABEL_SIDES: [&str; 4] = ["0°", "90°", "180°", "270°"];
 
-/// Tool buttons and usage hint above the schematic. Returns a newly chosen tool.
-pub fn toolbar(ui: &mut egui::Ui, sch: &SchPlacer) -> Option<SchTool> {
-    let mut chosen = None;
-    let full = ui.max_rect();
-    egui::Frame::NONE.fill(theme::panel()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
-        ui.set_width(full.width() - 16.0);
-        ui.horizontal(|ui| {
-            for &tool in SchTool::BAR {
-                if ui.selectable_label(sch.tool() == tool, tool.label()).clicked() {
-                    chosen = Some(tool);
-                }
-            }
-            if sch.tool() == SchTool::Place {
-                let _ = ui.selectable_label(true, SchTool::Place.label());
-            }
-            ui.separator();
-            ui.add(egui::Label::new(RichText::new(sch.tool().hint()).color(theme::text_dim())).truncate());
-        });
-    });
-    chosen
+/// Floating tool bar and usage hint over the schematic canvas. Returns a newly chosen tool.
+pub fn toolbar(ui: &mut egui::Ui, canvas: egui::Rect, sch: &SchPlacer, keymap: &Keymap) -> Option<SchTool> {
+    let b =
+        |tool, icon, about, action| ToolButton { tool, icon, name: SchTool::label(tool), about, action: Some(action) };
+    let select = [b(
+        SchTool::Select,
+        Icon::Select,
+        "Select, move and edit symbols, wires and labels. Drag a box to select several.",
+        Action::ToolSelect,
+    )];
+    let draw = [
+        b(SchTool::Wire, Icon::Wire, "Draw wires between pins.", Action::SchWire),
+        b(SchTool::Label, Icon::Label, "Name a net: labels with the same name are connected.", Action::SchLabel),
+        b(SchTool::Power, Icon::Power, "Place a power port (GND, +3V3, ...): connects to its net.", Action::SchPower),
+        b(SchTool::Junction, Icon::Junction, "Connect crossing wires with a junction dot.", Action::SchJunction),
+    ];
+    let place = [ToolButton {
+        tool: SchTool::Place,
+        icon: Icon::Place,
+        name: "Place",
+        about: "Placing a part from the library. Esc stops.",
+        action: None,
+    }];
+    let placing: &[ToolButton<SchTool>] = if sch.tool() == SchTool::Place { &place } else { &[] };
+    let id = egui::Id::unique("sch_toolbar");
+    let (chosen, _) = toolbar::strip(ui, canvas, id, &[&select, &draw, placing], sch.tool(), keymap);
+    toolbar::hint(ui, canvas, sch.tool().hint());
+    chosen.filter(|&t| t != SchTool::Place)
 }
 
 /// Settings of the active tool.

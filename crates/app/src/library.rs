@@ -11,8 +11,11 @@ use view::{Interaction, KeyAction, LibraryDoc};
 
 use crate::canvas::{self, Canvas};
 use crate::fields::{self, Fields, grid, hint, label};
+use crate::icons::Icon;
+use crate::keymap::{Action, Keymap};
 use crate::part_form::PartForm;
 use crate::theme;
+use crate::toolbar::{self, ToolButton};
 
 pub const SYMBOL_GRIDS: &[(f64, &str)] = &[(2.54, "2.54 mm"), (1.27, "1.27 mm"), (0.635, "0.635 mm")];
 pub const FOOTPRINT_GRIDS: &[(f64, &str)] =
@@ -427,7 +430,7 @@ impl LibraryEditor {
     // Center (tab content)
 
     /// Tab content. Returns true if the pointer was pressed inside (focus).
-    pub fn center_ui(&mut self, ui: &mut egui::Ui) -> bool {
+    pub fn center_ui(&mut self, ui: &mut egui::Ui, keymap: &Keymap) -> bool {
         self.refresh();
         let pressed = ui.rect_contains_pointer(ui.max_rect()) && ui.input(|i| i.pointer.any_pressed());
         if self.open != Open::None {
@@ -459,7 +462,7 @@ impl LibraryEditor {
                     });
                 });
             }
-            Open::Item(item) => self.item_ui(ui, item),
+            Open::Item(item) => self.item_ui(ui, item, keymap),
         }
         pressed
     }
@@ -490,60 +493,78 @@ impl LibraryEditor {
         });
     }
 
-    fn item_ui(&mut self, ui: &mut egui::Ui, item: Item) {
-        let full = ui.max_rect();
-        egui::Frame::NONE.fill(theme::panel()).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
-            ui.set_width(full.width() - 16.0);
-            ui.horizontal_wrapped(|ui| {
-                for &tool in Tool::for_item(item) {
-                    let r = ui.selectable_label(self.placer.tool == tool, tool.label());
-                    if r.clicked() {
-                        self.set_tool(tool);
-                    }
-                }
-                ui.separator();
-                let grids = match item {
-                    Item::Symbol(_) => SYMBOL_GRIDS,
-                    Item::Footprint(_) => FOOTPRINT_GRIDS,
-                };
-                let current = to_mm(self.it.grid);
-                let text = grids
-                    .iter()
-                    .find(|g| (g.0 - current).abs() < 1e-9)
-                    .map_or(format!("{current} mm"), |g| g.1.to_string());
-                egui::ComboBox::from_id_salt(("item_grid", self.key)).selected_text(format!("Grid {text}")).show_ui(
-                    ui,
-                    |ui| {
-                        for &(g, name) in grids {
-                            if ui.selectable_label((g - current).abs() < 1e-9, name).clicked() {
-                                self.it.grid = mm(g);
-                                self.canvas.background.grid = g as f32;
-                            }
+    /// Floating tool strip, grid header and usage hint over the item canvas.
+    fn item_toolbar(&mut self, ui: &mut egui::Ui, rect: egui::Rect, item: Item, keymap: &Keymap) {
+        let b =
+            |tool, icon, about, action| ToolButton { tool, icon, name: Tool::label(tool), about, action: Some(action) };
+        let select = [b(
+            Tool::Select,
+            Icon::Select,
+            "Select, move and edit elements. Drag a box to select several.",
+            Action::ToolSelect,
+        )];
+        let connect = match item {
+            Item::Symbol(_) => {
+                [b(Tool::Pin, Icon::Pin, "Place pins: where wires connect to the symbol.", Action::ToolPin)]
+            }
+            Item::Footprint(_) => {
+                [b(Tool::Pad, Icon::Pad, "Place pads: the copper the part is soldered to.", Action::ToolPin)]
+            }
+        };
+        let draw = [
+            b(Tool::Line, Icon::Line, "Draw lines and polylines.", Action::ToolLine),
+            b(Tool::Rect, Icon::Rect, "Draw rectangles.", Action::ToolRect),
+            b(Tool::Circle, Icon::Circle, "Draw circles.", Action::ToolCircle),
+            b(Tool::Text, Icon::Text, "Place text.", Action::ToolText),
+        ];
+        let id = egui::Id::unique(("item_toolbar", self.key));
+        let (chosen, right) = toolbar::strip(ui, rect, id, &[&select, &connect, &draw], self.placer.tool, keymap);
+        if let Some(tool) = chosen {
+            self.set_tool(tool);
+        }
+        let grids = match item {
+            Item::Symbol(_) => SYMBOL_GRIDS,
+            Item::Footprint(_) => FOOTPRINT_GRIDS,
+        };
+        toolbar::header(ui, rect, right, id.with("header"), |ui| {
+            let current = to_mm(self.it.grid);
+            let text = grids
+                .iter()
+                .find(|g| (g.0 - current).abs() < 1e-9)
+                .map_or(format!("{current} mm"), |g| g.1.to_string());
+            egui::ComboBox::from_id_salt(("item_grid", self.key)).selected_text(format!("Grid {text}")).show_ui(
+                ui,
+                |ui| {
+                    for &(g, name) in grids {
+                        if ui.selectable_label((g - current).abs() < 1e-9, name).clicked() {
+                            self.it.grid = mm(g);
+                            self.canvas.background.grid = g as f32;
                         }
-                    },
-                );
-                if ui.button("Fit").clicked() {
-                    self.canvas.request_fit();
-                }
-                let tip = match self.placer.tool {
-                    Tool::Select => "Click/box to select · drag to move · R rotate · X mirror · Del delete",
-                    Tool::Line => "Click points · click the last point again or Esc to finish",
-                    Tool::Rect => "Click two corners",
-                    Tool::Circle => "Click center, then a point on the circle",
-                    _ => "Click to place · R rotate · Esc done",
-                };
-                // Truncated so a narrow tab never grows wider than its tile.
-                ui.add(egui::Label::new(RichText::new(tip).color(theme::text_dim())).truncate());
-            });
+                    }
+                },
+            );
+            let fit = keymap.menu_text(ui.ctx(), Action::FitView);
+            if ui.button("Fit").on_hover_text(format!("Zoom to show the whole item ({fit})")).clicked() {
+                self.canvas.request_fit();
+            }
         });
+        let tip = match self.placer.tool {
+            Tool::Select => "Click/box to select · drag to move · R rotate · X mirror · Del delete",
+            Tool::Line => "Click points · click the last point again or Esc to finish",
+            Tool::Rect => "Click two corners",
+            Tool::Circle => "Click center, then a point on the circle",
+            _ => "Click to place · R rotate · Esc done",
+        };
+        toolbar::hint(ui, rect, tip);
+    }
 
-        // The canvas fills the rest of the tab exactly (never wider, whatever the toolbar did).
-        let top = ui.min_rect().bottom();
-        ui.painter().hline(full.x_range(), top, egui::Stroke::new(1.0, theme::border()));
-        let rect = egui::Rect::from_min_max(egui::pos2(full.left(), top + 1.0), full.max);
+    fn item_ui(&mut self, ui: &mut egui::Ui, item: Item, keymap: &Keymap) {
+        // The canvas fills the rest of the tab; the tool bars float over it.
+        let rect = ui.available_rect_before_wrap();
         let scene = &mut self.view.scene;
         let canvas = &mut self.canvas;
         let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
+        self.item_toolbar(ui, rect, item, keymap);
         if self.placer.is_placing() {
             let world = response.hover_pos().map(|p| {
                 let [x, y] = self.canvas.screen_to_world(p);

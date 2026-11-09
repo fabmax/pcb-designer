@@ -50,11 +50,7 @@ pub const RADIUS: u8 = 10;
 
 /// A side panel: rounded, `outer` margin to its neighbours.
 pub fn panel_frame(outer: Margin) -> Frame {
-    Frame::NONE
-        .fill(panel())
-        .corner_radius(RADIUS)
-        .inner_margin(Margin::same(8))
-        .outer_margin(outer)
+    Frame::NONE.fill(panel()).corner_radius(RADIUS).inner_margin(Margin::same(8)).outer_margin(outer)
 }
 
 /// Round the corners of `rect` after its content was painted (content that can't be
