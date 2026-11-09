@@ -1,16 +1,25 @@
 //! Floating tool bars over the canvases (like Blender's): a vertical strip of icon
 //! buttons in rounded groups at the top left, an optional header with the tool's
-//! options next to it, and the usage hint at the bottom left.
+//! options next to it, view buttons (layers, grid, fit) at the bottom left and the usage
+//! hint next to them.
 //!
 //! They are drawn in the canvas' layer after the canvas, so they win egui's hit test:
 //! clicks and drags on them never reach the canvas, and the canvas isn't hovered
 //! underneath them.
 
-use egui::{Align, Color32, CornerRadius, Id, Layout, Pos2, Rect, RichText, Sense, Stroke, Ui, UiBuilder, vec2};
+use egui::{
+    Align, Color32, CornerRadius, Id, Layout, Popup, PopupCloseBehavior, Pos2, Rect, RectAlign, RichText, Sense,
+    Stroke, Ui, UiBuilder, vec2,
+};
+use model::Coord;
+use render::Scene;
+use render::gpu::Background;
+use view::LayerEntry;
 
 use crate::icons::{self, Icon};
 use crate::keymap::{Action, Keymap};
 use crate::theme;
+use crate::units::{self, GridKind, Unit};
 
 /// Button size (points).
 const BUTTON: f32 = 32.0;
@@ -59,22 +68,11 @@ pub fn strip<T: Copy + PartialEq>(
         paint_block(&painter, rect);
         for (i, b) in group.iter().enumerate() {
             let r = Rect::from_min_size(rect.min + vec2(PAD, PAD + i as f32 * BUTTON), vec2(BUTTON, BUTTON));
-            let response = ui.interact(r, id.with((g, i)), Sense::click_and_drag());
-            let active = b.tool == current;
-            let v = ui.visuals();
-            let (fill, color) = if active {
-                (theme::accent(), Color32::WHITE)
-            } else if response.hovered() {
-                (v.widgets.hovered.weak_bg_fill, v.strong_text_color())
-            } else {
-                (Color32::TRANSPARENT, v.text_color())
-            };
-            painter.rect_filled(r.shrink(1.0), CornerRadius::same(6), fill);
-            icons::paint(&painter, r.shrink(7.0), b.icon, color);
+            let response = icon_button(ui, &painter, r, id.with((g, i)), b.icon, b.tool == current);
             // Tooltip to the right, like Blender's (not over the buttons below).
             let mut tip = egui::Tooltip::for_enabled(&response);
-            tip.popup = tip.popup.align(egui::RectAlign::RIGHT_START).gap(GAP + PAD);
-            tip.show(|ui| tooltip(ui, b, keymap));
+            tip.popup = tip.popup.align(RectAlign::RIGHT_START).gap(GAP + PAD);
+            tip.show(|ui| tooltip(ui, b.name, b.about, b.action, keymap));
             if response.clicked() {
                 chosen = Some(b.tool);
             }
@@ -84,18 +82,34 @@ pub fn strip<T: Copy + PartialEq>(
     (chosen, left + BUTTON + 2.0 * PAD)
 }
 
-fn tooltip<T>(ui: &mut Ui, b: &ToolButton<T>, keymap: &Keymap) {
+/// A square icon button: accent fill when `active`, highlighted on hover.
+fn icon_button(ui: &Ui, painter: &egui::Painter, r: Rect, id: Id, icon: Icon, active: bool) -> egui::Response {
+    let response = ui.interact(r, id, Sense::click_and_drag());
+    let v = ui.visuals();
+    let (fill, color) = if active {
+        (theme::accent(), Color32::WHITE)
+    } else if response.hovered() {
+        (v.widgets.hovered.weak_bg_fill, v.strong_text_color())
+    } else {
+        (Color32::TRANSPARENT, v.text_color())
+    };
+    painter.rect_filled(r.shrink(1.0), CornerRadius::same(6), fill);
+    icons::paint(painter, r.shrink(7.0), icon, color);
+    response
+}
+
+fn tooltip(ui: &mut Ui, name: &str, about: &str, action: Option<Action>, keymap: &Keymap) {
     ui.set_max_width(280.0);
     ui.horizontal(|ui| {
-        ui.label(RichText::new(b.name).strong());
-        if let Some(action) = b.action {
+        ui.label(RichText::new(name).strong());
+        if let Some(action) = action {
             let keys = keymap.menu_text(ui.ctx(), action);
             if !keys.is_empty() {
                 ui.label(RichText::new(keys).color(theme::text_dim()));
             }
         }
     });
-    ui.label(b.about);
+    ui.label(about);
 }
 
 /// Background of a floating block: panel colour, a soft shadow and a faint outline so it
@@ -138,9 +152,167 @@ pub fn header<R>(ui: &mut Ui, canvas: Rect, left: f32, id: Id, add: impl FnOnce(
     shown.inner
 }
 
-/// The usage hint at the bottom left of `canvas` (not interactive).
+/// Width of the view buttons block at the bottom left.
+const VIEW_BUTTONS_WIDTH: f32 = 3.0 * BUTTON + 2.0 * PAD;
+
+/// The view buttons at the bottom left of `canvas`: the layer and grid buttons open
+/// `layers` and `grid` in popups, fit view is returned as clicked.
+pub fn view_buttons(
+    ui: &mut Ui,
+    canvas: Rect,
+    id: Id,
+    keymap: &Keymap,
+    layers: impl FnOnce(&mut Ui),
+    grid: impl FnOnce(&mut Ui),
+) -> bool {
+    let height = BUTTON + 2.0 * PAD;
+    let rect = Rect::from_min_size(
+        Pos2::new(canvas.left() + INSET, canvas.bottom() - INSET - height),
+        vec2(VIEW_BUTTONS_WIDTH, height),
+    );
+    if canvas.width() < VIEW_BUTTONS_WIDTH + 2.0 * INSET || canvas.height() < 3.0 * height {
+        return false;
+    }
+    ui.interact(rect, id.with("bg"), Sense::click_and_drag());
+    let painter = ui.painter_at(canvas);
+    paint_block(&painter, rect);
+    let button = |i: usize| Rect::from_min_size(rect.min + vec2(PAD + i as f32 * BUTTON, PAD), vec2(BUTTON, BUTTON));
+
+    let popup_button =
+        |ui: &mut Ui, i: usize, icon: Icon, name: &str, about: &str, content: &mut dyn FnMut(&mut Ui)| {
+            let bid = id.with(name);
+            let was_open = Popup::is_id_open(ui.ctx(), bid.with("popup"));
+            // Clicks toggle the popup this frame; show the state it will have.
+            let clicked = ui.ctx().read_response(bid).is_some_and(|r| r.clicked());
+            let response = icon_button(ui, &painter, button(i), bid, icon, was_open != clicked);
+            if !was_open {
+                let mut tip = egui::Tooltip::for_enabled(&response);
+                tip.popup = tip.popup.align(RectAlign::TOP_START).gap(GAP + PAD);
+                tip.show(|ui| tooltip(ui, name, about, None, keymap));
+            }
+            Popup::menu(&response)
+                .id(bid.with("popup"))
+                .align(RectAlign::TOP_START)
+                .gap(GAP + PAD)
+                .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+                .show(|ui| {
+                    ui.set_min_width(180.0);
+                    ui.set_max_width(220.0);
+                    content(ui)
+                });
+        };
+    let mut layers = Some(layers);
+    let mut grid = Some(grid);
+    popup_button(ui, 0, Icon::Layers, "Layers", "Show or hide layers.", &mut |ui| {
+        if let Some(f) = layers.take() {
+            f(ui)
+        }
+    });
+    popup_button(ui, 1, Icon::Grid, "Grid", "Grid size, units and visibility.", &mut |ui| {
+        if let Some(f) = grid.take() {
+            f(ui)
+        }
+    });
+    let fit = icon_button(ui, &painter, button(2), id.with("fit"), Icon::Fit, false);
+    let mut tip = egui::Tooltip::for_enabled(&fit);
+    tip.popup = tip.popup.align(RectAlign::TOP_START).gap(GAP + PAD);
+    tip.show(|ui| tooltip(ui, "Fit view", "Zoom to show everything.", Some(Action::FitView), keymap));
+    fit.clicked()
+}
+
+/// Layer menu: a checkbox per layer with its colour, groups separated, and buttons to
+/// show or hide all.
+pub fn layer_menu(ui: &mut Ui, scene: &mut Scene, entries: &[LayerEntry]) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Layers").strong());
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            for (label, visible) in [("None", false), ("All", true)] {
+                if ui.small_button(label).clicked() {
+                    for e in entries {
+                        scene.layer_mut(e.layer).visible = visible;
+                    }
+                }
+            }
+        });
+    });
+    ui.separator();
+    let mut group = entries.first().map_or(0, |e| e.group);
+    for e in entries {
+        if e.group != group {
+            group = e.group;
+            ui.separator();
+        }
+        let layer = scene.layer_mut(e.layer);
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            ui.checkbox(&mut layer.visible, "");
+            let (r, swatch) = ui.allocate_exact_size(vec2(12.0, 12.0), Sense::click());
+            if let Some(c) = e.color {
+                let [red, g, b, _] = c.0;
+                let color = Color32::from_rgb(red, g, b);
+                let color = if layer.visible { color } else { color.gamma_multiply(0.35) };
+                ui.painter().rect_filled(r, 3.0, color);
+            }
+            let text = RichText::new(&layer.name);
+            let text = if layer.visible { text } else { text.color(theme::text_dim()) };
+            let name = ui.add(egui::Label::new(text).sense(Sense::click()).selectable(false));
+            if swatch.clicked() || name.clicked() {
+                layer.visible = !layer.visible;
+            }
+        });
+    }
+}
+
+/// Grid menu: display unit, grid size (presets for `kind` or any value) and visibility.
+pub fn grid_menu(ui: &mut Ui, grid: &mut Coord, background: &mut Background, kind: GridKind) {
+    let mut set = |grid: &mut Coord, g: Coord| {
+        *grid = g;
+        background.grid = Unit::Mm.value(g) as f32;
+    };
+    let dim = |ui: &mut Ui, text: &str| ui.label(RichText::new(text).color(theme::text_dim()));
+    ui.horizontal(|ui| {
+        dim(ui, "Units");
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            let mut unit = units::unit();
+            for u in Unit::ALL.into_iter().rev() {
+                ui.selectable_value(&mut unit, u, u.label());
+            }
+            if unit != units::unit() {
+                units::set_unit(unit);
+                // A round grid in the new unit (0.5 mm → 25 mil, not 19.69 mil).
+                let g = kind.nearest_preset(*grid, unit);
+                set(grid, g);
+            }
+        });
+    });
+    ui.separator();
+    ui.horizontal(|ui| {
+        dim(ui, "Grid size");
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            // Menus draw widgets without a frame: give the field one.
+            let v = &mut ui.visuals_mut().widgets;
+            for w in [&mut v.inactive, &mut v.hovered, &mut v.active] {
+                w.weak_bg_fill = theme::panel_dark();
+                w.bg_stroke = Stroke::new(1.0, theme::border());
+            }
+            if let (_, Some(g)) = units::drag(ui, *grid, 1_000, 100_000_000) {
+                set(grid, g);
+            }
+        });
+    });
+    for g in kind.presets(units::unit()) {
+        if ui.selectable_label(*grid == g, units::fmt(g)).clicked() {
+            set(grid, g);
+        }
+    }
+    ui.separator();
+    ui.checkbox(&mut background.show_grid, "Show grid");
+}
+
+/// The usage hint at the bottom of `canvas`, right of the view buttons (not interactive).
 pub fn hint(ui: &Ui, canvas: Rect, text: &str) {
-    let max_width = canvas.width() - 2.0 * INSET - 20.0;
+    let left = canvas.left() + INSET + VIEW_BUTTONS_WIDTH + GAP;
+    let max_width = canvas.right() - INSET - left - 20.0;
     if max_width < 40.0 {
         return;
     }
@@ -151,7 +323,9 @@ pub fn hint(ui: &Ui, canvas: Rect, text: &str) {
         egui::TextStyle::Body,
     );
     let size = galley.size() + vec2(20.0, 10.0);
-    let rect = Rect::from_min_size(Pos2::new(canvas.left() + INSET, canvas.bottom() - INSET - size.y), size);
+    // Centred on the view buttons.
+    let center_y = canvas.bottom() - INSET - (BUTTON + 2.0 * PAD) / 2.0;
+    let rect = Rect::from_min_size(Pos2::new(left, center_y - size.y / 2.0), size);
     let painter = ui.painter_at(canvas);
     painter.rect_filled(rect, RADIUS, theme::panel().gamma_multiply(0.85));
     painter.galley(rect.min + vec2(10.0, 5.0), galley, theme::text_dim());

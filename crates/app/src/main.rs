@@ -36,6 +36,7 @@ mod script;
 mod settings;
 mod theme;
 mod toolbar;
+mod units;
 
 use app::{Options, Startup};
 

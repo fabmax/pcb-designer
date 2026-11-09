@@ -28,6 +28,8 @@ use crate::sch_ui;
 use crate::script::Script;
 use crate::settings::Settings;
 use crate::theme;
+use crate::toolbar;
+use crate::units::{self, GridKind};
 
 pub enum Startup {
     Open(PathBuf),
@@ -65,10 +67,6 @@ pub struct Options {
     /// Scripted input, see [`crate::script`].
     pub script: Option<String>,
 }
-
-const SCH_GRIDS: &[(f64, &str)] = &[(2.54, "2.54 mm"), (1.27, "1.27 mm"), (0.635, "0.635 mm")];
-const BOARD_GRIDS: &[(f64, &str)] =
-    &[(1.0, "1 mm"), (0.5, "0.5 mm"), (0.25, "0.25 mm"), (0.1, "0.1 mm"), (0.05, "0.05 mm"), (0.635, "25 mil")];
 
 /// Content of a dock tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -142,6 +140,7 @@ impl PcbApp {
     pub fn new(cc: &eframe::CreationContext<'_>, opts: Options) -> Self {
         let mut settings = Settings::load();
         view::style::set_theme(settings.theme);
+        units::set_unit(settings.unit);
         theme::apply(&cc.egui_ctx);
         let keymap = opts.keymap.unwrap_or_else(|| settings.keymap());
         let rs = cc.wgpu_render_state.as_ref().expect("wgpu renderer");
@@ -1264,35 +1263,6 @@ impl PcbApp {
         ui.add_space(6.0);
         self.libraries_section(ui);
         self.project_parts_section(ui);
-
-        let kind = self.active;
-        let pane = &mut self.panes[kind as usize];
-        section(ui, "Grid", |ui| {
-            let grids = if kind == ViewKind::Schematic { SCH_GRIDS } else { BOARD_GRIDS };
-            let current = to_mm(pane.it.grid);
-            let label =
-                grids.iter().find(|g| (g.0 - current).abs() < 1e-9).map_or(format!("{current} mm"), |g| g.1.into());
-            egui::ComboBox::from_id_salt("grid").selected_text(label).show_ui(ui, |ui| {
-                for &(g, name) in grids {
-                    if ui.selectable_label((g - current).abs() < 1e-9, name).clicked() {
-                        pane.it.grid = mm(g);
-                        pane.canvas.background.grid = g as f32;
-                    }
-                }
-            });
-            ui.checkbox(&mut pane.canvas.background.show_grid, "Show grid");
-        });
-
-        let title = format!("{} layers", pane.title());
-        section(ui, &title, |ui| {
-            let range = self.doc.view(kind).user_layers();
-            let scene = &mut self.doc.view_mut(kind).scene;
-            for id in range {
-                let layer = scene.layer_mut(id);
-                let name = layer.name.clone();
-                ui.checkbox(&mut layer.visible, name);
-            }
-        });
     }
 
     /// Parts of all open libraries, ready to place.
@@ -1422,11 +1392,16 @@ impl PcbApp {
             };
             ui.label(RichText::new(title).color(theme::accent()));
             match cursor {
-                Some([x, y]) => ui.monospace(format!("X {x:>9.3}  Y {y:>9.3} mm")),
-                None => ui.monospace(" ".repeat(26)),
+                Some([x, y]) => {
+                    let u = units::unit();
+                    let (x, y) = (x * 1e6 / u.nm(), y * 1e6 / u.nm());
+                    let d = u.decimals().min(3);
+                    ui.monospace(format!("X {x:>10.d$}  Y {y:>10.d$} {:<3}", u.label()))
+                }
+                None => ui.monospace(" ".repeat(29)),
             };
             ui.separator();
-            ui.monospace(format!("grid {} mm", to_mm(grid)));
+            ui.monospace(format!("grid {}", units::fmt(grid)));
             ui.separator();
             ui.label(format!("{selected} selected"));
             let msg = self.panes.iter().find_map(|p| p.it.message.clone());
@@ -1595,6 +1570,20 @@ impl TreeBehavior<'_> {
             *self.focus_lib = None;
         }
         let pane = &mut self.panes[kind as usize];
+        let entries = self.doc.view(kind).layer_menu();
+        let scene = &mut self.doc.view_mut(kind).scene;
+        let grid_kind = if kind == ViewKind::Schematic { GridKind::Schematic } else { GridKind::Board };
+        let fit = toolbar::view_buttons(
+            ui,
+            rect,
+            egui::Id::unique(("view_buttons", kind as u8)),
+            self.keymap,
+            |ui| toolbar::layer_menu(ui, scene, &entries),
+            |ui| toolbar::grid_menu(ui, &mut pane.it.grid, &mut pane.canvas.background, grid_kind),
+        );
+        if fit {
+            pane.canvas.request_fit();
+        }
         if response.hovered() {
             *self.hovered = Some(kind);
         }
@@ -1940,6 +1929,11 @@ impl eframe::App for PcbApp {
             self.tree.ui(&mut behavior, ui);
         });
         self.follow_visible_tabs();
+        // The grid menus change the display unit.
+        if units::unit() != self.settings.unit {
+            self.settings.unit = units::unit();
+            self.save_settings();
+        }
         if let Some(kind) = self.script.as_ref().map(Script::view)
             && (kind != self.active || self.focus_lib.is_some())
         {

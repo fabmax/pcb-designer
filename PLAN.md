@@ -727,3 +727,19 @@ and level of detail for tiny primitives.
 - **Library navigation removed.** The Back / Forward bar above library items, its
   history and the Back / Forward actions (View menu, ⌥← / ⌥→) are gone; the library
   tree is the navigation, and the item canvas now fills the tab like the others.
+- **View buttons and units.** Grid and layer settings moved from the side panel to
+  floating buttons at the canvas' bottom left: Layers, Grid and Fit view. Each opens a
+  popup above itself. The usage hint now sits right of the buttons. The library item
+  editor uses the same buttons, so its grid/Fit header is gone.
+  - Layer popup: a checkbox per layer with a colour swatch in the colour the editor
+    draws it, plus All / None. The order and grouping come from
+    `View::layer_menu` / `ItemView::layer_menu`: copper top to bottom, vias and holes,
+    top and bottom technical layers, outline, then overlays. Hidden layers show a dimmed
+    swatch.
+  - Grid popup: units (mm / mil / in), grid size (presets plus a field for any value)
+    and Show grid. Schematic and symbol presets stay 100/50/25 mil in every unit.
+    Board and footprint presets are round numbers in the unit. Switching units moves
+    the grid to the nearest preset, so 0.5 mm becomes 25 mil instead of 19.69 mil.
+  - The unit is global (`app/src/units.rs`, like the theme) and saved in settings.json.
+    It applies everywhere lengths are shown or typed: property fields, tool settings,
+    design rules, the board problems list and the status bar. The model stays in nm.

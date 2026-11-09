@@ -14,6 +14,7 @@ use crate::icons::Icon;
 use crate::keymap::{Action, Keymap};
 use crate::theme;
 use crate::toolbar::{self, ToolButton};
+use crate::units;
 
 /// Floating tool bar, header (active layer, routing status) and usage hint over the
 /// board canvas. Returns a newly chosen tool.
@@ -95,12 +96,9 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 layer_combo(ui, "pcb_tool_layer", &mut s.layer, doc);
                 ui.end_row();
                 label(ui, "Width");
-                let mut w = to_mm(s.width.unwrap_or(rules.track_width));
-                let min = to_mm(rules.min_track_width);
-                let r =
-                    ui.add(egui::DragValue::new(&mut w).speed(0.01).range(min..=10.0).suffix(" mm").max_decimals(3));
-                if r.changed() {
-                    s.width = Some(mm(w));
+                let w = s.width.unwrap_or(rules.track_width);
+                if let (_, Some(w)) = units::drag(ui, w, rules.min_track_width, mm(10.0)) {
+                    s.width = Some(w);
                 }
                 ui.end_row();
                 label(ui, "Corners");
@@ -128,8 +126,8 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
         }
         PcbTool::Via => {
             grid(ui, "pcb_tool", |ui| {
-                row(ui, "Diameter", format!("{} mm", to_mm(rules.via_diameter)));
-                row(ui, "Drill", format!("{} mm", to_mm(rules.via_drill)));
+                row(ui, "Diameter", units::fmt(rules.via_diameter));
+                row(ui, "Drill", units::fmt(rules.via_drill));
             });
             ui.add_space(6.0);
             hint(ui, "Through vias connect all copper layers. Sizes come from the design rules.");
@@ -149,9 +147,9 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                     }
                 });
                 ui.end_row();
-                row(ui, "Clearance", format!("{} mm", to_mm(rules.clearance)));
-                row(ui, "Thermal gap", format!("{} mm", to_mm(rules.thermal_gap)));
-                row(ui, "Spoke width", format!("{} mm", to_mm(rules.thermal_spoke)));
+                row(ui, "Clearance", units::fmt(rules.clearance));
+                row(ui, "Thermal gap", units::fmt(rules.thermal_gap));
+                row(ui, "Spoke width", units::fmt(rules.thermal_spoke));
             });
             ui.add_space(6.0);
             hint(
@@ -196,11 +194,9 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
                 ("Min. drill", &mut rules.min_drill, 0.1),
             ] {
                 label(ui, name);
-                let mut v = to_mm(*value);
-                let r =
-                    ui.add(egui::DragValue::new(&mut v).speed(0.01).range(min..=20.0).suffix(" mm").max_decimals(3));
-                if r.changed() {
-                    *value = mm(v);
+                let (r, v) = units::drag(ui, *value, mm(min), mm(20.0));
+                if let Some(v) = v {
+                    *value = v;
                     changed = true;
                 }
                 active |= r.dragged() || r.has_focus();
@@ -244,7 +240,7 @@ pub fn problems(ui: &mut egui::Ui, doc: &Document) -> Option<Vec<ObjectId>> {
         ui,
         |ui| {
             for (nets, at) in &copper.shorts {
-                ui.label(format!("Short: {} at {:.2}, {:.2} mm", nets.join(" ↔ "), to_mm(at.x), to_mm(at.y)));
+                ui.label(format!("Short: {} at {}", nets.join(" ↔ "), units::fmt_point(*at)));
             }
             let unconnected = copper.flagged().filter(|c| c.flag == Some(Flag::Unconnected)).count();
             if unconnected > 0 {

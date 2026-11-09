@@ -17,6 +17,7 @@ use crate::draw::{Painter, mmf};
 use crate::index::SpatialIndex;
 use crate::interaction::{Edit, Target};
 use crate::style::*;
+use crate::view::LayerEntry;
 
 /// The library item being edited.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -387,6 +388,33 @@ impl ItemView {
             self.drawn = None;
             self.selection.clear();
             self.hover = None;
+        }
+    }
+
+    /// The layers of the shown item for the layer menu, with their colours.
+    pub fn layer_menu(&self) -> Vec<LayerEntry> {
+        let (l, p) = (&self.layers, pal());
+        let e = |layer, color, group| LayerEntry { layer, color, group };
+        match self.item {
+            None => Vec::new(),
+            Some(Item::Symbol(_)) => vec![
+                e(l.body_fill, Some(p.sch_body_fill), 0),
+                e(l.body, Some(p.sch_body), 0),
+                e(l.pins, Some(p.sch_pin), 0),
+                e(l.names, Some(p.sch_pin_text), 0),
+                e(l.text, Some(p.sch_text), 0),
+                e(l.origin, Some(p.origin), 1),
+            ],
+            Some(Item::Footprint(_)) => vec![
+                e(l.copper, Some(footprint_layer_color(FootprintLayer::Copper)), 0),
+                e(l.holes, None, 0),
+                e(l.names, None, 0),
+                e(l.silk, Some(footprint_layer_color(FootprintLayer::Silkscreen)), 1),
+                e(l.fab, Some(footprint_layer_color(FootprintLayer::Fabrication)), 1),
+                e(l.courtyard, Some(footprint_layer_color(FootprintLayer::Courtyard)), 1),
+                e(l.text, None, 1),
+                e(l.origin, Some(p.origin), 2),
+            ],
         }
     }
 

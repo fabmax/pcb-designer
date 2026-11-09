@@ -24,4 +24,4 @@ pub use document::{Document, DrcReport, ProjectTarget};
 pub use interaction::{Edit, Interaction, KeyAction, PointerInput, Target};
 pub use item::{Elem, Item, ItemTarget, ItemView};
 pub use library_doc::LibraryDoc;
-pub use view::{View, ViewKind};
+pub use view::{LayerEntry, View, ViewKind};
