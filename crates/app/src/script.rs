@@ -1,6 +1,7 @@
 //! Scripted input for screenshots and manual testing (development aid):
 //! `--script "key W; click 0,0; move 10.16,5.08; wait 5"`. Coordinates are schematic
-//! world millimetres (`ui-click x,y` clicks at a screen position in points); each step runs a few frames after the previous one.
+//! world millimetres (`board` switches to board coordinates, `schematic` back; `ui-click
+//! x,y` clicks at a screen position in points); each step runs a few frames after the previous one.
 
 use std::collections::VecDeque;
 
@@ -22,12 +23,15 @@ enum Step {
     /// Screen position in points (for clicking widgets).
     Screen(Step2),
     Wait(u32),
+    /// Following coordinates are in the board (true) or schematic (false) view.
+    Board(bool),
 }
 
 #[derive(Debug, Default)]
 pub struct Script {
     steps: VecDeque<Step>,
     wait: u32,
+    board: bool,
 }
 
 /// Frames between steps (lets the camera fit and the UI settle).
@@ -55,11 +59,13 @@ impl Script {
                     let p = Pos2::new(x as f32, y as f32);
                     steps.extend([Step2::Move(p), Step2::Press(p), Step2::Release(p)].map(Step::Screen));
                 }
+                "board" => steps.push_back(Step::Board(true)),
+                "schematic" => steps.push_back(Step::Board(false)),
                 "wait" => steps.push_back(Step::Wait(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
                 _ => return Err(format!("unknown script step {cmd:?}")),
             }
         }
-        Ok(Script { steps, wait: 0 })
+        Ok(Script { steps, wait: 0, board: false })
     }
 
     pub fn is_done(&self) -> bool {
@@ -67,7 +73,10 @@ impl Script {
     }
 
     /// Input events for this frame.
-    pub fn events(&mut self, to_screen: impl Fn([f64; 2]) -> Pos2) -> Vec<Event> {
+    /// `to_screen(board, world)` maps world millimetres of a view to screen points.
+    pub fn events(&mut self, to_screen: impl Fn(bool, [f64; 2]) -> Pos2) -> Vec<Event> {
+        let board = self.board;
+        let to_screen = |p| to_screen(board, p);
         if self.wait > 0 {
             self.wait -= 1;
             return Vec::new();
@@ -96,6 +105,11 @@ impl Script {
             }],
             Step::Wait(n) => {
                 self.wait = n;
+                Vec::new()
+            }
+            Step::Board(b) => {
+                self.board = b;
+                self.wait = 0;
                 Vec::new()
             }
         }

@@ -4,6 +4,7 @@
 //! one undo step; text fields are committed on Enter or when they lose focus.
 
 use editor_core::Command;
+use editor_core::copper::CopperItem;
 use editor_core::query::pin_pad_names;
 use egui::RichText;
 use model::*;
@@ -166,6 +167,7 @@ impl Properties {
                     ui.end_row();
                     row(ui, "Start", fmt_point(t.a));
                     row(ui, "End", fmt_point(t.b));
+                    copper_net_row(ui, cx.doc, CopperItem::Track(t.id));
                 });
             }
             Object::Via(mut v) => {
@@ -190,6 +192,7 @@ impl Properties {
                         self.update(cx, Object::Via(v.clone()), true);
                     }
                     ui.end_row();
+                    copper_net_row(ui, cx.doc, CopperItem::Via(v.id));
                 });
             }
             Object::Zone(mut z) => {
@@ -409,6 +412,12 @@ fn shape_name(s: &Shape) -> &'static str {
         Shape::Rect { .. } => "Rectangle",
         Shape::Polygon { .. } => "Polygon",
     }
+}
+
+/// Net of board copper (from the pads it touches).
+fn copper_net_row(ui: &mut egui::Ui, doc: &Document, item: CopperItem) {
+    let net = doc.copper().net_of(item).unwrap_or("none (not connected to a pad)");
+    row(ui, "Net", net.to_string());
 }
 
 /// Net name and the pins on it.

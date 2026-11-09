@@ -129,6 +129,7 @@ fn incremental_views_match_rebuild() {
     for kind in [ViewKind::Schematic, ViewKind::Board] {
         let mut fresh = view::View::new(kind, doc.project());
         fresh.set_connectivity(doc.connectivity());
+        fresh.set_copper(doc.project(), doc.copper());
         let live = doc.view(kind);
         assert_eq!(live.scene.instance_count(), fresh.scene.instance_count(), "{kind:?}");
         assert_eq!(live.index.len(), fresh.index.len(), "{kind:?}");

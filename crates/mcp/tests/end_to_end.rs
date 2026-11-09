@@ -66,6 +66,7 @@ async fn agent_session() {
         "search_kicad",
         "import_kicad",
         "get_netlist",
+        "get_routing",
     ] {
         assert!(names.contains(&expected), "missing tool {expected}: {names:?}");
     }
@@ -132,6 +133,28 @@ async fn agent_session() {
     assert_eq!(a["pins"][0]["ref"], refdes.as_str());
     assert!(net("+5V").unwrap()["pins"].as_array().unwrap().iter().any(|p| p["ref"] == refdes.as_str()));
     assert!(netlist["unconnected_pins"].is_array());
+    ok_json(call("undo", Value::Null).await);
+
+    // The demo board is partly routed; route one ratsnest line with a track.
+    let routing = ok_json(call("get_routing", Value::Null).await);
+    let lines = routing["unrouted"].as_array().unwrap().clone();
+    assert!(!lines.is_empty() && routing["fully_routed"] == false);
+    let len = |l: &Value| {
+        let (a, b) = (&l["from"], &l["to"]);
+        let d = |i: usize| a[i].as_f64().unwrap() - b[i].as_f64().unwrap();
+        (d(0).powi(2) + d(1).powi(2)).sqrt()
+    };
+    let line = lines.iter().filter(|l| l["net"] == "GND").min_by(|a, b| len(a).total_cmp(&len(b))).unwrap();
+    ok_json(
+        call(
+            "execute",
+            json!({ "commands": [{ "command": "add_track", "layer": 0, "points": [line["from"], line["to"]] }] }),
+        )
+        .await,
+    );
+    let after = ok_json(call("get_routing", Value::Null).await);
+    assert_eq!(after["unrouted"].as_array().unwrap().len(), lines.len() - 1, "{after}");
+    assert!(after["shorts"].as_array().unwrap().is_empty());
     ok_json(call("undo", Value::Null).await);
 
     // A failing batch changes nothing.

@@ -304,6 +304,14 @@ impl PcbTools {
         self.call(Request::Netlist).await
     }
 
+    #[tool(description = "Board routing state: unrouted connections (ratsnest lines between the \
+        nearest pads, vias or track ends of each net, in nm), shorts between nets, copper layers \
+        and design rules. Route with `execute` add_track (points on pad centers; tracks get their \
+        net from the pads they touch) and add_via (through, connects all layers).")]
+    async fn get_routing(&self) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::Routing).await
+    }
+
     #[tool(description = "Execute editing commands (the same ones the GUI uses) as a single undo \
         step, all-or-nothing. Returns the changed object ids and the created objects.")]
     async fn execute(&self, Parameters(p): Parameters<ExecuteParams>) -> Result<CallToolResult, ErrorData> {

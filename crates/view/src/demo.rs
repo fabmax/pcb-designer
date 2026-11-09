@@ -117,7 +117,7 @@ pub fn demo_project() -> Project {
         (footprint_of(p, j1), footprint_of(p, r1), footprint_of(p, d1), footprint_of(p, c1), footprint_of(p, r2));
     move_footprint(&mut ed, fj1, Point::mm(5.0, 15.0), Angle::ZERO);
     move_footprint(&mut ed, fr1, Point::mm(18.0, 20.0), Angle::ZERO);
-    move_footprint(&mut ed, fd1, Point::mm(30.0, 20.0), Angle::ZERO);
+    move_footprint(&mut ed, fd1, Point::mm(30.0, 20.0), Angle::DEG180);
     move_footprint(&mut ed, fc1, Point::mm(18.0, 10.0), Angle::DEG90);
     move_footprint(&mut ed, fr2, Point::mm(30.0, 10.0), Angle::DEG90);
 

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use model::*;
 
 use crate::CommandError;
-use crate::transaction::Transaction;
+use crate::transaction::{BoardSetup, Transaction};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "command", rename_all = "snake_case")]
@@ -89,6 +89,15 @@ pub enum Command {
         #[serde(default)]
         width: Option<Coord>,
     },
+    /// Number of copper layers (2 or more, even). Inner layers are added or removed at
+    /// the bottom of the inner stack; removing a layer that has copper on it fails.
+    SetCopperLayers {
+        count: u16,
+    },
+    /// Replace the design rules (track width, via size, clearance, …).
+    SetDesignRules {
+        rules: DesignRules,
+    },
     AddVia {
         pos: Point,
         #[serde(default)]
@@ -154,6 +163,8 @@ impl Command {
             Command::SetComponent { .. } => "Edit component".into(),
             Command::AddTrack { .. } => "Add track".into(),
             Command::AddVia { .. } => "Add via".into(),
+            Command::SetCopperLayers { count } => format!("{count} copper layers"),
+            Command::SetDesignRules { .. } => "Edit design rules".into(),
             Command::Move { ids, .. } => format!("Move {} object(s)", ids.len()),
             Command::Rotate { ids, .. } => format!("Rotate {} object(s)", ids.len()),
             Command::Mirror { ids, .. } => format!("Mirror {} object(s)", ids.len()),
@@ -249,6 +260,18 @@ impl Command {
                 for w in segments {
                     tx.insert(Object::Track(Track { id: Id::new(), layer, a: w[0], b: w[1], width }))?;
                 }
+                Ok(())
+            }
+            Command::SetCopperLayers { count } => set_copper_layers(tx, count),
+            Command::SetDesignRules { rules } => {
+                if rules.track_width <= 0 || rules.via_drill <= 0 || rules.via_diameter <= rules.via_drill {
+                    return Err(CommandError::Invalid(
+                        "track width and drill must be positive, and vias larger than their drill".into(),
+                    ));
+                }
+                let mut setup = BoardSetup::of(tx.project());
+                setup.rules = rules;
+                tx.set_setup(setup);
                 Ok(())
             }
             Command::AddVia { pos, diameter, drill } => {
@@ -772,4 +795,45 @@ fn check_references(p: &Project, o: &Object) -> Result<(), CommandError> {
         }
         _ => Ok(()),
     }
+}
+
+fn set_copper_layers(tx: &mut Transaction, count: u16) -> Result<(), CommandError> {
+    if !(2..=32).contains(&count) || !count.is_multiple_of(2) {
+        return Err(CommandError::Invalid(format!("a board has an even number of 2 to 32 copper layers, not {count}")));
+    }
+    let board = &tx.project().board;
+    let inner = count - 2;
+    let removed: Vec<LayerId> = board
+        .layers
+        .iter()
+        .filter(|l| l.id.is_copper() && l.id != LayerId::TOP_COPPER && l.id != LayerId::BOTTOM_COPPER)
+        .filter(|l| l.id.0 > inner)
+        .map(|l| l.id)
+        .collect();
+    let used: Vec<String> = removed
+        .iter()
+        .filter(|&&id| {
+            board.tracks.iter().any(|t| t.layer == id)
+                || board.zones.iter().any(|z| z.layer == id)
+                || board.graphics.iter().any(|g| g.layer == id)
+                || board.texts.iter().any(|t| t.layer == id)
+        })
+        .map(|&id| board.layers.iter().find(|l| l.id == id).map_or(format!("{id:?}"), |l| l.name.clone()))
+        .collect();
+    if !used.is_empty() {
+        return Err(CommandError::Invalid(format!("{} still has copper on it", used.join(", "))));
+    }
+    let mut setup = BoardSetup::of(tx.project());
+    setup.layers.retain(|l| !removed.contains(&l.id));
+    for n in 1..=inner {
+        if !setup.layers.iter().any(|l| l.id == LayerId::inner(n)) {
+            // Inner layers go before the bottom copper layer.
+            let at = setup.layers.iter().position(|l| l.id == LayerId::BOTTOM_COPPER).unwrap_or(setup.layers.len());
+            let layer =
+                BoardLayer { id: LayerId::inner(n), name: format!("Inner {n}"), function: LayerFunction::Copper };
+            setup.layers.insert(at, layer);
+        }
+    }
+    tx.set_setup(setup);
+    Ok(())
 }
