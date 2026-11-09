@@ -748,3 +748,6 @@ and level of detail for tiny primitives.
   visible, so turning snapping back on restores the spacing. The status bar shows
   "no snap" while it is off. Copper snapping in the router (`snap_to_copper`) is
   separate and stays on.
+- **Tab icons.** Schematic (resistor zigzag), PCB (board with a track) and library
+  (books) tabs have an icon. Each is coloured from the palette of what the tab shows:
+  schematic wire, top copper, label amber. The icon is dimmed on inactive tabs.

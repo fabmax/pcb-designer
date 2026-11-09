@@ -24,6 +24,9 @@ pub enum Icon {
     Layers,
     Grid,
     Fit,
+    Schematic,
+    Board,
+    Library,
 }
 
 /// Paint `icon` into `rect` (square) in `color`.
@@ -161,6 +164,36 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             }
             painter.rect_filled(rect_of(0.34, 0.34, 0.66, 0.66), 0.04 * s, faint);
             painter.rect_stroke(rect_of(0.34, 0.34, 0.66, 0.66), 0.04 * s, line, egui::StrokeKind::Middle);
+        }
+        Icon::Schematic => {
+            // A resistor zigzag between two connection dots.
+            let pts = vec![
+                p(0.06, 0.5),
+                p(0.22, 0.5),
+                p(0.29, 0.28),
+                p(0.4, 0.72),
+                p(0.5, 0.28),
+                p(0.6, 0.72),
+                p(0.71, 0.28),
+                p(0.78, 0.5),
+                p(0.94, 0.5),
+            ];
+            open(pts, line);
+            dot(p(0.06, 0.5), 0.08);
+            dot(p(0.94, 0.5), 0.08);
+        }
+        Icon::Board => {
+            // Board outline with a routed track between two pads.
+            painter.rect(rect_of(0.06, 0.14, 0.94, 0.86), 0.1 * s, faint, line, egui::StrokeKind::Middle);
+            open(vec![p(0.26, 0.66), p(0.46, 0.66), p(0.6, 0.36), p(0.74, 0.36)], line);
+            dot(p(0.26, 0.66), 0.1);
+            dot(p(0.74, 0.36), 0.1);
+        }
+        Icon::Library => {
+            // Books on a shelf, the last one leaning.
+            painter.rect(rect_of(0.1, 0.22, 0.3, 0.86), 0.03 * s, faint, line, egui::StrokeKind::Middle);
+            painter.rect(rect_of(0.36, 0.12, 0.56, 0.86), 0.03 * s, faint, line, egui::StrokeKind::Middle);
+            poly(vec![p(0.6, 0.3), p(0.78, 0.24), p(0.94, 0.82), p(0.76, 0.88)], faint, line);
         }
         Icon::Text => {
             seg(p(0.18, 0.18), p(0.82, 0.18), thick);
