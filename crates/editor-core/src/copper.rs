@@ -75,6 +75,18 @@ pub struct Copper {
     pub island: u32,
     /// Net index into [`BoardConnectivity::nets`].
     pub net: Option<u32>,
+    /// Tracks and vias that need attention after schematic changes.
+    pub flag: Option<Flag>,
+}
+
+/// Why a track or via is flagged. Copper is never deleted because the schematic changed;
+/// it is flagged instead, for the user to fix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Flag {
+    /// Its island connects pads of different nets.
+    Short,
+    /// It touches no pad (e.g. the component it was routed to was deleted).
+    Unconnected,
 }
 
 /// An unrouted connection.
@@ -133,6 +145,7 @@ impl BoardConnectivity {
                     anchors: vec![center],
                     island: 0,
                     net: None,
+                    flag: None,
                 });
                 pad_nets.push(pad_net.get(&(f.component, pad.name.as_str())).copied());
             }
@@ -146,6 +159,7 @@ impl BoardConnectivity {
                 anchors: vec![tr.a, tr.b],
                 island: 0,
                 net: None,
+                flag: None,
             });
         }
         for v in board.vias.iter() {
@@ -159,6 +173,7 @@ impl BoardConnectivity {
                 anchors: vec![v.pos],
                 island: 0,
                 net: None,
+                flag: None,
             });
         }
         bc.index = bc.items.iter().enumerate().map(|(i, c)| (c.item, i)).collect();
@@ -199,7 +214,13 @@ impl BoardConnectivity {
             bc.items[i].net = net;
         }
         for c in &mut bc.items[pads..] {
-            c.net = island_nets[c.island as usize].first().copied();
+            let nets = &island_nets[c.island as usize];
+            c.net = nets.first().copied();
+            c.flag = match nets.len() {
+                0 => Some(Flag::Unconnected),
+                1 => None,
+                _ => Some(Flag::Short),
+            };
         }
         for (island, nets) in island_nets.iter().enumerate() {
             if nets.len() > 1 {
@@ -265,6 +286,11 @@ impl BoardConnectivity {
     /// Copper of a net.
     pub fn items_of_net(&self, net: u32) -> impl Iterator<Item = &Copper> {
         self.items.iter().filter(move |c| c.net == Some(net))
+    }
+
+    /// Flagged tracks and vias.
+    pub fn flagged(&self) -> impl Iterator<Item = &Copper> {
+        self.items.iter().filter(|c| c.flag.is_some())
     }
 
     /// Number of unrouted connections.

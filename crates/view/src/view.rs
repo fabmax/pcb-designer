@@ -71,6 +71,8 @@ pub struct View {
     hover: Option<ObjectId>,
     /// Highlighted nets (board), by name.
     nets: Vec<String>,
+    /// Cross-probed objects.
+    probed: Vec<ObjectId>,
 }
 
 fn item(id: ObjectId) -> u64 {
@@ -85,6 +87,8 @@ const CONNECTIVITY_ITEM: u64 = 3 << 62;
 const PREVIEW_ITEM: u64 = (3 << 62) | 1;
 /// Scene item of the highlighted nets.
 const NET_ITEM: u64 = (3 << 62) | 2;
+/// Scene item of cross-probed objects.
+const PROBE_ITEM: u64 = (3 << 62) | 3;
 
 fn overlay_item(id: ObjectId, hover: bool) -> u64 {
     item(id) | if hover { 2 << 62 } else { 1 << 62 }
@@ -104,6 +108,7 @@ impl View {
             selection: FxHashSet::default(),
             hover: None,
             nets: Vec::new(),
+            probed: Vec::new(),
         };
         v.draw_all(project);
         v
@@ -390,8 +395,15 @@ impl View {
     /// Draw the ratsnest and refresh net highlights (board only).
     pub fn set_copper(&mut self, _project: &Project, c: &BoardConnectivity) {
         let Layers::Board(l) = &self.layers else { return };
-        let out: Vec<(RLayer, Instance)> =
+        let mut out: Vec<(RLayer, Instance)> =
             c.ratsnest.iter().map(|r| (l.ratsnest, Instance::line(mmf(r.a), mmf(r.b), 0.05, RATSNEST))).collect();
+        // Flagged copper: a halo around it.
+        for item in c.flagged() {
+            if let Geo::Capsule { a, b, r } = item.geo {
+                let w = (r as f64 * 2e-6) as f32 + 0.3;
+                out.push((l.ratsnest, Instance::line(mmf(a), mmf(b), w, FLAGGED)));
+            }
+        }
         self.scene.set_item(CONNECTIVITY_ITEM, out);
         let nets = std::mem::take(&mut self.nets);
         self.set_nets(c, &nets);
@@ -423,6 +435,38 @@ impl View {
 
     pub fn highlighted_nets(&self) -> &[String] {
         &self.nets
+    }
+
+    pub fn probed(&self) -> &[ObjectId] {
+        &self.probed
+    }
+
+    /// Highlight objects selected in the other view (cross-probing; empty clears).
+    pub fn set_probe(&mut self, project: &Project, ids: &[ObjectId]) {
+        self.probed = ids.to_vec();
+        if ids.is_empty() {
+            self.scene.remove_item(PROBE_ITEM);
+            return;
+        }
+        let layer = self.hover_layer;
+        let mut out = Vec::new();
+        for &id in ids {
+            let mut p = Painter::default();
+            if !self.draw_object(project, id, &mut p) {
+                continue;
+            }
+            out.extend(p.out.into_iter().map(|(_, mut inst)| {
+                inst.color = PROBE;
+                (layer, inst)
+            }));
+            if matches!(id, ObjectId::Symbol(_) | ObjectId::Footprint(_))
+                && let Some(b) = p.bounds
+            {
+                let size = [(b.width() as f64 * 1e-6) as f32, (b.height() as f64 * 1e-6) as f32];
+                out.push((layer, Instance::rect(mmf(b.center()), size, 0.0, 0.0, PROBE_FILL)));
+            }
+        }
+        self.scene.set_item(PROBE_ITEM, out);
     }
 
     // ------------------------------------------------------------------------------------

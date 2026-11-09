@@ -516,3 +516,33 @@ and level of detail for tiny primitives.
   - Push-and-shove routing; dragging tracks while keeping them connected.
   - Blind and buried vias in the UI.
   - Copper graphics inside footprints (from KiCad custom pads) don't count as connections.
+
+## Milestone 8 results (2026-11-09)
+
+- **Board follows the schematic** (tests in `editor-core/tests/board.rs` on a routed
+  board):
+  - Placing a part adds its footprint; deleting it removes the footprint, and undo
+    restores it in place.
+  - Variant changes swap the footprint in place; copper reconnects to the new pads.
+  - Renamed labels and swapped reference designators carry the routed copper along:
+    tracks have no stored net, and placements belong to components, not names.
+  - Flipping a footprint moves its SMD pads to the other side.
+- **Copper is flagged, never deleted.** After a schematic change, a track or via is
+  flagged when its island connects pads of different nets (`Short`) or touches no pad
+  (`Unconnected`):
+  - The board view draws an orange halo around flagged copper.
+  - The toolbar counts flagged items.
+  - Track and via properties name the problem.
+  - A "Board problems" section (PCB, nothing selected) lists shorts and selects all
+    flagged copper with one click.
+  - MCP `get_routing` lists flagged copper.
+- **Cross-probing** (`view::probe::cross_probe`, a pure function):
+  - The active view's selection highlights matching objects in the other view (yellow
+    overlay): symbols ↔ footprints.
+  - Schematic wires, labels and junctions highlight their nets' copper on the board.
+  - Tracks and vias highlight their nets' wires, labels and junctions in the schematic.
+  - The net being routed always wins.
+- `view/tests/probe.rs`: probing both ways. The board view stays identical to a rebuild
+  after variant changes, deletes, layer stack changes and undo/redo.
+- **Not yet:** pin/gate swaps driven from the board (back-annotation is out of scope:
+  the PCB never changes the schematic).

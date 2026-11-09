@@ -18,8 +18,13 @@ pub const SELECTION: Color = Color::rgba(0x4c, 0x9a, 0xff, 0xe0);
 pub const SELECTION_FILL: Color = Color::rgba(0x4c, 0x9a, 0xff, 0x28);
 /// Ratsnest lines (unrouted connections).
 pub const RATSNEST: Color = Color::rgba(0xe8, 0xe8, 0xf0, 0xb0);
+/// Halo around flagged tracks and vias (shorts, unconnected copper).
+pub const FLAGGED: Color = Color::rgba(0xff, 0x9a, 0x2e, 0x70);
 /// Copper of highlighted nets.
 pub const NET_HIGHLIGHT: Color = Color::rgba(0xff, 0xff, 0xff, 0x60);
+/// Objects selected in the other view (cross-probing).
+pub const PROBE: Color = Color::rgba(0xff, 0xd0, 0x4c, 0xd0);
+pub const PROBE_FILL: Color = Color::rgba(0xff, 0xd0, 0x4c, 0x22);
 pub const HOVER: Color = Color::rgba(0xff, 0xff, 0xff, 0x50);
 
 pub const VIA: Color = Color::rgb(0xa8, 0xa8, 0xa8);

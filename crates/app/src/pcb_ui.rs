@@ -1,6 +1,7 @@
 //! Board tool bar, tool settings and board setup (layer stack, design rules).
 
 use editor_core::Command;
+use editor_core::copper::{CopperItem, Flag};
 use egui::RichText;
 use model::*;
 use view::Document;
@@ -31,6 +32,11 @@ pub fn toolbar(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) -> Option
                 n => RichText::new(format!("{n} unrouted")).color(theme::TEXT_DIM),
             };
             ui.label(text);
+            let flagged = copper.flagged().count();
+            if flagged > 0 {
+                ui.label(RichText::new(format!("{flagged} flagged")).color(theme::WARN))
+                    .on_hover_text("Tracks and vias in a short, or touching no pad (see Board problems)");
+            }
             if !copper.shorts.is_empty() {
                 let tip: Vec<String> = copper.shorts.iter().map(|(nets, _)| nets.join(" ↔ ")).collect();
                 ui.label(RichText::new(format!("{} short(s)", copper.shorts.len())).color(theme::WARN))
@@ -172,4 +178,40 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
             *message = Some(e.to_string());
         }
     });
+}
+
+/// Shorts and flagged copper (board properties with nothing selected). Returns objects
+/// to select.
+pub fn problems(ui: &mut egui::Ui, doc: &Document) -> Option<Vec<ObjectId>> {
+    let copper = doc.copper();
+    let flagged: Vec<ObjectId> = copper
+        .flagged()
+        .filter_map(|c| match c.item {
+            CopperItem::Track(t) => Some(ObjectId::Track(t)),
+            CopperItem::Via(v) => Some(ObjectId::Via(v)),
+            CopperItem::Pad { .. } => None,
+        })
+        .collect();
+    if flagged.is_empty() && copper.shorts.is_empty() {
+        return None;
+    }
+    let mut select = None;
+    ui.add_space(8.0);
+    egui::CollapsingHeader::new(RichText::new("Board problems").strong().color(theme::WARN)).default_open(true).show(
+        ui,
+        |ui| {
+            for (nets, at) in &copper.shorts {
+                ui.label(format!("Short: {} at {:.2}, {:.2} mm", nets.join(" ↔ "), to_mm(at.x), to_mm(at.y)));
+            }
+            let unconnected = copper.flagged().filter(|c| c.flag == Some(Flag::Unconnected)).count();
+            if unconnected > 0 {
+                ui.label(format!("{unconnected} track(s)/via(s) touch no pad"));
+            }
+            if !flagged.is_empty() && ui.button(format!("Select {} flagged", flagged.len())).clicked() {
+                select = Some(flagged.clone());
+            }
+            hint(ui, "Schematic changes never delete copper; it is flagged here instead.");
+        },
+    );
+    select
 }

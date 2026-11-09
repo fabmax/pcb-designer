@@ -1,7 +1,7 @@
 //! Board connectivity, ratsnest and layer stack: route small boards with commands.
 
 use editor_core::connectivity::Connectivity;
-use editor_core::copper::{BoardConnectivity, CopperItem};
+use editor_core::copper::{BoardConnectivity, CopperItem, Flag};
 use editor_core::query::{pad_positions, pin_positions};
 use editor_core::{Command, Editor};
 use model::builtin::{self, PART_HEADER_1X4, PART_LED, PART_RESISTOR};
@@ -234,4 +234,107 @@ fn layer_stack_changes_are_undoable() {
     rules = b.ed.project().board.rules.clone();
     rules.via_diameter = rules.via_drill;
     assert!(b.ed.execute(Command::SetDesignRules { rules }).is_err());
+}
+
+// ---- Schematic edits on a routed board: copper is kept and flagged, never deleted.
+
+/// `series()` with R1.2–R2.1 routed on top. Returns the track.
+fn routed_series() -> (B, [Id; 2], Id) {
+    let (mut b, fps) = series();
+    let (p1, p2) = (b.pad(fps[0], "2"), b.pad(fps[1], "1"));
+    let t = b.track(LayerId::TOP_COPPER, &[p1, p2]);
+    assert_eq!(b.bc().unrouted(), 0);
+    (b, fps, t)
+}
+
+fn symbol_of(b: &B, fp: Id) -> Id {
+    let c = b.ed.project().board.footprints.get(fp).unwrap().component;
+    b.ed.project().schematic.symbols_of(c).next().unwrap().id
+}
+
+#[test]
+fn rewiring_the_schematic_flags_tracks_as_shorts() {
+    let (mut b, [f1, _], t) = routed_series();
+    // R1.2 moves to net IN: the routed track now joins IN and R2.1.
+    let wire = b.ed.project().schematic.wires.iter().next().unwrap().id;
+    b.ed.execute(Command::Delete { ids: vec![ObjectId::Wire(wire)] }).unwrap();
+    let s1 = symbol_of(&b, f1);
+    b.label(b.pin(s1, "2"), "IN");
+    let bc = b.bc();
+    assert!(b.ed.project().board.tracks.contains(t), "kept");
+    assert_eq!(bc.get(CopperItem::Track(t)).unwrap().flag, Some(Flag::Short));
+    assert_eq!(bc.shorts.len(), 1);
+    assert!(bc.shorts[0].0.contains(&"IN".to_string()));
+    // Undo restores a clean board.
+    b.ed.undo();
+    b.ed.undo();
+    let bc = b.bc();
+    assert!(bc.flagged().next().is_none() && bc.shorts.is_empty() && bc.unrouted() == 0);
+}
+
+#[test]
+fn deleting_a_component_leaves_its_copper_flagged() {
+    let (mut b, [f1, f2], t) = routed_series();
+    let p = b.pad(f2, "2");
+    let stub = b.track(LayerId::TOP_COPPER, &[p, p + Point::mm(0.0, 3.0)]);
+    let pos = b.ed.project().board.footprints.get(f2).unwrap().pos;
+    let s2 = symbol_of(&b, f2);
+    b.ed.execute(Command::Delete { ids: vec![ObjectId::Symbol(s2)] }).unwrap();
+    assert!(!b.ed.project().board.footprints.contains(f2), "footprint follows the schematic");
+    let bc = b.bc();
+    assert_eq!(bc.get(CopperItem::Track(stub)).unwrap().flag, Some(Flag::Unconnected));
+    // Still touching R1's pad: keeps that net.
+    assert_eq!(bc.get(CopperItem::Track(t)).unwrap().flag, None);
+    assert_eq!(bc.net_of(CopperItem::Track(t)), Some("Net-(R1-2)"));
+    b.ed.undo();
+    assert_eq!(b.ed.project().board.footprints.get(f2).unwrap().pos, pos, "back where it was");
+    assert!(b.bc().flagged().next().is_none());
+    let _ = f1;
+}
+
+#[test]
+fn renaming_nets_and_references_moves_routed_copper_along() {
+    let (mut b, [f1, f2], t) = routed_series();
+    // Label the routed net: the track takes the name.
+    let s1 = symbol_of(&b, f1);
+    b.label(b.pin(s1, "2"), "MID");
+    assert_eq!(b.bc().net_of(CopperItem::Track(t)), Some("MID"));
+    // Rename the label.
+    let mut label = b.ed.project().schematic.labels.iter().find(|l| l.name == "MID").unwrap().clone();
+    label.name = "DIVIDER".into();
+    b.ed.execute(Command::Update { objects: vec![Object::Label(label)] }).unwrap();
+    // Swap reference designators: placements belong to components, not names.
+    let c1 = b.ed.project().board.footprints.get(f1).unwrap().component;
+    let c2 = b.ed.project().board.footprints.get(f2).unwrap().component;
+    for (c, r) in [(c1, "R9"), (c2, "R1"), (c1, "R2")] {
+        b.ed.execute(Command::SetComponent { id: c, refdes: Some(r.into()), value: None, variant: None }).unwrap();
+    }
+    let bc = b.bc();
+    assert_eq!(bc.net_of(CopperItem::Track(t)), Some("DIVIDER"));
+    assert!(bc.flagged().next().is_none() && bc.shorts.is_empty() && bc.unrouted() == 0);
+    assert_eq!(b.ed.project().board.footprints.get(f1).unwrap().component, c1);
+}
+
+#[test]
+fn changing_the_footprint_variant_updates_copper() {
+    let (mut b, [f1, _], t) = routed_series();
+    let c1 = b.ed.project().board.footprints.get(f1).unwrap().component;
+    let v0805 = b.ed.project().library.parts.get(PART_RESISTOR).unwrap().variants[1].id;
+    let before = b.pad(f1, "2");
+    b.ed.execute(Command::SetComponent { id: c1, refdes: None, value: None, variant: Some(v0805) }).unwrap();
+    let after = b.pad(f1, "2");
+    assert_ne!(before, after, "0805 pads are further apart");
+    let bc = b.bc();
+    // The track ends inside the bigger pad: still connected, nothing flagged.
+    assert_eq!(bc.net_of(CopperItem::Track(t)), Some("Net-(R1-2)"));
+    assert!(bc.flagged().next().is_none());
+    assert_eq!(bc.unrouted(), 0);
+}
+
+#[test]
+fn flipping_a_footprint_disconnects_top_tracks() {
+    let (mut b, [f1, _], _) = routed_series();
+    let x = b.ed.project().board.footprints.get(f1).unwrap().pos.x;
+    b.ed.execute(Command::FlipSide { ids: vec![ObjectId::Footprint(f1)], axis_x: x }).unwrap();
+    assert_eq!(b.bc().unrouted(), 1, "SMD pads moved to the bottom");
 }
