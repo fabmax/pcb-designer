@@ -1239,4 +1239,42 @@ signature. `--install` copies it to /Applications.
   unbundled binary (`cargo run`) is shown as `pcb-designer`. Two fixes don't work on
   current macOS: `NSProcessInfo.setProcessName`, and embedding the plist in a
   `__TEXT,__info_plist` section. LaunchServices still reports the executable's name.
-- No app icon yet (`CFBundleIconFile` would point at an `.icns` in `Resources`).
+- The script also builds `Resources/AppIcon.icns` from `crates/app/assets/icon.png` with
+  `sips` and `iconutil` (see section 8).
+
+### 8. macOS title strip and app icon
+
+On macOS the system title bar is gone: the window content extends under a transparent
+title bar (`with_fullsize_content_view`, `with_titlebar_shown(false)`,
+`with_title_shown(false)`). `title_bar.rs` draws a strip there, in the window background
+colour: the app icon and the project name, centred, plus a dimmed "— Edited" when the
+project has unsaved changes. The native window buttons stay.
+
+- **Metrics come from the `NSWindow`** (`title_bar::chrome`). The strip height is the
+  frame height minus `contentLayoutRect` (32 pt on macOS 26, not the classic 28). The
+  title is kept clear of the zoom button's right edge. `Chrome::DEFAULT` applies only
+  when there's no window handle.
+- **Window behaviour:** dragging the strip sends `ViewportCommand::StartDrag`. A
+  double-click reads `AppleActionOnDoubleClick` (Maximize/Fill → `zoom:`, Minimize →
+  `miniaturize:`, None). Fill has no public API, so it zooms. In full screen
+  (`viewport().fullscreen`) the strip collapses to the usual 6 pt gap.
+- **Native touches:** `setDocumentEdited` puts the unsaved dot in the close button. It
+  counts the project only; libraries show `•` on their tabs. The window appearance
+  follows the app theme (`theme::apply_to_window`, `ViewportCommand::SetTheme`), so the
+  native buttons match the strip.
+  - Gotcha: `theme::apply` now pins egui's theme (`ctx.set_theme`). Otherwise a window
+    appearance change makes egui follow it and swap our visuals for its defaults.
+- The hidden native title is still set (`update_title`), for the Window menu, Mission
+  Control and ⌘`.
+- **App icon:** `cargo run -p render --example app_icon -- crates/app/assets/icon.png`
+  draws it with our SDF renderer: a superellipse (n = 5) on the 824/1024 macOS grid, in
+  green solder mask with copper traces, pads and a via. The renderer's background is
+  opaque, so the example renders on black and on white and recovers the alpha from the
+  difference.
+  - Gotcha: the squircle is a triangle fan, and its hard inner edges leave hairline
+    gaps. Two fans, offset by half a step, cover each other's gaps.
+  - The PNG is committed (the output is deterministic). It's embedded as
+    `icons::APP_ICON_PNG`, the viewport icon on every platform (it replaces eframe's egui
+    logo in the Dock and taskbar). On macOS it's also downsampled to 64² (premultiplied
+    box filter) for the strip.
+- `--screenshot` captures egui's output: the strip shows, but the native buttons don't.

@@ -36,6 +36,8 @@ use crate::sch_ui;
 use crate::script::Script;
 use crate::settings::Settings;
 use crate::theme;
+#[cfg(target_os = "macos")]
+use crate::title_bar;
 use crate::toolbar;
 use crate::units::{self, GridKind};
 
@@ -176,6 +178,8 @@ pub struct PcbApp {
     menu_cmds: Vec<Cmd>,
     #[cfg(target_os = "macos")]
     native_menu: crate::native_menu::NativeMenu,
+    #[cfg(target_os = "macos")]
+    title_bar: title_bar::TitleBar,
 }
 
 impl PcbApp {
@@ -184,6 +188,7 @@ impl PcbApp {
         view::style::set_theme(settings.theme);
         units::set_unit(settings.unit);
         theme::apply(&cc.egui_ctx);
+        theme::apply_to_window(&cc.egui_ctx);
         let keymap = opts.keymap.unwrap_or_else(|| settings.keymap());
         let rs = cc.wgpu_render_state.as_ref().expect("wgpu renderer");
         CanvasResources::install(rs);
@@ -249,6 +254,8 @@ impl PcbApp {
             menu_cmds: Vec::new(),
             #[cfg(target_os = "macos")]
             native_menu: crate::native_menu::NativeMenu::new(&cc.egui_ctx),
+            #[cfg(target_os = "macos")]
+            title_bar: title_bar::TitleBar::default(),
         };
         match opts.script.as_deref().map(Script::parse) {
             Some(Ok(s)) => app.script = Some(s),
@@ -440,6 +447,7 @@ impl PcbApp {
     fn set_theme(&mut self, ctx: &egui::Context, t: view::style::Theme) {
         view::style::set_theme(t);
         theme::apply(ctx);
+        theme::apply_to_window(ctx);
         for pane in &mut self.panes {
             pane.canvas.background = view::style::background(pane.canvas.background.grid);
         }
@@ -1292,8 +1300,8 @@ impl PcbApp {
     // Panels
 
     /// The main menu: in the system menu bar on macOS, else a bar atop the window.
-    fn main_menu(&mut self, ui: &mut egui::Ui, gap: i8) {
-        let frame = |top| {
+    fn main_menu(&mut self, ui: &mut egui::Ui, frame: &eframe::Frame, gap: i8) {
+        let margin = |top| {
             egui::Frame::NONE.fill(theme::window_bg()).inner_margin(egui::Margin {
                 left: 8,
                 right: 8,
@@ -1304,11 +1312,24 @@ impl PcbApp {
         let panel = egui::Panel::top("menu").show_separator_line(false);
         if cfg!(target_os = "macos") {
             #[cfg(target_os = "macos")]
-            self.native_menu.sync(self.menus(true));
-            panel.frame(frame(0)).exact_size(f32::from(gap)).show(ui, |_| {});
+            {
+                self.native_menu.sync(self.menus(true));
+                // Our own title strip, unless full screen hides the title bar.
+                let chrome = title_bar::chrome(frame).unwrap_or(title_bar::Chrome::DEFAULT);
+                let fullscreen = ui.ctx().input(|i| i.viewport().fullscreen.unwrap_or(false));
+                if !fullscreen && chrome.height > 0.0 {
+                    let edited = self.project.lib.doc.is_modified();
+                    title_bar::set_document_edited(frame, edited);
+                    let name = self.project_name();
+                    self.title_bar.show(ui, frame, chrome, &name, edited);
+                    return;
+                }
+            }
+            let _ = frame;
+            panel.frame(margin(0)).exact_size(f32::from(gap)).show(ui, |_| {});
         } else {
             let menus = self.menus(false);
-            if let Some(cmd) = panel.frame(frame(2)).show(ui, |ui| menu::bar_ui(ui, &menus)).inner {
+            if let Some(cmd) = panel.frame(margin(2)).show(ui, |ui| menu::bar_ui(ui, &menus)).inner {
                 self.run_menu_cmd(ui.ctx(), cmd);
             }
         }
@@ -2088,11 +2109,16 @@ impl PcbApp {
         });
     }
 
-    fn update_title(&mut self, ctx: &egui::Context) {
-        let name = match &self.project.lib.doc.path {
+    /// The project's folder name, or its name while unsaved.
+    fn project_name(&self) -> String {
+        match &self.project.lib.doc.path {
             Some(p) => p.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned()),
             None => self.project.lib.doc.project().name.clone(),
-        };
+        }
+    }
+
+    fn update_title(&mut self, ctx: &egui::Context) {
+        let name = self.project_name();
         let title = format!("{}{} — PCB Designer", name, if self.project.lib.doc.is_modified() { " •" } else { "" });
         if title != self.title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
@@ -2607,7 +2633,7 @@ impl eframe::App for PcbApp {
         }
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.sync_libraries();
         self.handle_close(&ctx);
@@ -2623,7 +2649,7 @@ impl eframe::App for PcbApp {
 
         let gap = theme::GAP;
         let bar = |m: egui::Margin| egui::Frame::NONE.fill(theme::window_bg()).inner_margin(m);
-        self.main_menu(ui, gap);
+        self.main_menu(ui, frame, gap);
         egui::Panel::bottom("status")
             .frame(bar(egui::Margin { left: 10, right: 10, top: 4, bottom: 4 }))
             .show_separator_line(false)
