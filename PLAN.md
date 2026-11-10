@@ -1228,3 +1228,15 @@ menu bar in the window.
 - winit's default menu is switched off (`event_loop_builder` in `main.rs`). Menu events
   come through muda's global handler, which wakes egui with `request_repaint`.
 - Hover texts (layout radios) and note colours exist only in the egui bar.
+
+### 7. macOS app bundle
+
+`scripts/bundle-macos.sh` builds `PCB Designer.app`: the release binary plus
+`crates/app/macos/Info.plist` (version from the workspace `Cargo.toml`), with an ad-hoc
+signature. `--install` copies it to /Applications.
+
+- Gotcha: macOS takes the app name in the menu bar from the bundle's `CFBundleName`. An
+  unbundled binary (`cargo run`) is shown as `pcb-designer`. Two fixes don't work on
+  current macOS: `NSProcessInfo.setProcessName`, and embedding the plist in a
+  `__TEXT,__info_plist` section. LaunchServices still reports the executable's name.
+- No app icon yet (`CFBundleIconFile` would point at an `.icns` in `Resources`).
