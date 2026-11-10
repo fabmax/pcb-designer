@@ -46,7 +46,8 @@ to it go through `execute` like any project change.
 
 The Project panel (⌘1) shows a tree, IntelliJ style:
 
-- **The project:** Schematic and PCB (double-click to show them) and the **Project
+- **The project:** Schematic and PCB (double-click to show them; their tabs can be closed
+  like any other, and the tree opens them again) and the **Project
   Library**, the project's own copies of the parts the design uses. It is editable like
   any library, in its own tab: edits are project changes, so they share the project's
   undo history and update the schematic and board right away. Each part shows its state:

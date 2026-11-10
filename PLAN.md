@@ -1173,3 +1173,29 @@ This fixes the cost noted in change 3: a library edit used to rebuild both views
   which made "matches a rebuild" tests fail after an item shrank.
 - Gotcha: the per-instance redraw (text glyphs mostly) is now the floor. Drawing symbols
   as shared, transformed instances would be the next step if it is ever needed.
+
+### 5. Closable view tabs
+
+The Schematic and PCB tabs close like library tabs now that the tree reopens them.
+
+- `is_tab_closable` is true for every tab; `close_requests` carries `Tab`s, and the app
+  runs `close_view` / `close_library` after the tree is drawn.
+- **Closing a view** (`PcbApp::close_view`) removes its tile, cancels the tool in progress
+  and resets the interaction. The pane itself stays: camera, grid and selection come back
+  when it is reopened. The pane's tab group is remembered in `view_groups`.
+- **Reopening** goes through `show_view`, which every path to a view already used (tree,
+  messages, scripts, `focus_schematic` for placing). `insert_tab` picks the group: the
+  remembered one if it still exists, else the other view's or the Project Library's
+  group, else any tab group, else a new root (everything was closed).
+  - Gotcha: `TileId`s are sequential, so a remembered group must not be looked up in a
+    rebuilt tree. `set_layout` clears `view_groups`.
+  - In side-by-side layout, closing the PCB removes its (now empty) group; reopened, the
+    PCB becomes a tab next to the schematic. `is_side_by_side` is false then, so choosing
+    "Side by side" in the View menu rebuilds the layout with both views.
+- **With the active view closed** and no library focused, `is_open(active)` is false:
+  `run_action` only runs project-level actions (new/open/save/undo/redo/panels); the
+  status bar shows no editor info; the Properties panel has no selection; `focus_node`
+  highlights nothing in the tree. With every tab closed the central area shows a hint
+  (the tile tree isn't drawn: it would take the space).
+- `open_library_tab` uses `insert_tab` too (next to the schematic, else the Project
+  Library, else the PCB).
