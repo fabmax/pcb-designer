@@ -1199,3 +1199,32 @@ The Schematic and PCB tabs close like library tabs now that the tree reopens the
   (the tile tree isn't drawn: it would take the space).
 - `open_library_tab` uses `insert_tab` too (next to the schematic, else the Project
   Library, else the PCB).
+
+### 6. macOS system menu bar
+
+On macOS the main menu sits in the system menu bar. Windows and Linux keep the egui
+menu bar in the window.
+
+- **One description, two renderers:** `menu::menus(&MenuState)` builds the menus as data
+  (`Entry`: item, check/radio, submenu, note, system entry, separator). Picking an entry
+  gives a `Cmd`, and `PcbApp::run_menu_cmd` carries it out. `menu::bar_ui` draws the
+  egui bar, and `native_menu.rs` (muda, macOS only) builds the native menus. Add new
+  menu entries to `menus`, never to a renderer.
+- **Native extras** (`MenuState::native`): an application menu with About, Settings…
+  (⌘,), Services, Hide/Show and Quit (⌘Q), plus a Window menu (Minimize, Zoom, window
+  list) and View → Enter Full Screen. Settings and Quit leave Edit and File. Quit is our
+  own item, not muda's predefined one, so it goes through `handle_close` (the unsaved
+  changes prompt).
+- **Updates:** `NativeMenu::sync` runs every frame. It does nothing when the description
+  is unchanged; it updates texts and states in place when only those changed; otherwise
+  it rebuilds the menu bar (for example when the recent list or the agent entries
+  change). macOS flips check items when they're clicked, so any pick forces a re-sync.
+- **Shortcuts gotcha:** macOS menus take their key equivalents before the window sees
+  the key. So only ⌘ shortcuts become key equivalents (a plain R would stop typing), and
+  an entry with one isn't run directly: `raw_input_hook` replays its shortcut as an egui
+  key press. That way the keymap's context and typing rules still apply, and ⌘Z / ⌘A
+  in a text field still edit the text. Entries without a ⌘ shortcut don't show it in
+  the native menu.
+- winit's default menu is switched off (`event_loop_builder` in `main.rs`). Menu events
+  come through muda's global handler, which wakes egui with `request_repaint`.
+- Hover texts (layout radios) and note colours exist only in the egui bar.

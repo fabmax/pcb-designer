@@ -27,6 +27,7 @@ use crate::icons::{self, Icon};
 use crate::keymap::{Action, Context, Keymap, Shortcut};
 use crate::kicad_import::{ImportAction, KicadImport};
 use crate::library::{LibraryEditor, Open, PROJECT_LIB};
+use crate::menu::{self, Cmd, Menu, MenuState};
 use crate::messages;
 use crate::pcb_ui;
 use crate::project_panel::{self, Group, NodeId, Owner, ProjectPanel, TreeNode};
@@ -171,6 +172,10 @@ pub struct PcbApp {
     /// Inputs of the current cross-probe highlights (to skip unchanged frames).
     probe_key: Option<(ViewKind, Vec<ObjectId>, u64, Option<String>)>,
     script: Option<Script>,
+    /// Commands picked in the native menu, run in the next `ui`.
+    menu_cmds: Vec<Cmd>,
+    #[cfg(target_os = "macos")]
+    native_menu: crate::native_menu::NativeMenu,
 }
 
 impl PcbApp {
@@ -241,6 +246,9 @@ impl PcbApp {
             pcb: PcbPlacer::default(),
             probe_key: None,
             script: None,
+            menu_cmds: Vec::new(),
+            #[cfg(target_os = "macos")]
+            native_menu: crate::native_menu::NativeMenu::new(&cc.egui_ctx),
         };
         match opts.script.as_deref().map(Script::parse) {
             Some(Ok(s)) => app.script = Some(s),
@@ -1280,154 +1288,103 @@ impl PcbApp {
         true
     }
 
-    /// Menu entry for `action`, showing its current shortcut.
-    fn menu_item(&mut self, ui: &mut egui::Ui, label: &str, action: Action, enabled: bool) {
-        let shortcut = self.keymap.menu_text(ui.ctx(), action);
-        if ui.add_enabled(enabled, egui::Button::new(label).shortcut_text(shortcut)).clicked() {
-            self.run_action(action);
-        }
-    }
-
     // ------------------------------------------------------------------------------------
     // Panels
 
-    fn menu(&mut self, ui: &mut egui::Ui) {
-        egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
-                let lib_focus = self.focus_lib.is_some_and(|k| k != PROJECT_LIB);
-                self.menu_item(ui, "New project", Action::New, true);
-                self.menu_item(ui, "Open project…", Action::Open, true);
-                let recent = self.settings.recent.clone();
-                ui.add_enabled_ui(!recent.is_empty(), |ui| {
-                    ui.menu_button("Open recent", |ui| {
-                        for p in &recent {
-                            let name = p.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
-                            let r = ui.button(name).on_hover_text(p.display().to_string());
-                            if r.clicked() && self.confirm_discard() {
-                                self.open_path(p);
-                            }
-                        }
-                        ui.separator();
-                        if ui.button("Clear list").clicked() {
-                            self.settings.recent.clear();
-                            self.save_settings();
-                        }
-                    });
-                });
-                if ui.button("Open demo project").clicked() && self.confirm_discard() {
-                    self.replace_document(demo_document());
-                }
-                ui.separator();
-                if ui.button("New library…").clicked() {
-                    self.new_library();
-                }
-                if ui.button("Add library…").clicked() {
-                    self.open_library();
-                }
-                if ui.button("Import from KiCad…").clicked() {
-                    self.kicad.open = true;
-                }
-                ui.separator();
-                let (save, save_as) = if lib_focus {
-                    ("Save library", "Save library as…")
-                } else {
-                    ("Save project", "Save project as…")
-                };
-                self.menu_item(ui, save, Action::Save, true);
-                self.menu_item(ui, save_as, Action::SaveAs, true);
-                ui.separator();
-                if ui.button("Quit").clicked() {
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            });
-            ui.menu_button("Edit", |ui| {
-                let h = match self.focus_lib.and_then(|k| self.libraries.iter().find(|l| l.key == k)) {
-                    Some(l) => l.lib.doc.editor().history(),
-                    None => self.project.lib.doc.editor().history(),
-                };
-                let undo = h.undo_label().map(|l| format!("Undo {l}"));
-                let redo = h.redo_label().map(|l| format!("Redo {l}"));
-                self.menu_item(ui, undo.as_deref().unwrap_or("Undo"), Action::Undo, undo.is_some());
-                self.menu_item(ui, redo.as_deref().unwrap_or("Redo"), Action::Redo, redo.is_some());
-                ui.separator();
-                for action in [Action::SelectAll, Action::Rotate, Action::Mirror, Action::Flip, Action::Delete] {
-                    self.menu_item(ui, action.label(), action, true);
-                }
-                ui.separator();
-                self.menu_item(ui, "Settings…", Action::Settings, true);
-            });
-            ui.menu_button("View", |ui| {
-                self.menu_item(ui, "Fit view", Action::FitView, true);
-                ui.separator();
-                let side = self.is_side_by_side();
-                if ui.radio(!side, "Tabs").on_hover_text("Schematic and PCB as full-size tabs").clicked() && side {
-                    self.set_layout(false);
-                }
-                if ui.radio(side, "Side by side").on_hover_text("Schematic left, PCB right").clicked() && !side {
-                    self.set_layout(true);
-                }
-                ui.separator();
-                let current = view::style::theme();
-                for &t in view::style::Theme::ALL {
-                    if ui.radio(current == t, format!("{} theme", t.label())).clicked() && current != t {
-                        self.set_theme(ui.ctx(), t);
-                    }
-                }
-            });
-            ui.menu_button("Tools", |ui| {
-                if ui.button("Run design rule check").clicked() {
-                    let n = self.project.lib.doc.run_drc().violations.len();
-                    self.set_status(match n {
-                        0 => "DRC: no violations".to_string(),
-                        n => format!("DRC: {n} violation(s), listed in the board properties"),
-                    });
-                }
-                ui.separator();
-                self.agent_menu(ui);
-            });
-            ui.menu_button("Help", |ui| {
-                if ui.button("Keyboard shortcuts").clicked() {
-                    self.show_settings = true;
-                }
-            });
-        });
+    /// The main menu: in the system menu bar on macOS, else a bar atop the window.
+    fn main_menu(&mut self, ui: &mut egui::Ui, gap: i8) {
+        let frame = |top| {
+            egui::Frame::NONE.fill(theme::window_bg()).inner_margin(egui::Margin {
+                left: 8,
+                right: 8,
+                top,
+                bottom: gap,
+            })
+        };
+        let panel = egui::Panel::top("menu").show_separator_line(false);
+        if cfg!(target_os = "macos") {
+            #[cfg(target_os = "macos")]
+            self.native_menu.sync(self.menus(true));
+            panel.frame(frame(0)).exact_size(f32::from(gap)).show(ui, |_| {});
+        } else {
+            let menus = self.menus(false);
+            if let Some(cmd) = panel.frame(frame(2)).show(ui, |ui| menu::bar_ui(ui, &menus)).inner {
+                self.run_menu_cmd(ui.ctx(), cmd);
+            }
+        }
     }
 
-    fn agent_menu(&mut self, ui: &mut egui::Ui) {
-        let mut on = self.agent.is_running();
-        if ui.checkbox(&mut on, "Agent access (MCP server)").changed() {
-            if on {
-                self.agent.start(ui.ctx());
-            } else {
-                self.agent.stop();
+    fn menus(&self, native: bool) -> Vec<Menu> {
+        let h = match self.focus_lib.and_then(|k| self.libraries.iter().find(|l| l.key == k)) {
+            Some(l) => l.lib.doc.editor().history(),
+            None => self.project.lib.doc.editor().history(),
+        };
+        let exe = std::env::current_exe().map_or("pcb-designer".into(), |p| p.display().to_string());
+        let project = self.project.lib.doc.path.as_ref().map_or(String::new(), |p| format!(" \"{}\"", p.display()));
+        menu::menus(&MenuState {
+            native,
+            keymap: &self.keymap,
+            library_focus: self.focus_lib.is_some_and(|k| k != PROJECT_LIB),
+            recent: &self.settings.recent,
+            undo: h.undo_label().map(|l| format!("Undo {l}")),
+            redo: h.redo_label().map(|l| format!("Redo {l}")),
+            side_by_side: self.is_side_by_side(),
+            theme: view::style::theme(),
+            agent_running: self.agent.is_running(),
+            agent_error: self.agent.error.clone(),
+            agent_url: self.agent.url(),
+            agent_port: self.agent.port,
+            headless_command: format!("claude mcp add pcb-designer -- \"{exe}\" --mcp-stdio{project}"),
+        })
+    }
+
+    fn run_menu_cmd(&mut self, ctx: &egui::Context, cmd: Cmd) {
+        match cmd {
+            Cmd::Action(a) => self.run_action(a),
+            Cmd::OpenRecent(p) => {
+                if self.confirm_discard() {
+                    self.open_path(&p);
+                }
             }
-        }
-        if let Some(e) = &self.agent.error {
-            ui.label(RichText::new(e).color(theme::warn()));
-        }
-        if let Some(url) = self.agent.url() {
-            ui.label(RichText::new(&url).monospace().color(theme::text_dim()));
-            if ui.button("Copy URL").clicked() {
-                ui.ctx().copy_text(url.clone());
+            Cmd::ClearRecent => {
+                self.settings.recent.clear();
+                self.save_settings();
             }
-            if ui.button("Copy Claude Code command").clicked() {
-                ui.ctx().copy_text(format!("claude mcp add --transport http pcb-designer {url}"));
+            Cmd::OpenDemo => {
+                if self.confirm_discard() {
+                    self.replace_document(demo_document());
+                }
             }
-            if ui.button("Copy JSON config").clicked() {
-                let cfg = format!(
-                    "{{\n  \"mcpServers\": {{\n    \"pcb-designer\": {{ \"type\": \"http\", \"url\": \"{url}\" }}\n  }}\n}}"
-                );
-                ui.ctx().copy_text(cfg);
+            Cmd::NewLibrary => self.new_library(),
+            Cmd::AddLibrary => self.open_library(),
+            Cmd::ImportKicad => self.kicad.open = true,
+            Cmd::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Cmd::Layout { side_by_side } => {
+                if side_by_side != self.is_side_by_side() {
+                    self.set_layout(side_by_side);
+                }
             }
-        } else {
-            ui.label(RichText::new(format!("Listens on 127.0.0.1:{} only", self.agent.port)).color(theme::text_dim()));
-        }
-        ui.separator();
-        ui.label(RichText::new("Headless (no window, MCP on stdio):").color(theme::text_dim()));
-        if ui.button("Copy Claude Code command (headless)").clicked() {
-            let exe = std::env::current_exe().map_or("pcb-designer".into(), |p| p.display().to_string());
-            let project = self.project.lib.doc.path.as_ref().map_or(String::new(), |p| format!(" \"{}\"", p.display()));
-            ui.ctx().copy_text(format!("claude mcp add pcb-designer -- \"{exe}\" --mcp-stdio{project}"));
+            Cmd::Theme(t) => {
+                if t != view::style::theme() {
+                    self.set_theme(ctx, t);
+                }
+            }
+            Cmd::Drc => {
+                let n = self.project.lib.doc.run_drc().violations.len();
+                self.set_status(match n {
+                    0 => "DRC: no violations".to_string(),
+                    n => format!("DRC: {n} violation(s), listed in the board properties"),
+                });
+            }
+            Cmd::ToggleAgent => {
+                if self.agent.is_running() {
+                    self.agent.stop();
+                } else {
+                    self.agent.start(ctx);
+                }
+            }
+            Cmd::Copy(text) => ctx.copy_text(text),
+            Cmd::ShowShortcuts => self.show_settings = true,
         }
     }
 
@@ -2634,6 +2591,13 @@ impl eframe::App for PcbApp {
     }
 
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        #[cfg(target_os = "macos")]
+        for picked in self.native_menu.picked() {
+            match picked {
+                crate::native_menu::Picked::Key(s) => raw.events.push(crate::native_menu::key_event(s)),
+                crate::native_menu::Picked::Cmd(cmd) => self.menu_cmds.push(cmd),
+            }
+        }
         if let Some(script) = &mut self.script {
             let panes = &self.panes;
             raw.events.extend(script.events(|board, w| {
@@ -2653,13 +2617,13 @@ impl eframe::App for PcbApp {
                 self.run_action(action);
             }
         }
+        for cmd in std::mem::take(&mut self.menu_cmds) {
+            self.run_menu_cmd(&ctx, cmd);
+        }
 
         let gap = theme::GAP;
         let bar = |m: egui::Margin| egui::Frame::NONE.fill(theme::window_bg()).inner_margin(m);
-        egui::Panel::top("menu")
-            .frame(bar(egui::Margin { left: 8, right: 8, top: 2, bottom: gap }))
-            .show_separator_line(false)
-            .show(ui, |ui| self.menu(ui));
+        self.main_menu(ui, gap);
         egui::Panel::bottom("status")
             .frame(bar(egui::Margin { left: 10, right: 10, top: 4, bottom: 4 }))
             .show_separator_line(false)
