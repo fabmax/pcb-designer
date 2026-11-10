@@ -11,6 +11,11 @@ cargo run --release -p app -- --new        # empty project
 cargo test --workspace
 ```
 
+On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.app`
+(`--install` copies it to /Applications). Run from the bundle, the app is named
+"PCB Designer" in the menu bar and Dock; run with `cargo run`, macOS uses the binary's
+name, `pcb-designer`.
+
 ## Letting an agent use the app (MCP)
 
 The app can run an [MCP](https://modelcontextprotocol.io) server so AI agents can inspect
