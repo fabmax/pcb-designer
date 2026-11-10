@@ -285,6 +285,10 @@ defers.
   panels stacked on one side.
 - Restyle the Settings and KiCad import windows with `theme::dialog`.
 - Replace the placeholder stroke font.
+- UI icons as SVG files instead of code (`icons.rs`): `egui_extras` `svg` feature
+  (resvg) with `install_image_loaders`. Monochrome icons drawn white and tinted
+  (`Image::tint`) to follow the theme; multi-colour ones (tab icons) as stacked tinted
+  layers or with colours substituted before parsing. Possibly the app icon too.
 - An MCP activity log panel listing agent edits.
 - macOS: a Liquid Glass app icon made with Icon Composer (needs Xcode's `actool`); more
   content in the title strip; "Fill" on title double-click (no public API, zooms today).
