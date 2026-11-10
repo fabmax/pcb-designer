@@ -1,6 +1,8 @@
 //! Transactions record object-level changes so they can be undone, redone and reported to
 //! consumers (connectivity, render scenes, MCP clients).
 
+use std::path::PathBuf;
+
 use model::{BoardLayer, DesignRules, Object, ObjectId, Project};
 
 use crate::CommandError;
@@ -52,11 +54,13 @@ pub struct ChangeSet {
     pub changes: Vec<Change>,
     /// Board setup before and after, if it changed.
     pub setup: Option<(BoardSetup, BoardSetup)>,
+    /// The project's library files before and after, if they changed.
+    pub libraries: Option<(Vec<PathBuf>, Vec<PathBuf>)>,
 }
 
 impl ChangeSet {
     pub fn is_empty(&self) -> bool {
-        self.changes.is_empty() && self.setup.is_none()
+        self.changes.is_empty() && self.setup.is_none() && self.libraries.is_none()
     }
 
     pub fn ids(&self) -> impl Iterator<Item = ObjectId> + '_ {
@@ -75,17 +79,16 @@ impl ChangeSet {
     pub fn then(&self, next: ChangeSet) -> ChangeSet {
         let mut all = self.changes.clone();
         all.extend(next.changes);
-        let setup = match (&self.setup, next.setup) {
-            (Some((before, _)), Some((_, after))) => Some((before.clone(), after)),
-            (Some(s), None) => Some(s.clone()),
-            (None, s) => s,
-        };
-        ChangeSet::coalesce(all, setup)
+        ChangeSet::coalesce(all, chain(&self.setup, next.setup), chain(&self.libraries, next.libraries))
     }
 
     /// Merge several changes of the same object into one (first `before`, last `after`),
     /// keeping first-occurrence order, and drop changes without net effect.
-    fn coalesce(changes: Vec<Change>, setup: Option<(BoardSetup, BoardSetup)>) -> ChangeSet {
+    fn coalesce(
+        changes: Vec<Change>,
+        setup: Option<(BoardSetup, BoardSetup)>,
+        libraries: Option<(Vec<PathBuf>, Vec<PathBuf>)>,
+    ) -> ChangeSet {
         let mut out: Vec<Change> = Vec::with_capacity(changes.len());
         let mut pos: std::collections::HashMap<ObjectId, usize> = Default::default();
         for c in changes {
@@ -102,7 +105,16 @@ impl ChangeSet {
             (Some((_, b)), Some(a)) => b != a,
             _ => true,
         });
-        ChangeSet { changes: out, setup: setup.filter(|(b, a)| b != a) }
+        ChangeSet { changes: out, setup: setup.filter(|(b, a)| b != a), libraries: libraries.filter(|(b, a)| b != a) }
+    }
+}
+
+/// A whole-value change followed by another: the first `before` and the last `after`.
+fn chain<T: Clone>(first: &Option<(T, T)>, next: Option<(T, T)>) -> Option<(T, T)> {
+    match (first, next) {
+        (Some((before, _)), Some((_, after))) => Some((before.clone(), after)),
+        (Some(s), None) => Some(s.clone()),
+        (None, s) => s,
     }
 }
 
@@ -126,11 +138,16 @@ pub(crate) fn apply_reverse(project: &mut Project, set: &ChangeSet) -> ChangeSet
             (None, None) => {}
         }
     }
-    if let Some((before, after)) = &set.setup {
+    if let Some((before, _)) = &set.setup {
         before.apply(project);
-        return ChangeSet { changes: done, setup: Some((after.clone(), before.clone())) };
     }
-    ChangeSet { changes: done, setup: None }
+    if let Some((before, _)) = &set.libraries {
+        project.libraries = before.clone();
+    }
+    fn swap<T: Clone>((before, after): &(T, T)) -> (T, T) {
+        (after.clone(), before.clone())
+    }
+    ChangeSet { changes: done, setup: set.setup.as_ref().map(swap), libraries: set.libraries.as_ref().map(swap) }
 }
 
 /// Redo `set`: apply its changes forwards.
@@ -156,7 +173,10 @@ pub(crate) fn apply_forward(project: &mut Project, set: &ChangeSet) -> ChangeSet
     if let Some(setup) = &set.setup {
         setup.1.apply(project);
     }
-    ChangeSet { changes: done, setup: set.setup.clone() }
+    if let Some((_, after)) = &set.libraries {
+        project.libraries = after.clone();
+    }
+    ChangeSet { changes: done, setup: set.setup.clone(), libraries: set.libraries.clone() }
 }
 
 /// Mutable access to a project that records every change.
@@ -165,11 +185,13 @@ pub struct Transaction<'p> {
     changes: Vec<Change>,
     /// Board setup before the first [`Transaction::set_setup`].
     setup_before: Option<BoardSetup>,
+    /// Library files before the first [`Transaction::set_libraries`].
+    libraries_before: Option<Vec<PathBuf>>,
 }
 
 impl<'p> Transaction<'p> {
     pub fn new(project: &'p mut Project) -> Self {
-        Self { project, changes: Vec::new(), setup_before: None }
+        Self { project, changes: Vec::new(), setup_before: None, libraries_before: None }
     }
 
     pub fn project(&self) -> &Project {
@@ -227,16 +249,28 @@ impl<'p> Transaction<'p> {
         setup.apply(self.project);
     }
 
+    /// Replace the project's library files.
+    pub fn set_libraries(&mut self, libraries: Vec<PathBuf>) {
+        if self.libraries_before.is_none() {
+            self.libraries_before = Some(self.project.libraries.clone());
+        }
+        self.project.libraries = libraries;
+    }
+
     /// Undo everything recorded so far.
     pub fn rollback(self) {
         if let Some(before) = &self.setup_before {
             before.apply(self.project);
         }
-        apply_reverse(self.project, &ChangeSet { changes: self.changes, setup: None });
+        if let Some(before) = self.libraries_before {
+            self.project.libraries = before;
+        }
+        apply_reverse(self.project, &ChangeSet { changes: self.changes, ..Default::default() });
     }
 
     pub fn finish(self) -> ChangeSet {
         let setup = self.setup_before.map(|b| (b, BoardSetup::of(self.project)));
-        ChangeSet::coalesce(self.changes, setup)
+        let libraries = self.libraries_before.map(|b| (b, self.project.libraries.clone()));
+        ChangeSet::coalesce(self.changes, setup, libraries)
     }
 }

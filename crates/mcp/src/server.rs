@@ -218,16 +218,27 @@ pub struct SaveParams {
 pub struct CreateLibraryParams {
     /// Library name, e.g. the part or the manufacturer.
     pub name: String,
-    /// File to save it to right away (`….pcblib`; the library takes the file's name).
-    /// Omit to save later with save_library.
+    /// File to save it to (`….pcblib`, relative to the project folder; the library takes
+    /// the file's name). Default: `NAME.pcblib` in the project folder. A project that was
+    /// never saved has no folder: then the library stays unsaved (and out of the project)
+    /// until save_library gets a path.
     #[serde(default)]
     pub path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct OpenLibraryParams {
-    /// A `.pcblib` file.
+    /// A `.pcblib` file (relative paths are relative to the project folder).
     pub path: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RemoveLibraryParams {
+    /// Name or file of a library (see list_libraries).
+    pub library: String,
+    /// Drop unsaved changes to the library (otherwise removing it is refused).
+    #[serde(default)]
+    pub discard: bool,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -472,15 +483,16 @@ impl PcbTools {
         self.call(request).await
     }
 
-    #[tool(description = "Open libraries: name, file, unsaved changes, and their symbols (pin \
-        counts), footprints (pad counts) and parts (units, variants). Parts of open libraries \
-        can be put into the project with import_parts.")]
+    #[tool(description = "Libraries: name, kind (built_in; external: one of the project's \
+        library files; unsaved; missing: a project library file that could not be read), file, \
+        unsaved changes, and their symbols (pin counts), footprints (pad counts) and parts \
+        (units, variants). Parts can be put into the project with import_parts.")]
     async fn list_libraries(&self) -> Result<CallToolResult, ErrorData> {
         self.call(Request::Library(LibraryRequest::List)).await
     }
 
-    #[tool(description = "Create a new, empty library and open it (the user sees it in a tab). \
-        Fill it with edit_library.")]
+    #[tool(description = "Create a new, empty library file and add it to the project's \
+        libraries (the user sees it in a tab). Fill it with edit_library.")]
     async fn create_library(
         &self,
         Parameters(p): Parameters<CreateLibraryParams>,
@@ -488,10 +500,20 @@ impl PcbTools {
         self.call(Request::Library(LibraryRequest::Create { name: p.name, path: p.path.map(Into::into) })).await
     }
 
-    #[tool(description = "Open a library file (.pcblib) so its parts can be edited or imported \
-        into the project.")]
+    #[tool(description = "Add a library file (.pcblib) to the project's libraries, so its parts \
+        can be edited or imported into the project. Refused for a copy of a library that is \
+        already there (same library id).")]
     async fn open_library(&self, Parameters(p): Parameters<OpenLibraryParams>) -> Result<CallToolResult, ErrorData> {
         self.call(Request::Library(LibraryRequest::Open { path: p.path.into() })).await
+    }
+
+    #[tool(description = "Remove a library from the project's libraries (the file stays). Parts \
+        already copied into the project stay too.")]
+    async fn remove_library(
+        &self,
+        Parameters(p): Parameters<RemoveLibraryParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::Library(LibraryRequest::Remove { library: p.library, discard: p.discard })).await
     }
 
     #[tool(description = "Symbols, footprints and parts of an open library in full JSON: the \
@@ -539,7 +561,8 @@ impl PcbTools {
         self.call(Request::Library(request)).await
     }
 
-    #[tool(description = "Save an open library to its file, or to `path`.")]
+    #[tool(description = "Save a library to its file, or to `path` (the project then refers to \
+        the new file).")]
     async fn save_library(&self, Parameters(p): Parameters<SaveLibraryParams>) -> Result<CallToolResult, ErrorData> {
         self.call(Request::Library(LibraryRequest::Save { library: p.library, path: p.path.map(Into::into) })).await
     }

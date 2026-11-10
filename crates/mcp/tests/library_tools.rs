@@ -198,11 +198,86 @@ fn part_from_a_datasheet() {
     ask(&mut host, Request::ImportParts { parts: vec![part_id] }).unwrap();
     assert!(host.doc.project().library.parts.contains(part_id), "ready to place");
 
-    // Opening the open file again finds the same library; another file is added.
+    // Opening the open file again finds the same library; a copy of it is refused.
     let opened = lib(&mut host, LibraryRequest::Open { path: file.clone() }).unwrap();
     assert_eq!(opened["name"], "Driver");
     let copy = dir.path().join("Copy.pcblib");
     std::fs::copy(&file, &copy).unwrap();
-    lib(&mut host, LibraryRequest::Open { path: copy }).unwrap();
-    assert_eq!(host.libraries.len(), 3);
+    let err = lib(&mut host, LibraryRequest::Open { path: copy }).unwrap_err();
+    assert!(err.contains("keeps its id"), "{err}");
+    assert_eq!(host.libraries.len(), 2);
+}
+
+fn kinds(host: &mut HeadlessHost) -> Vec<(String, String)> {
+    let listed = lib(host, LibraryRequest::List).unwrap();
+    let name = |l: &Value| l["name"].as_str().or(l["path"].as_str()).unwrap_or_default().to_string();
+    listed["libraries"].as_array().unwrap().iter().map(|l| (name(l), l["kind"].as_str().unwrap().to_string())).collect()
+}
+
+fn pairs(list: &[(&str, &str)]) -> Vec<(String, String)> {
+    list.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect()
+}
+
+#[test]
+fn libraries_belong_to_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let project_dir = dir.path().join("amp.pcbproj");
+    let mut doc = Document::new(model::Project::new("amp"));
+    doc.save_as(&project_dir).unwrap();
+    let mut host = HeadlessHost::new(doc);
+
+    // Created next to the project and added to it, as an undoable edit.
+    lib(&mut host, LibraryRequest::Create { name: "Mine".into(), path: None }).unwrap();
+    let mine = project_dir.join("Mine.pcblib");
+    assert!(mine.exists());
+    assert_eq!(host.doc.project().libraries, std::slice::from_ref(&mine));
+    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in"), ("Mine", "external")]));
+    assert!(host.doc.is_modified());
+
+    // Undo drops it (the next request syncs), redo brings it back.
+    ask(&mut host, Request::Undo).unwrap();
+    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in")]));
+    ask(&mut host, Request::Redo).unwrap();
+    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in"), ("Mine", "external")]));
+
+    // Save as: the project follows the file.
+    let other = dir.path().join("libs/Other.pcblib");
+    std::fs::create_dir_all(other.parent().unwrap()).unwrap();
+    lib(&mut host, LibraryRequest::Save { library: "Mine".into(), path: Some(other.clone()) }).unwrap();
+    assert_eq!(host.doc.project().libraries, std::slice::from_ref(&other));
+    host.doc.save().unwrap();
+    let text = std::fs::read_to_string(project_dir.join("project.json")).unwrap();
+    assert!(text.contains(r#""libraries": ["../libs/Other.pcblib"]"#), "{text}");
+
+    // Unsaved edits block removal unless discarded.
+    lib(
+        &mut host,
+        LibraryRequest::Edit { library: "Other".into(), upsert: driver().as_array().unwrap().clone(), delete: vec![] },
+    )
+    .unwrap();
+    let err = lib(&mut host, LibraryRequest::Remove { library: "Other".into(), discard: false }).unwrap_err();
+    assert!(err.contains("unsaved changes"), "{err}");
+    lib(&mut host, LibraryRequest::Remove { library: "Other".into(), discard: true }).unwrap();
+    assert!(host.doc.project().libraries.is_empty());
+    assert!(lib(&mut host, LibraryRequest::Remove { library: "Starter".into(), discard: false }).is_err());
+
+    // A listed file that is gone: the project still opens, the library is reported missing.
+    lib(&mut host, LibraryRequest::Open { path: "../libs/Other.pcblib".into() }).unwrap();
+    host.doc.save().unwrap();
+    std::fs::remove_file(&other).unwrap();
+    let mut host = HeadlessHost::new(Document::open(&project_dir).unwrap());
+    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in"), (other.to_str().unwrap(), "missing")]));
+}
+
+#[test]
+fn without_a_project_folder_new_libraries_wait_for_a_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut host = HeadlessHost::new(Document::new(model::Project::new("untitled")));
+    lib(&mut host, LibraryRequest::Create { name: "Scratch".into(), path: None }).unwrap();
+    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in"), ("Scratch", "unsaved")]));
+    assert!(host.doc.project().libraries.is_empty());
+    let file = dir.path().join("Scratch.pcblib");
+    lib(&mut host, LibraryRequest::Save { library: "Scratch".into(), path: Some(file.clone()) }).unwrap();
+    assert_eq!(host.doc.project().libraries, [file]);
+    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in"), ("Scratch", "external")]));
 }

@@ -16,6 +16,7 @@ use view::pcb_tools::{PcbPlacer, PcbTool};
 use view::sch_tools::{SchPlacer, SchTool};
 
 use crate::name_prompt::NamePrompt;
+use view::project_libs::{self, MissingLibrary};
 use view::tools::Tool;
 use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
 
@@ -55,7 +56,7 @@ pub struct Options {
     pub keymap: Option<Keymap>,
     /// Start the MCP server on this port.
     pub mcp: Option<u16>,
-    /// Library files to open.
+    /// Library files to add to the project (and show in tabs).
     pub library: Vec<PathBuf>,
     /// Open this part, symbol or footprint (by name) of the last library.
     pub show: Vec<String>,
@@ -118,7 +119,13 @@ pub struct PcbApp {
     focus_lib: Option<u64>,
     hovered: Option<ViewKind>,
     properties: Properties,
+    /// Loaded libraries: the built-in one, the project's library files (see
+    /// [`PcbApp::sync_libraries`]) and unsaved ones. Only some have a tab.
     libraries: Vec<LibraryEditor>,
+    /// The project's library files that could not be loaded.
+    missing_libraries: Vec<MissingLibrary>,
+    /// The project's library list `libraries` was last synced with (`None`: sync again).
+    synced_libraries: Option<Vec<PathBuf>>,
     next_key: u64,
     /// Library tabs whose close button was pressed.
     close_requests: Vec<u64>,
@@ -176,7 +183,7 @@ impl PcbApp {
                     Document::new(Project::new("Untitled"))
                 }
             },
-            Startup::Demo => Document::new(view::demo::demo_project()),
+            Startup::Demo => demo_document(),
             Startup::Empty => Document::new(Project::new("Untitled")),
             Startup::Stress(n) => {
                 let t = Instant::now();
@@ -194,6 +201,8 @@ impl PcbApp {
             hovered: None,
             properties: Properties::default(),
             libraries: Vec::new(),
+            missing_libraries: Vec::new(),
+            synced_libraries: None,
             next_key: 0,
             close_requests: Vec::new(),
             status,
@@ -222,14 +231,10 @@ impl PcbApp {
             None => {}
         }
         // The starter library is always available (built in, saved only with "Save as").
-        app.add_library(LibraryDoc::new(builtin::starter_library()), false);
+        app.load_library(LibraryDoc::new(builtin::starter_library()));
+        app.sync_libraries();
         for path in &opts.library {
-            match LibraryDoc::open(path) {
-                Ok(lib) => {
-                    app.add_library(lib, false);
-                }
-                Err(e) => app.set_status(format!("Could not open library {}: {e}", path.display())),
-            }
+            app.add_library_file(&project_libs::absolute(path), false);
         }
         for name in &opts.kicad_pick {
             match name.strip_prefix("footprint:") {
@@ -328,6 +333,7 @@ impl PcbApp {
 
     fn replace_document(&mut self, doc: Document) {
         self.doc = doc;
+        self.sync_libraries();
         for kind in [ViewKind::Schematic, ViewKind::Board] {
             let pane = self.pane(kind);
             let snap = pane.it.snap;
@@ -435,90 +441,214 @@ impl PcbApp {
     // ------------------------------------------------------------------------------------
     // Libraries
 
-    /// Add a library editor tab (next to the schematic) and optionally focus it.
-    fn add_library(&mut self, lib: LibraryDoc, focus: bool) -> u64 {
+    /// Keep a library loaded, without a tab. Returns its key.
+    fn load_library(&mut self, lib: LibraryDoc) -> u64 {
         let key = self.next_key;
         self.next_key += 1;
         self.libraries.push(LibraryEditor::new(key, lib));
-        let tile = self.tree.tiles.insert_pane(Tab::Library(key));
-        let parent = self
-            .tree
-            .tiles
-            .find_pane(&Tab::View(ViewKind::Schematic))
-            .and_then(|sch| self.tree.tiles.parent_of(sch))
-            .or(self.tree.root);
-        if let Some(Tile::Container(c)) = parent.and_then(|p| self.tree.tiles.get_mut(p)) {
-            c.add_child(tile);
-            if focus && let Container::Tabs(tabs) = c {
-                tabs.set_active(tile);
-            }
-        }
-        if focus {
-            self.focus_lib = Some(key);
-        }
         key
     }
 
-    fn focus_library_tab(&mut self, key: u64) {
-        if let Some(tile) = self.tree.tiles.find_pane(&Tab::Library(key)) {
-            self.tree.make_active(|id, _| id == tile);
-        }
-        self.focus_lib = Some(key);
+    /// Load a library and show it in a tab (next to the schematic), optionally focused.
+    fn add_library(&mut self, lib: LibraryDoc, focus: bool) -> u64 {
+        let key = self.load_library(lib);
+        self.open_library_tab(key, focus);
+        key
     }
 
-    fn new_library(&mut self) {
-        let mut lib = LibraryDoc::new(Library::new("New library"));
-        lib.doc.mark_saved();
-        self.add_library(lib, true);
-    }
-
-    fn open_library(&mut self) {
-        let Some(path) =
-            rfd::FileDialog::new().set_title("Open library").add_filter("PCB library", &["pcblib"]).pick_file()
-        else {
-            return;
+    /// Show a loaded library's tab, adding it next to the schematic if it has none.
+    fn open_library_tab(&mut self, key: u64, focus: bool) {
+        let tile = match self.tree.tiles.find_pane(&Tab::Library(key)) {
+            Some(tile) => tile,
+            None => {
+                let tile = self.tree.tiles.insert_pane(Tab::Library(key));
+                let parent = self
+                    .tree
+                    .tiles
+                    .find_pane(&Tab::View(ViewKind::Schematic))
+                    .and_then(|sch| self.tree.tiles.parent_of(sch))
+                    .or(self.tree.root);
+                if let Some(Tile::Container(c)) = parent.and_then(|p| self.tree.tiles.get_mut(p)) {
+                    c.add_child(tile);
+                }
+                tile
+            }
         };
-        if let Some(l) = self.libraries.iter().find(|l| l.path() == Some(&path)) {
-            let key = l.key;
-            return self.focus_library_tab(key);
+        if focus {
+            self.tree.make_active(|id, _| id == tile);
+            self.focus_lib = Some(key);
         }
-        match LibraryDoc::open(&path) {
+    }
+
+    fn focus_library_tab(&mut self, key: u64) {
+        self.open_library_tab(key, true);
+    }
+
+    fn close_library_tab(&mut self, key: u64) {
+        if let Some(tile) = self.tree.tiles.find_pane(&Tab::Library(key)) {
+            self.tree.remove_recursively(tile);
+        }
+        if self.focus_lib == Some(key) {
+            self.focus_lib = None;
+        }
+    }
+
+    /// Unload a library and close its tab (unsaved changes are lost).
+    fn unload_library(&mut self, key: u64) {
+        self.close_library_tab(key);
+        self.libraries.retain(|l| l.key != key);
+    }
+
+    /// Bring the loaded libraries in line with the project's library files (opening a
+    /// project, adding or removing a library, undo and redo of those).
+    fn sync_libraries(&mut self) {
+        if self.synced_libraries.as_ref() == Some(&self.doc.project().libraries) {
+            return;
+        }
+        let wanted = self.doc.project().libraries.clone();
+        let mut next = self.next_key;
+        let dropped = project_libs::sync(&wanted, &mut self.libraries, &mut self.missing_libraries, |doc| {
+            next += 1;
+            LibraryEditor::new(next - 1, doc)
+        });
+        self.next_key = next;
+        for l in dropped {
+            self.close_library_tab(l.key);
+        }
+        self.synced_libraries = Some(wanted);
+    }
+
+    /// Whether the project lists the library's file.
+    fn is_listed(&self, lib: &LibraryDoc) -> bool {
+        lib.path.as_deref().is_some_and(|p| self.doc.project().libraries.contains(&project_libs::absolute(p)))
+    }
+
+    /// Add a library (saved to a file) to the project and show it in a focused tab.
+    fn add_to_project(&mut self, lib: LibraryDoc) -> Option<u64> {
+        let loaded: Vec<&LibraryDoc> = self.libraries.iter().map(|l| &l.lib).collect();
+        match project_libs::add_to_project(&mut self.doc, &loaded, &lib) {
+            Ok(()) => {
+                let name = lib.name().to_string();
+                let key = self.add_library(lib, true);
+                self.set_status(format!("Added library {name} to the project"));
+                Some(key)
+            }
+            Err(e) => {
+                self.set_status(e);
+                None
+            }
+        }
+    }
+
+    /// Add a library file to the project (or show it, if it is already there).
+    fn add_library_file(&mut self, path: &std::path::Path, focus: bool) {
+        if let Some(l) = self.libraries.iter().find(|l| l.lib.path.as_deref().is_some_and(|p| same_file(p, path))) {
+            let key = l.key;
+            if !self.is_listed(&self.libraries.iter().find(|l| l.key == key).unwrap().lib) {
+                // Dropped from the project while it had unsaved changes: add it again.
+                let command = Command::AddLibrary { path: project_libs::absolute(path) };
+                if let Err(e) = self.doc.execute(command) {
+                    return self.set_status(e.to_string());
+                }
+            }
+            return self.open_library_tab(key, focus);
+        }
+        match LibraryDoc::open(path) {
             Ok(lib) => {
-                self.add_library(lib, true);
-                self.set_status(format!("Opened library {}", path.display()));
+                if let Some(key) = self.add_to_project(lib)
+                    && !focus
+                {
+                    self.focus_lib = None;
+                    self.open_library_tab(key, false);
+                }
             }
             Err(e) => self.set_status(format!("Could not open library: {e}")),
         }
     }
 
+    /// A file dialog for library files, starting in the project folder.
+    fn library_dialog(&self, title: &str) -> rfd::FileDialog {
+        let dialog = rfd::FileDialog::new().set_title(title).add_filter("PCB library", &["pcblib"]);
+        match &self.doc.path {
+            Some(dir) => dialog.set_directory(dir),
+            None => dialog,
+        }
+    }
+
+    /// New library: choose its file right away, then it is added to the project.
+    fn new_library(&mut self) {
+        let Some(path) = self.library_dialog("New library").set_file_name("New library.pcblib").save_file() else {
+            return;
+        };
+        let name = path.file_stem().map_or("New library".into(), |s| s.to_string_lossy().into_owned());
+        let mut lib = LibraryDoc::new(Library::new(name));
+        match lib.save_as(&path) {
+            Ok(()) => {
+                self.add_to_project(lib);
+            }
+            Err(e) => self.set_status(format!("Could not create library: {e}")),
+        }
+    }
+
+    /// Add an existing library file to the project.
+    fn open_library(&mut self) {
+        let Some(path) = self.library_dialog("Add library").pick_file() else { return };
+        self.add_library_file(&project_libs::absolute(&path), true);
+    }
+
     fn save_library(&mut self, key: u64, choose: bool) -> bool {
-        let Some(l) = self.lib(key) else { return false };
-        let path = match (l.path().cloned(), choose) {
+        let Some(l) = self.libraries.iter().find(|l| l.key == key) else { return false };
+        if l.is_builtin() {
+            return self.save_builtin_copy(key);
+        }
+        let old = l.lib.path.clone();
+        let path = match (old.clone(), choose) {
             (Some(p), false) => p,
             _ => {
                 let name = format!("{}.pcblib", l.lib.name());
-                match rfd::FileDialog::new()
-                    .set_title("Save library")
-                    .add_filter("PCB library", &["pcblib"])
-                    .set_file_name(name)
-                    .save_file()
-                {
+                match self.library_dialog("Save library").set_file_name(name).save_file() {
                     Some(p) => p,
                     None => return false,
                 }
             }
         };
-        let result = l.lib.save_as(&path);
-        match result {
-            Ok(()) => {
-                self.set_status(format!("Saved library {}", path.display()));
-                true
-            }
-            Err(e) => {
-                self.set_status(format!("Save failed: {e}"));
-                false
-            }
+        let Some(l) = self.lib(key) else { return false };
+        if let Err(e) = l.lib.save_as(&path) {
+            self.set_status(format!("Save failed: {e}"));
+            return false;
         }
+        self.set_status(format!("Saved library {}", path.display()));
+        // The project follows the file (a new file, or a library that wasn't in it yet).
+        if let Some(command) = project_libs::after_save(&self.doc.project().libraries, old.as_deref(), &path)
+            && let Err(e) = self.doc.execute(command)
+        {
+            self.set_status(e.to_string());
+        }
+        self.synced_libraries = None;
+        true
+    }
+
+    /// The built-in library isn't saved; "save" makes a copy of it (a library of its own)
+    /// and adds that to the project. The built-in library goes back to its original.
+    fn save_builtin_copy(&mut self, key: u64) -> bool {
+        let Some(path) =
+            self.library_dialog("Save a copy of the built-in library").set_file_name("Parts.pcblib").save_file()
+        else {
+            return false;
+        };
+        let Some(l) = self.lib(key) else { return false };
+        let mut copy = project_libs::copy_for(l.lib.library(), &path);
+        if let Err(e) = copy.save_as(&path) {
+            self.set_status(format!("Save failed: {e}"));
+            return false;
+        }
+        if self.add_to_project(copy).is_none() {
+            return false;
+        }
+        if let Some(l) = self.lib(key) {
+            *l = LibraryEditor::new(key, LibraryDoc::new(builtin::starter_library()));
+        }
+        true
     }
 
     fn confirm_discard_library(&mut self, key: u64) -> bool {
@@ -533,16 +663,69 @@ impl PcbApp {
         }
     }
 
+    /// Close a library's tab. Project libraries stay loaded; discarded changes are
+    /// dropped (the file is loaded again). Libraries outside the project are unloaded.
     fn close_library(&mut self, key: u64) {
         if !self.confirm_discard_library(key) {
             return;
         }
-        if let Some(tile) = self.tree.tiles.find_pane(&Tab::Library(key)) {
-            self.tree.remove_recursively(tile);
+        self.close_library_tab(key);
+        let Some(l) = self.libraries.iter().find(|l| l.key == key) else { return };
+        let (builtin, listed, discarded) = (l.is_builtin(), self.is_listed(&l.lib), l.lib.is_modified());
+        if builtin && discarded {
+            if let Some(l) = self.lib(key) {
+                *l = LibraryEditor::new(key, LibraryDoc::new(builtin::starter_library()));
+            }
+        } else if !builtin && (discarded || !listed) {
+            self.libraries.retain(|l| l.key != key);
+            self.synced_libraries = None;
         }
-        self.libraries.retain(|l| l.key != key);
-        if self.focus_lib == Some(key) {
-            self.focus_lib = None;
+    }
+
+    /// Remove a library from the project (asking about unsaved changes first).
+    fn remove_library(&mut self, key: u64) {
+        if !self.confirm_discard_library(key) {
+            return;
+        }
+        let Some(l) = self.libraries.iter().find(|l| l.key == key) else { return };
+        let path = l.lib.path.as_deref().map(project_libs::absolute);
+        let name = l.lib.name().to_string();
+        if let Some(path) = path.filter(|p| self.doc.project().libraries.contains(p))
+            && let Err(e) = self.doc.execute(Command::RemoveLibrary { path })
+        {
+            return self.set_status(e.to_string());
+        }
+        self.unload_library(key);
+        self.set_status(format!("Removed library {name} from the project"));
+    }
+
+    /// Remove a library file that could not be loaded from the project.
+    fn remove_missing_library(&mut self, path: PathBuf) {
+        if let Err(e) = self.doc.execute(Command::RemoveLibrary { path }) {
+            self.set_status(e.to_string());
+        }
+    }
+
+    /// Point a library file that could not be loaded at another file.
+    fn locate_missing_library(&mut self, from: PathBuf) {
+        let title = format!("Locate {}", from.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned()));
+        let Some(to) = self.library_dialog(&title).pick_file() else { return };
+        let to = project_libs::absolute(&to);
+        let lib = match LibraryDoc::open(&to) {
+            Ok(lib) => lib,
+            Err(e) => return self.set_status(format!("Could not open library: {e}")),
+        };
+        let others: Vec<PathBuf> = self.doc.project().libraries.iter().filter(|p| **p != from).cloned().collect();
+        let loaded: Vec<&LibraryDoc> = self.libraries.iter().map(|l| &l.lib).collect();
+        if let Err(e) = project_libs::check_new(&others, &loaded, &lib) {
+            return self.set_status(e);
+        }
+        match self.doc.execute(Command::RelinkLibrary { from, to }) {
+            Ok(_) => {
+                self.load_library(lib);
+                self.sync_libraries();
+            }
+            Err(e) => self.set_status(e.to_string()),
         }
     }
 
@@ -745,7 +928,12 @@ impl PcbApp {
     /// Rearrange: everything as tabs of one area, or schematic (and libraries) left and
     /// the PCB right.
     fn set_layout(&mut self, side_by_side: bool) {
-        let libs: Vec<Tab> = self.libraries.iter().map(|l| Tab::Library(l.key)).collect();
+        let libs: Vec<Tab> = self
+            .libraries
+            .iter()
+            .map(|l| Tab::Library(l.key))
+            .filter(|t| self.tree.tiles.find_pane(t).is_some())
+            .collect();
         let mut tree = if side_by_side { side_by_side_tree() } else { default_tree() };
         let group = tree
             .tiles
@@ -1061,18 +1249,14 @@ impl PcbApp {
                     });
                 });
                 if ui.button("Open demo project").clicked() && self.confirm_discard() {
-                    self.replace_document(Document::new(view::demo::demo_project()));
+                    self.replace_document(demo_document());
                 }
                 ui.separator();
-                if ui.button("New library").clicked() {
+                if ui.button("New library…").clicked() {
                     self.new_library();
                 }
-                if ui.button("Open library…").clicked() {
+                if ui.button("Add library…").clicked() {
                     self.open_library();
-                }
-                let starter_open = self.libraries.iter().any(|l| l.lib.library().id == Some(builtin::LIBRARY_ID));
-                if !starter_open && ui.button("Open starter library").clicked() {
-                    self.add_library(LibraryDoc::new(builtin::starter_library()), true);
                 }
                 if ui.button("Import from KiCad…").clicked() {
                     self.kicad.open = true;
@@ -1328,13 +1512,19 @@ impl PcbApp {
         enum Act {
             Place(u64, Id),
             Edit(u64),
+            Remove(u64),
+            Locate(PathBuf),
+            Forget(PathBuf),
             Open,
             New,
             Kicad,
         }
         let mut act = None;
+        let listed = self.doc.project().libraries.clone();
         section(ui, "Libraries", |ui| {
             for l in &self.libraries {
+                let removable = !l.is_builtin()
+                    && l.lib.path.as_deref().is_some_and(|p| listed.contains(&project_libs::absolute(p)));
                 let lib = l.lib.library();
                 let mut parts: Vec<&Part> = lib.parts.iter().collect();
                 parts.sort_by(|a, b| natural_cmp(&a.name, &b.name));
@@ -1343,6 +1533,10 @@ impl PcbApp {
                     .show_header(ui, |ui| {
                         ui.label(RichText::new(l.title()).color(theme::text_dim()));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if removable && ui.small_button("Remove").on_hover_text("Remove from the project").clicked()
+                            {
+                                act = Some(Act::Remove(l.key));
+                            }
                             if ui.small_button("Edit").on_hover_text("Open in the library editor").clicked() {
                                 act = Some(Act::Edit(l.key));
                             }
@@ -1362,11 +1556,29 @@ impl PcbApp {
                         }
                     });
             }
+            for m in &self.missing_libraries {
+                ui.horizontal(|ui| {
+                    let name = m.path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
+                    ui.label(RichText::new(format!("{name} (missing)")).color(theme::warn())).on_hover_text(format!(
+                        "{}\n{}",
+                        m.path.display(),
+                        m.error
+                    ));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.small_button("Remove").on_hover_text("Remove from the project").clicked() {
+                            act = Some(Act::Forget(m.path.clone()));
+                        }
+                        if ui.small_button("Locate…").clicked() {
+                            act = Some(Act::Locate(m.path.clone()));
+                        }
+                    });
+                });
+            }
             ui.horizontal(|ui| {
-                if ui.button("Open library…").clicked() {
+                if ui.button("Add library…").clicked() {
                     act = Some(Act::Open);
                 }
-                if ui.button("New library").clicked() {
+                if ui.button("New library…").clicked() {
                     act = Some(Act::New);
                 }
             });
@@ -1377,6 +1589,9 @@ impl PcbApp {
         match act {
             Some(Act::Place(key, part)) => self.place_part(key, part),
             Some(Act::Edit(key)) => self.focus_library_tab(key),
+            Some(Act::Remove(key)) => self.remove_library(key),
+            Some(Act::Locate(path)) => self.locate_missing_library(path),
+            Some(Act::Forget(path)) => self.remove_missing_library(path),
             Some(Act::Open) => self.open_library(),
             Some(Act::New) => self.new_library(),
             Some(Act::Kicad) => self.kicad.open = true,
@@ -1806,13 +2021,34 @@ impl mcp::library::Libraries for AgentLibraries<'_> {
         self.0.libraries.len()
     }
 
-    fn get(&mut self, index: usize) -> &mut LibraryDoc {
+    fn get(&self, index: usize) -> &LibraryDoc {
+        &self.0.libraries[index].lib
+    }
+
+    fn get_mut(&mut self, index: usize) -> &mut LibraryDoc {
         &mut self.0.libraries[index].lib
     }
 
-    fn add(&mut self, lib: LibraryDoc) -> usize {
+    fn project(&self) -> &Document {
+        &self.0.doc
+    }
+
+    fn project_mut(&mut self) -> &mut Document {
+        &mut self.0.doc
+    }
+
+    fn missing(&self) -> Vec<MissingLibrary> {
+        self.0.missing_libraries.clone()
+    }
+
+    fn push(&mut self, lib: LibraryDoc) -> usize {
         self.0.add_library(lib, false);
         self.0.libraries.len() - 1
+    }
+
+    fn remove(&mut self, index: usize) {
+        let key = self.0.libraries[index].key;
+        self.0.unload_library(key);
     }
 
     /// Show what the agent changed in its library tab (without switching tabs).
@@ -2155,6 +2391,7 @@ impl eframe::App for PcbApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.sync_libraries();
         self.handle_close(&ctx);
         // The name dialog takes the keys while it is open.
         if !self.record_shortcut(&ctx) && self.name_prompt.is_none() {
@@ -2237,10 +2474,12 @@ impl eframe::App for PcbApp {
                         let _ = reply.send(result);
                     }
                     Job::Library(request, reply) => {
+                        self.sync_libraries();
                         let _ = reply.send(mcp::library::respond(request, &mut AgentLibraries(self)));
                     }
                 }
             }
+            self.sync_libraries();
         }
 
         // Junction dots and unconnected pins follow the schematic.
@@ -2270,6 +2509,25 @@ impl eframe::App for PcbApp {
         self.update_title(&ctx);
         self.screenshot_tick(&ctx);
     }
+}
+
+/// The demo project, with a demo library file (written to the temp folder) in its
+/// External Libraries.
+fn demo_document() -> Document {
+    let mut project = view::demo::demo_project();
+    let path = std::env::temp_dir().join("pcb-designer-demo").join("Demo parts.pcblib");
+    let written = std::fs::create_dir_all(path.parent().unwrap())
+        .map_err(|e| e.to_string())
+        .and_then(|()| model::io::save_library(&view::demo::demo_library(), &path).map_err(|e| e.to_string()));
+    match written {
+        Ok(()) => project.libraries.push(project_libs::absolute(&path)),
+        Err(e) => log::warn!("demo library not written: {e}"),
+    }
+    Document::new(project)
+}
+
+fn same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
+    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
 }
 
 /// Schematic and board as tabs of one full-size area (schematic in front). Tabs can be

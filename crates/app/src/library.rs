@@ -52,7 +52,18 @@ pub struct LibraryEditor {
     pub message: Option<String>,
 }
 
+impl view::project_libs::HasLibrary for LibraryEditor {
+    fn library_doc(&self) -> &LibraryDoc {
+        &self.lib
+    }
+}
+
 impl LibraryEditor {
+    /// The built-in (starter) library: no file, and always loaded.
+    pub fn is_builtin(&self) -> bool {
+        self.lib.path.is_none() && self.lib.library().id == Some(model::builtin::LIBRARY_ID)
+    }
+
     pub fn new(key: u64, lib: LibraryDoc) -> Self {
         let canvas = Canvas::new(1000 + key, view::style::background(1.27));
         LibraryEditor {

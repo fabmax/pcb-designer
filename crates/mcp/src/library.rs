@@ -13,6 +13,10 @@
 //!
 //! An edit is one undo step of the library and all-or-nothing: it is refused if it would
 //! leave dangling references (a part using a deleted footprint, an unknown pad).
+//!
+//! Library files belong to the project (its External Libraries): opening or creating one
+//! adds it (an undoable project edit), `remove_library` removes it. A library created
+//! without a file stays out of the project until it is saved.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -21,9 +25,10 @@ use editor_core::Command;
 use model::*;
 use render::offscreen::Offscreen;
 use serde_json::{Map, Value, json};
-use view::LibraryDoc;
 use view::item::{Item, ItemView};
 use view::library_doc::{blank_footprint, blank_symbol};
+use view::project_libs::{self, MissingLibrary};
+use view::{Document, LibraryDoc};
 
 use crate::host::{Reply, render_png};
 
@@ -35,6 +40,7 @@ pub enum LibraryRequest {
     Get { library: String, items: Vec<String> },
     Edit { library: String, upsert: Vec<Value>, delete: Vec<String> },
     Save { library: String, path: Option<PathBuf> },
+    Remove { library: String, discard: bool },
     Render { library: String, item: String, width: u32, height: u32 },
 }
 
@@ -49,6 +55,7 @@ impl LibraryRequest {
                 format!("edit library {library} ({} item(s))", upsert.len() + delete.len())
             }
             LibraryRequest::Save { library, .. } => format!("save library {library}"),
+            LibraryRequest::Remove { library, .. } => format!("remove library {library}"),
             LibraryRequest::Render { item, .. } => format!("render {item}"),
         }
     }
@@ -60,16 +67,25 @@ impl LibraryRequest {
                 | LibraryRequest::Open { .. }
                 | LibraryRequest::Edit { .. }
                 | LibraryRequest::Save { .. }
+                | LibraryRequest::Remove { .. }
         )
     }
 }
 
-/// The host's open libraries.
+/// The host's loaded libraries: the built-in one, the project's library files (kept in
+/// line with the project by [`project_libs::sync`]) and unsaved ones.
 pub trait Libraries {
     fn count(&self) -> usize;
-    fn get(&mut self, index: usize) -> &mut LibraryDoc;
-    /// Open a library (the app shows it in a tab). Returns its index.
-    fn add(&mut self, lib: LibraryDoc) -> usize;
+    fn get(&self, index: usize) -> &LibraryDoc;
+    fn get_mut(&mut self, index: usize) -> &mut LibraryDoc;
+    fn project(&self) -> &Document;
+    fn project_mut(&mut self) -> &mut Document;
+    /// Listed library files that could not be loaded.
+    fn missing(&self) -> Vec<MissingLibrary>;
+    /// Keep a library loaded (the app shows it in a tab). Returns its index.
+    fn push(&mut self, lib: LibraryDoc) -> usize;
+    /// Unload a library (the app closes its tab).
+    fn remove(&mut self, index: usize);
     /// An agent changed a library; `show` is worth showing the user.
     fn changed(&mut self, _index: usize, _show: Option<ObjectId>) {}
     /// Offscreen renderer (created on first use).
@@ -79,7 +95,11 @@ pub trait Libraries {
 pub fn respond(request: LibraryRequest, libs: &mut dyn Libraries) -> Result<Reply, String> {
     let json = match request {
         LibraryRequest::List => {
-            let all: Vec<Value> = (0..libs.count()).map(|i| summary(libs.get(i))).collect();
+            let listed = libs.project().project().libraries.clone();
+            let mut all: Vec<Value> = (0..libs.count()).map(|i| summary(libs.get(i), &listed)).collect();
+            all.extend(
+                libs.missing().into_iter().map(|m| json!({ "kind": "missing", "path": m.path, "error": m.error })),
+            );
             json!({ "libraries": all })
         }
         LibraryRequest::Create { name, path } => {
@@ -91,26 +111,47 @@ pub fn respond(request: LibraryRequest, libs: &mut dyn Libraries) -> Result<Repl
                 return Err(format!("a library named {name:?} is already open"));
             }
             let mut lib = LibraryDoc::new(Library::new(name));
-            match path.map(with_extension) {
+            // Without a path, next to the project (if it has a folder).
+            let dir = libs.project().path.clone();
+            let path = path.map(|p| resolve(dir.as_deref(), &with_extension(p)));
+            let path = path.or_else(|| dir.map(|d| d.join(format!("{name}.pcblib"))));
+            match path {
                 Some(p) if p.exists() => {
                     return Err(format!("{} already exists: open it with open_library", p.display()));
                 }
-                Some(p) => lib.save_as(&p).map_err(|e| e.to_string())?,
+                Some(p) => {
+                    lib.save_as(&p).map_err(|e| e.to_string())?;
+                    add(libs, &lib)?;
+                }
                 None => lib.doc.mark_saved(),
             }
-            let i = libs.add(lib);
-            summary(libs.get(i))
+            let i = libs.push(lib);
+            let listed = libs.project().project().libraries.clone();
+            summary(libs.get(i), &listed)
         }
         LibraryRequest::Open { path } => {
+            let dir = libs.project().path.clone();
+            let path = resolve(dir.as_deref(), &path);
             let open = (0..libs.count()).find(|&i| libs.get(i).path.as_deref().is_some_and(|p| same_file(p, &path)));
             let i = match open {
-                Some(i) => i,
+                Some(i) => {
+                    let listed = &libs.project().project().libraries;
+                    if libs.get(i).path.as_ref().is_some_and(|p| !listed.contains(&project_libs::absolute(p))) {
+                        // Dropped from the project while it had unsaved changes.
+                        let lib = libs.get(i);
+                        let path = project_libs::check_new(listed, &[], lib)?;
+                        libs.project_mut().execute(Command::AddLibrary { path }).map_err(|e| e.to_string())?;
+                    }
+                    i
+                }
                 None => {
                     let lib = LibraryDoc::open(&path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
-                    libs.add(lib)
+                    add(libs, &lib)?;
+                    libs.push(lib)
                 }
             };
-            summary(libs.get(i))
+            let listed = libs.project().project().libraries.clone();
+            summary(libs.get(i), &listed)
         }
         LibraryRequest::Get { library, items } => {
             let i = find(libs, &library)?;
@@ -127,26 +168,56 @@ pub fn respond(request: LibraryRequest, libs: &mut dyn Libraries) -> Result<Repl
         }
         LibraryRequest::Edit { library, upsert, delete } => {
             let i = find(libs, &library)?;
-            let (reply, show) = edit(libs.get(i), upsert, delete)?;
+            let (reply, show) = edit(libs.get_mut(i), upsert, delete)?;
             libs.changed(i, show);
             reply
         }
         LibraryRequest::Save { library, path } => {
             let i = find(libs, &library)?;
-            let doc = libs.get(i);
-            match path.map(with_extension) {
+            if is_builtin(libs.get(i)) {
+                return Err("the built-in library can't be changed; create a library of your own".into());
+            }
+            let dir = libs.project().path.clone();
+            let listed = libs.project().project().libraries.clone();
+            let doc = libs.get_mut(i);
+            let old = doc.path.clone();
+            match path.map(|p| resolve(dir.as_deref(), &with_extension(p))) {
                 Some(p) => doc.save_as(&p),
                 None if doc.path.is_some() => doc.save(),
                 None => return Err("the library has never been saved: pass a path (….pcblib)".into()),
             }
             .map_err(|e| e.to_string())?;
-            let reply = json!({ "library": doc.name(), "saved": doc.path });
+            let (name, saved) = (doc.name().to_string(), doc.path.clone());
+            if let Some(new) = &saved
+                && let Some(command) = project_libs::after_save(&listed, old.as_deref(), new)
+            {
+                libs.project_mut().execute(command).map_err(|e| e.to_string())?;
+            }
             libs.changed(i, None);
-            reply
+            json!({ "library": name, "saved": saved })
+        }
+        LibraryRequest::Remove { library, discard } => {
+            let i = find(libs, &library)?;
+            let doc = libs.get(i);
+            if is_builtin(doc) {
+                return Err("the built-in library is always there".into());
+            }
+            if doc.is_modified() && !discard {
+                return Err(format!(
+                    "library {:?} has unsaved changes: save_library first, or pass discard: true",
+                    doc.name()
+                ));
+            }
+            let (name, path) = (doc.name().to_string(), doc.path.as_deref().map(project_libs::absolute));
+            if let Some(path) = path.filter(|p| libs.project().project().libraries.contains(p)) {
+                libs.project_mut().execute(Command::RemoveLibrary { path }).map_err(|e| e.to_string())?;
+            }
+            libs.remove(i);
+            json!({ "removed": name })
         }
         LibraryRequest::Render { library, item, width, height } => {
             let i = find(libs, &library)?;
-            let doc = libs.get(i);
+            let doc = libs.get_mut(i);
             let item = render_target(doc.library(), &item)?;
             let mut view = ItemView::new();
             view.show(Some(item));
@@ -167,12 +238,32 @@ fn with_extension(p: PathBuf) -> PathBuf {
     if p.extension().is_some_and(|e| e == "pcblib") { p } else { p.with_extension("pcblib") }
 }
 
+/// Check `lib` and add it to the project's library files.
+fn add(libs: &mut dyn Libraries, lib: &LibraryDoc) -> Result<(), String> {
+    let loaded: Vec<&LibraryDoc> = (0..libs.count()).map(|i| libs.get(i)).collect();
+    let path = project_libs::check_new(&libs.project().project().libraries, &loaded, lib)?;
+    libs.project_mut().execute(Command::AddLibrary { path }).map(drop).map_err(|e| e.to_string())
+}
+
+/// A path an agent gave: relative ones are relative to the project folder (else the
+/// working directory). Absolute and normalized.
+fn resolve(dir: Option<&Path>, path: &Path) -> PathBuf {
+    match dir {
+        Some(d) if path.is_relative() => project_libs::absolute(&d.join(path)),
+        _ => project_libs::absolute(path),
+    }
+}
+
+fn is_builtin(doc: &LibraryDoc) -> bool {
+    doc.path.is_none() && doc.library().id == Some(builtin::LIBRARY_ID)
+}
+
 fn same_file(a: &Path, b: &Path) -> bool {
     a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
 }
 
 /// Index of the open library named `name` (or with that file path).
-fn find(libs: &mut dyn Libraries, name: &str) -> Result<usize, String> {
+fn find(libs: &dyn Libraries, name: &str) -> Result<usize, String> {
     let n = libs.count();
     let names: Vec<String> = (0..n).map(|i| libs.get(i).name().to_string()).collect();
     if let Some(i) = names.iter().position(|l| l == name) {
@@ -187,7 +278,16 @@ fn find(libs: &mut dyn Libraries, name: &str) -> Result<usize, String> {
     Err(format!("no open library {name:?} (open: {})", names.join(", ")))
 }
 
-fn summary(doc: &LibraryDoc) -> Value {
+/// `kind`: `built_in`, `external` (one of the project's library files), `unsaved` (no
+/// file yet, not in the project) or `unlisted` (removed from the project with unsaved
+/// changes).
+fn summary(doc: &LibraryDoc, listed: &[PathBuf]) -> Value {
+    let kind = match &doc.path {
+        None if is_builtin(doc) => "built_in",
+        None => "unsaved",
+        Some(p) if listed.contains(&project_libs::absolute(p)) => "external",
+        Some(_) => "unlisted",
+    };
     let lib = doc.library();
     let symbol_name = |id: Id| lib.symbols.get(id).map(|s| s.name.clone());
     let footprint_name = |id: Id| lib.footprints.get(id).map(|f| f.name.clone());
@@ -211,6 +311,7 @@ fn summary(doc: &LibraryDoc) -> Value {
         .collect();
     json!({
         "name": lib.name,
+        "kind": kind,
         "path": doc.path,
         "modified": doc.is_modified(),
         "symbols": symbols,

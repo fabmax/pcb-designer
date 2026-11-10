@@ -1,9 +1,10 @@
 //! A [`Host`] without a GUI: a document plus selections. Used by tests and by the headless
 //! MCP mode.
 //!
-//! Libraries are kept open in memory (the starter library first). KiCad imports go into
-//! the named library, else a "KiCad import" library, and their parts straight into the
-//! project (there is nobody to place them from a library window).
+//! Libraries are kept in memory: the starter library first, then the project's library
+//! files (synced with the project before every request), then unsaved ones. KiCad imports
+//! go into the named library, else an unsaved "KiCad import" library, and their parts
+//! straight into the project (there is nobody to place them from a library window).
 
 use std::path::PathBuf;
 
@@ -14,6 +15,7 @@ use model::{Library, ObjectId, builtin};
 use render::gpu::Background;
 use render::offscreen::Offscreen;
 use serde_json::Value;
+use view::project_libs::{self, MissingLibrary};
 use view::{Document, LibraryDoc, ViewKind};
 
 use crate::host::{
@@ -23,8 +25,10 @@ use crate::library::{Libraries, LibraryRequest};
 
 pub struct HeadlessHost {
     pub doc: Document,
-    /// Open libraries: the starter library, then the ones agents created or opened.
+    /// Loaded libraries: the starter library, the project's library files, unsaved ones.
     pub libraries: Vec<LibraryDoc>,
+    /// The project's library files that could not be loaded.
+    pub missing: Vec<MissingLibrary>,
     /// Download folder of KiCad's libraries (`None`: downloads are refused).
     pub kicad_root: Option<PathBuf>,
     /// More KiCad library folders, always searched.
@@ -37,16 +41,19 @@ pub struct HeadlessHost {
 
 impl HeadlessHost {
     pub fn new(doc: Document) -> Self {
-        HeadlessHost {
+        let mut host = HeadlessHost {
             doc,
             libraries: vec![LibraryDoc::new(builtin::starter_library())],
+            missing: Vec::new(),
             kicad_root: None,
             kicad_paths: Vec::new(),
             kicad_source: Source::default(),
             catalog: None,
             selection: Default::default(),
             offscreen: None,
-        }
+        };
+        host.sync_libraries();
+        host
     }
 
     fn catalog(&mut self) -> &mut Catalog {
@@ -137,6 +144,10 @@ impl Host for HeadlessHost {
         Ok(serde_json::json!({ "results": results, "truncated": results.len() >= limit }))
     }
 
+    fn sync_libraries(&mut self) {
+        project_libs::sync(&self.doc.project().libraries, &mut self.libraries, &mut self.missing, |d| d);
+    }
+
     fn library_request(&mut self, request: LibraryRequest, reply: Responder) {
         let _ = reply.send(crate::library::respond(request, self));
     }
@@ -164,13 +175,33 @@ impl Libraries for HeadlessHost {
         self.libraries.len()
     }
 
-    fn get(&mut self, index: usize) -> &mut LibraryDoc {
+    fn get(&self, index: usize) -> &LibraryDoc {
+        &self.libraries[index]
+    }
+
+    fn get_mut(&mut self, index: usize) -> &mut LibraryDoc {
         &mut self.libraries[index]
     }
 
-    fn add(&mut self, lib: LibraryDoc) -> usize {
+    fn project(&self) -> &Document {
+        &self.doc
+    }
+
+    fn project_mut(&mut self) -> &mut Document {
+        &mut self.doc
+    }
+
+    fn missing(&self) -> Vec<MissingLibrary> {
+        self.missing.clone()
+    }
+
+    fn push(&mut self, lib: LibraryDoc) -> usize {
         self.libraries.push(lib);
         self.libraries.len() - 1
+    }
+
+    fn remove(&mut self, index: usize) {
+        self.libraries.remove(index);
     }
 
     fn offscreen(&mut self) -> &mut Option<Offscreen> {
