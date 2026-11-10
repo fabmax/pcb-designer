@@ -2694,7 +2694,8 @@ impl eframe::App for PcbApp {
         }
 
         // Junction dots and unconnected pins follow the schematic.
-        let busy = self.panes.iter().any(|p| !p.it.is_idle());
+        // Drags in the Project Library's editors count: they change the project.
+        let busy = self.panes.iter().any(|p| !p.it.is_idle()) || self.project.busy();
         if self.project.lib.doc.update_connectivity(busy) {
             self.probe_key = None;
             ctx.request_repaint();

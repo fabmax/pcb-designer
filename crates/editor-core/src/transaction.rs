@@ -28,6 +28,19 @@ impl Change {
     pub fn before_object(&self) -> Option<&Object> {
         self.before.as_ref().map(|(_, o)| o)
     }
+
+    /// Can this change alter schematic or board connectivity? Any schematic change can.
+    /// Library edits can only through what connects: a symbol's pins, a footprint's pads, a
+    /// part's units and variants (the pin-pad mapping). Graphics, texts and names can't, so
+    /// drawing in the Project Library doesn't recompute nets and copper.
+    pub fn affects_connectivity(&self) -> bool {
+        match (self.before_object(), &self.after) {
+            (Some(Object::LibSymbol(a)), Some(Object::LibSymbol(b))) => a.pins != b.pins,
+            (Some(Object::LibFootprint(a)), Some(Object::LibFootprint(b))) => a.pads != b.pads,
+            (Some(Object::LibPart(a)), Some(Object::LibPart(b))) => a.units != b.units || a.variants != b.variants,
+            _ => self.id.kind().is_schematic() || self.id.kind().is_library(),
+        }
+    }
 }
 
 /// The board's layer stack and design rules. Not objects: changed as a whole.

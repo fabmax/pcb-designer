@@ -1136,3 +1136,40 @@ Three changes, in this order.
 - **MCP:** `list_libraries` starts with the Project Library (kind `project`). Agents
   edit it with `execute` (`Update` of `LibPart` / `LibSymbol` / `LibFootprint`), not
   with `edit_library`, which works on library files.
+
+### 4. Incremental library redraws
+
+This fixes the cost noted in change 3: a library edit used to rebuild both views.
+
+- **Only the users redraw.** `View::users_of` lists the placed symbols or footprints that
+  are drawn from the changed library objects, in one pass over the instances.
+  - Schematic symbols depend on their symbol, their part, *and* the component's footprint:
+    symbols show pad names.
+  - Board footprints depend on their footprint and part.
+  - `view::drawn_library_changes` leaves out part edits that keep units and variants
+    (name, description, prefix, default value). Placed parts don't draw those.
+  - `View::apply` is now `apply_objects` plus `redraw_users`, so `Document` can run the
+    two separately.
+- **Connectivity only when something connects:** `Change::affects_connectivity` (editor-core).
+  - Schematic changes always count.
+  - Library edits count only if they change symbol pins, footprint pads, or a part's units
+    or variants.
+  - Drawing graphics in the Project Library recomputes no nets, no copper and no zones.
+- **Slow redraws wait for the drag** (`Document::update_connectivity(busy)`), the same
+  rule as connectivity.
+  - If redrawing the users took longer than `Document::slow` (4 ms), later library edits
+    made while busy are collected in `stale_library`. They're redrawn once the
+    interaction ends.
+  - `Document` remembers `busy` from the last `update_connectivity`, which the app calls
+    every frame. The app's `busy` now includes the Project Library's editors.
+- **Measured** (`edit_bench`, release, 10k components; 3,333 capacitors edited):
+  - Redrawing the users of one capacitor edit: about 21 ms (schematic) + 18 ms (board),
+    roughly 6 µs per placed instance.
+  - The old full rebuild of both views: about 200 ms.
+  - Drag steps after the first: about 2 µs each.
+  - Parts placed a few hundred times redraw live.
+- **Scene fix:** `Scene::set_item` gives up the unused tail when an item shrinks in place
+  and counts it as garbage. Before, `instance_count` kept counting the blanked slots,
+  which made "matches a rebuild" tests fail after an item shrank.
+- Gotcha: the per-instance redraw (text glyphs mostly) is now the floor. Drawing symbols
+  as shared, transformed instances would be the next step if it is ever needed.
