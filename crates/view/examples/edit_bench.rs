@@ -122,6 +122,63 @@ fn main() {
     println!("undo delete all: {:?}", t.elapsed());
     it.key(&mut doc.target(ViewKind::Schematic), KeyAction::SelectAll);
 
+    // Editing the Project Library: each drag step in the symbol / footprint editor is a
+    // project command that redraws the parts using it (here: every capacitor).
+    let cap = doc.project().library.parts.get(model::builtin::PART_CAPACITOR).unwrap().clone();
+    let mut sym = doc.project().library.symbols.get(cap.units[0].symbol).unwrap().clone();
+    let mut fp = doc.project().library.footprint_of(cap.id, cap.variants[0].id).unwrap().clone();
+    let users = doc.project().schematic.components.iter().filter(|c| c.part == cap.id).count();
+    let pad = fp.pads.ids().next().unwrap();
+    sym.graphics.push(Shape::Line { a: Point::ZERO, b: Point::mm(1.0, 0.0), width: mm(0.2) });
+    let step = |doc: &mut Document, o: Object| {
+        let t = Instant::now();
+        doc.execute_grouped(editor_core::Command::Update { objects: vec![o] }, Some(77)).unwrap();
+        doc.update_connectivity(true);
+        t.elapsed().as_secs_f64() * 1e3
+    };
+    let mut line = Vec::new();
+    let mut pads = Vec::new();
+    for i in 0..50 {
+        if let Some(Shape::Line { b, .. }) = sym.graphics.last_mut() {
+            b.x += mm(0.1);
+        }
+        line.push(step(&mut doc, Object::LibSymbol(sym.clone())));
+        fp.pads.get_mut(pad).unwrap().pos.x += mm(0.01) * if i % 2 == 0 { 1 } else { -1 };
+        pads.push(step(&mut doc, Object::LibFootprint(fp.clone())));
+    }
+    doc.close_group();
+    let t = Instant::now();
+    doc.update_connectivity(false);
+    println!("  catching up at the end of the drag: {:?}", t.elapsed());
+    for (label, mut times) in [("symbol line", line), ("footprint pad", pads)] {
+        times.sort_by(f64::total_cmp);
+        println!(
+            "drag in the Project Library, {label} ({users} users, per frame, redraws wait): p50 {:.3} ms  max {:.3} ms",
+            times[times.len() / 2],
+            times[times.len() - 1]
+        );
+    }
+    {
+        let mut ed = editor_core::Editor::new(doc.project().clone());
+        fp.pads.get_mut(pad).unwrap().pos.x += mm(0.01);
+        let t = Instant::now();
+        let changes =
+            ed.execute(editor_core::Command::Update { objects: vec![Object::LibFootprint(fp.clone())] }).unwrap();
+        println!("  pad: editor only {:?}", t.elapsed());
+        let mut v = view::View::new(ViewKind::Schematic, ed.project());
+        let t = Instant::now();
+        v.apply(ed.project(), &changes);
+        println!("  pad: schematic view apply {:?}", t.elapsed());
+        let mut b = view::View::new(ViewKind::Board, ed.project());
+        let t = Instant::now();
+        b.apply(ed.project(), &changes);
+        println!("  pad: board view apply {:?}", t.elapsed());
+    }
+    doc.update_connectivity(false);
+    let t = Instant::now();
+    doc.restyle();
+    println!("  for comparison, rebuilding both views: {:?}", t.elapsed());
+
     // Where does a bulk edit spend its time?
     let ids = it.selection.clone();
     let mut ed = editor_core::Editor::new(doc.project().clone());

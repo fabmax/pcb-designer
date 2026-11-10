@@ -150,3 +150,30 @@ fn unused_library_objects_can_be_removed_in_one_step() {
     assert_eq!(p.validate(), Vec::<String>::new());
     assert!(unused_library_objects(p).is_empty());
 }
+
+#[test]
+fn only_connecting_library_edits_affect_connectivity() {
+    let lib = builtin::builtin_library();
+    let mut ed = Editor::new(Project::new("t"));
+    ed.execute(Command::ImportParts { library: lib, parts: vec![PART_RESISTOR] }).unwrap();
+    let affects = |ed: &mut Editor, o: Object| {
+        let changes = ed.execute(Command::Update { objects: vec![o] }).unwrap();
+        changes.changes.iter().any(|c| c.affects_connectivity())
+    };
+    let part = ed.project().library.parts.get(PART_RESISTOR).unwrap().clone();
+    let mut sym = ed.project().library.symbols.get(part.units[0].symbol).unwrap().clone();
+
+    let mut renamed = part.clone();
+    renamed.name = "R".into();
+    renamed.description = "renamed".into();
+    assert!(!affects(&mut ed, Object::LibPart(renamed.clone())));
+    let mut unmapped = renamed;
+    unmapped.variants[0].connections.clear();
+    assert!(affects(&mut ed, Object::LibPart(unmapped)));
+
+    sym.graphics.clear();
+    assert!(!affects(&mut ed, Object::LibSymbol(sym.clone())));
+    let pin = sym.pins.ids().next().unwrap();
+    sym.pins.get_mut(pin).unwrap().name = "X".into();
+    assert!(affects(&mut ed, Object::LibSymbol(sym)));
+}

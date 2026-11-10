@@ -41,6 +41,19 @@ impl ViewKind {
 
 type RLayer = render::LayerId;
 
+/// The library objects in `changes` whose edits change how placed parts look: symbols,
+/// footprints, and parts whose units or variants changed (which symbol, which footprint,
+/// pin-pad names). A part's name or description isn't drawn.
+pub fn drawn_library_changes(changes: &ChangeSet) -> Vec<ObjectId> {
+    changes
+        .changes
+        .iter()
+        .filter(|c| c.id.kind().is_library())
+        .filter(|c| c.id.kind() != ObjectKind::LibPart || c.affects_connectivity())
+        .map(|c| c.id)
+        .collect()
+}
+
 /// A layer the user can show or hide (layer menus).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LayerEntry {
@@ -297,8 +310,15 @@ impl View {
         }
     }
 
-    /// Update after a command, undo or redo.
+    /// Update after a command, undo or redo: [`apply_objects`](Self::apply_objects), then
+    /// [`redraw_users`](Self::redraw_users) of the library edits.
     pub fn apply(&mut self, project: &Project, changes: &ChangeSet) {
+        self.apply_objects(project, changes);
+        self.redraw_users(project, &drawn_library_changes(changes));
+    }
+
+    /// Redraw the changed schematic or board objects (library edits aside).
+    pub fn apply_objects(&mut self, project: &Project, changes: &ChangeSet) {
         if changes.setup.is_some() && self.kind == ViewKind::Board {
             // Layers come and go.
             self.rebuild(project);
@@ -307,10 +327,6 @@ impl View {
         let mut ids: Vec<ObjectId> = Vec::new();
         for c in &changes.changes {
             let kind = c.id.kind();
-            if kind.is_library() {
-                self.rebuild(project);
-                return;
-            }
             if kind == ObjectKind::Component {
                 // Refdes/value/variant changes affect how the component is drawn.
                 let cid = c.id.raw();
@@ -336,6 +352,56 @@ impl View {
             if seen.insert(id) {
                 self.redraw(project, id);
             }
+        }
+    }
+
+    /// Redraw the placed symbols or footprints drawn from these library objects.
+    pub fn redraw_users(&mut self, project: &Project, library: &[ObjectId]) {
+        if library.is_empty() {
+            return;
+        }
+        for id in self.users_of(project, library) {
+            self.redraw(project, id);
+        }
+    }
+
+    /// The placed symbols (schematic) or footprints (board) drawn from these library
+    /// objects: a library edit redraws only those. One pass over the instances. Symbols
+    /// show their footprint's pad names, so footprints count for the schematic too.
+    pub fn users_of(&self, project: &Project, library: &[ObjectId]) -> Vec<ObjectId> {
+        let library: FxHashSet<ObjectId> = library.iter().copied().collect();
+        let lib = &project.library;
+        let components = &project.schematic.components;
+        let uses_footprint = |c: &Component| {
+            lib.footprint_of(c.part, c.variant).is_some_and(|fp| library.contains(&ObjectId::LibFootprint(fp.id)))
+        };
+        match self.kind {
+            ViewKind::Schematic => project
+                .schematic
+                .symbols
+                .iter()
+                .filter(|s| {
+                    let Some(c) = components.get(s.component) else { return false };
+                    library.contains(&ObjectId::LibPart(c.part))
+                        || uses_footprint(c)
+                        || lib
+                            .parts
+                            .get(c.part)
+                            .and_then(|p| p.units.get(s.unit as usize))
+                            .is_some_and(|u| library.contains(&ObjectId::LibSymbol(u.symbol)))
+                })
+                .map(|s| ObjectId::Symbol(s.id))
+                .collect(),
+            ViewKind::Board => project
+                .board
+                .footprints
+                .iter()
+                .filter(|f| {
+                    let Some(c) = components.get(f.component) else { return false };
+                    library.contains(&ObjectId::LibPart(c.part)) || uses_footprint(c)
+                })
+                .map(|f| ObjectId::Footprint(f.id))
+                .collect(),
         }
     }
 

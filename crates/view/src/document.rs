@@ -30,6 +30,15 @@ pub struct Document {
     copper_stale: bool,
     copper_time: Duration,
     drc: Option<DrcReport>,
+    /// Library objects whose placed symbols and footprints still show the old version (see
+    /// [`update_connectivity`](Self::update_connectivity)).
+    stale_library: Vec<ObjectId>,
+    /// How long redrawing the users of a library edit took last time.
+    library_time: Duration,
+    /// An interaction is in progress, as of the last `update_connectivity`.
+    busy: bool,
+    /// Updates that took longer than this wait while dragging (4 ms).
+    pub slow: Duration,
     /// Why edits are refused (e.g. the built-in library); `None`: editable.
     pub read_only: Option<String>,
 }
@@ -60,6 +69,10 @@ impl Document {
             copper_stale: true,
             copper_time: Duration::ZERO,
             drc: None,
+            stale_library: Vec::new(),
+            library_time: Duration::ZERO,
+            busy: false,
+            slow: Duration::from_millis(4),
             read_only: None,
         };
         doc.update_connectivity(false);
@@ -119,6 +132,7 @@ impl Document {
             view.rebuild(project);
             view.set_probe(project, &probed);
         }
+        self.stale_library.clear();
         self.schematic.set_connectivity(&self.connectivity);
         self.board.set_copper(project, &self.copper);
     }
@@ -130,11 +144,21 @@ impl Document {
 
     /// Recompute schematic and board connectivity where they changed, and show junction
     /// dots, unconnected pins and the ratsnest. While `busy` (dragging), large projects
-    /// whose connectivity takes long are only updated afterwards. Returns true if
-    /// anything was recomputed.
+    /// whose connectivity takes long are only updated afterwards. The same goes for
+    /// redrawing the placed parts of an edited library object: a drag in the Project
+    /// Library's symbol editor redraws every placed symbol, and with thousands of them the
+    /// views catch up when the drag ends. Call it every frame. Returns true if anything was
+    /// recomputed or redrawn.
     pub fn update_connectivity(&mut self, busy: bool) -> bool {
-        let slow = |t: Duration| busy && t > Duration::from_millis(4);
+        self.busy = busy;
+        let limit = self.slow;
+        let slow = |t: Duration| busy && t > limit;
         let mut done = false;
+        if !self.stale_library.is_empty() && !slow(self.library_time) {
+            let stale = std::mem::take(&mut self.stale_library);
+            self.redraw_library_users(&stale);
+            done = true;
+        }
         if self.connectivity_stale && !slow(self.connectivity_time) {
             let t = Instant::now();
             self.connectivity = Connectivity::build(self.editor.project());
@@ -262,15 +286,33 @@ impl Document {
             return;
         }
         self.revision += 1;
-        if changes.touches_schematic() || changes.ids().any(|id| id.kind().is_library()) {
+        if changes.changes.iter().any(|c| c.affects_connectivity()) {
             self.connectivity_stale = true;
         }
         if changes.touches_board() || self.connectivity_stale {
             self.copper_stale = true;
         }
         let project = self.editor.project();
-        self.schematic.apply(project, changes);
-        self.board.apply(project, changes);
+        self.schematic.apply_objects(project, changes);
+        self.board.apply_objects(project, changes);
+        let library = crate::view::drawn_library_changes(changes);
+        if self.busy && self.library_time > self.slow {
+            for id in library {
+                if !self.stale_library.contains(&id) {
+                    self.stale_library.push(id);
+                }
+            }
+        } else if !library.is_empty() {
+            self.redraw_library_users(&library);
+        }
+    }
+
+    fn redraw_library_users(&mut self, library: &[ObjectId]) {
+        let t = Instant::now();
+        let project = self.editor.project();
+        self.schematic.redraw_users(project, library);
+        self.board.redraw_users(project, library);
+        self.library_time = t.elapsed();
     }
 }
 

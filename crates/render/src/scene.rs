@@ -195,7 +195,7 @@ impl Scene {
 
             let reuse = old.iter().position(|a| a.layer == layer_id && a.len as usize >= group.len());
             if let Some(pos) = reuse {
-                let a = old.swap_remove(pos);
+                let mut a = old.swap_remove(pos);
                 let start = a.start as usize;
                 for (k, (_, inst)) in group.iter().enumerate() {
                     layer.instances[start + k] = *inst;
@@ -204,6 +204,9 @@ impl Scene {
                     *slot = Instance::EMPTY;
                 }
                 layer.mark_dirty(start, start + a.len as usize);
+                // A shrunk item gives up its tail: garbage until the layer is compacted.
+                layer.garbage += a.len as usize - group.len();
+                a.len = group.len() as u32;
                 allocs.push(a);
             } else {
                 let start = layer.instances.len();
@@ -358,7 +361,10 @@ mod tests {
         let _ = s.take_upload();
         s.set_item(1, [(l, line(5.0))]);
         assert_eq!(s.slot_count(), 3);
+        assert_eq!(s.instance_count(), 2, "the freed tail isn't counted");
         assert_eq!(live(&s, l), vec![5.0, 3.0]);
+        s.remove_item(1);
+        assert_eq!(s.instance_count(), 1);
         let up = s.take_upload();
         match &up.layers[0].data {
             LayerData::Partial(ranges) => {

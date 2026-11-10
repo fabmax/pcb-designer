@@ -1,3 +1,4 @@
+use editor_core::Command;
 use model::*;
 use view::demo::demo_project;
 use view::{Document, Interaction, KeyAction, PointerInput, ProjectTarget, ViewKind};
@@ -170,4 +171,95 @@ fn save_and_reopen_document() {
     let mut fresh = view::View::new(ViewKind::Schematic, doc.project());
     fresh.set_connectivity(reopened.connectivity());
     assert_eq!(reopened.schematic.scene.instance_count(), fresh.scene.instance_count());
+}
+
+/// Library edits redraw only the symbols and footprints drawn from them, and must leave
+/// the views as a full rebuild would. Graphics don't change connectivity; pads do.
+#[test]
+fn library_edits_redraw_their_users() {
+    let mut doc = Document::new(demo_project());
+    doc.update_connectivity(false);
+    let r1 = symbol(&doc, "R1");
+    let project = doc.project();
+    let c = project.schematic.components.get(r1.component).unwrap();
+    let part = project.library.parts.get(c.part).unwrap();
+    let mut sym = project.library.symbols.get(part.units[r1.unit as usize].symbol).unwrap().clone();
+    let mut fp = project.library.footprint_of(c.part, c.variant).unwrap().clone();
+    let fp_inst = project.board.footprints.iter().find(|f| f.component == r1.component).unwrap().id;
+    let (c_part, c_variant) = (c.part, c.variant);
+
+    let matches_rebuild = |doc: &mut Document, step: &str| {
+        doc.update_connectivity(false);
+        for kind in [ViewKind::Schematic, ViewKind::Board] {
+            let mut fresh = view::View::new(kind, doc.project());
+            fresh.set_connectivity(doc.connectivity());
+            fresh.set_copper(doc.project(), doc.copper());
+            let live = doc.view(kind);
+            assert_eq!(live.scene.instance_count(), fresh.scene.instance_count(), "{step} {kind:?}");
+            assert_eq!(live.bounds(), fresh.bounds(), "{kind:?}");
+            for id in [ObjectId::Symbol(r1.id), ObjectId::Footprint(fp_inst)] {
+                assert_eq!(live.index.bounds(id), fresh.index.bounds(id), "{kind:?} {id:?}");
+            }
+        }
+    };
+
+    // A line in the symbol: every resistor grows, nets stay as they are.
+    let before = doc.schematic.index.bounds(ObjectId::Symbol(r1.id)).unwrap();
+    sym.graphics.push(Shape::Line { a: Point::mm(0.0, 0.0), b: Point::mm(20.0, 0.0), width: mm(0.25) });
+    doc.execute(Command::Update { objects: vec![Object::LibSymbol(sym)] }).unwrap();
+    assert!(!doc.update_connectivity(false), "graphics don't change connectivity");
+    assert_ne!(doc.schematic.index.bounds(ObjectId::Symbol(r1.id)).unwrap(), before);
+    matches_rebuild(&mut doc, "symbol line");
+
+    // Moved pads: the footprints change, and so does the copper.
+    let ids: Vec<Id> = fp.pads.ids().collect();
+    for id in ids {
+        fp.pads.get_mut(id).unwrap().pos.x += mm(3.0);
+    }
+    doc.execute(Command::Update { objects: vec![Object::LibFootprint(fp)] }).unwrap();
+    assert!(doc.update_connectivity(false), "pads change connectivity");
+    matches_rebuild(&mut doc, "pads moved");
+
+    doc.undo();
+    doc.undo();
+    matches_rebuild(&mut doc, "undone");
+
+    // Symbols show pad names, so a footprint redraws its symbols too.
+    let fp_id = doc.project().library.footprint_of(c_part, c_variant).unwrap().id;
+    let users = doc.schematic.users_of(doc.project(), &[ObjectId::LibFootprint(fp_id)]);
+    assert!(users.contains(&ObjectId::Symbol(r1.id)));
+    assert!(
+        doc.board.users_of(doc.project(), &[ObjectId::LibFootprint(fp_id)]).contains(&ObjectId::Footprint(fp_inst))
+    );
+    let sym_id = doc.project().library.parts.get(c_part).unwrap().units[0].symbol;
+    assert!(doc.board.users_of(doc.project(), &[ObjectId::LibSymbol(sym_id)]).is_empty());
+}
+
+/// While dragging, slow library redraws wait for the drag to end.
+#[test]
+fn slow_library_redraws_wait_for_the_drag() {
+    let mut doc = Document::new(demo_project());
+    doc.slow = std::time::Duration::ZERO;
+    let r1 = symbol(&doc, "R1");
+    let c = doc.project().schematic.components.get(r1.component).unwrap();
+    let part = doc.project().library.parts.get(c.part).unwrap();
+    let mut sym = doc.project().library.symbols.get(part.units[r1.unit as usize].symbol).unwrap().clone();
+    let bounds = |doc: &Document| doc.schematic.index.bounds(ObjectId::Symbol(r1.id)).unwrap();
+    let mut grow = |doc: &mut Document, x: f64| {
+        sym.graphics.push(Shape::Line { a: Point::ZERO, b: Point::mm(x, 0.0), width: mm(0.25) });
+        doc.execute_grouped(Command::Update { objects: vec![Object::LibSymbol(sym.clone())] }, Some(1)).unwrap();
+    };
+
+    doc.update_connectivity(true);
+    let before = bounds(&doc);
+    grow(&mut doc, 20.0);
+    let first = bounds(&doc);
+    assert_ne!(first, before, "the first step is drawn (and timed)");
+    grow(&mut doc, 40.0);
+    assert!(!doc.update_connectivity(true), "still dragging");
+    assert_eq!(bounds(&doc), first, "waits for the drag");
+    assert!(doc.update_connectivity(false));
+    assert_ne!(bounds(&doc), first, "caught up");
+    let fresh = view::View::new(ViewKind::Schematic, doc.project());
+    assert_eq!(fresh.index.bounds(ObjectId::Symbol(r1.id)), Some(bounds(&doc)));
 }
