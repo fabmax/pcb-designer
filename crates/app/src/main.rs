@@ -30,8 +30,11 @@ mod icons;
 mod keymap;
 mod kicad_import;
 mod library;
+mod menu;
 mod messages;
 mod name_prompt;
+#[cfg(target_os = "macos")]
+mod native_menu;
 mod part_form;
 mod pcb_ui;
 mod project_panel;
@@ -129,6 +132,12 @@ fn main() -> eframe::Result {
             .with_min_inner_size([800.0, 500.0]),
         renderer: eframe::Renderer::Wgpu,
         wgpu_options,
+        // The app sets its own menu bar (`native_menu.rs`).
+        #[cfg(target_os = "macos")]
+        event_loop_builder: Some(Box::new(|b| {
+            use winit::platform::macos::EventLoopBuilderExtMacOS;
+            b.with_default_menu(false);
+        })),
         ..Default::default()
     };
     eframe::run_native("PCB Designer", options, Box::new(move |cc| Ok(Box::new(app::PcbApp::new(cc, opts)))))
