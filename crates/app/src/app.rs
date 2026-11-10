@@ -138,8 +138,10 @@ pub struct PcbApp {
     /// The project's library list `libraries` was last synced with (`None`: sync again).
     synced_libraries: Option<Vec<PathBuf>>,
     next_key: u64,
-    /// Library tabs whose close button was pressed.
-    close_requests: Vec<u64>,
+    /// Tabs whose close button was clicked (closed after the tree is drawn).
+    close_requests: Vec<Tab>,
+    /// The tab group a closed view was in, to reopen it there.
+    view_groups: [Option<TileId>; 2],
     status: Option<(String, Instant)>,
     title: String,
     revision: u64,
@@ -218,6 +220,7 @@ impl PcbApp {
             synced_libraries: None,
             next_key: 0,
             close_requests: Vec::new(),
+            view_groups: [None; 2],
             status,
             title: String::new(),
             revision: u64::MAX,
@@ -493,17 +496,8 @@ impl PcbApp {
         let tile = match self.tree.tiles.find_pane(&Tab::Library(key)) {
             Some(tile) => tile,
             None => {
-                let tile = self.tree.tiles.insert_pane(Tab::Library(key));
-                let parent = self
-                    .tree
-                    .tiles
-                    .find_pane(&Tab::View(ViewKind::Schematic))
-                    .and_then(|sch| self.tree.tiles.parent_of(sch))
-                    .or(self.tree.root);
-                if let Some(Tile::Container(c)) = parent.and_then(|p| self.tree.tiles.get_mut(p)) {
-                    c.add_child(tile);
-                }
-                tile
+                let near = [Tab::View(ViewKind::Schematic), Tab::Library(PROJECT_LIB), Tab::View(ViewKind::Board)];
+                insert_tab(&mut self.tree, Tab::Library(key), None, &near)
             }
         };
         if focus {
@@ -950,10 +944,37 @@ impl PcbApp {
         }
     }
 
-    /// Schematic and PCB are in different tab groups (visible at the same time).
+    /// Schematic and PCB are open in different tab groups (visible at the same time).
     fn is_side_by_side(&self) -> bool {
         let parent = |k| self.tree.tiles.find_pane(&Tab::View(k)).and_then(|t| self.tree.tiles.parent_of(t));
-        parent(ViewKind::Schematic) != parent(ViewKind::Board)
+        match (parent(ViewKind::Schematic), parent(ViewKind::Board)) {
+            (Some(a), Some(b)) => a != b,
+            _ => false,
+        }
+    }
+
+    /// Does the view have a tab (it may be behind another one)?
+    fn is_open(&self, kind: ViewKind) -> bool {
+        self.tree.tiles.find_pane(&Tab::View(kind)).is_some()
+    }
+
+    /// Close a view's tab. Its camera and selection stay for when it is shown again; a
+    /// tool in progress is cancelled.
+    fn close_view(&mut self, kind: ViewKind) {
+        let Some(tile) = self.tree.tiles.find_pane(&Tab::View(kind)) else { return };
+        self.view_groups[kind as usize] = self.tree.tiles.parent_of(tile);
+        self.tree.remove_recursively(tile);
+        match kind {
+            ViewKind::Schematic => self.set_sch_tool(SchTool::Select),
+            ViewKind::Board => self.set_pcb_tool(PcbTool::Select),
+        }
+        let pane = &mut self.panes[kind as usize];
+        pane.it.reset();
+        pane.it.refresh(&mut self.project.lib.doc.target(kind));
+        if self.hovered == Some(kind) {
+            self.hovered = None;
+        }
+        self.follow_visible_tabs();
     }
 
     /// Rearrange: everything as tabs of one area, or schematic (and libraries) left and
@@ -977,19 +998,33 @@ impl PcbApp {
             }
         }
         self.tree = tree;
+        // Tile ids are sequential: the old tree's groups must not be looked up in the new one.
+        self.view_groups = [None; 2];
         self.show_view(self.active);
         for pane in &mut self.panes {
             pane.canvas.request_fit();
         }
     }
 
-    /// Bring a view's tab to the front and give it keyboard focus.
+    /// Bring a view's tab to the front and give it keyboard focus, opening it if it was
+    /// closed: in the tab group it was in, else next to the other view or the libraries.
     fn show_view(&mut self, kind: ViewKind) {
         self.active = kind;
         self.focus_lib = None;
-        if let Some(tile) = self.tree.tiles.find_pane(&Tab::View(kind)) {
-            self.tree.make_active(|id, _| id == tile);
-        }
+        let tile = match self.tree.tiles.find_pane(&Tab::View(kind)) {
+            Some(tile) => tile,
+            None => {
+                let other = match kind {
+                    ViewKind::Schematic => ViewKind::Board,
+                    ViewKind::Board => ViewKind::Schematic,
+                };
+                let near = [Tab::View(other), Tab::Library(PROJECT_LIB)];
+                let tile = insert_tab(&mut self.tree, Tab::View(kind), self.view_groups[kind as usize], &near);
+                self.panes[kind as usize].canvas.request_fit();
+                tile
+            }
+        };
+        self.tree.make_active(|id, _| id == tile);
     }
 
     /// Give the schematic tab keyboard focus and bring it to the front.
@@ -1131,10 +1166,12 @@ impl PcbApp {
         {
             return;
         }
-        if self.context() == Context::Schematic && self.sch_action(action) {
+        // A closed view takes no keys (only the project-level actions below).
+        let view_keys = self.focus_lib.is_some() || self.is_open(self.active);
+        if view_keys && self.context() == Context::Schematic && self.sch_action(action) {
             return;
         }
-        if self.context() == Context::Board && self.pcb_action(action) {
+        if view_keys && self.context() == Context::Board && self.pcb_action(action) {
             return;
         }
         let key_action = match action {
@@ -1154,6 +1191,7 @@ impl PcbApp {
             }
             Action::Undo => return self.undo(),
             Action::Redo => return self.redo(),
+            _ if !view_keys => return,
             Action::FitView => return self.pane(self.active).canvas.request_fit(),
             Action::SelectAll => KeyAction::SelectAll,
             Action::Rotate => KeyAction::Rotate,
@@ -1633,6 +1671,7 @@ impl PcbApp {
                     Open::None => NodeId::Library(owner),
                 })
             }
+            None if !self.is_open(self.active) => None,
             None => Some(match self.active {
                 ViewKind::Schematic => NodeId::Schematic,
                 ViewKind::Board => NodeId::Board,
@@ -1939,7 +1978,8 @@ impl PcbApp {
                     return l.properties_ui(ui);
                 }
                 let kind = self.active;
-                let selection = self.panes[kind as usize].it.selection.clone();
+                let selection =
+                    if self.is_open(kind) { self.panes[kind as usize].it.selection.clone() } else { Vec::new() };
                 self.properties.ui(ui, &mut self.project.lib.doc, &selection, &mut message);
             }
             Panel::ToolSettings => {
@@ -2012,8 +2052,9 @@ impl PcbApp {
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let lib = self.focused_lib_ref();
-            let (title, cursor, grid, selected) = match lib {
-                Some(l) => {
+            // Nothing about an editor when none is showing (all view tabs closed).
+            let editor = match lib {
+                Some(l) => Some({
                     let what = match l.open {
                         Open::Item(Item::Symbol(_)) => "Symbol editor",
                         Open::Item(Item::Footprint(_)) => "Footprint editor",
@@ -2026,36 +2067,41 @@ impl PcbApp {
                         (l.it.grid, l.it.snap),
                         l.it.selection.len(),
                     )
-                }
+                }),
+                None if !self.is_open(self.active) => None,
                 None => {
                     let pane = &self.panes[self.hovered.unwrap_or(self.active) as usize];
                     let sel = self.panes[self.active as usize].it.selection.len();
-                    (pane.title().to_string(), pane.canvas.cursor_world, (pane.it.grid, pane.it.snap), sel)
+                    Some((pane.title().to_string(), pane.canvas.cursor_world, (pane.it.grid, pane.it.snap), sel))
                 }
             };
-            ui.label(RichText::new(title).color(theme::accent()));
-            match cursor {
-                Some([x, y]) => {
-                    let u = units::unit();
-                    let (x, y) = (x * 1e6 / u.nm(), y * 1e6 / u.nm());
-                    let d = u.decimals().min(3);
-                    ui.monospace(format!("X {x:>10.d$}  Y {y:>10.d$} {:<3}", u.label()))
+            let has_editor = editor.is_some();
+            if let Some((title, cursor, (grid, snap), selected)) = editor {
+                ui.label(RichText::new(title).color(theme::accent()));
+                match cursor {
+                    Some([x, y]) => {
+                        let u = units::unit();
+                        let (x, y) = (x * 1e6 / u.nm(), y * 1e6 / u.nm());
+                        let d = u.decimals().min(3);
+                        ui.monospace(format!("X {x:>10.d$}  Y {y:>10.d$} {:<3}", u.label()))
+                    }
+                    None => ui.monospace(" ".repeat(29)),
+                };
+                ui.separator();
+                ui.monospace(format!("grid {}", units::fmt(grid)));
+                if !snap {
+                    ui.label(RichText::new("no snap").color(theme::warn()))
+                        .on_hover_text("Snapping to the grid is off (grid menu at the canvas' bottom left)");
                 }
-                None => ui.monospace(" ".repeat(29)),
-            };
-            ui.separator();
-            let (grid, snap) = grid;
-            ui.monospace(format!("grid {}", units::fmt(grid)));
-            if !snap {
-                ui.label(RichText::new("no snap").color(theme::warn()))
-                    .on_hover_text("Snapping to the grid is off (grid menu at the canvas' bottom left)");
+                ui.separator();
+                ui.label(format!("{selected} selected"));
             }
-            ui.separator();
-            ui.label(format!("{selected} selected"));
             let msg = self.panes.iter().find_map(|p| p.it.message.clone());
             let status = self.status.as_ref().filter(|(_, t)| t.elapsed() < Duration::from_secs(6));
             if let Some(m) = msg.as_deref().or(status.map(|s| s.0.as_str())) {
-                ui.separator();
+                if has_editor {
+                    ui.separator();
+                }
                 ui.label(RichText::new(m).color(theme::warn()));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -2075,10 +2121,12 @@ impl PcbApp {
                     }
                     ui.separator();
                 }
-                ui.label(
-                    RichText::new("Drag: move · Box: select · Middle/right drag: pan · Wheel: zoom · V: fit")
-                        .color(theme::text_dim()),
-                );
+                if has_editor {
+                    ui.label(
+                        RichText::new("Drag: move · Box: select · Middle/right drag: pan · Wheel: zoom · V: fit")
+                            .color(theme::text_dim()),
+                    );
+                }
             });
         });
     }
@@ -2275,7 +2323,7 @@ struct TreeBehavior<'a> {
     active: &'a mut ViewKind,
     focus_lib: &'a mut Option<u64>,
     hovered: &'a mut Option<ViewKind>,
-    close_requests: &'a mut Vec<u64>,
+    close_requests: &'a mut Vec<Tab>,
     sch: &'a mut SchPlacer,
     pcb: &'a mut PcbPlacer,
     status: &'a mut Option<(String, Instant)>,
@@ -2456,14 +2504,14 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         response
     }
 
-    fn is_tab_closable(&self, tiles: &Tiles<Tab>, tile_id: TileId) -> bool {
-        matches!(Self::tab_of(tiles, tile_id), Some(Tab::Library(_)))
+    fn is_tab_closable(&self, _tiles: &Tiles<Tab>, _tile_id: TileId) -> bool {
+        true
     }
 
     fn on_tab_close(&mut self, tiles: &mut Tiles<Tab>, tile_id: TileId) -> bool {
-        if let Some(Tab::Library(key)) = Self::tab_of(tiles, tile_id) {
-            // Closed by the app after asking about unsaved changes.
-            self.close_requests.push(key);
+        // Closed by the app (libraries after asking about unsaved changes).
+        if let Some(tab) = Self::tab_of(tiles, tile_id) {
+            self.close_requests.push(tab);
         }
         false
     }
@@ -2650,7 +2698,17 @@ impl eframe::App for PcbApp {
                 status: &mut self.status,
                 keymap: &self.keymap,
             };
-            self.tree.ui(&mut behavior, ui);
+            if self.tree.root.is_none() {
+                let shortcut = self.keymap.menu_text(ui.ctx(), Action::PanelProject);
+                ui.centered_and_justified(|ui| {
+                    ui.colored_label(
+                        theme::text_dim(),
+                        format!("Double-click the schematic or the PCB in the Project panel ({shortcut}) to open it"),
+                    );
+                });
+            } else {
+                self.tree.ui(&mut behavior, ui);
+            }
         });
         self.follow_visible_tabs();
         // The grid menus change the display unit.
@@ -2662,8 +2720,11 @@ impl eframe::App for PcbApp {
             self.show_view(kind);
         }
 
-        for key in std::mem::take(&mut self.close_requests) {
-            self.close_library(key);
+        for tab in std::mem::take(&mut self.close_requests) {
+            match tab {
+                Tab::Library(key) => self.close_library(key),
+                Tab::View(kind) => self.close_view(kind),
+            }
         }
         if let Some(m) = self.libraries.iter_mut().find_map(|l| l.message.take()) {
             self.set_status(m);
@@ -2745,6 +2806,34 @@ fn same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
 
 /// Schematic and board as tabs of one full-size area (schematic in front). Tabs can be
 /// dragged apart to work side by side.
+/// Add `tab` to a tab group: `group` if it is still in the tree, else the group of the
+/// first open tab of `near`, else any tab group, else a new one (all tabs were closed).
+fn insert_tab(tree: &mut Tree<Tab>, tab: Tab, group: Option<TileId>, near: &[Tab]) -> TileId {
+    let tiles = &tree.tiles;
+    let is_tabs = |id: TileId| matches!(tiles.get(id), Some(Tile::Container(Container::Tabs(_))));
+    let in_tree = |id: TileId| tree.root == Some(id) || tiles.parent_of(id).is_some();
+    let group = group
+        .filter(|&g| is_tabs(g) && in_tree(g))
+        .or_else(|| near.iter().find_map(|t| tiles.find_pane(t)).and_then(|t| tiles.parent_of(t)))
+        .or_else(|| tiles.iter().find(|(id, _)| is_tabs(**id) && in_tree(**id)).map(|(id, _)| *id));
+    let tile = tree.tiles.insert_pane(tab);
+    match group {
+        Some(g) => {
+            if let Some(Tile::Container(c)) = tree.tiles.get_mut(g) {
+                c.add_child(tile);
+            }
+        }
+        None => {
+            let g = tree.tiles.insert_tab_tile(vec![tile]);
+            match tree.root.and_then(|r| tree.tiles.get_mut(r)) {
+                Some(Tile::Container(c)) => c.add_child(g),
+                _ => tree.root = Some(g),
+            }
+        }
+    }
+    tile
+}
+
 fn default_tree() -> Tree<Tab> {
     let mut tiles = Tiles::default();
     let sch = tiles.insert_pane(Tab::View(ViewKind::Schematic));
@@ -2784,5 +2873,44 @@ mod tests {
         tree.make_active(|id, _| id == pcb);
         assert_eq!(visible(&tree), vec![Tab::View(ViewKind::Board)]);
         assert_eq!(visible(&side_by_side_tree()).len(), 2, "both views visible side by side");
+    }
+
+    /// Close a tab as the app does, then let the tree tidy up as it does when drawn.
+    fn close(tree: &mut Tree<Tab>, tab: Tab) -> Option<TileId> {
+        let tile = tree.tiles.find_pane(&tab).unwrap();
+        let group = tree.tiles.parent_of(tile);
+        tree.remove_recursively(tile);
+        tree.simplify(&SimplificationOptions { all_panes_must_have_tabs: true, ..Default::default() });
+        group
+    }
+
+    fn group_of(tree: &Tree<Tab>, tab: Tab) -> Option<TileId> {
+        tree.tiles.find_pane(&tab).and_then(|t| tree.tiles.parent_of(t))
+    }
+
+    #[test]
+    fn closed_views_reopen_where_they_were() {
+        let (sch, pcb) = (Tab::View(ViewKind::Schematic), Tab::View(ViewKind::Board));
+
+        // Tabs: back into the same group.
+        let mut tree = default_tree();
+        let group = close(&mut tree, pcb);
+        insert_tab(&mut tree, pcb, group, &[sch]);
+        assert_eq!(group_of(&tree, pcb), group);
+
+        // Side by side: the PCB's group went away with it, so it joins the schematic.
+        let mut tree = side_by_side_tree();
+        let group = close(&mut tree, pcb);
+        insert_tab(&mut tree, pcb, group, &[sch]);
+        assert_eq!(group_of(&tree, pcb), group_of(&tree, sch));
+
+        // Everything closed: a new tab group becomes the root.
+        let mut tree = default_tree();
+        close(&mut tree, pcb);
+        let group = close(&mut tree, sch);
+        assert_eq!(tree.root, None);
+        let tile = insert_tab(&mut tree, sch, group, &[pcb]);
+        tree.make_active(|id, _| id == tile);
+        assert_eq!(visible(&tree), vec![sch]);
     }
 }
