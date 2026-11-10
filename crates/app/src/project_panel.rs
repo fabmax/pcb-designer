@@ -19,7 +19,7 @@ use view::item::Item;
 use view::tree::{Node, Row, TreeEvent, TreeKey, TreeState};
 
 use crate::icons::{self, Icon};
-use crate::library::Open;
+use crate::library::{Open, PROJECT_LIB};
 use crate::theme;
 
 /// Whose library: the project's own, or a loaded library (by its key).
@@ -67,6 +67,8 @@ pub struct Info {
     pub flag: bool,
     /// Project Library: parts whose library changed.
     pub count: usize,
+    /// Project Library: parts no component uses.
+    pub unused: usize,
     pub path: Option<PathBuf>,
 }
 
@@ -107,6 +109,16 @@ pub enum Act {
     CopyToProject(u64, Id),
     /// Update project parts from their libraries (`None`: all that changed).
     Update(Option<Id>),
+    /// Remove the Project Library's unused parts, symbols and footprints.
+    RemoveUnused,
+}
+
+/// The library editor key of an owner (the Project Library has its own).
+pub fn key(owner: Owner) -> u64 {
+    match owner {
+        Owner::Project => PROJECT_LIB,
+        Owner::Lib(k) => k,
+    }
 }
 
 /// The + menu (header) and the External Libraries menu.
@@ -150,8 +162,20 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
         NodeId::Board => out.push(A("Open", Act::ShowView(ViewKind::Board))),
         NodeId::ExternalLibraries => out = add_menu(),
         NodeId::Library(Owner::Project) => {
+            out.push(A("Open", Act::OpenLibrary(PROJECT_LIB)));
+            out.push(Separator);
+            for g in [Group::Parts, Group::Symbols, Group::Footprints] {
+                let (label, act) = group_items(g);
+                out.push(A(label, act(PROJECT_LIB)));
+            }
+            if info.count > 0 || info.unused > 0 {
+                out.push(Separator);
+            }
             if info.count > 0 {
                 out.push(A("Update changed parts from their libraries", Act::Update(None)));
+            }
+            if info.unused > 0 {
+                out.push(A("Remove unused parts", Act::RemoveUnused));
             }
         }
         NodeId::Library(Owner::Lib(k)) => {
@@ -184,23 +208,21 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
                 out.push(A("Remove from project", Act::Forget(p.clone())));
             }
         }
-        NodeId::Group(Owner::Lib(k), g) if info.editable => {
+        NodeId::Group(owner, g) if info.editable => {
             let (label, act) = group_items(g);
-            out.push(A(label, act(k)));
+            out.push(A(label, act(key(owner))));
         }
         NodeId::Group(..) => {}
-        NodeId::Item(Owner::Project, ObjectId::LibPart(p)) => {
-            out.push(A("Place in schematic", Act::Place(Owner::Project, p)));
-            if info.flag {
-                out.push(A("Update from library", Act::Update(Some(p))));
-            }
-        }
-        NodeId::Item(Owner::Project, _) => {}
-        NodeId::Item(Owner::Lib(k), item) => {
+        NodeId::Item(owner, item) => {
+            let k = key(owner);
             out.push(A("Open", Act::OpenItem(k, open_of(item))));
             if let ObjectId::LibPart(p) = item {
-                out.push(A("Place in schematic", Act::Place(Owner::Lib(k), p)));
-                out.push(A("Copy to Project Library", Act::CopyToProject(k, p)));
+                out.push(A("Place in schematic", Act::Place(owner, p)));
+                match owner {
+                    Owner::Lib(k) => out.push(A("Copy to Project Library", Act::CopyToProject(k, p))),
+                    Owner::Project if info.flag => out.push(A("Update from library", Act::Update(Some(p)))),
+                    Owner::Project => {}
+                }
             }
             if info.editable {
                 out.push(Separator);
@@ -221,9 +243,9 @@ pub fn activate(id: NodeId, info: &Info) -> Option<Act> {
     match id {
         NodeId::Schematic => Some(Act::ShowView(ViewKind::Schematic)),
         NodeId::Board => Some(Act::ShowView(ViewKind::Board)),
-        NodeId::Library(Owner::Lib(k)) => Some(Act::OpenLibrary(k)),
+        NodeId::Library(owner) => Some(Act::OpenLibrary(key(owner))),
         NodeId::Missing(_) => info.path.clone().map(Act::Locate),
-        NodeId::Item(Owner::Lib(k), item) => Some(Act::OpenItem(k, open_of(item))),
+        NodeId::Item(owner, item) => Some(Act::OpenItem(key(owner), open_of(item))),
         _ => None,
     }
 }
@@ -249,8 +271,17 @@ pub fn path_hash(path: &Path) -> u64 {
     h.finish()
 }
 
-/// A part's detail in the tree: (text, is a warning, an update is available, tooltip).
-pub type PartDetail = (String, bool, bool, String);
+/// A Project Library part's state in the tree.
+pub struct PartDetail {
+    pub text: String,
+    /// The text is a warning.
+    pub warn: bool,
+    /// Its library has a newer version.
+    pub update: bool,
+    /// No component uses it.
+    pub dim: bool,
+    pub tip: String,
+}
 
 /// Parts, Symbols and Footprints of a library, items sorted by name. `part` gives a
 /// part's state (Project Library).
@@ -268,12 +299,13 @@ pub fn library_children(
         .iter()
         .map(|p| {
             let mut n = item(ObjectId::LibPart(p.id), &p.name, Icon::Part, &p.description);
-            if let Some((detail, warn, flag, tip)) = part(p.id) {
-                n.data.detail = detail;
-                n.data.warn = warn;
-                n.data.flag = flag;
-                if !tip.is_empty() {
-                    n.data.tip = if n.data.tip.is_empty() { tip } else { format!("{}\n{tip}", n.data.tip) };
+            if let Some(d) = part(p.id) {
+                n.data.detail = d.text;
+                n.data.warn = d.warn;
+                n.data.flag = d.update;
+                n.data.dim = d.dim;
+                if !d.tip.is_empty() {
+                    n.data.tip = if n.data.tip.is_empty() { d.tip } else { format!("{}\n{}", n.data.tip, d.tip) };
                 }
             }
             n
@@ -797,6 +829,15 @@ mod tests {
         assert!(a.iter().any(|a| matches!(a, Act::Delete(..))));
 
         assert_eq!(acts(menu(NodeId::ExternalLibraries, &Info::default())), acts(add_menu()));
+
+        // Project parts: no copy to the project, an update when the library changed.
+        let changed = Info { editable: true, flag: true, ..Default::default() };
+        let a = acts(menu(NodeId::Item(Owner::Project, part), &changed));
+        assert!(a.iter().any(|a| matches!(a, Act::Update(Some(_)))));
+        assert!(a.iter().any(|a| matches!(a, Act::OpenItem(PROJECT_LIB, _))));
+        assert!(!a.iter().any(|a| matches!(a, Act::CopyToProject(..))));
+        let lib = Info { editable: true, unused: 2, ..Default::default() };
+        assert!(acts(menu(NodeId::Library(Owner::Project), &lib)).contains(&Act::RemoveUnused));
         assert_eq!(activate(NodeId::Board, &Info::default()), Some(Act::ShowView(ViewKind::Board)));
         assert_eq!(activate(NodeId::Project, &Info::default()), None, "expands");
     }

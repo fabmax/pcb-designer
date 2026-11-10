@@ -96,7 +96,10 @@ pub fn respond(request: LibraryRequest, libs: &mut dyn Libraries) -> Result<Repl
     let json = match request {
         LibraryRequest::List => {
             let listed = libs.project().project().libraries.clone();
-            let mut all: Vec<Value> = (0..libs.count()).map(|i| summary(libs.get(i), &listed)).collect();
+            // The project's own copies first (edit them with `execute`).
+            let project = libs.project();
+            let mut all = vec![summary_of(&project.project().library, "project", None, project.is_modified())];
+            all.extend((0..libs.count()).map(|i| summary(libs.get(i), &listed)));
             all.extend(
                 libs.missing().into_iter().map(|m| json!({ "kind": "missing", "path": m.path, "error": m.error })),
             );
@@ -284,7 +287,10 @@ fn summary(doc: &LibraryDoc, listed: &[PathBuf]) -> Value {
         Some(p) if listed.contains(&project_libs::absolute(p)) => "external",
         Some(_) => "unlisted",
     };
-    let lib = doc.library();
+    summary_of(doc.library(), kind, doc.path.as_deref(), doc.is_modified())
+}
+
+fn summary_of(lib: &Library, kind: &str, path: Option<&Path>, modified: bool) -> Value {
     let symbol_name = |id: Id| lib.symbols.get(id).map(|s| s.name.clone());
     let footprint_name = |id: Id| lib.footprints.get(id).map(|f| f.name.clone());
     let symbols: Vec<Value> =
@@ -308,8 +314,8 @@ fn summary(doc: &LibraryDoc, listed: &[PathBuf]) -> Value {
     json!({
         "name": lib.name,
         "kind": kind,
-        "path": doc.path,
-        "modified": doc.is_modified(),
+        "path": path,
+        "modified": modified,
         "symbols": symbols,
         "footprints": footprints,
         "parts": parts,

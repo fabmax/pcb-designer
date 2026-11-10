@@ -78,3 +78,75 @@ fn update_refuses_to_drop_placed_units() {
     let err = ed.execute(Command::UpdateParts { library: lib, parts: vec![PART_RESISTOR] }).unwrap_err();
     assert!(err.to_string().contains("unit"), "{err}");
 }
+
+#[test]
+fn local_edits_are_told_apart_from_library_changes() {
+    let mut lib = builtin::builtin_library();
+    let mut ed = Editor::new(Project::new("t"));
+    ed.execute(Command::ImportParts { library: lib.clone(), parts: vec![PART_RESISTOR, PART_LED] }).unwrap();
+    let state = |ed: &Editor, lib: &Library, part| {
+        part_statuses(ed.project(), &[lib]).into_iter().find(|s| s.part == part).unwrap().state
+    };
+
+    // Edit the project's copy of the resistor.
+    let mut r = ed.project().library.parts.get(PART_RESISTOR).unwrap().clone();
+    r.description = "Edited in the project".into();
+    ed.execute(Command::Update { objects: vec![Object::LibPart(r)] }).unwrap();
+    assert_eq!(state(&ed, &lib, PART_RESISTOR), PartState::ModifiedLocally);
+    assert_eq!(state(&ed, &lib, PART_LED), PartState::UpToDate);
+
+    // The library changes too: both changed. The LED only in the library.
+    lib.parts.get_mut(PART_RESISTOR).unwrap().default_value = "1k".into();
+    lib.parts.get_mut(PART_LED).unwrap().default_value = "GREEN".into();
+    assert_eq!(state(&ed, &lib, PART_RESISTOR), PartState::BothChanged);
+    assert_eq!(state(&ed, &lib, PART_LED), PartState::LibraryChanged);
+
+    // Updating takes the library's version (and drops the local edit).
+    ed.execute(Command::UpdateParts { library: lib.clone(), parts: vec![PART_RESISTOR] }).unwrap();
+    assert_eq!(state(&ed, &lib, PART_RESISTOR), PartState::UpToDate);
+}
+
+#[test]
+fn project_part_edits_keep_what_components_use() {
+    let lib = builtin::builtin_library();
+    let mut ed = Editor::new(Project::new("t"));
+    ed.execute(Command::ImportParts { library: lib, parts: vec![PART_RESISTOR, PART_LED] }).unwrap();
+    let r1 = place(&mut ed, PART_RESISTOR, 0.0);
+    let used = ed.project().schematic.components.get(r1).unwrap().variant;
+
+    // Dropping the variant R1 uses is refused; dropping another one is fine.
+    let part = ed.project().library.parts.get(PART_RESISTOR).unwrap().clone();
+    let mut without_used = part.clone();
+    without_used.variants.retain(|v| v.id != used);
+    let err = ed.execute(Command::Update { objects: vec![Object::LibPart(without_used)] }).unwrap_err();
+    assert!(err.to_string().contains("R1"), "{err}");
+    let mut without_other = part.clone();
+    without_other.variants.retain(|v| v.id == used);
+    ed.execute(Command::Update { objects: vec![Object::LibPart(without_other)] }).unwrap();
+
+    // Removing the placed unit is refused.
+    let mut no_units = ed.project().library.parts.get(PART_RESISTOR).unwrap().clone();
+    no_units.units.clear();
+    assert!(ed.execute(Command::Update { objects: vec![Object::LibPart(no_units)] }).is_err());
+    // So is deleting the part or its symbol.
+    assert!(ed.execute(Command::Delete { ids: vec![ObjectId::LibPart(PART_RESISTOR)] }).is_err());
+    let symbol = part.units[0].symbol;
+    assert!(ed.execute(Command::Delete { ids: vec![ObjectId::LibSymbol(symbol)] }).is_err());
+}
+
+#[test]
+fn unused_library_objects_can_be_removed_in_one_step() {
+    use editor_core::query::unused_library_objects;
+    let lib = builtin::builtin_library();
+    let mut ed = Editor::new(Project::new("t"));
+    ed.execute(Command::ImportParts { library: lib, parts: vec![PART_RESISTOR, PART_LED] }).unwrap();
+    place(&mut ed, PART_RESISTOR, 0.0);
+    let unused = unused_library_objects(ed.project());
+    assert_eq!(unused[0], ObjectId::LibPart(PART_LED));
+    assert!(unused.iter().all(|id| !matches!(id, ObjectId::LibPart(p) if *p == PART_RESISTOR)));
+    ed.execute(Command::Delete { ids: unused }).unwrap();
+    let p = ed.project();
+    assert_eq!(p.library.parts.len(), 1);
+    assert_eq!(p.validate(), Vec::<String>::new());
+    assert!(unused_library_objects(p).is_empty());
+}

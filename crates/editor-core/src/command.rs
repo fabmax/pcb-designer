@@ -374,6 +374,9 @@ impl Command {
             Command::Update { objects } => {
                 for o in objects {
                     check_references(tx.project(), &o)?;
+                    if let Object::LibPart(p) = &o {
+                        check_part_still_fits(tx.project(), p)?;
+                    }
                     if let Object::Footprint(f) = &o {
                         let current = tx.project().board.footprints.get(f.id);
                         if current.is_some_and(|c| c.component != f.component) {
@@ -954,4 +957,25 @@ fn library_path(path: std::path::PathBuf) -> Result<std::path::PathBuf, CommandE
 
 fn not_listed(path: &std::path::Path) -> CommandError {
     CommandError::Invalid(format!("{} is not one of the project's libraries", path.display()))
+}
+
+/// A changed project part must keep what placed components use: their variant, and every
+/// placed unit.
+fn check_part_still_fits(project: &Project, part: &Part) -> Result<(), CommandError> {
+    for c in project.schematic.components.iter().filter(|c| c.part == part.id) {
+        if part.variant(c.variant).is_none() {
+            return Err(CommandError::Forbidden(format!(
+                "{} uses this footprint variant; give it another variant first",
+                c.refdes
+            )));
+        }
+        if let Some(s) = project.schematic.symbols_of(c.id).find(|s| s.unit as usize >= part.units.len()) {
+            return Err(CommandError::Forbidden(format!(
+                "{} has unit {} placed; delete that unit first",
+                c.refdes,
+                s.unit + 1
+            )));
+        }
+    }
+    Ok(())
 }

@@ -24,6 +24,10 @@ pub enum Open {
     Part(Id),
 }
 
+/// Key of the Project Library's editor: its document is the project's own, so its edits
+/// are project commands (one undo history, live on the schematic and board).
+pub const PROJECT_LIB: u64 = 1 << 32;
+
 const READ_ONLY: &str = "Read-only: the built-in library ships with the app. Save a copy to change its parts.";
 
 pub struct LibraryEditor {
@@ -75,8 +79,16 @@ impl LibraryEditor {
         }
     }
 
+    /// The Project Library (the project's own document).
+    pub fn is_project(&self) -> bool {
+        self.key == PROJECT_LIB
+    }
+
     /// Tab title.
     pub fn title(&self) -> String {
+        if self.is_project() {
+            return "Project Library".into();
+        }
         if self.is_builtin() {
             return "Built-in Library".into();
         }

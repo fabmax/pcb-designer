@@ -1094,3 +1094,45 @@ Three changes, in this order.
   comes in change 3.
 - Old `settings.json` files with `"libraries"` in the dock are ignored once (no
   compatibility alias).
+
+### 3. Editable Project Library
+
+- **One document:** the app's project `Document` moved into a `LibraryEditor` keyed
+  `library::PROJECT_LIB` (`PcbApp::project`, formerly `doc`). Its `LibraryDoc` wraps the
+  project document, so the library tab's forms and item editors run ordinary project
+  commands on `Project::library`. That gives one undo history, and schematic and board
+  update right away.
+  - `PcbApp::lib(PROJECT_LIB)` returns this editor, and `focused_lib_ref()` is the read
+    path for the status bar and the tree's `focus_node`.
+  - `PROJECT_LIB` takes a different path in a few places:
+    - Save and Save as save the project.
+    - `confirm_discard_library` always passes.
+    - Close only closes the tab.
+    - The File menu's `lib_focus` excludes it, so it reads "Save project".
+  - Gotcha: every change to a project library item rebuilds the scenes, drags in the
+    symbol or footprint editor included. That's fine for the demo, but may be slow on
+    big projects; make it incremental if it shows up.
+- **Part states** (`query::part_statuses`): two comparisons against the stored
+  `source.content_hash` (the hash at import or update):
+  - the library's current hash tells whether the library changed;
+  - the copy's own hash tells whether it was changed in the project.
+  - Together they give `UpToDate`, `LibraryChanged`, `ModifiedLocally` and
+    `BothChanged`; on top of these are `LibraryMissing`, `RemovedFromLibrary` and
+    `Local`.
+  - The tree shows them as "library changed", "modified", "both changed", and so on.
+  - Updating a "both changed" part asks first (rfd dialog), since `UpdateParts` takes
+    the library's version and drops the local edit.
+- **Refusals** (Q15):
+  - `Command::Update` of a `LibPart` runs `check_part_still_fits`: dropping a variant a
+    component uses, or a unit that is placed, fails and names the component.
+  - Deleting a used part, or a symbol or footprint a used part needs, was already
+    refused by `Delete`.
+  - Pin and pad edits are allowed. ERC and DRC flag what no longer fits.
+- **Remove unused parts:** `query::unused_library_objects` lists parts nothing uses,
+  then the symbols and footprints only those parts (or nothing) need. The order matters:
+  one `Delete` removes the parts before the objects they reference, so the in-use
+  checks pass. Unused parts are dimmed in the tree, and the menu entry appears only when
+  some exist.
+- **MCP:** `list_libraries` starts with the Project Library (kind `project`). Agents
+  edit it with `execute` (`Update` of `LibPart` / `LibSymbol` / `LibFootprint`), not
+  with `edit_library`, which works on library files.

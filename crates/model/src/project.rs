@@ -26,7 +26,7 @@ impl Project {
     pub fn new(name: impl Into<String>) -> Self {
         Project {
             name: name.into(),
-            library: Library { name: "Project library".into(), ..Default::default() },
+            library: Library { name: "Project Library".into(), ..Default::default() },
             schematic: Schematic::new(),
             board: Board::default(),
             libraries: Vec::new(),
