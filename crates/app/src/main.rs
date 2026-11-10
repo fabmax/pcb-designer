@@ -43,6 +43,8 @@ mod sch_ui;
 mod script;
 mod settings;
 mod theme;
+#[cfg(target_os = "macos")]
+mod title_bar;
 mod toolbar;
 mod units;
 
@@ -125,11 +127,20 @@ fn main() -> eframe::Result {
     if !vsync {
         wgpu_options.surface.present_mode = wgpu::PresentMode::AutoNoVsync;
     }
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("PCB Designer")
+        .with_inner_size([1600.0, 1000.0])
+        .with_min_inner_size([800.0, 500.0]);
+    match eframe::icon_data::from_png_bytes(icons::APP_ICON_PNG) {
+        Ok(icon) => viewport = viewport.with_icon(std::sync::Arc::new(icon)),
+        Err(e) => log::warn!("app icon: {e}"),
+    }
+    // macOS: the content extends under a transparent title bar; `title_bar.rs` draws it.
+    if cfg!(target_os = "macos") {
+        viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);
+    }
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("PCB Designer")
-            .with_inner_size([1600.0, 1000.0])
-            .with_min_inner_size([800.0, 500.0]),
+        viewport,
         renderer: eframe::Renderer::Wgpu,
         wgpu_options,
         // The app sets its own menu bar (`native_menu.rs`).

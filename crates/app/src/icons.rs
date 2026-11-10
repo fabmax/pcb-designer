@@ -3,6 +3,9 @@
 
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, vec2};
 
+/// The app icon, 1024² PNG (drawn by `cargo run -p render --example app_icon`).
+pub const APP_ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Icon {
     Select,

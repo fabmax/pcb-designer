@@ -169,6 +169,9 @@ pub fn apply(ctx: &egui::Context) {
         v.widgets.hovered.weak_bg_fill = Color32::from_rgb(0xd6, 0xd9, 0xe0);
     }
     v.widgets.active.weak_bg_fill = accent.gamma_multiply(0.6);
+    // Pin egui's theme: it would otherwise follow the system (or window) appearance and
+    // swap these visuals for its defaults.
+    ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
     ctx.set_visuals(v);
 
     ctx.global_style_mut(|s| {
@@ -176,4 +179,13 @@ pub fn apply(ctx: &egui::Context) {
         s.spacing.button_padding = egui::vec2(10.0, 4.0);
         s.spacing.interact_size.y = 24.0;
     });
+}
+
+/// macOS: the window's appearance (native buttons, edge highlight) follows the app theme,
+/// since our title strip replaces the system's.
+pub fn apply_to_window(ctx: &egui::Context) {
+    if cfg!(target_os = "macos") {
+        let t = if dark() { egui::SystemTheme::Dark } else { egui::SystemTheme::Light };
+        ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(t));
+    }
 }
