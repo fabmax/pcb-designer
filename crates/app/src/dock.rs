@@ -15,8 +15,7 @@ use crate::keymap::Action;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Panel {
-    Libraries,
-    LibraryBrowser,
+    Project,
     Messages,
     Properties,
     ToolSettings,
@@ -33,19 +32,12 @@ pub enum Side {
 
 impl Panel {
     /// In bar order: left bar (top group, then the bottom panels), then the right bar.
-    pub const ALL: [Panel; 7] = [
-        Panel::Libraries,
-        Panel::LibraryBrowser,
-        Panel::Messages,
-        Panel::Properties,
-        Panel::ToolSettings,
-        Panel::BoardSetup,
-        Panel::Overview,
-    ];
+    pub const ALL: [Panel; 6] =
+        [Panel::Project, Panel::Messages, Panel::Properties, Panel::ToolSettings, Panel::BoardSetup, Panel::Overview];
 
     pub fn side(self) -> Side {
         match self {
-            Panel::Libraries | Panel::LibraryBrowser => Side::Left,
+            Panel::Project => Side::Left,
             Panel::Messages => Side::Bottom,
             Panel::Properties | Panel::ToolSettings | Panel::BoardSetup | Panel::Overview => Side::Right,
         }
@@ -53,8 +45,7 @@ impl Panel {
 
     pub fn title(self) -> &'static str {
         match self {
-            Panel::Libraries => "Libraries",
-            Panel::LibraryBrowser => "Library browser",
+            Panel::Project => "Project",
             Panel::Messages => "Messages",
             Panel::Properties => "Properties",
             Panel::ToolSettings => "Tool settings",
@@ -65,8 +56,7 @@ impl Panel {
 
     pub fn icon(self) -> Icon {
         match self {
-            Panel::Libraries => Icon::Tree,
-            Panel::LibraryBrowser => Icon::Library,
+            Panel::Project => Icon::Tree,
             Panel::Messages => Icon::Messages,
             Panel::Properties => Icon::Properties,
             Panel::ToolSettings => Icon::Wrench,
@@ -78,8 +68,7 @@ impl Panel {
     /// The keyboard action showing or hiding it.
     pub fn action(self) -> Action {
         match self {
-            Panel::Libraries => Action::PanelLibraries,
-            Panel::LibraryBrowser => Action::PanelLibraryBrowser,
+            Panel::Project => Action::PanelProject,
             Panel::Messages => Action::PanelMessages,
             Panel::Properties => Action::PanelProperties,
             Panel::ToolSettings => Action::PanelToolSettings,
@@ -92,7 +81,7 @@ impl Panel {
         Panel::ALL.into_iter().find(|p| p.action() == action)
     }
 
-    /// By its saved name (`library_browser`), for `--panel`.
+    /// By its saved name (`board_setup`), for `--panel`.
     pub fn parse(name: &str) -> Option<Panel> {
         serde_json::from_value(serde_json::Value::String(name.replace('-', "_"))).ok()
     }
@@ -117,7 +106,7 @@ pub struct Dock {
 impl Default for Dock {
     fn default() -> Self {
         Dock {
-            left: Some(Panel::Libraries),
+            left: Some(Panel::Project),
             right: Some(Panel::Properties),
             bottom: None,
             left_width: 240.0,
@@ -222,15 +211,15 @@ mod tests {
     #[test]
     fn one_panel_per_side() {
         let mut d = Dock::default();
-        assert_eq!((d.left, d.right, d.bottom), (Some(Panel::Libraries), Some(Panel::Properties), None));
+        assert_eq!((d.left, d.right, d.bottom), (Some(Panel::Project), Some(Panel::Properties), None));
         d.toggle(Panel::ToolSettings);
         assert_eq!(d.right, Some(Panel::ToolSettings), "switches the side's panel");
-        assert_eq!(d.left, Some(Panel::Libraries), "other sides stay");
+        assert_eq!(d.left, Some(Panel::Project), "other sides stay");
         d.toggle(Panel::ToolSettings);
         assert_eq!(d.right, None, "clicking the open panel hides it");
         d.toggle(Panel::Messages);
         assert!(d.is_open(Panel::Messages));
-        assert_eq!(Panel::parse("library-browser"), Some(Panel::LibraryBrowser));
+        assert_eq!(Panel::parse("board-setup"), Some(Panel::BoardSetup));
         assert_eq!(Panel::parse("board_setup"), Some(Panel::BoardSetup));
         assert_eq!(Panel::parse("nets"), None);
         for p in Panel::ALL {
@@ -250,7 +239,7 @@ mod tests {
         assert_eq!(back.left_width, 310.0);
         // Missing fields fall back to the defaults.
         let partial: Dock = serde_json::from_str(r#"{"right": null}"#).unwrap();
-        assert_eq!((partial.left, partial.right), (Some(Panel::Libraries), None));
+        assert_eq!((partial.left, partial.right), (Some(Panel::Project), None));
     }
 
     #[test]

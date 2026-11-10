@@ -7,7 +7,7 @@ use model::*;
 fn main() {
     let dir = std::env::args().nth(1).unwrap_or_else(|| "out/demo.pcbproj".into());
     let mut ed = Editor::new(Project::new("Demo"));
-    let lib = builtin::starter_library();
+    let lib = builtin::builtin_library();
     ed.execute(Command::ImportParts { library: lib, parts: vec![PART_RESISTOR, PART_LED] }).unwrap();
     for (part, x) in [(PART_RESISTOR, 0.0), (PART_LED, 15.24)] {
         ed.execute(Command::PlacePart {

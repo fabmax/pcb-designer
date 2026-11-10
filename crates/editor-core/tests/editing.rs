@@ -16,7 +16,7 @@ fn files(p: &Project) -> [String; 3] {
 fn editor_with_parts() -> Editor {
     let mut ed = Editor::new(Project::new("test"));
     ed.execute(Command::ImportParts {
-        library: builtin::starter_library(),
+        library: builtin::builtin_library(),
         parts: vec![PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4],
     })
     .unwrap();
@@ -45,10 +45,10 @@ fn import_records_source_and_is_idempotent() {
     let part = ed.project().library.parts.get(PART_RESISTOR).unwrap();
     let src = part.source.as_ref().unwrap();
     assert_eq!(src.library, builtin::LIBRARY_ID);
-    assert_eq!(src.content_hash, builtin::starter_library().content_hash(PART_RESISTOR).unwrap());
+    assert_eq!(src.content_hash, builtin::builtin_library().content_hash(PART_RESISTOR).unwrap());
     // Importing again changes nothing.
     let again =
-        ed.execute(Command::ImportParts { library: builtin::starter_library(), parts: vec![PART_RESISTOR] }).unwrap();
+        ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts: vec![PART_RESISTOR] }).unwrap();
     assert!(again.is_empty());
     assert_eq!(ed.project().validate(), Vec::<String>::new());
 }

@@ -1030,3 +1030,67 @@ Three changes, in this order.
   - `mcp/tests/library_tools.rs`: the project's libraries end to end, including undo,
     Save As relinking, remove with unsaved changes, a missing file, and a project
     without a folder.
+
+### 2. Project tree panel
+
+- **The panel.** `Panel::Project` (⌘1) replaces Libraries and the Library browser. The
+  Library browser panel and `LibraryEditor::browser_ui` are gone; ⌘2 is free.
+  - Header: + (New library…, Add library…, Import from KiCad…), search, Collapse all, –.
+  - Tree (`app/src/project_panel.rs`):
+    - the project (name in bold, folder in dim text): Schematic, PCB, Project Library;
+    - Built-in Library;
+    - External Libraries: listed files in the project's order, missing files, then
+      unsaved or unlisted libraries.
+    Each library expands to Parts / Symbols / Footprints → items, sorted with
+    `natural_cmp`.
+  - The app rebuilds the nodes every frame (`PcbApp::tree_nodes`); fine at today's sizes.
+    Cache them if a big KiCad import makes it slow. Only rows inside the clip rect are
+    painted.
+- **Tree model** (`view::tree`, toolkit independent, unit tested).
+  - `Node<K, T>` (id, label, data, children) and `TreeState<K>` (expanded set,
+    selection, search). `rows()` flattens the visible rows.
+  - Keys: ↑/↓, Home/End, ← collapses or goes to the parent, → expands or goes to the
+    first child, Enter activates. `reveal` expands the ancestors and selects.
+  - Search filters: only matches (case-insensitive substring) and their ancestors show.
+    Ancestors are force-expanded and matches show as leaves; ↑/↓ visit matches only.
+    `close_search` restores the expansion from before the search, plus the selection's
+    ancestors.
+- **Behaviour.**
+  - `NodeId` covers project nodes, `Library(Owner)`, `Missing(path hash)`,
+    `Group(Owner, Group)` and `Item(Owner, ObjectId)`. `Owner::Project` is the Project
+    Library.
+  - `Info` holds what painting and menus need: icon, detail, warn/dim/strong, tooltip,
+    `editable`, `flag` (listed library / part with a newer library version), `count`,
+    `path`.
+  - Context menus come from `menu(id, info)` and double-click / Enter from
+    `activate(id, info)`. Both are pure functions with a unit test. They return `Act`s,
+    which `PcbApp::tree_act` carries out.
+  - The tree follows the focused tab (`ProjectPanel::follow`): when the focus changes,
+    its node (the item open in a library tab, else Schematic / PCB) is revealed and
+    selected.
+  - Keyboard focus is a widget under the rows (`tree_id`). Clicking a row focuses it, and
+    a focus lock filter keeps arrows and Esc in the tree.
+    - Typing starts a search: the text goes to the field, which gets focus with the
+      cursor at the end.
+    - P places the selected part, and on anything else it is typed. Delete / Backspace
+      delete an item of an editable library.
+  - The search field has its own event filter. Gotcha: egui drops focus on Esc *before*
+    widgets run unless the focused widget's filter claims Esc.
+  - Rename… opens a small `theme::dialog` (`LibraryDoc::rename` keeps names unique per
+    kind). Duplicate, New part using this, and New part / symbol / footprint moved here
+    from the old browser.
+- **Built-in Library** (formerly Starter):
+  - `builtin_library()` is named "Built-in"; the tab says "Built-in Library".
+  - It is read-only: `Document::read_only` makes every command fail with a reason, and
+    `LibraryDoc::builtin()` sets it. Agents get the same refusal (`edit_library`,
+    `save_library`).
+  - Its tab shows the reason, and the part form has a "Save a copy…" button
+    (`LibraryEditor::save_copy`).
+- **Script steps** for testing the tree: `ui-double-click`, `ui-right-click` and
+  `type TEXT`.
+- **Project Library** is read-only in the tree for now. Its parts can be placed and
+  updated, and they show their state: "library changed" (with Update), "library not
+  loaded", "removed from library", or "local". Up-to-date parts show nothing. Editing it
+  comes in change 3.
+- Old `settings.json` files with `"libraries"` in the dock are ignored once (no
+  compatibility alias).

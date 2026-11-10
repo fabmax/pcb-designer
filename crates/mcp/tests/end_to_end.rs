@@ -86,7 +86,7 @@ async fn agent_session() {
 
     // Libraries and project part states.
     let libs = ok_json(call("list_library_parts", Value::Null).await);
-    assert_eq!(libs["libraries"][0]["library"], "Starter");
+    assert_eq!(libs["libraries"][0]["library"], "Built-in");
     let states = libs["project_parts"].as_array().unwrap();
     assert!(!states.is_empty() && states.iter().all(|p| p["state"] == "UpToDate"), "{states:?}");
     // The headless host has no KiCad libraries: a clear error, not a hang.

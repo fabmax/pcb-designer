@@ -26,9 +26,10 @@ use crate::dock::{Dock, Panel, Side, Unseen};
 use crate::icons::{self, Icon};
 use crate::keymap::{Action, Context, Keymap, Shortcut};
 use crate::kicad_import::{ImportAction, KicadImport};
-use crate::library::{LibEvent, LibraryEditor, Open};
+use crate::library::{LibraryEditor, Open};
 use crate::messages;
 use crate::pcb_ui;
+use crate::project_panel::{self, Group, NodeId, Owner, ProjectPanel, TreeNode};
 use crate::properties::Properties;
 use crate::sch_ui;
 use crate::script::Script;
@@ -74,6 +75,14 @@ pub struct Options {
     pub panels: Vec<String>,
     /// Scripted input, see [`crate::script`].
     pub script: Option<String>,
+}
+
+/// The rename dialog's state (a library item from the Project panel).
+struct Rename {
+    key: u64,
+    item: ObjectId,
+    text: String,
+    focused: bool,
 }
 
 /// Content of a dock tab.
@@ -147,8 +156,10 @@ pub struct PcbApp {
     name_prompt: Option<NamePrompt>,
     /// The dock as last saved (the live one is in `settings`).
     saved_dock: Dock,
-    /// Library tab that last had focus (Library browser panel).
-    last_lib: Option<u64>,
+    /// The Project panel's tree.
+    project_tree: ProjectPanel,
+    /// Renaming a library item (from the Project panel).
+    rename: Option<Rename>,
     /// Problems not seen in the Messages panel yet.
     unseen: Unseen,
     /// Board creation tools.
@@ -219,7 +230,8 @@ impl PcbApp {
             sch: SchPlacer::default(),
             name_prompt: None,
             saved_dock: Dock::default(),
-            last_lib: None,
+            project_tree: ProjectPanel::default(),
+            rename: None,
             unseen: Unseen::default(),
             pcb: PcbPlacer::default(),
             probe_key: None,
@@ -230,8 +242,8 @@ impl PcbApp {
             Some(Err(e)) => eprintln!("script: {e}"),
             None => {}
         }
-        // The starter library is always available (built in, saved only with "Save as").
-        app.load_library(LibraryDoc::new(builtin::starter_library()));
+        // The built-in library is always available (built in, saved only with "Save as").
+        app.load_library(LibraryDoc::new(builtin::builtin_library()));
         app.sync_libraries();
         for path in &opts.library {
             app.add_library_file(&project_libs::absolute(path), false);
@@ -628,8 +640,8 @@ impl PcbApp {
         true
     }
 
-    /// The built-in library isn't saved; "save" makes a copy of it (a library of its own)
-    /// and adds that to the project. The built-in library goes back to its original.
+    /// The built-in library is read-only; "save" makes a copy of it (a library of its
+    /// own) and adds that to the project.
     fn save_builtin_copy(&mut self, key: u64) -> bool {
         let Some(path) =
             self.library_dialog("Save a copy of the built-in library").set_file_name("Parts.pcblib").save_file()
@@ -642,13 +654,7 @@ impl PcbApp {
             self.set_status(format!("Save failed: {e}"));
             return false;
         }
-        if self.add_to_project(copy).is_none() {
-            return false;
-        }
-        if let Some(l) = self.lib(key) {
-            *l = LibraryEditor::new(key, LibraryDoc::new(builtin::starter_library()));
-        }
-        true
+        self.add_to_project(copy).is_some()
     }
 
     fn confirm_discard_library(&mut self, key: u64) -> bool {
@@ -672,11 +678,7 @@ impl PcbApp {
         self.close_library_tab(key);
         let Some(l) = self.libraries.iter().find(|l| l.key == key) else { return };
         let (builtin, listed, discarded) = (l.is_builtin(), self.is_listed(&l.lib), l.lib.is_modified());
-        if builtin && discarded {
-            if let Some(l) = self.lib(key) {
-                *l = LibraryEditor::new(key, LibraryDoc::new(builtin::starter_library()));
-            }
-        } else if !builtin && (discarded || !listed) {
+        if !builtin && (discarded || !listed) {
             self.libraries.retain(|l| l.key != key);
             self.synced_libraries = None;
         }
@@ -826,10 +828,6 @@ impl PcbApp {
         Ok(mcp::host::kicad_import_reply(&library, added, replaced, &imported, &req))
     }
 
-    fn library_refs(&self) -> Vec<&Library> {
-        self.libraries.iter().map(|l| l.lib.library()).collect()
-    }
-
     /// Update project parts from their libraries (`(library index, part)`).
     fn update_parts(&mut self, parts: &[(usize, Id)]) {
         let mut by_lib: Vec<(usize, Vec<Id>)> = Vec::new();
@@ -882,9 +880,9 @@ impl PcbApp {
 
     /// Start placing a part in the schematic (it follows the cursor until clicked),
     /// importing it from library `lib_key` if the project doesn't have it yet.
-    fn place_part(&mut self, lib_key: u64, part: Id) {
+    fn place_part(&mut self, lib_key: Option<u64>, part: Id) {
         if !self.doc.project().library.parts.contains(part) {
-            let Some(l) = self.lib(lib_key) else { return };
+            let Some(l) = lib_key.and_then(|k| self.libraries.iter().find(|l| l.key == k)) else { return };
             let issues = l.lib.library().validate();
             if !issues.is_empty() {
                 return self.set_status(format!("Library has problems: {}", issues[0]));
@@ -1149,8 +1147,7 @@ impl PcbApp {
             | Action::PcbOutline
             | Action::PcbZone
             | Action::PcbNextLayer
-            | Action::PanelLibraries
-            | Action::PanelLibraryBrowser
+            | Action::PanelProject
             | Action::PanelMessages
             | Action::PanelProperties
             | Action::PanelToolSettings
@@ -1200,8 +1197,7 @@ impl PcbApp {
             | Action::SchJunction
             | Action::Posture => None,
             Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => None,
-            Action::PanelLibraries
-            | Action::PanelLibraryBrowser
+            Action::PanelProject
             | Action::PanelMessages
             | Action::PanelProperties
             | Action::PanelToolSettings
@@ -1475,172 +1471,294 @@ impl PcbApp {
         true
     }
 
-    /// The library tab the Library browser shows: the focused one, else the last one.
-    /// The library the browser panel shows: the focused (or last focused) library tab,
-    /// else the first open one.
-    fn browser_lib(&self) -> Option<u64> {
-        self.focus_lib
-            .or(self.last_lib)
-            .filter(|k| self.libraries.iter().any(|l| l.key == *k))
-            .or(self.libraries.first().map(|l| l.key))
+    // ------------------------------------------------------------------------------------
+    // Project panel
+
+    /// The Project panel's tree, built from the project and the loaded libraries.
+    fn tree_nodes(&self) -> Vec<TreeNode> {
+        use project_panel::Info;
+        let p = self.doc.project();
+        let refs: Vec<&Library> = self.libraries.iter().map(|l| l.lib.library()).collect();
+        let statuses = part_statuses(p, &refs);
+        let changed = statuses.iter().filter(|s| s.state == PartState::LibraryChanged).count();
+
+        let project_info = Info {
+            strong: true,
+            detail: self.doc.path.as_deref().map_or("not saved".into(), project_panel::short_path),
+            path: self.doc.path.clone(),
+            ..Info::icon(Icon::Project)
+        };
+        let lib_info = Info {
+            detail: project_panel::count(p.library.parts.len(), "part"),
+            count: changed,
+            tip: "Copies of the parts this design uses".into(),
+            ..Info::icon(Icon::Library)
+        };
+        let project_lib = TreeNode::new(NodeId::Library(Owner::Project), "Project Library", lib_info).with_children(
+            project_panel::library_children(Owner::Project, &p.library, false, |id| {
+                let s = statuses.iter().find(|s| s.part == id)?;
+                let (text, warn) = match s.state {
+                    PartState::UpToDate => ("", false),
+                    PartState::LibraryChanged => ("library changed", true),
+                    PartState::LibraryMissing => ("library not loaded", false),
+                    PartState::RemovedFromLibrary => ("removed from library", true),
+                    PartState::Local => ("local", false),
+                };
+                let tip = s.library_name.as_deref().map_or(String::new(), |n| format!("From {n}"));
+                Some((text.to_string(), warn, s.state == PartState::LibraryChanged, tip))
+            }),
+        );
+        let project = TreeNode::new(NodeId::Project, p.name.clone(), project_info).with_children(vec![
+            TreeNode::new(NodeId::Schematic, "Schematic", Info::icon(Icon::Schematic)),
+            TreeNode::new(NodeId::Board, "PCB", Info::icon(Icon::Board)),
+            project_lib,
+        ]);
+
+        let listed = &p.libraries;
+        let library = |l: &LibraryEditor, label: String| {
+            let path = l.lib.path.clone();
+            let is_listed = path.as_deref().is_some_and(|p| listed.contains(&project_libs::absolute(p)));
+            let mut detail = match &path {
+                None if l.is_builtin() => "read-only".to_string(),
+                None => "not saved".to_string(),
+                Some(p) if is_listed => p.parent().map_or(String::new(), project_panel::short_path),
+                Some(_) => "not in the project".to_string(),
+            };
+            if l.lib.is_modified() {
+                detail = format!("modified · {detail}");
+            }
+            let info = Info {
+                detail,
+                warn: l.lib.is_modified(),
+                editable: !l.is_builtin(),
+                flag: is_listed,
+                path,
+                ..Info::icon(Icon::Library)
+            };
+            TreeNode::new(NodeId::Library(Owner::Lib(l.key)), label, info).with_children(
+                project_panel::library_children(Owner::Lib(l.key), l.lib.library(), !l.is_builtin(), |_| None),
+            )
+        };
+        let builtin = self.libraries.iter().find(|l| l.is_builtin()).map(|l| library(l, "Built-in Library".into()));
+
+        // External libraries in the project's order, then unsaved / unlisted ones.
+        let mut external: Vec<TreeNode> = Vec::new();
+        for path in listed {
+            let loaded = self
+                .libraries
+                .iter()
+                .find(|l| l.lib.path.as_deref().is_some_and(|p| project_libs::absolute(p) == *path));
+            if let Some(l) = loaded {
+                external.push(library(l, l.lib.name().to_string()));
+            } else if let Some(m) = self.missing_libraries.iter().find(|m| m.path == *path) {
+                let name = m.path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
+                let info = Info {
+                    detail: "missing".into(),
+                    warn: true,
+                    dim: true,
+                    tip: format!("{}\n{}", m.path.display(), m.error),
+                    path: Some(m.path.clone()),
+                    ..Info::icon(Icon::Missing)
+                };
+                external.push(TreeNode::new(NodeId::Missing(project_panel::path_hash(&m.path)), name, info));
+            }
+        }
+        for l in &self.libraries {
+            let is_listed = l.lib.path.as_deref().is_some_and(|p| listed.contains(&project_libs::absolute(p)));
+            if !l.is_builtin() && !is_listed {
+                external.push(library(l, l.lib.name().to_string()));
+            }
+        }
+        let external_info = Info {
+            detail: if external.is_empty() { String::new() } else { external.len().to_string() },
+            ..Info::icon(Icon::Folder)
+        };
+        let external =
+            TreeNode::new(NodeId::ExternalLibraries, "External Libraries", external_info).with_children(external);
+        std::iter::once(project).chain(builtin).chain(std::iter::once(external)).collect()
     }
 
-    fn library_browser_panel(&mut self, ui: &mut egui::Ui) {
-        let Some(key) = self.browser_lib() else {
-            crate::fields::hint(
-                ui,
-                "Open a library tab (Edit in the Libraries panel) to browse its parts, symbols and footprints.",
-            );
-            return;
-        };
-        let event = self.lib(key).and_then(|l| l.browser_ui(ui, true));
-        match event {
-            Some(LibEvent::Place(part)) => self.place_part(key, part),
-            Some(LibEvent::Save) => {
+    /// The tree node of the focused tab (the item open in a library tab).
+    fn focus_node(&self) -> Option<NodeId> {
+        match self.focus_lib.and_then(|k| self.libraries.iter().find(|l| l.key == k)) {
+            Some(l) => Some(match l.open {
+                Open::Part(p) => NodeId::Item(Owner::Lib(l.key), ObjectId::LibPart(p)),
+                Open::Item(Item::Symbol(s)) => NodeId::Item(Owner::Lib(l.key), ObjectId::LibSymbol(s)),
+                Open::Item(Item::Footprint(f)) => NodeId::Item(Owner::Lib(l.key), ObjectId::LibFootprint(f)),
+                Open::None => NodeId::Library(Owner::Lib(l.key)),
+            }),
+            None => Some(match self.active {
+                ViewKind::Schematic => NodeId::Schematic,
+                ViewKind::Board => NodeId::Board,
+            }),
+        }
+    }
+
+    fn project_panel_ui(&mut self, ui: &mut egui::Ui, roots: &[TreeNode]) {
+        self.project_tree.expand_defaults();
+        self.project_tree.follow(roots, self.focus_node());
+        if let Some(act) = self.project_tree.ui(ui, roots) {
+            self.tree_act(act);
+        }
+    }
+
+    /// Carry out something asked for in the Project panel.
+    fn tree_act(&mut self, act: project_panel::Act) {
+        use project_panel::Act;
+        match act {
+            Act::ShowView(kind) => self.show_view(kind),
+            Act::SaveProject => {
+                self.save(false);
+            }
+            Act::SaveProjectAs => {
+                self.save(true);
+            }
+            Act::Reveal(path) => {
+                if let Err(e) = project_panel::reveal(&path) {
+                    self.set_status(format!("Could not show {}: {e}", path.display()));
+                }
+            }
+            Act::NewLibrary => self.new_library(),
+            Act::AddLibrary => self.open_library(),
+            Act::ImportKicad => self.kicad.open = true,
+            Act::OpenLibrary(key) => self.focus_library_tab(key),
+            Act::OpenItem(key, open) => {
+                if let Some(l) = self.lib(key) {
+                    l.show(open);
+                }
+                self.focus_library_tab(key);
+            }
+            Act::SaveLibrary(key) => {
                 self.save_library(key, false);
             }
-            Some(LibEvent::SaveAs) => {
+            Act::SaveLibraryAs(key) => {
                 self.save_library(key, true);
             }
-            Some(LibEvent::Close) => self.close_requests.push(key),
-            None => {}
+            Act::CloseLibrary(key) => self.close_library(key),
+            Act::RemoveLibrary(key) => self.remove_library(key),
+            Act::Locate(path) => self.locate_missing_library(path),
+            Act::Forget(path) => self.remove_missing_library(path),
+            Act::NewItem(key, group) => {
+                let Some(l) = self.lib(key) else { return };
+                let created = match group {
+                    Group::Parts => l.lib.new_part("New part", None, None).map(Open::Part),
+                    Group::Symbols => l.lib.new_symbol("New symbol").map(|s| Open::Item(Item::Symbol(s))),
+                    Group::Footprints => l.lib.new_footprint("New footprint").map(|f| Open::Item(Item::Footprint(f))),
+                };
+                self.show_created(key, created);
+            }
+            Act::PartFrom(key, item) => {
+                let Some(l) = self.lib(key) else { return };
+                let lib = l.lib.library();
+                let (symbol, footprint, name) = match item {
+                    ObjectId::LibSymbol(s) => (Some(s), None, lib.symbols.get(s).map(|s| s.name.clone())),
+                    ObjectId::LibFootprint(f) => (None, Some(f), lib.footprints.get(f).map(|f| f.name.clone())),
+                    _ => return,
+                };
+                let created = l.lib.new_part(&name.unwrap_or("New part".into()), symbol, footprint).map(Open::Part);
+                self.show_created(key, created);
+            }
+            Act::Duplicate(key, item) => {
+                let Some(l) = self.lib(key) else { return };
+                let created = l.lib.duplicate(item).map(project_panel::open_of);
+                self.show_created(key, created);
+            }
+            Act::Rename(key, item) => {
+                let lib = self.libraries.iter().find(|l| l.key == key).map(|l| l.lib.library());
+                let name = lib.and_then(|lib| match item {
+                    ObjectId::LibPart(p) => lib.parts.get(p).map(|p| p.name.clone()),
+                    ObjectId::LibSymbol(s) => lib.symbols.get(s).map(|s| s.name.clone()),
+                    ObjectId::LibFootprint(f) => lib.footprints.get(f).map(|f| f.name.clone()),
+                    _ => None,
+                });
+                if let Some(name) = name {
+                    self.rename = Some(Rename { key, item, text: name, focused: false });
+                }
+            }
+            Act::Delete(key, item) => {
+                let Some(l) = self.lib(key) else { return };
+                let r = l.lib.delete(item);
+                l.refresh();
+                if let Err(e) = r {
+                    self.set_status(e);
+                }
+            }
+            Act::Place(Owner::Project, part) => self.place_part(None, part),
+            Act::Place(Owner::Lib(key), part) => self.place_part(Some(key), part),
+            Act::CopyToProject(key, part) => {
+                let Some(l) = self.libraries.iter().find(|l| l.key == key) else { return };
+                let issues = l.lib.library().validate();
+                if let Some(first) = issues.first() {
+                    return self.set_status(format!("Library has problems: {first}"));
+                }
+                let library = l.lib.library().clone();
+                match self.doc.execute(Command::ImportParts { library, parts: vec![part] }) {
+                    Ok(_) => self.set_status("Copied to the Project Library"),
+                    Err(e) => self.set_status(format!("Copy failed: {e}")),
+                }
+            }
+            Act::Update(part) => {
+                let refs: Vec<&Library> = self.libraries.iter().map(|l| l.lib.library()).collect();
+                let parts: Vec<(usize, Id)> = part_statuses(self.doc.project(), &refs)
+                    .into_iter()
+                    .filter(|s| s.state == PartState::LibraryChanged && part.is_none_or(|p| p == s.part))
+                    .filter_map(|s| Some((s.library?, s.part)))
+                    .collect();
+                self.update_parts(&parts);
+            }
         }
     }
 
-    /// Parts of all open libraries, ready to place.
-    fn libraries_section(&mut self, ui: &mut egui::Ui) {
-        enum Act {
-            Place(u64, Id),
-            Edit(u64),
-            Remove(u64),
-            Locate(PathBuf),
-            Forget(PathBuf),
-            Open,
-            New,
-            Kicad,
-        }
-        let mut act = None;
-        let listed = self.doc.project().libraries.clone();
-        section(ui, "Libraries", |ui| {
-            for l in &self.libraries {
-                let removable = !l.is_builtin()
-                    && l.lib.path.as_deref().is_some_and(|p| listed.contains(&project_libs::absolute(p)));
-                let lib = l.lib.library();
-                let mut parts: Vec<&Part> = lib.parts.iter().collect();
-                parts.sort_by(|a, b| natural_cmp(&a.name, &b.name));
-                let id = ui.make_persistent_id(("lib_parts", l.key));
-                egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
-                    .show_header(ui, |ui| {
-                        ui.label(RichText::new(l.title()).color(theme::text_dim()));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if removable && ui.small_button("Remove").on_hover_text("Remove from the project").clicked()
-                            {
-                                act = Some(Act::Remove(l.key));
-                            }
-                            if ui.small_button("Edit").on_hover_text("Open in the library editor").clicked() {
-                                act = Some(Act::Edit(l.key));
-                            }
-                        });
-                    })
-                    .body(|ui| {
-                        for part in parts {
-                            ui.horizontal(|ui| {
-                                if ui.small_button("Place").clicked() {
-                                    act = Some(Act::Place(l.key, part.id));
-                                }
-                                let r = ui.label(RichText::new(&part.name).strong());
-                                if !part.description.is_empty() {
-                                    r.on_hover_text(&part.description);
-                                }
-                            });
-                        }
-                    });
-            }
-            for m in &self.missing_libraries {
-                ui.horizontal(|ui| {
-                    let name = m.path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
-                    ui.label(RichText::new(format!("{name} (missing)")).color(theme::warn())).on_hover_text(format!(
-                        "{}\n{}",
-                        m.path.display(),
-                        m.error
-                    ));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("Remove").on_hover_text("Remove from the project").clicked() {
-                            act = Some(Act::Forget(m.path.clone()));
-                        }
-                        if ui.small_button("Locate…").clicked() {
-                            act = Some(Act::Locate(m.path.clone()));
-                        }
-                    });
-                });
-            }
-            ui.horizontal(|ui| {
-                if ui.button("Add library…").clicked() {
-                    act = Some(Act::Open);
+    /// Show a newly created library item in its tab.
+    fn show_created(&mut self, key: u64, created: Result<Open, String>) {
+        match created {
+            Ok(open) => {
+                if let Some(l) = self.lib(key) {
+                    l.refresh();
+                    l.show(open);
                 }
-                if ui.button("New library…").clicked() {
-                    act = Some(Act::New);
+                self.focus_library_tab(key);
+            }
+            Err(e) => self.set_status(e),
+        }
+    }
+
+    /// The rename dialog (from the Project panel).
+    fn rename_ui(&mut self, ctx: &egui::Context) {
+        let Some(r) = &mut self.rename else { return };
+        let mut done = None;
+        let modal = theme::dialog(ctx, egui::Id::unique("rename_item"), "Rename", 320.0, |ui| {
+            let edit = ui.add(egui::TextEdit::singleline(&mut r.text).desired_width(f32::INFINITY));
+            if !r.focused {
+                edit.request_focus();
+                r.focused = true;
+            }
+            if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                done = Some(true);
+            }
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button("Rename").clicked() {
+                    done = Some(true);
+                }
+                if ui.button("Cancel").clicked() {
+                    done = Some(false);
                 }
             });
-            if ui.button("Import from KiCad…").clicked() {
-                act = Some(Act::Kicad);
-            }
         });
-        match act {
-            Some(Act::Place(key, part)) => self.place_part(key, part),
-            Some(Act::Edit(key)) => self.focus_library_tab(key),
-            Some(Act::Remove(key)) => self.remove_library(key),
-            Some(Act::Locate(path)) => self.locate_missing_library(path),
-            Some(Act::Forget(path)) => self.remove_missing_library(path),
-            Some(Act::Open) => self.open_library(),
-            Some(Act::New) => self.new_library(),
-            Some(Act::Kicad) => self.kicad.open = true,
-            None => {}
+        if modal.should_close() && done.is_none() {
+            done = Some(false);
         }
-    }
-
-    /// Parts embedded in the project and whether their library has a newer version.
-    fn project_parts_section(&mut self, ui: &mut egui::Ui) {
-        let statuses = part_statuses(self.doc.project(), &self.library_refs());
-        if statuses.is_empty() {
+        let Some(ok) = done else { return };
+        let Rename { key, item, text, .. } = self.rename.take().unwrap();
+        if !ok {
             return;
         }
-        let changed: Vec<(usize, Id)> = statuses
-            .iter()
-            .filter(|s| s.state == PartState::LibraryChanged)
-            .filter_map(|s| Some((s.library?, s.part)))
-            .collect();
-        let mut update = None;
-        section(ui, &format!("Project parts ({})", statuses.len()), |ui| {
-            for s in &statuses {
-                ui.horizontal(|ui| {
-                    let (text, color, tip) = match s.state {
-                        PartState::UpToDate => ("current", theme::text_dim(), "Same as in the library"),
-                        PartState::LibraryChanged => ("changed", theme::warn(), "The library has a different version"),
-                        PartState::LibraryMissing => ("lib closed", theme::text_dim(), "Its library is not open"),
-                        PartState::RemovedFromLibrary => {
-                            ("removed", theme::warn(), "The part no longer exists in its library")
-                        }
-                        PartState::Local => ("local", theme::text_dim(), "Not from a library"),
-                    };
-                    ui.label(&s.name).on_hover_text(s.library_name.as_deref().unwrap_or(""));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if s.state == PartState::LibraryChanged
-                            && let Some(lib) = s.library
-                            && ui.small_button("Update").clicked()
-                        {
-                            update = Some(vec![(lib, s.part)]);
-                        }
-                        ui.label(RichText::new(text).color(color).small()).on_hover_text(tip);
-                    });
-                });
-            }
-            if !changed.is_empty() && ui.button(format!("Update all ({})", changed.len())).clicked() {
-                update = Some(changed.clone());
-            }
-        });
-        if let Some(parts) = update {
-            self.update_parts(&parts);
+        let Some(l) = self.lib(key) else { return };
+        let r = l.lib.rename(item, &text);
+        l.refresh();
+        if let Err(e) = r {
+            self.set_status(e);
         }
     }
 
@@ -1696,6 +1814,7 @@ impl PcbApp {
             .default_size(self.settings.dock.size(side))
             .size_range(if side == Side::Bottom { 80.0..=800.0 } else { 160.0..=700.0 })
             .show(ui, |ui| {
+                let mut header_act = None;
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(panel.title()).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1705,8 +1824,16 @@ impl PcbApp {
                         }
                         icons::paint(ui.painter(), rect.shrink(4.0), Icon::Minus, theme::text_dim());
                         hide = r.on_hover_text("Hide").clicked();
+                        if panel == Panel::Project {
+                            ui.add_space(6.0);
+                            let roots = self.tree_nodes();
+                            header_act = self.project_tree.header_ui(ui, &roots);
+                        }
                     });
                 });
+                if let Some(act) = header_act {
+                    self.tree_act(act);
+                }
                 ui.add_space(4.0);
                 if panel == Panel::Messages {
                     self.panel_ui(ui, panel);
@@ -1728,11 +1855,10 @@ impl PcbApp {
     fn panel_ui(&mut self, ui: &mut egui::Ui, panel: Panel) {
         let mut message = None;
         match panel {
-            Panel::Libraries => {
-                self.libraries_section(ui);
-                self.project_parts_section(ui);
+            Panel::Project => {
+                let roots = self.tree_nodes();
+                self.project_panel_ui(ui, &roots);
             }
-            Panel::LibraryBrowser => self.library_browser_panel(ui),
             Panel::Properties => {
                 if let Some(l) = self.focused_lib() {
                     return l.properties_ui(ui);
@@ -1793,11 +1919,8 @@ impl PcbApp {
         }
     }
 
-    /// Per frame: the Library browser's library, the Messages badge, saving the dock.
+    /// Per frame: the Messages badge, saving the dock.
     fn update_dock(&mut self, ctx: &egui::Context) {
-        if self.focus_lib.is_some() {
-            self.last_lib = self.focus_lib;
-        }
         let keys = messages::keys(&self.doc, &mut self.libraries);
         self.unseen.update(keys, self.settings.dock.is_open(Panel::Messages));
         // Save once a resize is done.
@@ -2008,11 +2131,6 @@ fn dock_button(ui: &mut egui::Ui, panel: Panel, open: bool, badge: Option<(usize
     r.on_hover_text(tip).clicked()
 }
 
-fn section(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui)) {
-    egui::CollapsingHeader::new(RichText::new(title).strong()).default_open(true).show(ui, add);
-    ui.add_space(4.0);
-}
-
 /// The open library tabs, as the agent's library tools see them.
 struct AgentLibraries<'a>(&'a mut PcbApp);
 
@@ -2216,8 +2334,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         match tab {
             Tab::View(kind) => self.panes[*kind as usize].title().into(),
             Tab::Library(key) => {
-                let title = self.libraries.iter().find(|l| l.key == *key).map_or("Library".into(), |l| l.title());
-                format!("Library: {title}").into()
+                self.libraries.iter().find(|l| l.key == *key).map_or("Library".into(), |l| l.title()).into()
             }
         }
     }
@@ -2462,6 +2579,10 @@ impl eframe::App for PcbApp {
         if let Some(m) = self.libraries.iter_mut().find_map(|l| l.message.take()) {
             self.set_status(m);
         }
+        let save_copy = self.libraries.iter_mut().find_map(|l| std::mem::take(&mut l.save_copy).then_some(l.key));
+        if let Some(key) = save_copy {
+            self.save_library(key, true);
+        }
 
         // Agent requests are answered between user interactions.
         if !self.busy() {
@@ -2500,6 +2621,7 @@ impl eframe::App for PcbApp {
         }
         self.update_dock(&ctx);
         self.name_prompt_ui(&ctx);
+        self.rename_ui(&ctx);
         self.settings_window(&ctx);
         let libs: Vec<(u64, String)> = self.libraries.iter().map(|l| (l.key, l.lib.name().to_string())).collect();
         self.kicad.poll();

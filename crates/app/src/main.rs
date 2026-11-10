@@ -12,7 +12,7 @@
 //! `--mcp-stdio` runs without a window: an MCP server on stdin/stdout for agents. A
 //! project folder that doesn't exist yet becomes a new project saved there.
 //!
-//! `--show NAME` opens a part, symbol or footprint of the last opened (or starter)
+//! `--show NAME` opens a part, symbol or footprint of the last opened (or built-in)
 //! library in its editor tab (repeated: the last one is shown).
 //!
 //! `--kicad DIR` sets the KiCad library folders (default: the KiCad installation);
@@ -34,6 +34,7 @@ mod messages;
 mod name_prompt;
 mod part_form;
 mod pcb_ui;
+mod project_panel;
 mod properties;
 mod sch_ui;
 mod script;

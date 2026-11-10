@@ -56,5 +56,5 @@ fn search_and_import_into_the_project() {
     assert_eq!(imported["parts"][0]["variants"][0]["footprint"], "R_0603_1608Metric", "{imported}");
     let project = host.doc.project();
     assert_eq!(project.library.parts.len(), 1, "the part is ready to place");
-    assert_eq!(host.libraries().len(), 2, "starter and KiCad import libraries");
+    assert_eq!(host.libraries().len(), 2, "built-in and KiCad import libraries");
 }

@@ -342,7 +342,7 @@ mod tests {
 
     #[test]
     fn library_file_roundtrip_is_stable() {
-        let lib = builtin::starter_library();
+        let lib = builtin::builtin_library();
         let text = to_file_string(FileKind::Library, &lib).unwrap();
         let back: Library = from_file_str(&text, FileKind::Library, MIGRATIONS, Path::new("lib")).unwrap();
         assert_eq!(back, lib);
