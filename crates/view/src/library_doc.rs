@@ -16,7 +16,7 @@ use crate::interaction::new_group;
 
 pub struct LibraryDoc {
     pub doc: Document,
-    /// Library file; `None` until saved (e.g. the built-in starter library).
+    /// Library file; `None` until saved (e.g. the built-in built-in library).
     pub path: Option<PathBuf>,
 }
 
@@ -25,6 +25,18 @@ impl LibraryDoc {
         let mut project = Project::new(library.name.clone());
         project.library = library;
         LibraryDoc { doc: Document::new(project), path: None }
+    }
+
+    /// The built-in library: read-only (its edits couldn't be saved). Save a copy
+    /// ([`crate::project_libs::copy_for`]) to change its parts.
+    pub fn builtin() -> Self {
+        let mut lib = LibraryDoc::new(builtin::builtin_library());
+        lib.doc.read_only = Some("the built-in library is read-only; save a copy to change its parts".into());
+        lib
+    }
+
+    pub fn is_builtin(&self) -> bool {
+        self.path.is_none() && self.library().id == Some(builtin::LIBRARY_ID)
     }
 
     pub fn open(path: impl AsRef<Path>) -> Result<Self, FileError> {
@@ -182,6 +194,46 @@ impl LibraryDoc {
         let new_id = object.id();
         self.execute_all(vec![Command::Insert { objects: vec![object] }])?;
         Ok(new_id)
+    }
+
+    /// Rename a symbol, footprint or part. Names are unique per kind.
+    pub fn rename(&mut self, id: ObjectId, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("the name must not be empty".into());
+        }
+        let lib = self.library();
+        let (object, kind) = match id {
+            ObjectId::LibSymbol(i) => {
+                let mut s = lib.symbols.get(i).ok_or("symbol not found")?.clone();
+                if s.name == name {
+                    return Ok(());
+                }
+                s.name = name.into();
+                (Object::LibSymbol(s), ObjectKind::LibSymbol)
+            }
+            ObjectId::LibFootprint(i) => {
+                let mut f = lib.footprints.get(i).ok_or("footprint not found")?.clone();
+                if f.name == name {
+                    return Ok(());
+                }
+                f.name = name.into();
+                (Object::LibFootprint(f), ObjectKind::LibFootprint)
+            }
+            ObjectId::LibPart(i) => {
+                let mut p = lib.parts.get(i).ok_or("part not found")?.clone();
+                if p.name == name {
+                    return Ok(());
+                }
+                p.name = name.into();
+                (Object::LibPart(p), ObjectKind::LibPart)
+            }
+            _ => return Err("not a library object".into()),
+        };
+        if self.unique_name(kind, name) != name {
+            return Err(format!("{name:?} is already taken"));
+        }
+        self.execute_all(vec![Command::Update { objects: vec![object] }])
     }
 
     pub fn delete(&mut self, id: ObjectId) -> Result<(), String> {

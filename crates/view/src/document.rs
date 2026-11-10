@@ -30,6 +30,8 @@ pub struct Document {
     copper_stale: bool,
     copper_time: Duration,
     drc: Option<DrcReport>,
+    /// Why edits are refused (e.g. the built-in library); `None`: editable.
+    pub read_only: Option<String>,
 }
 
 /// Result of the last design rule check.
@@ -58,6 +60,7 @@ impl Document {
             copper_stale: true,
             copper_time: Duration::ZERO,
             drc: None,
+            read_only: None,
         };
         doc.update_connectivity(false);
         doc
@@ -220,6 +223,9 @@ impl Document {
     }
 
     pub fn execute_grouped(&mut self, command: Command, group: Option<u64>) -> Result<ChangeSet, CommandError> {
+        if let Some(why) = &self.read_only {
+            return Err(CommandError::Forbidden(why.clone()));
+        }
         let changes = self.editor.execute_grouped(command, group)?;
         self.changed(&changes);
         Ok(changes)

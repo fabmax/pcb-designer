@@ -1,8 +1,6 @@
 //! Library editor tab: browser of a library's parts, symbols and footprints, the symbol
 //! and footprint editors (canvas + tools + element inspector) and the part form.
 
-use std::path::PathBuf;
-
 use egui::RichText;
 use model::*;
 use view::item::{Content, Elem, Item, ItemTarget, ItemView};
@@ -26,14 +24,7 @@ pub enum Open {
     Part(Id),
 }
 
-/// Requests from the library UI to the application.
-pub enum LibEvent {
-    /// Place a part in the open project.
-    Place(Id),
-    Save,
-    SaveAs,
-    Close,
-}
+const READ_ONLY: &str = "Read-only: the built-in library ships with the app. Save a copy to change its parts.";
 
 pub struct LibraryEditor {
     pub key: u64,
@@ -45,11 +36,12 @@ pub struct LibraryEditor {
     pub placer: Placer,
     part_form: PartForm,
     fields: Fields,
-    filter: String,
     revision: u64,
     /// Validation issues and the revision they are of.
     issues: (u64, Vec<(Id, String)>),
     pub message: Option<String>,
+    /// "Save a copy…" was clicked (read-only built-in library).
+    pub save_copy: bool,
 }
 
 impl view::project_libs::HasLibrary for LibraryEditor {
@@ -59,9 +51,9 @@ impl view::project_libs::HasLibrary for LibraryEditor {
 }
 
 impl LibraryEditor {
-    /// The built-in (starter) library: no file, and always loaded.
+    /// The built-in library: no file, and always loaded.
     pub fn is_builtin(&self) -> bool {
-        self.lib.path.is_none() && self.lib.library().id == Some(model::builtin::LIBRARY_ID)
+        self.lib.is_builtin()
     }
 
     pub fn new(key: u64, lib: LibraryDoc) -> Self {
@@ -76,19 +68,19 @@ impl LibraryEditor {
             placer: Placer::default(),
             part_form: PartForm::default(),
             fields: Fields::default(),
-            filter: String::new(),
             revision: u64::MAX,
             issues: (u64::MAX, Vec::new()),
             message: None,
+            save_copy: false,
         }
     }
 
+    /// Tab title.
     pub fn title(&self) -> String {
-        format!("{}{}", self.lib.name(), if self.lib.is_modified() { " •" } else { "" })
-    }
-
-    pub fn path(&self) -> Option<&PathBuf> {
-        self.lib.path.as_ref()
+        if self.is_builtin() {
+            return "Built-in Library".into();
+        }
+        format!("Library: {}{}", self.lib.name(), if self.lib.is_modified() { " •" } else { "" })
     }
 
     /// An interaction (drag, box, half-drawn shape) is in progress.
@@ -218,131 +210,6 @@ impl LibraryEditor {
     // ------------------------------------------------------------------------------------
     // Browser (left panel)
 
-    pub fn browser_ui(&mut self, ui: &mut egui::Ui, can_place: bool) -> Option<LibEvent> {
-        let mut event = None;
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(self.lib.name()).strong().size(16.0));
-            if self.lib.is_modified() {
-                ui.label(RichText::new("modified").color(theme::warn()).small());
-            }
-        });
-        let path = self.path().map_or("Not saved yet".to_string(), |p| p.display().to_string());
-        ui.label(RichText::new(path).color(theme::text_dim()).small());
-        ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
-                event = Some(LibEvent::Save);
-            }
-            if ui.button("Save as…").clicked() {
-                event = Some(LibEvent::SaveAs);
-            }
-            if ui.button("Close").clicked() {
-                event = Some(LibEvent::Close);
-            }
-        });
-        ui.add_space(4.0);
-        ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text("Filter").desired_width(f32::INFINITY));
-        ui.add_space(4.0);
-
-        let filter = self.filter.to_lowercase();
-        let keep = |name: &str| filter.is_empty() || name.to_lowercase().contains(&filter);
-        let lib = self.lib.library();
-        let mut parts: Vec<(Id, String, String)> =
-            lib.parts.iter().filter(|p| keep(&p.name)).map(|p| (p.id, p.name.clone(), p.description.clone())).collect();
-        let mut symbols: Vec<(Id, String)> =
-            lib.symbols.iter().filter(|s| keep(&s.name)).map(|s| (s.id, s.name.clone())).collect();
-        let mut footprints: Vec<(Id, String)> =
-            lib.footprints.iter().filter(|f| keep(&f.name)).map(|f| (f.id, f.name.clone())).collect();
-        parts.sort_by(|a, b| natural_cmp(&a.1, &b.1));
-        symbols.sort_by(|a, b| natural_cmp(&a.1, &b.1));
-        footprints.sort_by(|a, b| natural_cmp(&a.1, &b.1));
-        let (np, ns, nf) = (lib.parts.len(), lib.symbols.len(), lib.footprints.len());
-
-        let mut action: Option<(ObjectId, &'static str)> = None;
-        let mut new_part = false;
-        section(
-            ui,
-            &format!("Parts ({np})"),
-            "New part (with new symbol and footprint)",
-            &mut || new_part = true,
-            |ui| {
-                for (id, name, description) in &parts {
-                    let selected = self.open == Open::Part(*id);
-                    let r = ui.selectable_label(selected, name);
-                    let r = if description.is_empty() { r } else { r.on_hover_text(description) };
-                    if r.clicked() {
-                        action = Some((ObjectId::LibPart(*id), "open"));
-                    }
-                    if r.double_clicked() && can_place {
-                        event = Some(LibEvent::Place(*id));
-                    }
-                    r.context_menu(|ui| {
-                        if ui.add_enabled(can_place, egui::Button::new("Place in schematic")).clicked() {
-                            event = Some(LibEvent::Place(*id));
-                        }
-                        if ui.button("Duplicate").clicked() {
-                            action = Some((ObjectId::LibPart(*id), "duplicate"));
-                        }
-                        if ui.button("Delete").clicked() {
-                            action = Some((ObjectId::LibPart(*id), "delete"));
-                        }
-                    });
-                }
-            },
-        );
-        let mut item_list =
-            |ui: &mut egui::Ui, items: &[(Id, String)], make: fn(Id) -> ObjectId, open: fn(Id) -> Open| {
-                for (id, name) in items {
-                    let r = ui.selectable_label(self.open == open(*id), name);
-                    if r.clicked() {
-                        action = Some((make(*id), "open"));
-                    }
-                    r.context_menu(|ui| {
-                        if ui.button("New part using this").clicked() {
-                            action = Some((make(*id), "part"));
-                        }
-                        if ui.button("Duplicate").clicked() {
-                            action = Some((make(*id), "duplicate"));
-                        }
-                        if ui.button("Delete").clicked() {
-                            action = Some((make(*id), "delete"));
-                        }
-                    });
-                }
-            };
-        let mut new_symbol = false;
-        section(ui, &format!("Symbols ({ns})"), "New symbol", &mut || new_symbol = true, |ui| {
-            item_list(ui, &symbols, ObjectId::LibSymbol, |id| Open::Item(Item::Symbol(id)))
-        });
-        let mut new_footprint = false;
-        section(ui, &format!("Footprints ({nf})"), "New footprint", &mut || new_footprint = true, |ui| {
-            item_list(ui, &footprints, ObjectId::LibFootprint, |id| Open::Item(Item::Footprint(id)))
-        });
-
-        if new_part {
-            let r = self.lib.new_part("New part", None, None);
-            if let Some(p) = self.report(r) {
-                self.show(Open::Part(p));
-            }
-        }
-        if new_symbol {
-            let r = self.lib.new_symbol("New symbol");
-            if let Some(id) = self.report(r) {
-                self.show(Open::Item(Item::Symbol(id)));
-            }
-        }
-        if new_footprint {
-            let r = self.lib.new_footprint("New footprint");
-            if let Some(id) = self.report(r) {
-                self.show(Open::Item(Item::Footprint(id)));
-            }
-        }
-        if let Some((id, what)) = action {
-            self.browser_action(id, what);
-        }
-        event
-    }
-
     fn browser_action(&mut self, id: ObjectId, what: &str) {
         let open = |id: ObjectId| match id {
             ObjectId::LibPart(p) => Open::Part(p),
@@ -395,7 +262,7 @@ impl LibraryEditor {
                 ui.centered_and_justified(|ui| {
                     ui.label(
                         RichText::new(format!(
-                            "{}\n\nOpen a part, symbol or footprint from the list on the left, or create one with +.",
+                            "{}\n\nOpen a part, symbol or footprint in the Project panel (⌘1), or create one from its context menu.",
                             self.lib.name()
                         ))
                         .color(theme::text_dim()),
@@ -406,6 +273,15 @@ impl LibraryEditor {
                 let frame = egui::Frame::NONE.fill(theme::panel()).inner_margin(egui::Margin::same(16));
                 frame.show(ui, |ui| {
                     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                        if self.lib.doc.read_only.is_some() {
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new(READ_ONLY).color(theme::warn()));
+                                if ui.button("Save a copy…").clicked() {
+                                    self.save_copy = true;
+                                }
+                            });
+                            ui.add_space(8.0);
+                        }
                         let mut message = None;
                         if let Some(open) = self.part_form.ui(ui, &mut self.lib, id, &mut message) {
                             self.show(open);
@@ -468,6 +344,7 @@ impl LibraryEditor {
             self.canvas.request_fit();
         }
         let tip = match self.placer.tool {
+            _ if self.lib.doc.read_only.is_some() => READ_ONLY,
             Tool::Select => "Click/box to select · drag to move · R rotate · X mirror · Del delete",
             Tool::Line => "Click points · click the last point again or Esc to finish",
             Tool::Rect => "Click two corners",
@@ -568,7 +445,7 @@ impl LibraryEditor {
                 fields::heading(ui, "Part", "");
                 hint(ui, "Edit units, footprint variants and the pin-pad mapping in the form.");
             }
-            Open::None => hint(ui, "Open a part, symbol or footprint in the library browser."),
+            Open::None => hint(ui, "Open a part, symbol or footprint in the Project panel."),
         }
         if self.fields.end_frame() {
             self.lib.doc.close_group();
@@ -879,21 +756,6 @@ impl LibraryEditor {
 const PIN_SIDES: [&str; 4] = ["Right", "Up", "Left", "Down"];
 const DEGREES: [&str; 4] = ["0°", "90°", "180°", "270°"];
 
-fn section(ui: &mut egui::Ui, title: &str, add_tip: &str, on_add: &mut dyn FnMut(), body: impl FnOnce(&mut egui::Ui)) {
-    let id = ui.make_persistent_id(title.split(' ').next().unwrap_or(title));
-    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
-        .show_header(ui, |ui| {
-            ui.label(RichText::new(title).strong());
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("+").on_hover_text(add_tip).clicked() {
-                    on_add();
-                }
-            });
-        })
-        .body(body);
-    ui.add_space(4.0);
-}
-
 pub fn issues_ui(ui: &mut egui::Ui, issues: &[String]) {
     if issues.is_empty() {
         return;
@@ -1099,7 +961,7 @@ mod tests {
 
     #[test]
     fn deleting_the_shown_part_closes_it() {
-        let mut ed = LibraryEditor::new(0, LibraryDoc::new(builtin::starter_library()));
+        let mut ed = LibraryEditor::new(0, LibraryDoc::new(builtin::builtin_library()));
         let led = ed.lib.library().parts.get(builtin::PART_LED).unwrap().clone();
         let fp = Open::Item(Item::Footprint(led.variants[0].footprint));
         ed.show(Open::Part(led.id));

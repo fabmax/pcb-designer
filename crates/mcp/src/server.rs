@@ -517,7 +517,7 @@ impl PcbTools {
     }
 
     #[tool(description = "Symbols, footprints and parts of an open library in full JSON: the \
-        format edit_library takes. The Starter library's parts (e.g. \"OpAmp\", \"NPN\", \
+        format edit_library takes. The Built-in library's parts (e.g. \"OpAmp\", \"NPN\", \
         \"footprint:SOIC-8\") are good examples.")]
     async fn get_library_items(
         &self,

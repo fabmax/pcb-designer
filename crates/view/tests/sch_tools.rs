@@ -25,7 +25,7 @@ fn symbols(doc: &Document) -> Vec<SymbolInstance> {
 
 #[test]
 fn place_wire_and_label_a_circuit() {
-    let mut doc = doc_with(vec![PART_RESISTOR], builtin::starter_library());
+    let mut doc = doc_with(vec![PART_RESISTOR], builtin::builtin_library());
     let mut t = SchPlacer::default();
 
     // Place two resistors with repeated clicks.
@@ -105,8 +105,8 @@ fn wire_chain_continues_in_free_space_and_ends_on_double_click() {
 
 #[test]
 fn multi_unit_parts_place_unit_by_unit() {
-    // Dual op amp: the starter op amp with a second unit.
-    let mut lib = builtin::starter_library();
+    // Dual op amp: the built-in op amp with a second unit.
+    let mut lib = builtin::builtin_library();
     let mut dual = lib.parts.get(PART_OPAMP).unwrap().clone();
     dual.id = Id::new();
     dual.name = "Dual".into();
@@ -182,7 +182,7 @@ fn draw_a_bus_with_entries() {
 
 #[test]
 fn new_buses_and_signals_leaving_them_ask_for_a_name() {
-    let mut doc = doc_with(vec![PART_RESISTOR], builtin::starter_library());
+    let mut doc = doc_with(vec![PART_RESISTOR], builtin::builtin_library());
     let mut t = SchPlacer::default();
     let p = Point::mm;
     let grid = mm(1.27);

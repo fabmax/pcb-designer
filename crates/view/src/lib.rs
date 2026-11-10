@@ -19,6 +19,7 @@ pub mod project_libs;
 pub mod sch_tools;
 pub mod style;
 pub mod tools;
+pub mod tree;
 pub mod view;
 
 pub use document::{Document, DrcReport, ProjectTarget};

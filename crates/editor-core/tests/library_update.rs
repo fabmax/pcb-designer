@@ -20,7 +20,7 @@ fn place(ed: &mut Editor, part: Id, x: f64) -> Id {
 
 #[test]
 fn update_parts_from_changed_library() {
-    let mut lib = builtin::starter_library();
+    let mut lib = builtin::builtin_library();
     let mut ed = Editor::new(Project::new("t"));
     ed.execute(Command::ImportParts { library: lib.clone(), parts: vec![PART_RESISTOR, PART_LED] }).unwrap();
     let r1 = place(&mut ed, PART_RESISTOR, 0.0);
@@ -70,7 +70,7 @@ fn update_parts_from_changed_library() {
 
 #[test]
 fn update_refuses_to_drop_placed_units() {
-    let mut lib = builtin::starter_library();
+    let mut lib = builtin::builtin_library();
     let mut ed = Editor::new(Project::new("t"));
     ed.execute(Command::ImportParts { library: lib.clone(), parts: vec![PART_RESISTOR] }).unwrap();
     place(&mut ed, PART_RESISTOR, 0.0);

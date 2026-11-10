@@ -174,7 +174,7 @@ pub fn respond(request: LibraryRequest, libs: &mut dyn Libraries) -> Result<Repl
         }
         LibraryRequest::Save { library, path } => {
             let i = find(libs, &library)?;
-            if is_builtin(libs.get(i)) {
+            if libs.get(i).is_builtin() {
                 return Err("the built-in library can't be changed; create a library of your own".into());
             }
             let dir = libs.project().path.clone();
@@ -199,7 +199,7 @@ pub fn respond(request: LibraryRequest, libs: &mut dyn Libraries) -> Result<Repl
         LibraryRequest::Remove { library, discard } => {
             let i = find(libs, &library)?;
             let doc = libs.get(i);
-            if is_builtin(doc) {
+            if doc.is_builtin() {
                 return Err("the built-in library is always there".into());
             }
             if doc.is_modified() && !discard {
@@ -254,10 +254,6 @@ fn resolve(dir: Option<&Path>, path: &Path) -> PathBuf {
     }
 }
 
-fn is_builtin(doc: &LibraryDoc) -> bool {
-    doc.path.is_none() && doc.library().id == Some(builtin::LIBRARY_ID)
-}
-
 fn same_file(a: &Path, b: &Path) -> bool {
     a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
 }
@@ -283,7 +279,7 @@ fn find(libs: &dyn Libraries, name: &str) -> Result<usize, String> {
 /// changes).
 fn summary(doc: &LibraryDoc, listed: &[PathBuf]) -> Value {
     let kind = match &doc.path {
-        None if is_builtin(doc) => "built_in",
+        None if doc.is_builtin() => "built_in",
         None => "unsaved",
         Some(p) if listed.contains(&project_libs::absolute(p)) => "external",
         Some(_) => "unlisted",
@@ -852,7 +848,7 @@ mod tests {
 
     #[test]
     fn lookup_by_kind_name_and_id() {
-        let lib = builtin::starter_library();
+        let lib = builtin::builtin_library();
         let opamp = lookup(&lib, "OpAmp");
         assert_eq!(opamp.len(), 2, "part and symbol share the name");
         assert!(matches!(lookup(&lib, "part:OpAmp")[..], [ObjectId::LibPart(_)]));

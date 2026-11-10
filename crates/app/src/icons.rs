@@ -38,6 +38,17 @@ pub enum Icon {
     BoardSetup,
     /// Hide a panel.
     Minus,
+    /// Panel header buttons.
+    Plus,
+    Search,
+    CollapseAll,
+    /// Project tree nodes.
+    Project,
+    Folder,
+    Part,
+    Symbol,
+    Footprint,
+    Missing,
 }
 
 /// Paint `icon` into `rect` (square) in `color`.
@@ -271,6 +282,65 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
         }
         Icon::Minus => {
             seg(p(0.22, 0.5), p(0.78, 0.5), line);
+        }
+        Icon::Plus => {
+            seg(p(0.22, 0.5), p(0.78, 0.5), line);
+            seg(p(0.5, 0.22), p(0.5, 0.78), line);
+        }
+        Icon::Search => {
+            ring(p(0.42, 0.42), 0.25, line);
+            seg(p(0.6, 0.6), p(0.86, 0.86), Stroke::new(w * 1.5, color));
+        }
+        Icon::CollapseAll => {
+            // Two chevrons pointing at a bar between them.
+            open(vec![p(0.26, 0.1), p(0.5, 0.3), p(0.74, 0.1)], line);
+            open(vec![p(0.26, 0.9), p(0.5, 0.7), p(0.74, 0.9)], line);
+            seg(p(0.16, 0.5), p(0.84, 0.5), line);
+        }
+        Icon::Project => {
+            // A folder with a small board inside.
+            poly(
+                vec![p(0.06, 0.2), p(0.38, 0.2), p(0.46, 0.3), p(0.94, 0.3), p(0.94, 0.84), p(0.06, 0.84)],
+                faint,
+                line,
+            );
+            painter.rect_stroke(rect_of(0.3, 0.44, 0.7, 0.72), 1.0, line, egui::StrokeKind::Middle);
+            dot(p(0.42, 0.58), 0.05);
+            dot(p(0.58, 0.58), 0.05);
+        }
+        Icon::Folder => {
+            poly(
+                vec![p(0.06, 0.2), p(0.38, 0.2), p(0.46, 0.3), p(0.94, 0.3), p(0.94, 0.84), p(0.06, 0.84)],
+                faint,
+                line,
+            );
+        }
+        Icon::Part => {
+            // A chip with pins on both sides.
+            painter.rect(rect_of(0.28, 0.14, 0.72, 0.86), 0.06 * s, faint, line, egui::StrokeKind::Middle);
+            for y in [0.3, 0.5, 0.7] {
+                seg(p(0.08, y), p(0.28, y), line);
+                seg(p(0.72, y), p(0.92, y), line);
+            }
+        }
+        Icon::Symbol => {
+            // An amplifier triangle with its inputs and output.
+            poly(vec![p(0.24, 0.16), p(0.82, 0.5), p(0.24, 0.84)], faint, line);
+            seg(p(0.06, 0.34), p(0.24, 0.34), line);
+            seg(p(0.06, 0.66), p(0.24, 0.66), line);
+            seg(p(0.82, 0.5), p(0.96, 0.5), line);
+        }
+        Icon::Footprint => {
+            // Two rows of pads.
+            for y in [0.18, 0.62] {
+                for x in [0.12, 0.42, 0.72] {
+                    painter.rect_filled(rect_of(x, y, x + 0.18, y + 0.2), 0.03 * s, color);
+                }
+            }
+        }
+        Icon::Missing => {
+            ring(p(0.5, 0.5), 0.38, line);
+            seg(p(0.24, 0.76), p(0.76, 0.24), line);
         }
         Icon::Text => {
             seg(p(0.18, 0.18), p(0.82, 0.18), thick);

@@ -64,7 +64,7 @@ fn move_footprint(ed: &mut Editor, footprint: Id, to: Point, rotation: Angle) {
 pub fn demo_project() -> Project {
     let mut ed = Editor::new(Project::new("Demo"));
     let parts = vec![PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4];
-    ed.execute(Command::ImportParts { library: builtin::starter_library(), parts }).unwrap();
+    ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts }).unwrap();
 
     // Schematic.
     let j1 = place(&mut ed, PART_HEADER_1X4, 0.0, 0.0, Angle::ZERO, "J1", "Conn");
@@ -154,7 +154,7 @@ pub fn demo_project() -> Project {
 pub fn stress_project(n: usize) -> Project {
     let mut ed = Editor::new(Project::new(format!("Stress {n}")));
     let parts = vec![PART_RESISTOR, PART_CAPACITOR];
-    ed.execute(Command::ImportParts { library: builtin::starter_library(), parts }).unwrap();
+    ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts }).unwrap();
     let cols = (n as f64).sqrt().ceil().max(1.0) as usize;
     let board_w = cols as f64 * 4.0;
     ed.execute(Command::Insert {
@@ -213,10 +213,10 @@ mod tests {
 /// Id of [`demo_library`] (fixed, so re-writing the demo file keeps the same library).
 pub const DEMO_LIBRARY_ID: Id = Id::from_u128(0xde11_0000_0000_4000_8000_0000_0000_0001);
 
-/// A small library for the demo project's External Libraries: the starter's diode, NPN
+/// A small library for the demo project's External Libraries: the built-in diode, NPN
 /// and op amp, with ids of their own (so it is a library in its own right).
 pub fn demo_library() -> Library {
-    let starter = builtin::starter_library();
+    let starter = builtin::builtin_library();
     let keep = [builtin::PART_DIODE, builtin::PART_NPN, builtin::PART_OPAMP];
     let mut lib = Library { id: Some(DEMO_LIBRARY_ID), name: "Demo parts".into(), ..Default::default() };
     for part in starter.parts.iter().filter(|p| keep.contains(&p.id)) {
@@ -245,11 +245,11 @@ mod demo_library_tests {
     use super::*;
 
     #[test]
-    fn demo_library_is_valid_and_shares_no_ids_with_the_starter() {
+    fn demo_library_is_valid_and_shares_no_ids_with_the_builtin_library() {
         let lib = demo_library();
         assert_eq!(lib.validate(), Vec::<String>::new());
         assert_eq!(lib.parts.len(), 3);
-        let starter = builtin::starter_library();
+        let starter = builtin::builtin_library();
         assert!(lib.parts.iter().all(|p| !starter.parts.contains(p.id)));
         assert!(lib.symbols.iter().all(|s| !starter.symbols.contains(s.id)));
         assert!(lib.footprints.iter().all(|f| !starter.footprints.contains(f.id)));

@@ -1,4 +1,4 @@
-//! Built-in starter library. Ids are fixed so that projects can later be updated from
+//! Built-in built-in library. Ids are fixed so that projects can later be updated from
 //! newer versions of the same parts.
 //!
 //! Text fields may contain `${REF}` and `${VALUE}`, which are replaced by the component's
@@ -116,10 +116,10 @@ fn connections(pads: [Id; 2], pins: [Id; 2]) -> Vec<PadConnection> {
     pads.iter().zip(pins).map(|(&pad, pin)| PadConnection { pad, unit: 0, pin }).collect()
 }
 
-pub fn starter_library() -> Library {
+pub fn builtin_library() -> Library {
     let mut lib = Library {
         id: Some(LIBRARY_ID),
-        name: "Starter".into(),
+        name: "Built-in".into(),
         symbols: Store::default(),
         footprints: Store::default(),
         parts: Store::default(),
@@ -529,17 +529,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn starter_library_is_consistent() {
-        let lib = starter_library();
+    fn builtin_library_is_consistent() {
+        let lib = builtin_library();
         assert_eq!(lib.validate(), Vec::<String>::new());
         assert_eq!(lib.parts.len(), 7);
         // Ids are deterministic.
-        assert_eq!(starter_library(), lib);
+        assert_eq!(builtin_library(), lib);
     }
 
     #[test]
     fn led_cathode_is_pad_1() {
-        let lib = starter_library();
+        let lib = builtin_library();
         let led = lib.parts.get(PART_LED).unwrap();
         let v = &led.variants[0];
         let fp = lib.footprints.get(v.footprint).unwrap();
@@ -551,7 +551,7 @@ mod tests {
 
     #[test]
     fn opamp_pinout() {
-        let lib = starter_library();
+        let lib = builtin_library();
         let part = lib.parts.get(PART_OPAMP).unwrap();
         let sym = lib.symbols.get(part.units[0].symbol).unwrap();
         let fp = lib.footprints.get(part.variants[0].footprint).unwrap();

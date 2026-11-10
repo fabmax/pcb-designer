@@ -128,7 +128,7 @@ fn fp_pad(lib: &LibraryDoc, fp: Id, name: &str) -> Pad {
 
 #[test]
 fn symbol_edits_mirror_delete_and_undo() {
-    let mut lib = LibraryDoc::new(model::builtin::starter_library());
+    let mut lib = LibraryDoc::new(model::builtin::builtin_library());
     let led = lib.library().parts.get(model::builtin::PART_LED).unwrap().clone();
     let sym = led.units[0].symbol;
     let before = symbol(&lib, sym).clone();
@@ -227,7 +227,7 @@ fn library_file_round_trip_takes_file_name() {
     let dir = std::env::temp_dir().join(format!("pcb-lib-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("My Parts.pcblib");
-    let mut lib = LibraryDoc::new(model::builtin::starter_library());
+    let mut lib = LibraryDoc::new(model::builtin::builtin_library());
     lib.new_part("Extra", None, None).unwrap();
     assert!(lib.is_modified());
     lib.save_as(&path).unwrap();
@@ -237,4 +237,23 @@ fn library_file_round_trip_takes_file_name() {
     assert_eq!(reopened.library(), lib.library());
     assert_eq!(reopened.path.as_deref(), Some(path.as_path()));
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn rename_keeps_names_unique_and_the_builtin_library_is_read_only() {
+    let mut lib = LibraryDoc::new(Library::new("lib"));
+    let a = lib.new_symbol("A").unwrap();
+    lib.new_symbol("B").unwrap();
+    lib.rename(ObjectId::LibSymbol(a), " C ").unwrap();
+    assert_eq!(symbol(&lib, a).name, "C");
+    assert!(lib.rename(ObjectId::LibSymbol(a), "B").unwrap_err().contains("taken"));
+    assert!(lib.rename(ObjectId::LibSymbol(a), "").is_err());
+    lib.rename(ObjectId::LibSymbol(a), "C").unwrap();
+    assert_eq!(lib.doc.editor().history().undo_label(), Some("Update 1 object(s)"));
+
+    let mut builtin = LibraryDoc::builtin();
+    assert!(builtin.is_builtin());
+    let err = builtin.new_symbol("X").unwrap_err();
+    assert!(err.contains("read-only"), "{err}");
+    assert!(!builtin.is_modified());
 }

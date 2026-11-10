@@ -44,7 +44,7 @@ fn kinds(v: &[drc::Violation]) -> Vec<K> {
 /// R1 and R2 in series on a 30 × 20 mm board.
 fn board() -> (Editor, [Id; 2]) {
     let mut ed = Editor::new(Project::new("drc"));
-    ed.execute(Command::ImportParts { library: builtin::starter_library(), parts: vec![PART_RESISTOR] }).unwrap();
+    ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts: vec![PART_RESISTOR] }).unwrap();
     let (s1, f1) = place(&mut ed, 0.0, Point::mm(10.0, 10.0));
     let (s2, f2) = place(&mut ed, 20.32, Point::mm(20.0, 10.0));
     let pin = |ed: &Editor, s, n| pin_positions(ed.project(), s).into_iter().find(|p| p.1 == n).unwrap().2;

@@ -41,15 +41,33 @@ mapped to pins by number), `render_library_item` (a PNG of a symbol or footprint
 and `import_parts` puts their parts into the project. Library edits are undone in the
 library's tab.
 
-## Libraries
+## Project panel and libraries
 
-A project lists the library files (`.pcblib`) it takes parts from, in `project.json`,
-relative to the project folder. They load with the project; a file that can't be read is
-shown as missing, with Locate… and Remove. **File → New library…** (asks for the file
-right away) and **Add library…** add one; adding a copy of a library that is already
-there is refused (a copied file keeps the library's id). The built-in library is always
-there; saving it saves a copy, which becomes a library of its own. `--library FILE`
-adds a library to the project (as an unsaved change).
+The Project panel (⌘1) shows a tree, IntelliJ style:
+
+- **The project:** Schematic and PCB (double-click to show them) and the **Project
+  Library**, the copies of the parts the design uses. Parts there say if their library
+  has a newer version; their context menu updates them.
+- **Built-in Library:** a few basic parts that ship with the app. It is read-only; "Save a
+  copy as…" makes an editable library of your own from it.
+- **External Libraries:** the project's library files (`.pcblib`).
+
+Libraries expand to Parts, Symbols and Footprints. Double-click (or Enter) opens an item
+in its library tab. Right-click for more: place a part, copy it to the Project Library,
+create, duplicate, rename or delete items, and save, reveal or remove libraries.
+
+- **Keys:** ↑/↓ move, ←/→ collapse and expand, P places the selected part, Delete
+  deletes an item.
+- **Search:** type, or click the search button, to filter the tree. ↑/↓ step through the
+  matches and Esc ends the search.
+- **+ button** (also on right-click of External Libraries and in the File menu): New
+  library… (asks for its file right away), Add library…, Import from KiCad….
+
+The project lists its library files in `project.json`, relative to the project folder,
+and they load with the project. A file that can't be read shows as missing, with Locate…
+and Remove. Adding a copy of a library that is already there is refused, because a copied
+file keeps the library's id. `--library FILE` adds a library to the project (as an
+unsaved change).
 
 ### Headless mode
 
@@ -85,8 +103,7 @@ panel at a time.
 
 | Bar | Panel | Shortcut |
 | --- | --- | --- |
-| left | Libraries | ⌘1 |
-| left | Library browser (of the open library tab) | ⌘2 |
+| left | Project: the project tree and its libraries (see below) | ⌘1 |
 | left, bottom panel | Messages: schematic problems, board problems, DRC, library issues | ⌘3 |
 | right | Properties | ⌘4 |
 | right | Tool settings | ⌘5 |

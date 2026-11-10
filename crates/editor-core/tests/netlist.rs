@@ -14,7 +14,7 @@ impl Sch {
     fn new() -> Self {
         let mut ed = Editor::new(Project::new("test"));
         ed.execute(Command::ImportParts {
-            library: builtin::starter_library(),
+            library: builtin::builtin_library(),
             parts: vec![PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_OPAMP],
         })
         .unwrap();
@@ -348,7 +348,7 @@ fn plain_move_disconnects() {
 
 #[test]
 fn units_of_a_dual_opamp_are_separate_symbols() {
-    let mut lib = builtin::starter_library();
+    let mut lib = builtin::builtin_library();
     let single = lib.parts.get(PART_OPAMP).unwrap().clone();
     let sym = single.units[0].symbol;
     let pin = |name: &str| lib.symbols.get(sym).unwrap().pins.iter().find(|p| p.name == name).unwrap().id;

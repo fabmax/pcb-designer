@@ -191,7 +191,7 @@ fn part_from_a_datasheet() {
     let listed = lib(&mut host, LibraryRequest::List).unwrap();
     let names: Vec<&str> =
         listed["libraries"].as_array().unwrap().iter().map(|l| l["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["Starter", "Driver"]);
+    assert_eq!(names, ["Built-in", "Driver"]);
     assert_eq!(listed["libraries"][1]["modified"], false);
 
     let part_id: Id = serde_json::from_value(get(&mut host, "part:DRV1")["id"].clone()).unwrap();
@@ -231,14 +231,14 @@ fn libraries_belong_to_the_project() {
     let mine = project_dir.join("Mine.pcblib");
     assert!(mine.exists());
     assert_eq!(host.doc.project().libraries, std::slice::from_ref(&mine));
-    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in"), ("Mine", "external")]));
+    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in"), ("Mine", "external")]));
     assert!(host.doc.is_modified());
 
     // Undo drops it (the next request syncs), redo brings it back.
     ask(&mut host, Request::Undo).unwrap();
-    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in")]));
+    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in")]));
     ask(&mut host, Request::Redo).unwrap();
-    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in"), ("Mine", "external")]));
+    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in"), ("Mine", "external")]));
 
     // Save as: the project follows the file.
     let other = dir.path().join("libs/Other.pcblib");
@@ -259,14 +259,14 @@ fn libraries_belong_to_the_project() {
     assert!(err.contains("unsaved changes"), "{err}");
     lib(&mut host, LibraryRequest::Remove { library: "Other".into(), discard: true }).unwrap();
     assert!(host.doc.project().libraries.is_empty());
-    assert!(lib(&mut host, LibraryRequest::Remove { library: "Starter".into(), discard: false }).is_err());
+    assert!(lib(&mut host, LibraryRequest::Remove { library: "Built-in".into(), discard: false }).is_err());
 
     // A listed file that is gone: the project still opens, the library is reported missing.
     lib(&mut host, LibraryRequest::Open { path: "../libs/Other.pcblib".into() }).unwrap();
     host.doc.save().unwrap();
     std::fs::remove_file(&other).unwrap();
     let mut host = HeadlessHost::new(Document::open(&project_dir).unwrap());
-    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in"), (other.to_str().unwrap(), "missing")]));
+    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in"), (other.to_str().unwrap(), "missing")]));
 }
 
 #[test]
@@ -274,10 +274,24 @@ fn without_a_project_folder_new_libraries_wait_for_a_file() {
     let dir = tempfile::tempdir().unwrap();
     let mut host = HeadlessHost::new(Document::new(model::Project::new("untitled")));
     lib(&mut host, LibraryRequest::Create { name: "Scratch".into(), path: None }).unwrap();
-    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in"), ("Scratch", "unsaved")]));
+    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in"), ("Scratch", "unsaved")]));
     assert!(host.doc.project().libraries.is_empty());
     let file = dir.path().join("Scratch.pcblib");
     lib(&mut host, LibraryRequest::Save { library: "Scratch".into(), path: Some(file.clone()) }).unwrap();
     assert_eq!(host.doc.project().libraries, [file]);
-    assert_eq!(kinds(&mut host), pairs(&[("Starter", "built_in"), ("Scratch", "external")]));
+    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in"), ("Scratch", "external")]));
+}
+
+#[test]
+fn the_builtin_library_is_read_only() {
+    let mut host = HeadlessHost::new(Document::new(model::Project::new("p")));
+    let upsert = driver().as_array().unwrap().clone();
+    let err = lib(&mut host, LibraryRequest::Edit { library: "Built-in".into(), upsert, delete: vec![] }).unwrap_err();
+    assert!(err.contains("read-only"), "{err}");
+    let err = lib(&mut host, LibraryRequest::Save { library: "Built-in".into(), path: None }).unwrap_err();
+    assert!(err.contains("can't be changed"), "{err}");
+    // Its parts can still be read and used.
+    let items =
+        lib(&mut host, LibraryRequest::Get { library: "Built-in".into(), items: vec!["OpAmp".into()] }).unwrap();
+    assert!(!items["items"].as_array().unwrap().is_empty());
 }

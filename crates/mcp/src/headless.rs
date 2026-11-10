@@ -1,7 +1,7 @@
 //! A [`Host`] without a GUI: a document plus selections. Used by tests and by the headless
 //! MCP mode.
 //!
-//! Libraries are kept in memory: the starter library first, then the project's library
+//! Libraries are kept in memory: the built-in library first, then the project's library
 //! files (synced with the project before every request), then unsaved ones. KiCad imports
 //! go into the named library, else an unsaved "KiCad import" library, and their parts
 //! straight into the project (there is nobody to place them from a library window).
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use editor_core::Command;
 use kicad::Catalog;
 use kicad::download::{self, Source};
-use model::{Library, ObjectId, builtin};
+use model::{Library, ObjectId};
 use render::gpu::Background;
 use render::offscreen::Offscreen;
 use serde_json::Value;
@@ -25,7 +25,7 @@ use crate::library::{Libraries, LibraryRequest};
 
 pub struct HeadlessHost {
     pub doc: Document,
-    /// Loaded libraries: the starter library, the project's library files, unsaved ones.
+    /// Loaded libraries: the built-in library, the project's library files, unsaved ones.
     pub libraries: Vec<LibraryDoc>,
     /// The project's library files that could not be loaded.
     pub missing: Vec<MissingLibrary>,
@@ -43,7 +43,7 @@ impl HeadlessHost {
     pub fn new(doc: Document) -> Self {
         let mut host = HeadlessHost {
             doc,
-            libraries: vec![LibraryDoc::new(builtin::starter_library())],
+            libraries: vec![LibraryDoc::builtin()],
             missing: Vec::new(),
             kicad_root: None,
             kicad_paths: Vec::new(),

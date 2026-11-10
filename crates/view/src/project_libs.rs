@@ -148,13 +148,13 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let (a, b) = (file(tmp.path(), "a"), file(tmp.path(), "b"));
         let gone = tmp.path().join("gone.pcblib");
-        let mut loaded = vec![LibraryDoc::new(model::builtin::starter_library())];
+        let mut loaded = vec![LibraryDoc::new(model::builtin::builtin_library())];
         let mut missing = Vec::new();
 
         let dropped = sync(&[a.clone(), gone.clone(), b.clone()], &mut loaded, &mut missing, |d| d);
         assert!(dropped.is_empty());
         let names: Vec<&str> = loaded.iter().map(|l| l.name()).collect();
-        assert_eq!(names, ["Starter", "a", "b"]);
+        assert_eq!(names, ["Built-in", "a", "b"]);
         assert_eq!(missing.len(), 1);
         assert_eq!(missing[0].path, gone);
 
@@ -165,7 +165,7 @@ mod tests {
         loaded[2].new_symbol("edit").unwrap();
         let dropped = sync(&[], &mut loaded, &mut missing, |d| d);
         assert_eq!(dropped.iter().map(|l| l.name()).collect::<Vec<_>>(), ["a"]);
-        assert_eq!(loaded.iter().map(|l| l.name()).collect::<Vec<_>>(), ["Starter", "b"]);
+        assert_eq!(loaded.iter().map(|l| l.name()).collect::<Vec<_>>(), ["Built-in", "b"]);
         assert!(missing.is_empty());
     }
 
@@ -176,7 +176,7 @@ mod tests {
         let copy = tmp.path().join("copy.pcblib");
         std::fs::copy(&a, &copy).unwrap();
         let mut doc = Document::new(Project::new("p"));
-        let mut loaded = vec![LibraryDoc::new(model::builtin::starter_library())];
+        let mut loaded = vec![LibraryDoc::new(model::builtin::builtin_library())];
 
         let lib = LibraryDoc::open(&a).unwrap();
         add_to_project(&mut doc, &loaded.iter().collect::<Vec<_>>(), &lib).unwrap();
@@ -188,7 +188,7 @@ mod tests {
         assert!(err.contains("already in the project"), "{err}");
         let err = add_to_project(&mut doc, &refs, &LibraryDoc::open(&a).unwrap()).unwrap_err();
         assert!(err.contains("already in the project"), "{err}");
-        let builtin = LibraryDoc::new(model::builtin::starter_library());
+        let builtin = LibraryDoc::new(model::builtin::builtin_library());
         assert!(add_to_project(&mut doc, &refs, &builtin).is_err(), "the built-in library has no file");
         assert_eq!(doc.project().libraries.len(), 1);
 

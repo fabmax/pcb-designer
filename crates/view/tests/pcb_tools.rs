@@ -47,7 +47,7 @@ fn click_near(t: &mut PcbPlacer, doc: &mut Document, p: Point) -> bool {
 fn route_two_nets_with_a_layer_change() {
     let mut doc = Document::new(Project::new("T"));
     let parts = vec![PART_RESISTOR, PART_HEADER_1X4];
-    doc.execute(Command::ImportParts { library: builtin::starter_library(), parts }).unwrap();
+    doc.execute(Command::ImportParts { library: builtin::builtin_library(), parts }).unwrap();
     let (sj, fj) = place(&mut doc, PART_HEADER_1X4, 0.0, Point::mm(0.0, 0.0));
     let (sr, fr) = place(&mut doc, PART_RESISTOR, 20.32, Point::mm(10.0, 0.0));
     for (a, b) in [((sj, "1"), (sr, "1")), ((sj, "2"), (sr, "2"))] {
@@ -121,7 +121,7 @@ fn outline_and_vias() {
 fn draw_a_zone_that_connects_its_net() {
     let mut doc = Document::new(Project::new("T"));
     let parts = vec![PART_RESISTOR, PART_HEADER_1X4];
-    doc.execute(Command::ImportParts { library: builtin::starter_library(), parts }).unwrap();
+    doc.execute(Command::ImportParts { library: builtin::builtin_library(), parts }).unwrap();
     let (sj, fj) = place(&mut doc, PART_HEADER_1X4, 0.0, Point::mm(0.0, 0.0));
     let (sr, _) = place(&mut doc, PART_RESISTOR, 20.32, Point::mm(10.0, 0.0));
     for (a, b) in [((sj, "1"), (sr, "1")), ((sj, "2"), (sr, "2"))] {

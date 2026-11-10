@@ -8,7 +8,7 @@ use model::*;
 
 fn editor() -> Editor {
     let mut ed = Editor::new(Project::new("buses"));
-    ed.execute(Command::ImportParts { library: builtin::starter_library(), parts: vec![PART_RESISTOR] }).unwrap();
+    ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts: vec![PART_RESISTOR] }).unwrap();
     ed
 }
 
