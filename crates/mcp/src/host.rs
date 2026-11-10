@@ -191,6 +191,9 @@ pub trait Host {
     fn kicad_download(&mut self, _update: bool, reply: Responder) {
         let _ = reply.send(Err("KiCad libraries can't be downloaded in this host".into()));
     }
+    /// Bring the loaded libraries in line with the project's library files (they change
+    /// with undo and redo). Called before every request.
+    fn sync_libraries(&mut self) {}
     /// Library tools (see [`crate::library`]); the host may answer later (opening a
     /// library may need the UI). Answer with [`crate::library::respond`].
     fn library_request(&mut self, _request: LibraryRequest, reply: Responder) {
@@ -265,6 +268,7 @@ pub fn kicad_download_reply(installed: &kicad::download::Installed, downloaded: 
 /// Answer one call. Window screenshots may be answered later by the host.
 pub fn handle(call: Call, host: &mut dyn Host) {
     let Call { request, reply } = call;
+    host.sync_libraries();
     let request = match request {
         Request::Screenshot { target: None, .. } => return host.window_screenshot(reply),
         Request::KicadImport(k) => return host.kicad_import(k, reply),

@@ -1,6 +1,7 @@
 //! Project: embedded library + schematic + board.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use crate::board::Board;
 use crate::id::Id;
@@ -14,6 +15,10 @@ pub struct Project {
     pub library: Library,
     pub schematic: Schematic,
     pub board: Board,
+    /// Library files the project takes parts from (External Libraries), in the order the
+    /// user added them. Absolute in memory; `project.json` stores them relative to the
+    /// project folder.
+    pub libraries: Vec<PathBuf>,
 }
 
 impl Project {
@@ -24,6 +29,7 @@ impl Project {
             library: Library { name: "Project library".into(), ..Default::default() },
             schematic: Schematic::new(),
             board: Board::default(),
+            libraries: Vec::new(),
         }
     }
 

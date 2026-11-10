@@ -209,3 +209,49 @@ mod tests {
         assert_eq!(p.board.footprints.len(), 50);
     }
 }
+
+/// Id of [`demo_library`] (fixed, so re-writing the demo file keeps the same library).
+pub const DEMO_LIBRARY_ID: Id = Id::from_u128(0xde11_0000_0000_4000_8000_0000_0000_0001);
+
+/// A small library for the demo project's External Libraries: the starter's diode, NPN
+/// and op amp, with ids of their own (so it is a library in its own right).
+pub fn demo_library() -> Library {
+    let starter = builtin::starter_library();
+    let keep = [builtin::PART_DIODE, builtin::PART_NPN, builtin::PART_OPAMP];
+    let mut lib = Library { id: Some(DEMO_LIBRARY_ID), name: "Demo parts".into(), ..Default::default() };
+    for part in starter.parts.iter().filter(|p| keep.contains(&p.id)) {
+        for u in &part.units {
+            if !lib.symbols.contains(u.symbol) {
+                lib.symbols.insert(starter.symbols.get(u.symbol).unwrap().clone());
+            }
+        }
+        for v in &part.variants {
+            if !lib.footprints.contains(v.footprint) {
+                lib.footprints.insert(starter.footprints.get(v.footprint).unwrap().clone());
+            }
+        }
+        lib.parts.insert(part.clone());
+    }
+    // Move every built-in id (parts, symbols, pins, pads, …) into the demo namespace.
+    use model::io::{FileKind, MIGRATIONS, from_file_str, to_file_string};
+    let text = to_file_string(FileKind::Library, &lib).unwrap().replace("\"5ce10000-", "\"de110001-");
+    let mut lib: Library = from_file_str(&text, FileKind::Library, MIGRATIONS, std::path::Path::new("demo")).unwrap();
+    lib.id = Some(DEMO_LIBRARY_ID);
+    lib
+}
+
+#[cfg(test)]
+mod demo_library_tests {
+    use super::*;
+
+    #[test]
+    fn demo_library_is_valid_and_shares_no_ids_with_the_starter() {
+        let lib = demo_library();
+        assert_eq!(lib.validate(), Vec::<String>::new());
+        assert_eq!(lib.parts.len(), 3);
+        let starter = builtin::starter_library();
+        assert!(lib.parts.iter().all(|p| !starter.parts.contains(p.id)));
+        assert!(lib.symbols.iter().all(|s| !starter.symbols.contains(s.id)));
+        assert!(lib.footprints.iter().all(|f| !starter.footprints.contains(f.id)));
+    }
+}

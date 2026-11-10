@@ -956,3 +956,77 @@ Toshiba TBD62083A (symbol, four packages) in a running app.
 - **Gotcha.** `LibraryDoc::save_as` renames the library after the file stem, so
   `create_library` with a path names the library after the file.
 
+
+## Project panel (2026-11-10)
+
+The Libraries panel becomes an IntelliJ-style project tree. Decided up front:
+- The tree: the project (Schematic, PCB, Project Library), the Built-in Library (formerly
+  Starter, read-only) and External Libraries.
+- The project's library files are stored per project.
+- The project's embedded library becomes an editable Project Library.
+- The Library browser panel is folded into the tree.
+
+Three changes, in this order.
+
+### 1. Per-project library files
+
+- **Model.** `Project::libraries: Vec<PathBuf>`, the External Libraries in the order they
+  were added. In memory the paths are absolute and normalized (`io::normalize`, which is
+  lexical, so missing files work). `project.json` stores them relative to the project
+  folder with `/` separators (`io::stored_path`). A path is stored absolute only when no
+  relative one exists (another drive). Loading joins them back onto the folder, so a
+  project moved together with its libraries keeps working.
+- **Commands.** `AddLibrary`, `RemoveLibrary` and `RelinkLibrary {from, to}`. Relink keeps
+  the entry's position; it is used by Locate… and by Save As of a listed library.
+  - They are undoable and mark the project modified. Paths must be absolute.
+  - `ChangeSet::libraries` holds the list before and after, like `setup` does for the
+    board setup. It isn't an object change, so views ignore it.
+- **Loaded libraries** (`view::project_libs`, shared by the app and the headless host).
+  - `sync(wanted, loaded, missing, make)` runs whenever the list changes, including on
+    undo and redo. It loads new files; a file that fails becomes a `MissingLibrary`, and
+    the project still opens.
+  - It drops libraries that are no longer listed, but keeps ones with unsaved changes, so
+    an undo never loses library edits. They show as `unlisted` to agents. It also keeps
+    libraries without a file: the built-in one, and unsaved ones.
+  - Missing files are not retried on every sync. They are retried only when their entry
+    leaves the list and comes back.
+  - `check_new` refuses a library whose id is already loaded, because a copied `.pcblib`
+    keeps its id and parts' `source` would become ambiguous.
+  - `after_save` gives the follow-up command for a save: a listed library saved under a
+    new name is relinked, and a library not in the list yet is added.
+  - `copy_for` makes a copy with a new id. Saving the built-in library saves such a copy,
+    adds it, and resets the built-in library.
+- **App.** A loaded library no longer means an open tab:
+  - `load_library` loads without a tab, `open_library_tab` shows one.
+  - At startup only the libraries passed with `--library` open tabs. The built-in library
+    loads without one.
+  - Closing the tab of a project library keeps it loaded. If its changes are discarded,
+    it is dropped and `sync` loads the file again.
+  - New library… asks for the file right away (defaulting to the project folder) and
+    adds it. Add library… replaces Open library…, and "Open starter library" is gone.
+  - Until the tree arrives, the panel has Remove, and Locate… / Remove for missing files.
+  - The demo writes `Demo parts.pcblib` (`view::demo::demo_library`: the starter's
+    diode, NPN and op amp with ids of its own) to the temp folder and lists it.
+- **Unsaved libraries** are still allowed: a KiCad import into a new library, or an
+  agent's `create_library` when the project has no folder yet. They stay out of the
+  project until saved, and saving adds them (`after_save`).
+- **MCP.**
+  - `create_library` without a path saves `NAME.pcblib` in the project folder.
+    `open_library` adds the file to the project; relative paths are relative to the
+    project folder.
+  - New `remove_library {library, discard}` refuses unsaved changes unless `discard` is
+    set, and refuses the built-in library.
+  - `save_library` with a path relinks the project to the new file.
+  - `list_libraries` gives each library a `kind`: `built_in`, `external`, `unsaved` or
+    `unlisted`, and lists missing files as `missing`.
+  - `Libraries` (the host adapter) changed: `get` / `get_mut`, `project` /
+    `project_mut`, `missing`, `push` and `remove`.
+  - `Host::sync_libraries` runs before every request, so the headless host follows undo
+    and redo. The app syncs every frame and after agent jobs.
+- **Tests:**
+  - `model` io: relative paths, and a round trip through a moved folder.
+  - `editor-core/tests/project_libraries.rs`: commands, undo, refusals.
+  - `view::project_libs`: sync, the copy refusal, `after_save`.
+  - `mcp/tests/library_tools.rs`: the project's libraries end to end, including undo,
+    Save As relinking, remove with unsaved changes, a missing file, and a project
+    without a folder.

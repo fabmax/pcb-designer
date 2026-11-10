@@ -4,7 +4,7 @@
 //! the document:
 //!
 //! ```text
-//! project.json    name and settings
+//! project.json    name, library files (relative to the folder)
 //! library.json    embedded copies of used parts, symbols and footprints
 //! schematic.json  schematic
 //! board.json      board
@@ -85,12 +85,16 @@ pub enum FileError {
 #[derive(Serialize, serde::Deserialize)]
 struct ProjectFile {
     name: String,
+    /// Library files, relative to the project folder where possible, with `/` separators.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    libraries: Vec<String>,
 }
 
 pub fn save_project(project: &Project, dir: impl AsRef<Path>) -> Result<(), FileError> {
     let dir = dir.as_ref();
     std::fs::create_dir_all(dir).map_err(|e| FileError::Io { path: dir.into(), source: e })?;
-    write_file(&dir.join(PROJECT_FILE), FileKind::Project, &ProjectFile { name: project.name.clone() })?;
+    let libraries = project.libraries.iter().map(|p| stored_path(p, dir)).collect();
+    write_file(&dir.join(PROJECT_FILE), FileKind::Project, &ProjectFile { name: project.name.clone(), libraries })?;
     write_file(&dir.join(LIBRARY_FILE), FileKind::Library, &project.library)?;
     write_file(&dir.join(SCHEMATIC_FILE), FileKind::Schematic, &project.schematic)?;
     write_file(&dir.join(BOARD_FILE), FileKind::Board, &project.board)?;
@@ -105,7 +109,66 @@ pub fn load_project(dir: impl AsRef<Path>) -> Result<Project, FileError> {
         library: read_file(&dir.join(LIBRARY_FILE), FileKind::Library, MIGRATIONS)?,
         schematic: read_file::<Schematic>(&dir.join(SCHEMATIC_FILE), FileKind::Schematic, MIGRATIONS)?,
         board: read_file::<Board>(&dir.join(BOARD_FILE), FileKind::Board, MIGRATIONS)?,
+        libraries: meta.libraries.iter().map(|p| normalize(&absolute(dir).join(p))).collect(),
     })
+}
+
+/// `path` as written to `project.json`: relative to `dir` with `/` separators, or
+/// absolute when there is no relative path (another drive on Windows).
+pub fn stored_path(path: &Path, dir: &Path) -> String {
+    let path = normalize(&absolute(path));
+    let dir = normalize(&absolute(dir));
+    match relative_path(&path, &dir) {
+        Some(rel) => rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"),
+        None => path.to_string_lossy().into_owned(),
+    }
+}
+
+/// `path` relative to `base` (both absolute and normalized), if they share a root.
+fn relative_path(path: &Path, base: &Path) -> Option<PathBuf> {
+    use std::path::Component;
+    let mut p = path.components().peekable();
+    let mut b = base.components().peekable();
+    // Same prefix (drive) and root, else no relative path exists.
+    while let (Some(x @ (Component::Prefix(_) | Component::RootDir)), Some(y)) = (p.peek(), b.peek()) {
+        if x != y {
+            return None;
+        }
+        p.next();
+        b.next();
+    }
+    while let (Some(x), Some(y)) = (p.peek(), b.peek()) {
+        if x != y {
+            break;
+        }
+        p.next();
+        b.next();
+    }
+    let mut out: PathBuf = b.map(|_| Component::ParentDir).collect();
+    out.extend(p);
+    Some(out)
+}
+
+fn absolute(path: &Path) -> PathBuf {
+    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Resolve `.` and `..` without touching the file system (the file may not exist).
+pub fn normalize(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push(c);
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 pub fn save_library(library: &Library, path: impl AsRef<Path>) -> Result<(), FileError> {
@@ -237,6 +300,35 @@ fn pad(out: &mut String, n: usize) {
 mod tests {
     use super::*;
     use crate::builtin;
+
+    #[test]
+    fn library_paths_are_stored_relative_to_the_project() {
+        let dir = Path::new("/work/boards/amp.pcbproj");
+        assert_eq!(stored_path(Path::new("/work/boards/amp.pcbproj/parts.pcblib"), dir), "parts.pcblib");
+        assert_eq!(stored_path(Path::new("/work/libs/mine.pcblib"), dir), "../../libs/mine.pcblib");
+        assert_eq!(stored_path(Path::new("/work/libs/./x/../mine.pcblib"), dir), "../../libs/mine.pcblib");
+        assert_eq!(normalize(&dir.join("../../libs/mine.pcblib")), Path::new("/work/libs/mine.pcblib"));
+    }
+
+    #[test]
+    fn project_library_list_round_trips() {
+        let tmp = std::env::temp_dir().join(format!("pcbio-{}", crate::Id::new()));
+        let dir = tmp.join("boards/amp.pcbproj");
+        let mut p = Project::new("amp");
+        p.libraries = vec![tmp.join("libs/mine.pcblib"), dir.join("local.pcblib")];
+        save_project(&p, &dir).unwrap();
+        let text = std::fs::read_to_string(dir.join(PROJECT_FILE)).unwrap();
+        assert!(text.contains(r#""libraries": ["../../libs/mine.pcblib", "local.pcblib"]"#), "{text}");
+        // Moving the project together with its libraries keeps the references valid.
+        let moved = std::env::temp_dir().join(format!("pcbio-{}", crate::Id::new()));
+        std::fs::rename(&tmp, &moved).unwrap();
+        let loaded = load_project(moved.join("boards/amp.pcbproj")).unwrap();
+        assert_eq!(
+            loaded.libraries,
+            vec![moved.join("libs/mine.pcblib"), moved.join("boards/amp.pcbproj/local.pcblib")]
+        );
+        std::fs::remove_dir_all(&moved).unwrap();
+    }
 
     #[test]
     fn pretty_printer_keeps_points_inline() {

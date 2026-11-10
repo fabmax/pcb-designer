@@ -163,6 +163,20 @@ pub enum Command {
     Update {
         objects: Vec<Object>,
     },
+    /// Add a library file to the project's External Libraries (an absolute path).
+    AddLibrary {
+        path: std::path::PathBuf,
+    },
+    /// Remove a library file from the project's External Libraries.
+    RemoveLibrary {
+        path: std::path::PathBuf,
+    },
+    /// Point a library entry at another file, keeping its place in the list (a moved
+    /// file was located, or the library was saved under a new name).
+    RelinkLibrary {
+        from: std::path::PathBuf,
+        to: std::path::PathBuf,
+    },
 }
 
 impl Command {
@@ -190,6 +204,9 @@ impl Command {
             Command::Delete { ids } => format!("Delete {} object(s)", ids.len()),
             Command::Insert { objects } => format!("Insert {} object(s)", objects.len()),
             Command::Update { objects } => format!("Update {} object(s)", objects.len()),
+            Command::AddLibrary { path } => format!("Add library {}", file_name(path)),
+            Command::RemoveLibrary { path } => format!("Remove library {}", file_name(path)),
+            Command::RelinkLibrary { to, .. } => format!("Relink library to {}", file_name(to)),
         }
     }
 
@@ -365,6 +382,34 @@ impl Command {
                     }
                     tx.replace(o)?;
                 }
+                Ok(())
+            }
+            Command::AddLibrary { path } => {
+                let path = library_path(path)?;
+                let mut list = tx.project().libraries.clone();
+                if list.contains(&path) {
+                    return Err(CommandError::Invalid(format!("{} is already in the project", path.display())));
+                }
+                list.push(path);
+                tx.set_libraries(list);
+                Ok(())
+            }
+            Command::RemoveLibrary { path } => {
+                let mut list = tx.project().libraries.clone();
+                let i = list.iter().position(|p| *p == path).ok_or_else(|| not_listed(&path))?;
+                list.remove(i);
+                tx.set_libraries(list);
+                Ok(())
+            }
+            Command::RelinkLibrary { from, to } => {
+                let mut list = tx.project().libraries.clone();
+                let i = list.iter().position(|p| *p == from).ok_or_else(|| not_listed(&from))?;
+                let to = library_path(to)?;
+                if from != to && list.contains(&to) {
+                    return Err(CommandError::Invalid(format!("{} is already in the project", to.display())));
+                }
+                list[i] = to;
+                tx.set_libraries(list);
                 Ok(())
             }
         }
@@ -893,4 +938,20 @@ fn set_copper_layers(tx: &mut Transaction, count: u16) -> Result<(), CommandErro
     }
     tx.set_setup(setup);
     Ok(())
+}
+
+fn file_name(path: &std::path::Path) -> String {
+    path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
+}
+
+/// A library path as the project keeps it: absolute and without `.` / `..`.
+fn library_path(path: std::path::PathBuf) -> Result<std::path::PathBuf, CommandError> {
+    if !path.is_absolute() {
+        return Err(CommandError::Invalid(format!("library path {} must be absolute", path.display())));
+    }
+    Ok(model::io::normalize(&path))
+}
+
+fn not_listed(path: &std::path::Path) -> CommandError {
+    CommandError::Invalid(format!("{} is not one of the project's libraries", path.display()))
 }
