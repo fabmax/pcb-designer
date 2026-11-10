@@ -483,7 +483,8 @@ impl PcbTools {
         self.call(request).await
     }
 
-    #[tool(description = "Libraries: name, kind (built_in; external: one of the project's \
+    #[tool(description = "Libraries: name, kind (project: the project's own copies of the \
+        parts it uses, changed with execute; built_in; external: one of the project's \
         library files; unsaved; missing: a project library file that could not be read), file, \
         unsaved changes, and their symbols (pin counts), footprints (pad counts) and parts \
         (units, variants). Parts can be put into the project with import_parts.")]

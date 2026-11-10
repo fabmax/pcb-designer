@@ -78,6 +78,10 @@ pub enum PartState {
     UpToDate,
     /// The library part changed since it was copied.
     LibraryChanged,
+    /// The project's copy was edited since it was copied.
+    ModifiedLocally,
+    /// Both changed: updating would drop the project's edits.
+    BothChanged,
     /// The source library is not open.
     LibraryMissing,
     /// The library no longer contains the part.
@@ -94,6 +98,28 @@ pub struct PartStatus {
     pub state: PartState,
     /// Index into `libraries` of the source library, if open.
     pub library: Option<usize>,
+}
+
+/// Project library objects nothing uses: parts without components, then symbols and
+/// footprints no remaining part uses. In this order, one `Delete` removes them all.
+pub fn unused_library_objects(project: &Project) -> Vec<ObjectId> {
+    let lib = &project.library;
+    let used = |p: &&model::Part| project.schematic.components.iter().any(|c| c.part == p.id);
+    let kept: Vec<&model::Part> = lib.parts.iter().filter(used).collect();
+    let mut out: Vec<ObjectId> = lib.parts.iter().filter(|p| !used(p)).map(|p| ObjectId::LibPart(p.id)).collect();
+    out.extend(
+        lib.symbols
+            .iter()
+            .filter(|s| !kept.iter().any(|p| p.units.iter().any(|u| u.symbol == s.id)))
+            .map(|s| ObjectId::LibSymbol(s.id)),
+    );
+    out.extend(
+        lib.footprints
+            .iter()
+            .filter(|f| !kept.iter().any(|p| p.variants.iter().any(|v| v.footprint == f.id)))
+            .map(|f| ObjectId::LibFootprint(f.id)),
+    );
+    out
 }
 
 /// Compare every project part with its source among `libraries`.
@@ -116,10 +142,15 @@ pub fn part_statuses(project: &Project, libraries: &[&Library]) -> Vec<PartStatu
                 return status;
             };
             status.library = Some(index);
+            let local = project.library.content_hash(part.id).is_some_and(|h| h != src.content_hash);
             status.state = match libraries[index].content_hash(src.part) {
                 None => PartState::RemovedFromLibrary,
-                Some(h) if h == src.content_hash => PartState::UpToDate,
-                Some(_) => PartState::LibraryChanged,
+                Some(h) => match (h != src.content_hash, local) {
+                    (false, false) => PartState::UpToDate,
+                    (true, false) => PartState::LibraryChanged,
+                    (false, true) => PartState::ModifiedLocally,
+                    (true, true) => PartState::BothChanged,
+                },
             };
             status
         })

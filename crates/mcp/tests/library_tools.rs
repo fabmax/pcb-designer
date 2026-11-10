@@ -191,8 +191,9 @@ fn part_from_a_datasheet() {
     let listed = lib(&mut host, LibraryRequest::List).unwrap();
     let names: Vec<&str> =
         listed["libraries"].as_array().unwrap().iter().map(|l| l["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["Built-in", "Driver"]);
-    assert_eq!(listed["libraries"][1]["modified"], false);
+    assert_eq!(names, ["Project Library", "Built-in", "Driver"]);
+    assert_eq!(listed["libraries"][0]["kind"], "project");
+    assert_eq!(listed["libraries"][2]["modified"], false);
 
     let part_id: Id = serde_json::from_value(get(&mut host, "part:DRV1")["id"].clone()).unwrap();
     ask(&mut host, Request::ImportParts { parts: vec![part_id] }).unwrap();
@@ -231,14 +232,20 @@ fn libraries_belong_to_the_project() {
     let mine = project_dir.join("Mine.pcblib");
     assert!(mine.exists());
     assert_eq!(host.doc.project().libraries, std::slice::from_ref(&mine));
-    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in"), ("Mine", "external")]));
+    assert_eq!(
+        kinds(&mut host),
+        pairs(&[("Project Library", "project"), ("Built-in", "built_in"), ("Mine", "external")])
+    );
     assert!(host.doc.is_modified());
 
     // Undo drops it (the next request syncs), redo brings it back.
     ask(&mut host, Request::Undo).unwrap();
-    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in")]));
+    assert_eq!(kinds(&mut host), pairs(&[("Project Library", "project"), ("Built-in", "built_in")]));
     ask(&mut host, Request::Redo).unwrap();
-    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in"), ("Mine", "external")]));
+    assert_eq!(
+        kinds(&mut host),
+        pairs(&[("Project Library", "project"), ("Built-in", "built_in"), ("Mine", "external")])
+    );
 
     // Save as: the project follows the file.
     let other = dir.path().join("libs/Other.pcblib");
@@ -266,7 +273,10 @@ fn libraries_belong_to_the_project() {
     host.doc.save().unwrap();
     std::fs::remove_file(&other).unwrap();
     let mut host = HeadlessHost::new(Document::open(&project_dir).unwrap());
-    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in"), (other.to_str().unwrap(), "missing")]));
+    assert_eq!(
+        kinds(&mut host),
+        pairs(&[("Project Library", "project"), ("Built-in", "built_in"), (other.to_str().unwrap(), "missing")])
+    );
 }
 
 #[test]
@@ -274,12 +284,18 @@ fn without_a_project_folder_new_libraries_wait_for_a_file() {
     let dir = tempfile::tempdir().unwrap();
     let mut host = HeadlessHost::new(Document::new(model::Project::new("untitled")));
     lib(&mut host, LibraryRequest::Create { name: "Scratch".into(), path: None }).unwrap();
-    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in"), ("Scratch", "unsaved")]));
+    assert_eq!(
+        kinds(&mut host),
+        pairs(&[("Project Library", "project"), ("Built-in", "built_in"), ("Scratch", "unsaved")])
+    );
     assert!(host.doc.project().libraries.is_empty());
     let file = dir.path().join("Scratch.pcblib");
     lib(&mut host, LibraryRequest::Save { library: "Scratch".into(), path: Some(file.clone()) }).unwrap();
     assert_eq!(host.doc.project().libraries, [file]);
-    assert_eq!(kinds(&mut host), pairs(&[("Built-in", "built_in"), ("Scratch", "external")]));
+    assert_eq!(
+        kinds(&mut host),
+        pairs(&[("Project Library", "project"), ("Built-in", "built_in"), ("Scratch", "external")])
+    );
 }
 
 #[test]

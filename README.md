@@ -39,21 +39,30 @@ Library tools let an agent make parts nobody has, e.g. from a datasheet: `list_l
 mapped to pins by number), `render_library_item` (a PNG of a symbol or footprint) and
 `save_library`. Created and opened libraries are added to the project and open in a tab,
 and `import_parts` puts their parts into the project. Library edits are undone in the
-library's tab.
+library's tab. `list_libraries` lists the Project Library first (kind `project`); edits
+to it go through `execute` like any project change.
 
 ## Project panel and libraries
 
 The Project panel (⌘1) shows a tree, IntelliJ style:
 
 - **The project:** Schematic and PCB (double-click to show them) and the **Project
-  Library**, the copies of the parts the design uses. Parts there say if their library
-  has a newer version; their context menu updates them.
+  Library**, the project's own copies of the parts the design uses. It is editable like
+  any library, in its own tab: edits are project changes, so they share the project's
+  undo history and update the schematic and board right away. Each part shows its state:
+  "library changed" (Update takes the new version), "modified" (edited here), "both
+  changed" (Update asks first, because it drops the local edit), "library not loaded",
+  "removed from library", or "local" (made here). Parts nothing uses are dimmed, and
+  "Remove unused parts" (right-click the Project Library) deletes them with the symbols
+  and footprints only they needed. A part, unit or variant in use can't be removed, and
+  neither can a symbol or footprint a used part needs.
 - **Built-in Library:** a few basic parts that ship with the app. It is read-only; "Save a
   copy as…" makes an editable library of your own from it.
 - **External Libraries:** the project's library files (`.pcblib`).
 
 Libraries expand to Parts, Symbols and Footprints. Double-click (or Enter) opens an item
-in its library tab. Right-click for more: place a part, copy it to the Project Library,
+in its library tab. Right-click for more: place a part, copy it to the Project Library
+(where it can be changed for this design only),
 create, duplicate, rename or delete items, and save, reveal or remove libraries.
 
 - **Keys:** ↑/↓ move, ←/→ collapse and expand, P places the selected part, Delete
