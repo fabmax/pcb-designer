@@ -54,7 +54,16 @@ Typical workflow:
    commands in one call form a single undo step and are applied all-or-nothing.
 4. screenshot the schematic or board to check the result visually.
 
-Sheets: the schematic is a tree of sheets (get_project lists their paths, e.g. /Power). Commands that add schematic objects take a sheet (id, name or path; default the root sheet). add_sheet adds a sub-sheet, placed on its parent as a sheet symbol; delete removes it with its contents; update renames or resizes it. screenshot, get_selection and set_selection take a sheet too. Reference designators are unique across all sheets.
+Sheets: the schematic is a tree of sheets (get_project lists their paths, e.g. /Power). \
+Commands that add schematic objects take a sheet (id, name or path; default the root \
+sheet). add_sheet adds a sub-sheet, placed on its parent as a sheet symbol (pos = bottom \
+left corner); delete removes it with its contents; update renames or resizes it. A \
+sub-sheet's hierarchical labels become pins of its symbol (one per name: inputs on the \
+left edge, the others on the right, from the top down in name order, 2.54 mm apart; \
+get_project lists them with their positions); wire them on the parent sheet like \
+component pins. screenshot, \
+get_selection and set_selection take a sheet too. Reference designators are unique \
+across all sheets.
 
 Schematic and board are linked: placing a part creates its footprint on the board automatically \
 (in a staging area right of the board outline), deleting the component removes it. Footprints \

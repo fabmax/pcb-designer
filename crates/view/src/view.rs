@@ -379,6 +379,14 @@ impl View {
                 }
             } else if self.kind.shows(kind) {
                 ids.push(c.id);
+                // A sub-sheet's hierarchical labels are its symbol's pins on the parent.
+                for o in [c.before.as_ref().map(|b| &b.1), c.after.as_ref()].into_iter().flatten() {
+                    if let Object::Label(l) = o
+                        && l.kind == LabelKind::Hierarchical
+                    {
+                        ids.push(ObjectId::Sheet(l.sheet));
+                    }
+                }
             }
         }
         let mut seen = FxHashSet::default();
@@ -502,7 +510,7 @@ impl View {
                         pos: rect.min,
                         size: Size { w: rect.width(), h: rect.height() },
                     };
-                    draw_sheet_symbol(&sheet, l, &mut p);
+                    draw_sheet_symbol(&project.schematic, &sheet, l, &mut p);
                 }
                 SchGhost::Symbol { part, component, unit, transform } => {
                     let Some(part) = project.library.parts.get(*part) else { continue };
@@ -819,7 +827,7 @@ impl View {
         }
         match (&self.layers, id) {
             (Layers::Sch(l), ObjectId::Sheet(i)) => {
-                project.schematic.sheets.get(i).map(|s| draw_sheet_symbol(s, l, p)).is_some()
+                project.schematic.sheets.get(i).map(|s| draw_sheet_symbol(&project.schematic, s, l, p)).is_some()
             }
             (Layers::Sch(l), ObjectId::Symbol(i)) => {
                 project.schematic.symbols.get(i).map(|s| draw_symbol(project, s, l, p)).is_some()
@@ -1009,13 +1017,28 @@ fn draw_symbol_graphics(
 }
 
 /// A sheet symbol: a filled rectangle with the sheet's name above its top left corner.
-fn draw_sheet_symbol(sheet: &Sheet, l: &SchLayers, p: &mut Painter) {
-    let r = sheet.rect();
+/// A sheet symbol: the rectangle with the sheet's name above it, and a pin for each of
+/// the sheet's hierarchical labels (drawn like one, pointing the other way, with the name
+/// inside the rectangle).
+fn draw_sheet_symbol(s: &Schematic, sheet: &Sheet, l: &SchLayers, p: &mut Painter) {
+    let (r, pins) = sheet.layout(&s.hier_ports(sheet.id));
     let shape = Shape::Rect { a: r.min, b: r.max, width: 254_000, fill: true };
     p.shape(l.body, &shape, pal().sch_sheet, Some((l.body_fill, pal().sch_sheet_fill)));
     p.grow(r);
     let name = Text::new(sheet.name.clone(), Point::new(r.min.x, r.max.y + 500_000), 1_270_000);
     p.text(l.body, &name, pal().sch_sheet, &|s| s.to_string(), true);
+    for pin in pins {
+        let lab = NetLabel {
+            id: sheet.id,
+            sheet: sheet.id,
+            pos: pin.pos,
+            name: pin.name,
+            kind: LabelKind::Hierarchical,
+            shape: pin.shape.reversed(),
+            rotation: if pin.right { Angle::DEG180 } else { Angle::ZERO },
+        };
+        draw_label(&lab, l, p);
+    }
 }
 
 /// Half the height of a global or hierarchical label's outline, in mm.

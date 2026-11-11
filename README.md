@@ -76,7 +76,10 @@ Double-click a sheet symbol (or the sheet in the tree) to open the sheet in its 
 Rename or delete sheets with right-click; deleting takes everything on the sheet and its
 sub-sheets along (after asking). Reference designators are unique across all sheets.
 Local labels connect on their sheet only (nets are named `/Sheet/NAME`), global and power
-labels everywhere.
+labels everywhere. Hierarchical labels on a sheet become pins of its symbol on the parent
+sheet (inputs on the left, the others on the right, in name order; the symbol grows to
+fit them); wire them there like component pins. The Messages panel lists sheet pins left
+unwired.
 
 Libraries expand to Parts, Symbols and Footprints. Double-click (or Enter) opens an item
 in its library tab. Right-click for more: place a part, copy it to the Project Library
