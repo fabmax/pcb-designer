@@ -339,6 +339,9 @@ impl Command {
                         "track width and drill must be positive, and vias larger than their drill".into(),
                     ));
                 }
+                if rules.mask_expansion < 0 {
+                    return Err(CommandError::Invalid("the solder mask expansion can't be negative".into()));
+                }
                 let mut setup = BoardSetup::of(tx.project());
                 setup.rules = rules;
                 tx.set_setup(setup);

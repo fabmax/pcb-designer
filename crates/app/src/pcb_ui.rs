@@ -183,16 +183,18 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
             ui.end_row();
             let mut changed = false;
             let mut active = false;
-            for (name, value, min) in [
-                ("Track width", &mut rules.track_width, 0.05),
-                ("Clearance", &mut rules.clearance, 0.05),
-                ("Via diameter", &mut rules.via_diameter, 0.2),
-                ("Via drill", &mut rules.via_drill, 0.1),
-                ("Min. track width", &mut rules.min_track_width, 0.05),
-                ("Min. drill", &mut rules.min_drill, 0.1),
+            for (name, value, min, max) in [
+                ("Track width", &mut rules.track_width, 0.05, 20.0),
+                ("Clearance", &mut rules.clearance, 0.05, 20.0),
+                ("Via diameter", &mut rules.via_diameter, 0.2, 20.0),
+                ("Via drill", &mut rules.via_drill, 0.1, 20.0),
+                ("Min. track width", &mut rules.min_track_width, 0.05, 20.0),
+                ("Min. drill", &mut rules.min_drill, 0.1, 20.0),
+                ("Mask expansion", &mut rules.mask_expansion, 0.0, 1.0),
+                ("Paste margin", &mut rules.paste_margin, -1.0, 1.0),
             ] {
                 label(ui, name);
-                let (r, v) = units::drag(ui, *value, mm(min), mm(20.0));
+                let (r, v) = units::drag(ui, *value, mm(min), mm(max));
                 if let Some(v) = v {
                     *value = v;
                     changed = true;
@@ -219,5 +221,10 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
         }
     }
     ui.add_space(6.0);
-    hint(ui, "Applies to the whole board, from any tab. Removing an inner layer needs it to be empty.");
+    hint(
+        ui,
+        "Applies to the whole board, from any tab. Removing an inner layer needs it to be empty. \
+         Pads open the solder mask, grown by the mask expansion (vias stay covered); SMD pads get paste, \
+         grown by the paste margin (negative shrinks).",
+    );
 }

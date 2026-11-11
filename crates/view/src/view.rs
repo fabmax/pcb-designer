@@ -2,6 +2,7 @@
 
 use editor_core::ChangeSet;
 use editor_core::copper::{BoardConnectivity, Geo};
+use editor_core::fab::{PadOutline, pad_copper_layers, pad_mask_layers, pad_outline, pad_paste_layer};
 use editor_core::query::{footprint_of_instance, symbol_of_instance};
 use model::*;
 use render::{Color, Instance, Scene, font};
@@ -1114,34 +1115,27 @@ fn draw_footprint(project: &Project, inst: &FootprintInstance, l: &BoardLayers, 
     let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
     let t = inst.transform();
     let side = inst.side;
-    let top_copper = LayerId::for_footprint(FootprintLayer::Copper, side);
 
     let mut body: Option<Rect> = None;
     let mut courtyard: Option<Rect> = None;
+    let rules = &project.board.rules;
     for pad in fp.pads.iter() {
         let center = t.point(pad.pos);
-        let pad_rot = if t.mirror { -pad.rotation.degrees() } else { pad.rotation.degrees() };
-        let rot = (t.rotation.degrees() + pad_rot).to_radians() as f32;
-        let (w, h) = ((pad.size.w as f64 * 1e-6) as f32, (pad.size.h as f64 * 1e-6) as f32);
-        let layers: Vec<LayerId> = match pad.kind {
-            PadKind::Smd => vec![top_copper],
-            PadKind::ThroughHole { .. } => l.copper.clone(),
-            PadKind::NonPlatedHole { .. } => vec![],
-        };
-        for layer in layers {
-            let (Some(&rl), color) = (l.map.get(&layer), board_layer_color(layer)) else { continue };
-            let c = mmf(center);
-            match &pad.shape {
-                PadShape::Circle => p.push(rl, Instance::circle(c, w * 0.5, color)),
-                PadShape::Rect => p.push(rl, Instance::rect(c, [w, h], 0.0, rot, color)),
-                PadShape::RoundRect { ratio } => {
-                    p.push(rl, Instance::rect(c, [w, h], *ratio as f32 * w.min(h), rot, color))
-                }
-                PadShape::Oval => p.push(rl, Instance::rect(c, [w, h], 0.5 * w.min(h), rot, color)),
-                PadShape::Polygon { points } => {
-                    p.fill(rl, points.iter().map(|&q| t.point(pad.pos + q.rotated(pad.rotation))), color);
-                }
+        let mut draw = |layer: LayerId, margin: Coord| {
+            if let Some(&rl) = l.map.get(&layer)
+                && let Some(outline) = pad_outline(pad, &t, margin)
+            {
+                push_pad(p, rl, &outline, board_layer_color(layer));
             }
+        };
+        for layer in pad_copper_layers(&pad.kind, side, &l.copper) {
+            draw(layer, 0);
+        }
+        for layer in pad_mask_layers(&pad.kind, side) {
+            draw(layer, rules.mask_expansion);
+        }
+        if let Some(layer) = pad_paste_layer(&pad.kind, side) {
+            draw(layer, rules.paste_margin);
         }
         if let PadKind::ThroughHole { drill } | PadKind::NonPlatedHole { drill } = pad.kind {
             p.push(l.holes, Instance::circle(mmf(center), (drill as f64 * 0.5e-6) as f32, pal().hole));
@@ -1183,6 +1177,33 @@ impl Painter {
         let saved = self.bounds;
         self.shape(layer, shape, color, None);
         self.bounds = saved;
+    }
+}
+
+/// A placed pad outline (see [`editor_core::fab`]).
+fn push_pad(p: &mut Painter, rl: RLayer, outline: &PadOutline, color: Color) {
+    let f = |c: Coord| (c as f64 * 1e-6) as f32;
+    let rect = |c: Point, s: Size, r: f32, rot: Angle| {
+        Instance::rect(mmf(c), [f(s.w), f(s.h)], r, rot.radians() as f32, color)
+    };
+    match outline {
+        PadOutline::Circle { center, diameter } => {
+            p.push(rl, Instance::circle(mmf(*center), f(*diameter) * 0.5, color))
+        }
+        PadOutline::Rect { center, size, rotation } => p.push(rl, rect(*center, *size, 0.0, *rotation)),
+        PadOutline::Oval { center, size, rotation } => {
+            p.push(rl, rect(*center, *size, f(size.w.min(size.h)) * 0.5, *rotation))
+        }
+        PadOutline::RoundRect { center, size, radius, rotation } => {
+            p.push(rl, rect(*center, *size, f(*radius), *rotation))
+        }
+        PadOutline::Polygon(shapes) => {
+            for shape in shapes {
+                for i in region_instances(shape, color) {
+                    p.push(rl, i);
+                }
+            }
+        }
     }
 }
 
