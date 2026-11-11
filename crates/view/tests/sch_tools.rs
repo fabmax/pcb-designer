@@ -177,7 +177,7 @@ fn draw_a_bus_with_entries() {
     assert_eq!(c.buses.len(), 1);
     assert_eq!(c.buses[0].members, ["D0", "D1", "D2", "D3"]);
     assert!(c.problems.is_empty(), "{:?}", c.problems);
-    assert_eq!(c.nets.iter().filter(|n| n.named).map(|n| n.name.as_str()).collect::<Vec<_>>(), ["D2"]);
+    assert_eq!(c.nets.iter().filter(|n| n.named).map(|n| n.name.as_str()).collect::<Vec<_>>(), ["/D2"]);
 }
 
 #[test]
@@ -237,7 +237,7 @@ fn new_buses_and_signals_leaving_them_ask_for_a_name() {
     doc.execute(prompt.label("D1").unwrap()).unwrap();
     let c = doc.current_connectivity();
     assert!(c.problems.is_empty(), "{:?}", c.problems);
-    assert_eq!(c.net("D1").unwrap().pins.len(), 1);
+    assert_eq!(c.net("/D1").unwrap().pins.len(), 1);
 
     // An entry placed onto an unnamed wire asks too, now with D1 in use; a named one doesn't.
     t.set_tool(SchTool::Wire);

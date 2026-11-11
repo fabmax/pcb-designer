@@ -300,6 +300,7 @@ fn random_command_sequences_undo_and_redo_exactly() {
                     pos: pt(&mut rng),
                     name: "GND".into(),
                     kind: LabelKind::Power,
+                    shape: LabelShape::default(),
                     rotation: Angle::ZERO,
                 },
             };

@@ -43,8 +43,16 @@ fn stub_label(ed: &mut Editor, component: Id, pin: &str, net: &str) {
     let end = at + step;
     ed.execute(Command::AddWire { sheet: None, points: vec![at, end] }).unwrap();
     let power = net == "GND" || net.starts_with('+') || net.starts_with("VCC");
-    let kind = if power { LabelKind::Power } else { LabelKind::Net };
-    ed.execute(Command::AddLabel { sheet: None, pos: end, name: net.into(), kind, rotation: Angle::ZERO }).unwrap();
+    let kind = if power { LabelKind::Power } else { LabelKind::Local };
+    ed.execute(Command::AddLabel {
+        sheet: None,
+        pos: end,
+        name: net.into(),
+        kind,
+        shape: LabelShape::default(),
+        rotation: Angle::ZERO,
+    })
+    .unwrap();
 }
 
 fn pad(p: &Project, footprint: Id, name: &str) -> Point {
@@ -177,8 +185,16 @@ pub fn stress_project(n: usize) -> Project {
             ed.execute(Command::AddWire { sheet: None, points: vec![right, Point::mm(x + 15.24, y)] }).unwrap();
         } else {
             let name = if (row as usize).is_multiple_of(2) { "GND".to_string() } else { format!("N{}", row as usize) };
-            let kind = if name == "GND" { LabelKind::Power } else { LabelKind::Net };
-            ed.execute(Command::AddLabel { sheet: None, pos: right, name, kind, rotation: Angle::ZERO }).unwrap();
+            let kind = if name == "GND" { LabelKind::Power } else { LabelKind::Local };
+            ed.execute(Command::AddLabel {
+                sheet: None,
+                pos: right,
+                name,
+                kind,
+                shape: LabelShape::default(),
+                rotation: Angle::ZERO,
+            })
+            .unwrap();
         }
         let f = footprint_of(ed.project(), c);
         let to = Point::mm(col * 4.0, row * 4.0);

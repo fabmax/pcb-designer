@@ -78,6 +78,10 @@ pub struct Placing {
 pub struct SchSettings {
     /// Name of the next net label; auto-incremented after each placement.
     pub label: String,
+    /// Local, global or hierarchical (the power tool places power ports).
+    pub label_kind: LabelKind,
+    /// Shape of global and hierarchical labels.
+    pub shape: LabelShape,
     pub power: String,
     pub rotation: Angle,
     pub mirror: bool,
@@ -91,6 +95,8 @@ impl Default for SchSettings {
     fn default() -> Self {
         SchSettings {
             label: "NET1".into(),
+            label_kind: LabelKind::Local,
+            shape: LabelShape::Input,
             power: "GND".into(),
             rotation: Angle::ZERO,
             mirror: false,
@@ -162,7 +168,8 @@ impl SchPrompt {
             sheet: None,
             pos: *pos,
             name: name.trim().to_string(),
-            kind: LabelKind::Net,
+            kind: LabelKind::Local,
+            shape: LabelShape::default(),
             rotation: *rotation,
         })
     }
@@ -240,7 +247,10 @@ fn prompt_for(project: &Project, conn: &Connectivity, finished: &[ObjectId], gri
             });
             let (pos, rotation) = leaving
                 .unwrap_or_else(|| (end, if entry.dir.offset().x >= 0 { Angle::ZERO } else { Angle::deg(180.0) }));
-            let uses = bus.members.iter().map(|m| conn.net(m).map_or(0, |n| n.labels.len())).collect();
+            // Labels naming each member that this sheet can see (members are label names).
+            let visible = |l: &&NetLabel| l.kind.is_global() || l.sheet == entry.sheet;
+            let uses =
+                bus.members.iter().map(|m| s.labels.iter().filter(visible).filter(|l| l.name == *m).count()).collect();
             return Some(SchPrompt::EntryNet {
                 bus: bus.name.clone(),
                 members: bus.members.clone(),
@@ -455,7 +465,8 @@ impl SchPlacer {
                 sheet: None,
                 pos: p,
                 name: s.label.clone(),
-                kind: LabelKind::Net,
+                kind: s.label_kind,
+                shape: s.shape,
                 rotation: s.rotation,
             },
             SchTool::Power => Command::AddLabel {
@@ -463,6 +474,7 @@ impl SchPlacer {
                 pos: p,
                 name: s.power.clone(),
                 kind: LabelKind::Power,
+                shape: LabelShape::default(),
                 rotation: s.rotation,
             },
             SchTool::Junction => Command::AddJunction { sheet: None, pos: p },
@@ -585,12 +597,13 @@ impl SchPlacer {
             }
             SchTool::Label | SchTool::Power => {
                 let (name, kind) = if self.tool == SchTool::Label {
-                    (s.label.clone(), LabelKind::Net)
+                    (s.label.clone(), s.label_kind)
                 } else {
                     (s.power.clone(), LabelKind::Power)
                 };
                 let (id, sheet) = (GHOST_ID, GHOST_ID);
-                vec![SchGhost::Label(NetLabel { id, sheet, pos: p, name, kind, rotation: s.rotation })]
+                let shape = s.shape;
+                vec![SchGhost::Label(NetLabel { id, sheet, pos: p, name, kind, shape, rotation: s.rotation })]
             }
             SchTool::Junction => vec![SchGhost::Junction(p)],
             SchTool::Place => self

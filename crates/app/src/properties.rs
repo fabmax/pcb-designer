@@ -145,7 +145,7 @@ impl Properties {
             }
             Object::Label(mut l) => {
                 let bus = editor_core::bus::is_bus_name(&l.name);
-                heading(ui, if bus { "Bus label" } else { "Net label" }, "");
+                heading(ui, if bus { "Bus label" } else { "Label" }, "");
                 grid(ui, |ui| {
                     label(ui, "Name");
                     if let Some(name) = self.text(ui, id, "name", &l.name) {
@@ -155,15 +155,30 @@ impl Properties {
                     ui.end_row();
                     label(ui, "Kind");
                     let mut kind = l.kind;
-                    egui::ComboBox::from_id_salt("label_kind").selected_text(format!("{kind:?}")).show_ui(ui, |ui| {
-                        ui.selectable_value(&mut kind, LabelKind::Net, "Net");
-                        ui.selectable_value(&mut kind, LabelKind::Power, "Power");
+                    egui::ComboBox::from_id_salt("label_kind").selected_text(kind.label()).show_ui(ui, |ui| {
+                        for k in LabelKind::ALL {
+                            ui.selectable_value(&mut kind, k, k.label());
+                        }
                     });
                     if kind != l.kind {
                         l.kind = kind;
                         self.update(cx, Object::Label(l.clone()), false);
                     }
                     ui.end_row();
+                    if l.kind.has_shape() {
+                        label(ui, "Shape");
+                        let mut shape = l.shape;
+                        egui::ComboBox::from_id_salt("label_shape").selected_text(shape.label()).show_ui(ui, |ui| {
+                            for s in LabelShape::ALL {
+                                ui.selectable_value(&mut shape, s, s.label());
+                            }
+                        });
+                        if shape != l.shape {
+                            l.shape = shape;
+                            self.update(cx, Object::Label(l.clone()), false);
+                        }
+                        ui.end_row();
+                    }
                     row(ui, "Position", fmt_point(l.pos));
                     if bus {
                         bus_rows(ui, cx.doc, id);

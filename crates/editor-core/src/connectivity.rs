@@ -308,14 +308,16 @@ impl Connectivity {
         }
         dots.sort_by_key(|&(s, p)| (s, p.x, p.y));
 
-        // ---- Labels with the same name
-        let mut by_name: HashMap<&str, usize> = HashMap::default();
+        // ---- Labels with the same name: global and power labels across all sheets, local
+        // (and, until sheet pins connect them, hierarchical) labels on their own sheet.
+        let mut by_name: HashMap<(Option<Id>, &str), usize> = HashMap::default();
         for l in s.labels.iter().filter(|l| !bus_label(l)) {
             let n = index[&Node::Label(l.id)];
-            match by_name.get(l.name.as_str()) {
+            let key = (if l.kind.is_global() { None } else { Some(l.sheet) }, l.name.as_str());
+            match by_name.get(&key) {
                 Some(&first) => uf.union(first, n),
                 None => {
-                    by_name.insert(&l.name, n);
+                    by_name.insert(key, n);
                 }
             }
         }
@@ -349,23 +351,31 @@ impl Connectivity {
                 let p = &net.pins[0];
                 unconnected.push((p.symbol, p.pin, p.pos));
             }
-            // Name: power ports first, then net labels.
-            let mut names: Vec<(bool, &str)> = net
+            // Name, as KiCad does: power ports first, then global labels, then local labels
+            // by their sheet path (`/NAME` on the root sheet), the shortest path first.
+            let mut names: Vec<(u8, usize, String)> = net
                 .labels
                 .iter()
                 .filter_map(|&id| s.labels.get(id))
-                .map(|l| (l.kind != LabelKind::Power, l.name.as_str()))
+                .map(|l| match l.kind {
+                    LabelKind::Power => (0, 0, l.name.clone()),
+                    LabelKind::Global => (1, 0, l.name.clone()),
+                    LabelKind::Local | LabelKind::Hierarchical => {
+                        let path = s.sheet_path(l.sheet);
+                        (2, path.matches('/').count(), format!("{path}/{}", l.name))
+                    }
+                })
                 .collect();
             names.sort();
             names.dedup();
-            if let Some(&(_, name)) = names.first() {
+            if let Some((_, _, name)) = names.first() {
                 if names.len() > 1 {
-                    let all: Vec<&str> = names.iter().map(|n| n.1).collect();
+                    let all: Vec<&str> = names.iter().map(|n| n.2.as_str()).collect();
                     let objects: Vec<ObjectId> = net.labels.iter().map(|&l| ObjectId::Label(l)).collect();
                     let pos = net.labels.first().and_then(|&l| s.labels.get(l)).map(|l| l.pos);
                     problems.push(Problem::new(format!("Net has several names: {}", all.join(", ")), objects, pos));
                 }
-                net.name = name.to_string();
+                net.name = name.clone();
                 net.named = true;
             } else if let Some(p) = net.pins.first() {
                 net.name = format!("Net-({}-{})", p.refdes, pin_key(p));
@@ -559,10 +569,14 @@ impl Connectivity {
                         objects,
                         pos,
                     ));
-                } else if !bus.members.is_empty() && !bus.members.contains(&net.name) {
+                } else if !bus.members.is_empty()
+                    && !net.labels.iter().filter_map(|&l| s.labels.get(l)).any(|l| bus.members.contains(&l.name))
+                {
+                    // Members are label names (`D0`), not net names (`/D0` on the root sheet).
+                    let name = net.labels.first().and_then(|&l| s.labels.get(l)).map_or(net.name.as_str(), |l| &l.name);
                     objects.extend(net.labels.iter().map(|&l| ObjectId::Label(l)));
                     problems.push(Problem::new(
-                        format!("{} is not a member of {}", net.name, name_of(bus.wires[0])),
+                        format!("{name} is not a member of {}", name_of(bus.wires[0])),
                         objects,
                         pos,
                     ));
@@ -581,6 +595,18 @@ impl Connectivity {
     /// Net of a wire, label, junction or bus entry (its wire end).
     pub fn net_of(&self, id: ObjectId) -> Option<&Net> {
         self.net_of.get(&id).map(|&i| &self.nets[i])
+    }
+
+    /// The net of a bus member: the net of a label with the member's name that the bus's
+    /// sheet sees (local there, or global). Members are label names (`D0`); net names carry
+    /// the sheet path (`/D0`).
+    pub fn member_net(&self, project: &Project, bus: &Bus, member: &str) -> Option<&Net> {
+        project
+            .schematic
+            .labels
+            .iter()
+            .filter(|l| l.name == member && (l.kind.is_global() || l.sheet == bus.sheet))
+            .find_map(|l| self.net_of(ObjectId::Label(l.id)))
     }
 
     /// Net of a pin of a placed symbol.

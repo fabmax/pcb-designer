@@ -28,6 +28,7 @@ fn main() {
         pos: Point::mm(20.32, 0.0),
         name: "GND".into(),
         kind: LabelKind::Power,
+        shape: LabelShape::default(),
         rotation: Angle::ZERO,
     })
     .unwrap();

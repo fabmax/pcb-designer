@@ -1199,3 +1199,60 @@ The Schematic and PCB tabs close like library tabs now that the tree reopens the
   (the tile tree isn't drawn: it would take the space).
 - `open_library_tab` uses `insert_tab` too (next to the schematic, else the Project
   Library, else the PCB).
+
+## Multi-sheet schematics (2026-11-11)
+
+Hierarchical sheets, conceptually compatible with KiCad so its projects can be imported
+and exported later. Decisions (grilling):
+
+- A root sheet, and sub-sheets with a `parent`, each placed exactly once as a sheet
+  symbol on its parent. No sheet reuse: reused KiCad sheets would be duplicated on import.
+- Labels are local, global, hierarchical or power. Global and hierarchical labels have a
+  shape.
+- Sheet pins are derived from the sub-sheet's hierarchical labels: inputs on the left,
+  the rest on the right, in name order. They connect like component pins on the parent.
+- Net names follow KiCad: power > global > local by sheet path (`/A`, `/Power/A`), the
+  shortest path first.
+- Refdes stay design-wide. All sheets are kept in one `schematic.json`.
+- The tree's Schematic node is the root sheet, with the sub-sheets nested below it.
+  There's one closable tab per sheet.
+- A new sheet is named first, then its symbol is placed on the parent. Double-clicking
+  a sheet symbol enters the sheet. Deleting a sheet takes its contents along (the GUI
+  asks first); the root sheet can't be deleted.
+- MCP: sheets are handled with `execute` commands; `sheet` arguments accept an id, a
+  name or a path.
+- Not yet: moving objects between sheets, re-parenting, hierarchical bus pins.
+- Three changes: (1) label scopes, shapes and net names; (2) sheets, tabs, tree and
+  sheet symbols; (3) hierarchical labels through automatic sheet pins.
+
+### 1. Label scopes, shapes and net names
+
+- `LabelKind` is `Local | Global | Hierarchical | Power` (`Net` became `Local`; old files
+  with `"kind": "net"` don't load). `NetLabel.shape: LabelShape`, used for global and
+  hierarchical labels: input, output, bidirectional, tri-state, passive.
+  `LabelShape::points()` says which ends of the outline are pointed.
+- **Connectivity** (`Connectivity::build`): same-named labels join on their sheet, or
+  across all sheets if `kind.is_global()` (global, power). Hierarchical labels behave
+  like local ones until change 3 connects them through sheet pins.
+- **Net names:** power, then global, then local or hierarchical labels as
+  `{sheet path}/{name}`, the fewest `/` first, then alphabetical.
+  - `Schematic::sheet_path` is "" for the root. It is flat for now (first sheet = root,
+    others `/Name`); change 2 makes it follow parents.
+  - Gotcha: local nets are now `/NAME`. Tests that only need a named net for copper
+    use global labels (`board.rs`).
+  - Gotcha: bus members are *label* names (`D0`), not net names (`/D0`). Code that
+    finds a member's net goes through `Connectivity::member_net`, which looks up labels
+    the bus's sheet can see. The entry prompt counts uses the same way. Membership
+    checks compare label names.
+- **Drawing** (`draw_label`): KiCad style.
+  - A global label is an outline around the name, with ends pointed by shape.
+  - A hierarchical label is a small arrow (2 mm) in front of the name.
+  - New palette colours `sch_global_label` and `sch_hier_label`.
+  - `Text::upright` turns text by 180° and swaps its alignment when it would read
+    upside down or downwards. All label texts use it; rotated labels used to be drawn
+    upside down.
+- **Label tool:** L places local, global or hierarchical labels (kind picker in the tool
+  settings, plus the shape for global and hierarchical). Power keeps its own tool and
+  key. Properties edit the kind and shape.
+- MCP: `add_label` takes `kind` and `shape`; the instructions explain scopes; the
+  netlist's bus members report their net via `member_net`.
