@@ -39,6 +39,7 @@ mod messages;
 mod name_prompt;
 #[cfg(target_os = "macos")]
 mod native_menu;
+mod outputs;
 mod part_form;
 mod pcb_ui;
 mod project_panel;

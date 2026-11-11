@@ -67,6 +67,12 @@ pub enum Request {
         ids: Vec<ObjectId>,
     },
     /// Render a view (`target = Some(view)`) or capture the whole window (`None`).
+    /// The last Gerber export, read back from disk; `layers`: file names or labels.
+    GerberScreenshot {
+        layers: Option<Vec<String>>,
+        width: u32,
+        height: u32,
+    },
     Screenshot {
         target: Option<ViewSpec>,
         fit: bool,
@@ -174,6 +180,7 @@ impl Request {
                 None => format!("screenshot {:?}", v.kind),
             },
             Request::Screenshot { target: None, .. } => "screenshot window".into(),
+            Request::GerberScreenshot { .. } => "screenshot the Gerber export".into(),
             Request::Save { .. } => "save".into(),
             Request::KicadSearch { query, .. } => format!("search KiCad for {query:?}"),
             Request::KicadImport(k) => format!("import {} item(s) from KiCad", k.symbols.len() + k.footprints.len()),
@@ -222,6 +229,8 @@ pub trait Host {
     fn set_selection(&mut self, view: ViewId, ids: Vec<ObjectId>);
     /// PNG of a view: everything (`fit`) or what the user currently sees.
     fn render_view(&mut self, view: ViewId, fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String>;
+    /// Render any scene (fitted) offscreen, on the board background.
+    fn render_scene(&mut self, scene: &Scene, width: u32, height: u32) -> Result<Vec<u8>, String>;
     /// Capture the application window. Hosts without a window refuse.
     fn window_screenshot(&mut self, reply: Responder) {
         let _ = reply.send(Err("this host has no window; screenshot a view instead".into()));
@@ -480,6 +489,27 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             return host.render_view(view, fit, w, h).map(Reply::Png);
         }
         Request::Screenshot { target: None, .. } => unreachable!("handled by the host"),
+        Request::GerberScreenshot { layers, width, height } => {
+            let dir = host.document().path.clone().ok_or("the project has no folder, so no export")?;
+            let dir = view::gerber::gerber_dir(&dir);
+            if !dir.is_dir() {
+                return Err("no Gerber export yet: run export_gerber first".into());
+            }
+            let mut gv = view::GerberView::load(&dir).map_err(|e| e.to_string())?;
+            if let Some(names) = layers {
+                for f in &gv.files {
+                    let shown =
+                        names.iter().any(|n| n.eq_ignore_ascii_case(&f.name) || n.eq_ignore_ascii_case(&f.label));
+                    gv.scene.layer_mut(f.render_layer).visible = shown;
+                }
+                if !gv.files.iter().any(|f| gv.scene.layer(f.render_layer).visible) {
+                    let all: Vec<String> = gv.files.iter().map(|f| format!("{} ({})", f.name, f.label)).collect();
+                    return Err(format!("no such file; the export has: {}", all.join(", ")));
+                }
+            }
+            let (w, h) = (width.clamp(64, 4096), height.clamp(64, 4096));
+            return host.render_scene(&gv.scene, w, h).map(Reply::Png);
+        }
         Request::Save { path } => {
             let doc = host.document();
             match path {

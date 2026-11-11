@@ -10,6 +10,7 @@ model.workspace = true
 editor-core.workspace = true
 render.workspace = true
 gerber.workspace = true
+i_overlay.workspace = true
 rstar.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true

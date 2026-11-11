@@ -12,6 +12,7 @@ use editor_core::Command;
 use kicad::Catalog;
 use kicad::download::{self, Source};
 use model::{Library, ObjectId};
+use render::Scene;
 use render::gpu::Background;
 use render::offscreen::Offscreen;
 use serde_json::Value;
@@ -134,6 +135,10 @@ impl Host for HeadlessHost {
     fn render_view(&mut self, view: ViewId, _fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String> {
         let bg = background(view.kind());
         render_png(&mut self.offscreen, &self.doc.view(view).scene, None, &bg, width, height)
+    }
+
+    fn render_scene(&mut self, scene: &Scene, width: u32, height: u32) -> Result<Vec<u8>, String> {
+        render_png(&mut self.offscreen, scene, None, &background(ViewKind::Board), width, height)
     }
 
     fn kicad_search(&mut self, query: &str, footprints: bool, limit: usize) -> Result<Value, String> {

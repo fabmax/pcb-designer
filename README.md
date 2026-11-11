@@ -21,6 +21,13 @@ stop the export. Solder mask openings and paste come from the pads (Board setup:
 expansion, paste margin). Without a window: `pcb-designer export-gerber PROJECT_DIR`.
 The `output` folder is generated, so you may want it in `.gitignore`.
 
+The Project panel lists the files under Outputs › Gerber (marked *outdated* when the
+design changed since). Double-click opens them read back from disk in a read-only
+Gerber tab, stacked like the board in its colours (solder mask inverted, drills as
+holes); double-clicking a single file shows only that one, the layers button toggles
+them, and hovering names the file, aperture and its function. Open the PCB tab side by
+side to compare. Agents can look too: `screenshot` with target `gerber`.
+
 On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.app`
 (`--install` copies it to /Applications). Run from the bundle, the app is named
 "PCB Designer" in the menu bar and Dock; run with `cargo run`, macOS uses the binary's

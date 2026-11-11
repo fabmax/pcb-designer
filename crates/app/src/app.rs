@@ -29,6 +29,7 @@ use crate::kicad_import::{ImportAction, KicadImport};
 use crate::library::{LibraryEditor, Open, PROJECT_LIB};
 use crate::menu::{self, Cmd, Menu, MenuState};
 use crate::messages;
+use crate::outputs::{self, GerberAct, GerberPane, Outputs};
 use crate::pcb_ui;
 use crate::project_panel::{self, Group, NodeId, Owner, ProjectPanel, TreeNode};
 use crate::properties::Properties;
@@ -104,6 +105,8 @@ pub(crate) enum Tab {
     View(ViewId),
     /// Library editor, by [`LibraryEditor::key`].
     Library(u64),
+    /// The Gerber export, read back from disk (read-only).
+    Gerber,
 }
 
 /// One editor pane: camera + interaction state for a view of the document.
@@ -251,6 +254,15 @@ pub struct PcbApp {
     script: Option<Script>,
     /// Commands picked in the native menu, run in the next `ui`.
     menu_cmds: Vec<Cmd>,
+    /// The Gerber export folder (Project panel: Outputs).
+    outputs: Outputs,
+    /// The project folder `outputs` was scanned for, and whether the window had focus.
+    outputs_scanned: Option<Option<PathBuf>>,
+    window_focused: bool,
+    /// The export is older than the design (as of this frame).
+    outputs_outdated: bool,
+    gerber: GerberPane,
+    gerber_act: Option<GerberAct>,
     #[cfg(target_os = "macos")]
     native_menu: crate::native_menu::NativeMenu,
     #[cfg(target_os = "macos")]
@@ -306,6 +318,12 @@ impl PcbApp {
             synced_libraries: None,
             next_key: 0,
             close_requests: Vec::new(),
+            outputs: Outputs::default(),
+            outputs_scanned: None,
+            window_focused: true,
+            outputs_outdated: false,
+            gerber: GerberPane::default(),
+            gerber_act: None,
             view_groups: Vec::new(),
             enter_sheet: None,
             status,
@@ -365,7 +383,12 @@ impl PcbApp {
             }
         }
         for name in &opts.show {
-            app.show_by_name(name);
+            if name == "gerber" {
+                app.refresh_outputs();
+                app.open_gerber(None);
+            } else {
+                app.show_by_name(name);
+            }
         }
         for name in &opts.panels {
             match Panel::parse(name) {
@@ -595,6 +618,7 @@ impl PcbApp {
         }
         self.project.canvas.background = view::style::background(self.project.canvas.background.grid);
         self.project.view.restyle();
+        self.gerber.restyle();
         self.probe_key = None;
         self.settings.theme = t;
         self.save_settings();
@@ -633,6 +657,7 @@ impl PcbApp {
         }
         match self.project.lib.doc.export_gerber() {
             Ok(export) => {
+                self.refresh_outputs();
                 let files = export.manifest.files.len();
                 self.set_status(match export.warnings.len() {
                     0 => format!("Exported {files} Gerber and drill files to {}", export.dir.display()),
@@ -644,6 +669,54 @@ impl PcbApp {
             }
             Err(e) => self.set_status(format!("Gerber export failed: {e}")),
         }
+    }
+
+    /// Scan the export folder again, and reload the Gerber tab if it is open.
+    fn refresh_outputs(&mut self) {
+        let dir = self.project.lib.doc.path.clone();
+        self.outputs.scan(dir.as_deref());
+        self.outputs_scanned = Some(dir);
+        if self.tree.tiles.find_pane(&Tab::Gerber).is_some()
+            && let Some(d) = self.outputs.dir.clone()
+        {
+            self.gerber.load(&d, None);
+        }
+    }
+
+    /// Show the Gerber tab (next to the PCB), with only `file` if given.
+    fn open_gerber(&mut self, file: Option<PathBuf>) {
+        let Some(dir) = self.outputs.dir.clone() else { return };
+        let only = file.as_deref().and_then(|f| f.file_name()).map(|n| n.to_string_lossy().into_owned());
+        self.gerber.load(&dir, only.as_deref());
+        let tile = match self.tree.tiles.find_pane(&Tab::Gerber) {
+            Some(tile) => tile,
+            None => insert_tab(&mut self.tree, Tab::Gerber, None, &[Tab::View(ViewId::Board)]),
+        };
+        self.tree.make_active(|id, _| id == tile);
+    }
+
+    /// Delete the export folder and its zip, after asking.
+    fn delete_outputs(&mut self) {
+        let Some(dir) = self.outputs.dir.clone() else { return };
+        let answer = rfd::MessageDialog::new()
+            .set_title("Delete outputs")
+            .set_description(format!("Delete {} and the Gerber zip?", dir.display()))
+            .set_buttons(rfd::MessageButtons::OkCancelCustom("Delete".into(), "Cancel".into()))
+            .show();
+        if !matches!(answer, rfd::MessageDialogResult::Custom(ref b) if b == "Delete") {
+            return;
+        }
+        if let Some(zip) = self.outputs.manifest.as_ref().and_then(|m| dir.parent().map(|p| p.join(&m.zip))) {
+            let _ = std::fs::remove_file(zip);
+        }
+        if let Err(e) = std::fs::remove_dir_all(&dir) {
+            self.set_status(format!("Could not delete {}: {e}", dir.display()));
+        }
+        if let Some(tile) = self.tree.tiles.find_pane(&Tab::Gerber) {
+            self.tree.remove_recursively(tile);
+        }
+        self.gerber.view = None;
+        self.refresh_outputs();
     }
 
     // ------------------------------------------------------------------------------------
@@ -1761,10 +1834,15 @@ impl PcbApp {
         );
         let schematic = p.schematic.root_sheet().map(|root| sheet_node(p, root));
         let project = TreeNode::new(NodeId::Project, p.name.clone(), project_info).with_children(
-            vec![schematic, Some(TreeNode::new(NodeId::Board, "PCB", Info::icon(Icon::Board))), Some(project_lib)]
-                .into_iter()
-                .flatten()
-                .collect(),
+            vec![
+                schematic,
+                Some(TreeNode::new(NodeId::Board, "PCB", Info::icon(Icon::Board))),
+                Some(project_lib),
+                Some(self.outputs.node(self.outputs_outdated)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
         );
 
         let listed = &p.libraries;
@@ -1887,6 +1965,9 @@ impl PcbApp {
             Act::SaveProject => {
                 self.save(false);
             }
+            Act::ExportGerber => self.export_gerber(),
+            Act::OpenGerber(file) => self.open_gerber(file),
+            Act::DeleteOutputs => self.delete_outputs(),
             Act::SaveProjectAs => {
                 self.save(true);
             }
@@ -2586,6 +2667,9 @@ struct TreeBehavior<'a> {
     pcb: &'a mut PcbPlacer,
     status: &'a mut Option<(String, Instant)>,
     keymap: &'a Keymap,
+    gerber: &'a mut GerberPane,
+    gerber_outdated: bool,
+    gerber_act: &'a mut Option<GerberAct>,
 }
 
 /// Make `sheet` the one the schematic tools work on, clearing their preview on the sheet
@@ -2758,6 +2842,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                 };
                 l.map_or("Library".into(), |l| l.title()).into()
             }
+            Tab::Gerber => "Gerber".into(),
         }
     }
 
@@ -2776,6 +2861,11 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                     *self.focus_lib = Some(key);
                 }
             }
+            Tab::Gerber => {
+                if let Some(act) = outputs::gerber_ui(ui, self.gerber, self.gerber_outdated, self.keymap) {
+                    *self.gerber_act = Some(act);
+                }
+            }
         }
         UiResponse::None
     }
@@ -2788,7 +2878,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                     *self.active = view;
                     *self.focus_lib = None;
                 }
-                None => {}
+                Some(Tab::Gerber) | None => {}
             }
         }
         response
@@ -2859,6 +2949,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         let icon = match Self::tab_of(tiles, tile_id) {
             Some(Tab::View(ViewId::Sheet(_))) => (Icon::Schematic, view::style::pal().sch_wire),
             Some(Tab::View(ViewId::Board)) => (Icon::Board, view::style::pal().top_copper),
+            Some(Tab::Gerber) => (Icon::Layers, view::style::pal().top_copper),
             _ => (Icon::Library, view::style::pal().sch_label),
         };
         let icon_size = 15.0;
@@ -2954,6 +3045,17 @@ impl eframe::App for PcbApp {
         for cmd in std::mem::take(&mut self.menu_cmds) {
             self.run_menu_cmd(&ctx, cmd);
         }
+        // The export folder: scanned when the project folder changes and when the window
+        // gets focus back (files may have changed outside).
+        let focused = ctx.input(|i| i.focused);
+        if self.outputs_scanned.as_ref() != Some(&self.project.lib.doc.path) || (focused && !self.window_focused) {
+            self.refresh_outputs();
+        }
+        self.window_focused = focused;
+        self.outputs_outdated = self.outputs.outdated(&self.project.lib.doc, self.busy());
+        if let Some(GerberAct::Reexport) = self.gerber_act.take() {
+            self.export_gerber();
+        }
 
         let gap = theme::GAP;
         let bar = |m: egui::Margin| egui::Frame::NONE.fill(theme::window_bg()).inner_margin(m);
@@ -2996,6 +3098,9 @@ impl eframe::App for PcbApp {
                 pcb: &mut self.pcb,
                 status: &mut self.status,
                 keymap: &self.keymap,
+                gerber: &mut self.gerber,
+                gerber_outdated: self.outputs_outdated,
+                gerber_act: &mut self.gerber_act,
             };
             if self.tree.root.is_none() {
                 let shortcut = self.keymap.menu_text(ui.ctx(), Action::PanelProject);
@@ -3030,6 +3135,11 @@ impl eframe::App for PcbApp {
             match tab {
                 Tab::Library(key) => self.close_library(key),
                 Tab::View(view) => self.close_view(view),
+                Tab::Gerber => {
+                    if let Some(tile) = self.tree.tiles.find_pane(&Tab::Gerber) {
+                        self.tree.remove_recursively(tile);
+                    }
+                }
             }
         }
         if let Some(m) = self.libraries.iter_mut().find_map(|l| l.message.take()) {

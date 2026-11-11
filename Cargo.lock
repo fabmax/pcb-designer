@@ -4812,6 +4812,7 @@ version = "0.1.0"
 dependencies = [
  "editor-core",
  "gerber",
+ "i_overlay",
  "model",
  "render",
  "rstar",

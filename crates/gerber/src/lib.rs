@@ -5,6 +5,7 @@
 mod bridge;
 pub mod excellon;
 pub mod layers;
+pub mod reader;
 pub mod writer;
 mod zip;
 

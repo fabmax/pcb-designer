@@ -31,4 +31,17 @@ fn exports_into_the_project_folder() {
     }
     assert!(std::path::Path::new(v["zip"].as_str().unwrap()).is_file());
     assert!(v["drc_violations"].as_u64().unwrap() > 0, "the demo has unrouted connections");
+
+    // The export, read back and rendered (all files, or some).
+    for layers in [None, Some(vec!["Top Copper".to_string(), "Plated Drill".into()])] {
+        let (tx, mut rx) = tokio::sync::oneshot::channel();
+        handle(Call { request: Request::GerberScreenshot { layers, width: 200, height: 150 }, reply: tx }, &mut host);
+        match rx.try_recv().unwrap() {
+            Ok(Reply::Png(png)) => assert!(png.starts_with(b"\x89PNG")),
+            Ok(Reply::Json(v)) => panic!("expected a PNG: {v}"),
+            Err(e) => panic!("{e}"),
+        }
+    }
+    let err = ask(&mut host, Request::GerberScreenshot { layers: Some(vec!["nope".into()]), width: 64, height: 64 });
+    assert!(err.unwrap_err().contains("Top Copper"));
 }

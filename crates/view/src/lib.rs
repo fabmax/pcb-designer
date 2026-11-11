@@ -9,6 +9,7 @@
 pub mod demo;
 pub mod document;
 mod draw;
+pub mod gerber_view;
 pub mod index;
 pub mod interaction;
 pub mod item;
@@ -24,6 +25,7 @@ pub mod view;
 
 pub use document::{Document, DrcReport, GerberExport, ProjectTarget};
 pub use gerber;
+pub use gerber_view::GerberView;
 pub use interaction::{Edit, Interaction, KeyAction, PointerInput, Target};
 pub use item::{Elem, Item, ItemTarget, ItemView};
 pub use library_doc::LibraryDoc;
