@@ -4,7 +4,8 @@
 //!   Project Library (the parts the design uses);
 //! * the Built-in Library (read-only);
 //! * External Libraries: the project's library files, unsaved libraries, and files that
-//!   could not be loaded.
+//!   could not be loaded;
+//! * Outputs › Gerber: the files of the last Gerber export (`outputs.rs`).
 //!
 //! Libraries expand to Parts / Symbols / Footprints and their items. The app builds the
 //! nodes each frame ([`Node`] with [`Info`]); the tree state (expansion, selection,
@@ -50,6 +51,11 @@ pub enum NodeId {
     Missing(u64),
     Group(Owner, Group),
     Item(Owner, ObjectId),
+    Outputs,
+    /// The Gerber export folder.
+    Gerber,
+    /// A file in it (by a hash of its name).
+    OutputFile(u64),
 }
 
 /// How a node is drawn, and what its menu offers.
@@ -119,6 +125,11 @@ pub enum Act {
     Update(Option<Id>),
     /// Remove the Project Library's unused parts, symbols and footprints.
     RemoveUnused,
+    ExportGerber,
+    /// Show the Gerber tab, with only this file (`None`: as it was).
+    OpenGerber(Option<PathBuf>),
+    /// Delete the export folder (and its zip), after asking.
+    DeleteOutputs,
 }
 
 /// The library editor key of an owner (the Project Library has its own).
@@ -237,6 +248,24 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
             out.push(A(label, act(key(owner))));
         }
         NodeId::Group(..) => {}
+        NodeId::Outputs => out.push(A("Export Gerber files", Act::ExportGerber)),
+        NodeId::Gerber => {
+            if info.flag {
+                out.push(A("Open", Act::OpenGerber(None)));
+                out.push(A("Re-export", Act::ExportGerber));
+            } else {
+                out.push(A("Export Gerber files", Act::ExportGerber));
+            }
+            if info.flag {
+                reveal(&mut out);
+                out.push(Separator);
+                out.push(A("Delete outputs", Act::DeleteOutputs));
+            }
+        }
+        NodeId::OutputFile(_) => {
+            out.push(A("Open", Act::OpenGerber(info.path.clone())));
+            reveal(&mut out);
+        }
         NodeId::Item(owner, item) => {
             let k = key(owner);
             out.push(A("Open", Act::OpenItem(k, open_of(item))));
@@ -270,6 +299,9 @@ pub fn activate(id: NodeId, info: &Info) -> Option<Act> {
         NodeId::Library(owner) => Some(Act::OpenLibrary(key(owner))),
         NodeId::Missing(_) => info.path.clone().map(Act::Locate),
         NodeId::Item(owner, item) => Some(Act::OpenItem(key(owner), open_of(item))),
+        NodeId::Gerber if info.flag => Some(Act::OpenGerber(None)),
+        NodeId::Gerber if info.editable => Some(Act::ExportGerber),
+        NodeId::OutputFile(_) => Some(Act::OpenGerber(info.path.clone())),
         _ => None,
     }
 }
@@ -445,6 +477,7 @@ impl ProjectPanel {
                 self.state.set_expanded(NodeId::Sheet(root), true);
             }
             self.state.set_expanded(NodeId::ExternalLibraries, true);
+            self.state.set_expanded(NodeId::Outputs, true);
         }
     }
 

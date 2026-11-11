@@ -99,6 +99,8 @@ impl ViewName {
 pub enum ScreenshotTarget {
     Schematic,
     Board,
+    /// The last Gerber export (files read back from <project>/output/gerber/).
+    Gerber,
     /// The whole application window as the user sees it (GUI only).
     Window,
 }
@@ -226,6 +228,9 @@ pub struct ScreenshotParams {
     /// sees in that view.
     #[serde(default)]
     pub fit: Option<bool>,
+    /// Gerber: only these files (file names or labels like "Top Copper"). Default: all.
+    #[serde(default)]
+    pub layers: Option<Vec<String>>,
     /// Image size for views in pixels (default 1200x800, 64..4096).
     #[serde(default)]
     pub width: Option<u32>,
@@ -504,12 +509,18 @@ impl PcbTools {
         self.call(Request::SetSelection { view: p.view.spec(p.sheet), ids: p.ids }).await
     }
 
-    #[tool(description = "PNG image of the schematic, the board, or the whole application window.")]
+    #[tool(description = "PNG image of the schematic, the board, the last Gerber export (read \
+        back from the files, to check them; mask layers drawn inverted, drills as holes) or the \
+        whole application window.")]
     async fn screenshot(&self, Parameters(p): Parameters<ScreenshotParams>) -> Result<CallToolResult, ErrorData> {
+        if matches!(p.target, ScreenshotTarget::Gerber) {
+            let (width, height) = (p.width.unwrap_or(1200), p.height.unwrap_or(800));
+            return self.call(Request::GerberScreenshot { layers: p.layers, width, height }).await;
+        }
         let target = match p.target {
             ScreenshotTarget::Schematic => Some(ViewName::Schematic.spec(p.sheet)),
             ScreenshotTarget::Board => Some(ViewName::Board.spec(p.sheet)),
-            ScreenshotTarget::Window => None,
+            ScreenshotTarget::Window | ScreenshotTarget::Gerber => None,
         };
         let request = Request::Screenshot {
             target,

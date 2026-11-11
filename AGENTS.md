@@ -106,7 +106,8 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
 - More flags:
   - `--side-by-side`
   - `--select R1`
-  - `--show footprint:0805` (opens a library item)
+  - `--show footprint:0805` (opens a library item; `--show gerber` opens the Gerber tab
+    of a project with an export)
   - `--panel messages` (repeatable; shows a panel for this run only, see `dock.rs`)
   - `--script "board; ui-click X,Y; ui-move X,Y; key W; click X,Y; wait N"`, plus
     `ui-double-click X,Y`, `ui-right-click X,Y` and `type TEXT`. Put a `wait 30` before a

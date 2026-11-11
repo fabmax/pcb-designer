@@ -140,6 +140,25 @@ and hierarchical sheets.
 - Text is stroked from the stroke font and mirrored around its anchor on bottom layers
   (the editor never mirrors text).
 - Checked against PyGerber renders (in a throwaway venv); no files are committed.
+- **Reader** (`gerber::reader`): Gerber X2 / RS-274X and Excellon into primitives in nm
+  (circles, round lines, rotated round rects, polygons; arcs become segments). Macros
+  are evaluated (primitives 1, 4, 5, 20, 21; expressions, `$n=`), LR/LS apply, trailing
+  zero omission and inches work. Unsupported things are warnings, not errors (G74, G91,
+  LM, thermals, exposure-off primitives). Round-trip tests write a board with rotated,
+  mirrored, oval and polygon pads and probe points just inside and outside every pad,
+  and grid-sample zone fills against the bridged regions.
+- **Viewer** (`view::GerberView`): one scene layer per file, stacked like the board,
+  labels and kinds from `export.json` (else the X2 `.FileFunction`). Negative files are
+  inverted with i_overlay: the outline file's bounding box minus the openings. Clear
+  polarity is drawn in the background colour (our files never use it). `describe` (an
+  R-tree over objects, exact `Prim::contains`) names the file, D code, aperture and
+  `.AperFunction` under the pointer. The app's Gerber tab (`Tab::Gerber`, not a
+  `ViewId`: it has no document) uses its own `Canvas`; MCP `screenshot` target
+  `gerber` (optional `layers`) renders the same view offscreen.
+- **Outputs in the tree** (`app/src/outputs.rs`): Outputs › Gerber › files, scanned
+  when the project folder changes, after an export and when the window regains focus
+  (no file watching). "Outdated" compares the manifest's hash with `design_hash`,
+  recomputed once per document revision and never while an interaction is running.
 
 ## Rendering (`render`)
 
@@ -255,7 +274,7 @@ and hierarchical sheets.
   Properties, Tool settings, Board setup, Overview. Saved in settings when no pointer
   button is down.
 - **Project tree** (`project_panel.rs`): project (the root sheet as "Schematic" with its
-  sub-sheets nested by name, PCB, Project Library), Built-in Library (read-only),
+  sub-sheets nested by name, PCB, Project Library, Outputs › Gerber), Built-in Library (read-only),
   External Libraries; new sheets come from the + menu or a sheet's menu (name dialog,
   then the symbol follows the cursor); menus and activation are pure functions returning `Act`s. Gotcha: egui
   drops focus on Esc before widgets run unless the focused widget's event filter claims
@@ -328,7 +347,9 @@ defers.
 **Board**
 - Gerber reader and read-only viewer with the Outputs tree node (Gerber 3). Afterwards: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel
   file extensions, a measure tool in the viewer, `%TO` object attributes (nets, pads),
-  silkscreen clipped at mask openings, mirrored bottom text in the editor.
+  silkscreen clipped at mask openings, mirrored bottom text in the editor; in the viewer:
+  the mask area from the outline's contour (bounding box today), true clear polarity,
+  G74 arcs, LM, thermal primitives, slots in drill files.
 - Per-pad mask and paste overrides; mask/paste openings in the footprint editor.
 - Clearance checking while routing; push-and-shove; dragging tracks that stay connected.
 - Blind and buried vias in the UI.

@@ -130,6 +130,11 @@ impl Host for AppHost<'_> {
         render_png(self.offscreen, &self.doc.view(view).scene, camera, &canvas.background, width, height)
     }
 
+    fn render_scene(&mut self, scene: &render::Scene, width: u32, height: u32) -> Result<Vec<u8>, String> {
+        let background = mcp::headless::background(view::ViewKind::Board);
+        render_png(self.offscreen, scene, None, &background, width, height)
+    }
+
     fn kicad_search(&mut self, query: &str, footprints: bool, limit: usize) -> Result<Value, String> {
         let (results, symbols, fps) = self.kicad.search(query, footprints, limit);
         if symbols + fps == 0 {
