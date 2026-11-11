@@ -55,6 +55,16 @@ pub struct DrcReport {
     pub time: Duration,
 }
 
+/// Result of [`Document::export_gerber`].
+#[derive(Clone, Debug)]
+pub struct GerberExport {
+    /// The folder the files went into.
+    pub dir: PathBuf,
+    pub manifest: gerber::Manifest,
+    /// Design rule violations at the time of the export.
+    pub warnings: Vec<Violation>,
+}
+
 impl Document {
     pub fn new(project: Project) -> Self {
         let sheets = project.schematic.sheets.ids().map(|s| View::new(ViewId::Sheet(s), &project)).collect();
@@ -115,6 +125,16 @@ impl Document {
         let report = DrcReport { violations, revision: self.revision, time: t.elapsed() };
         self.board.set_drc(&report.violations);
         self.drc.insert(report)
+    }
+
+    /// Export the Gerber and drill files into the project folder (see [`gerber::export`]),
+    /// with zones refilled and the design rules checked first. Violations don't stop the
+    /// export: they come back as warnings. A missing outline or an unsaved project do.
+    pub fn export_gerber(&mut self) -> Result<GerberExport, gerber::ExportError> {
+        let dir = self.path.clone().ok_or(gerber::ExportError::NotSaved)?;
+        let warnings = self.run_drc().violations.clone();
+        let manifest = gerber::export(self.editor.project(), &self.copper, &dir)?;
+        Ok(GerberExport { dir: gerber::gerber_dir(&dir), manifest, warnings })
     }
 
     /// The last design rule check (it may be outdated: compare the revision).

@@ -175,6 +175,8 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
         Entry::Separator,
         action(save, Action::Save, true),
         action(save_as, Action::SaveAs, true),
+        Entry::Separator,
+        action("Export Gerber files", Action::ExportGerber, true),
     ];
     if !s.native {
         file.extend([Entry::Separator, item("Quit", Cmd::Quit)]);

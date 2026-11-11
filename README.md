@@ -11,6 +11,16 @@ cargo run --release -p app -- --new        # empty project
 cargo test --workspace
 ```
 
+## Manufacturing files
+
+File → Export Gerber files (⇧⌘E) writes Gerber X2 files (copper, solder mask, paste,
+silkscreen, board outline) and Excellon drill files into `<project>.pcbproj/output/gerber/`,
+replacing the previous export, plus `output/<name>-gerber.zip` for the manufacturer.
+Zones are refilled and the design rules checked first; violations are reported but don't
+stop the export. Solder mask openings and paste come from the pads (Board setup: mask
+expansion, paste margin). Without a window: `pcb-designer export-gerber PROJECT_DIR`.
+The `output` folder is generated, so you may want it in `.gitignore`.
+
 On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.app`
 (`--install` copies it to /Applications). Run from the bundle, the app is named
 "PCB Designer" in the menu bar and Dock; run with `cargo run`, macOS uses the binary's
@@ -34,7 +44,7 @@ open project, so only turn it on when you need it.
 Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `search_kicad`, `import_kicad`, `download_kicad_libraries`, `list_objects`, `get_objects`, `get_component`,
 `get_netlist` (nets, buses and their members, schematic problems), `get_routing`,
-`run_drc`, `execute` (any editor command, as one undo step), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
+`run_drc`, `export_gerber`, `execute` (any editor command, as one undo step), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
 or the whole window) and `save_project`. Sheets are added, renamed and deleted with
 `execute` (`add_sheet`, `update`, `delete`); `get_project` lists their paths, and wherever
 a sheet is asked for (`sheet`, `parent`), an id, a name or a path like `/Power/Regulator`

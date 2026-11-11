@@ -9,6 +9,7 @@ description = "Model -> render scenes, hit testing, selection and editing tools 
 model.workspace = true
 editor-core.workspace = true
 render.workspace = true
+gerber.workspace = true
 rstar.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true

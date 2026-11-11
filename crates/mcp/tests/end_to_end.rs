@@ -68,6 +68,7 @@ async fn agent_session() {
         "get_netlist",
         "get_routing",
         "run_drc",
+        "export_gerber",
         "create_library",
         "edit_library",
         "render_library_item",
