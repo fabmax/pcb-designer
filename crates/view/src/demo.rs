@@ -42,8 +42,15 @@ fn footprint_of(p: &Project, component: Id) -> Id {
     p.board.footprint_of(component).expect("footprint").id
 }
 
-/// Wire stub from `pin` of `component` pointing away from the symbol, ending in a label.
+/// Wire stub from `pin` of `component` pointing away from the symbol, ending in a label
+/// (a power port for GND and supplies, else a local label).
 fn stub_label(ed: &mut Editor, component: Id, pin: &str, net: &str) {
+    let power = net == "GND" || net.starts_with('+') || net.starts_with("VCC");
+    stub(ed, component, pin, net, if power { LabelKind::Power } else { LabelKind::Local });
+}
+
+/// Wire stub from `pin` of `component` pointing away from the symbol, ending in a label.
+fn stub(ed: &mut Editor, component: Id, pin: &str, net: &str, kind: LabelKind) {
     let sheet = ed.project().schematic.symbols_of(component).next().map(|s| s.sheet);
     let p = ed.project();
     let sym = symbol_of(p, component);
@@ -57,17 +64,10 @@ fn stub_label(ed: &mut Editor, component: Id, pin: &str, net: &str) {
     };
     let end = at + step;
     ed.execute(Command::AddWire { sheet, points: vec![at, end] }).unwrap();
-    let power = net == "GND" || net.starts_with('+') || net.starts_with("VCC");
-    let kind = if power { LabelKind::Power } else { LabelKind::Local };
-    ed.execute(Command::AddLabel {
-        sheet,
-        pos: end,
-        name: net.into(),
-        kind,
-        shape: LabelShape::default(),
-        rotation: Angle::ZERO,
-    })
-    .unwrap();
+    // Labels on the left of their wire face left.
+    let rotation = if step.x < 0 && kind != LabelKind::Power { Angle::DEG180 } else { Angle::ZERO };
+    ed.execute(Command::AddLabel { sheet, pos: end, name: net.into(), kind, shape: LabelShape::Input, rotation })
+        .unwrap();
 }
 
 fn pad(p: &Project, footprint: Id, name: &str) -> Point {
@@ -84,7 +84,7 @@ fn move_footprint(ed: &mut Editor, footprint: Id, to: Point, rotation: Angle) {
 }
 
 /// A small LED circuit with a board outline, placed footprints, tracks, a via and a zone.
-/// The LED and its resistor are on a sub-sheet, "Indicator".
+/// The LED and its resistor are on a sub-sheet, "Indicator", fed through its pin IN.
 pub fn demo_project() -> Project {
     let mut ed = Editor::new(Project::new("Demo"));
     let parts = vec![PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4];
@@ -112,7 +112,6 @@ pub fn demo_project() -> Project {
         (j1, "1", "+5V"),
         (j1, "2", "SIG"),
         (j1, "4", "GND"),
-        (r1, "1", "+5V"),
         (d1, "K", "GND"),
         // Rotated by 90°: pin 2 is on top, pin 1 at the bottom.
         (c1, "2", "+5V"),
@@ -122,6 +121,23 @@ pub fn demo_project() -> Project {
     ] {
         stub_label(&mut ed, c, pin, net);
     }
+    // The indicator's supply comes in through a hierarchical label (the sheet's pin IN),
+    // wired to +5V on the root sheet.
+    stub(&mut ed, r1, "1", "IN", LabelKind::Hierarchical);
+    let p = ed.project();
+    let indicator = indicator.unwrap();
+    let pin = p.schematic.sheet_symbol(indicator).unwrap().1.into_iter().find(|p| p.name == "IN").unwrap().pos;
+    let end = pin - Point::mm(5.08, 0.0);
+    ed.execute(Command::AddWire { sheet: None, points: vec![pin, end] }).unwrap();
+    ed.execute(Command::AddLabel {
+        sheet: None,
+        pos: end,
+        name: "+5V".into(),
+        kind: LabelKind::Power,
+        shape: LabelShape::Input,
+        rotation: Angle::ZERO,
+    })
+    .unwrap();
     ed.execute(Command::Insert {
         objects: vec![Object::SchText(SchText {
             id: Id::new(),

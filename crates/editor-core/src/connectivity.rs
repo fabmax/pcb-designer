@@ -5,7 +5,11 @@
 //! * A wire end, pin end, label or junction on the *inside* of a wire connects to it
 //!   (T connection). Two wires that merely cross do not connect unless a junction sits
 //!   on the crossing.
-//! * Labels with the same name connect, whatever their kind (net label or power port).
+//! * Labels with the same name connect: local and hierarchical ones on their sheet,
+//!   global ones and power ports on all sheets.
+//! * A sub-sheet's symbol has a pin for each name of its hierarchical labels (see
+//!   [`Sheet::layout`]); on the parent sheet it connects like a component pin, and it
+//!   joins the labels of its name on the sub-sheet.
 //! * Buses never connect anything. Touching bus wires form a [`Bus`] whose members come
 //!   from the bus labels on it (labels with bus names, see [`crate::bus`]); those labels
 //!   create no nets. A bus entry's wire end joins the net there, so it knows its signal.
@@ -55,6 +59,8 @@ pub struct Net {
     pub junctions: Vec<Id>,
     /// Bus entries whose wire end is on this net.
     pub entries: Vec<Id>,
+    /// Sheet pins on this net: (sub-sheet, pin name).
+    pub sheet_pins: Vec<(Id, String)>,
 }
 
 /// Touching bus wires with their labels and entries.
@@ -131,6 +137,8 @@ enum Node {
     Label(Id),
     Junction(Id),
     Entry(Id),
+    /// Index into the sheet pins.
+    SheetPin(usize),
 }
 
 /// Grid cell size for finding wires through a point.
@@ -238,6 +246,21 @@ impl Connectivity {
         nodes.extend(s.labels.iter().filter(|l| !bus_label(l)).map(|l| Node::Label(l.id)));
         nodes.extend(s.junctions.ids().map(Node::Junction));
         nodes.extend(s.bus_entries.ids().map(Node::Entry));
+        // Sheet pins: (sub-sheet, parent sheet, pin).
+        let mut ports: HashMap<Id, Vec<(&str, LabelShape)>> = HashMap::default();
+        for l in s.labels.iter().filter(|l| l.kind == LabelKind::Hierarchical) {
+            let p = ports.entry(l.sheet).or_default();
+            if !p.iter().any(|x| x.0 == l.name) {
+                p.push((l.name.as_str(), l.shape));
+            }
+        }
+        let mut sheet_pins: Vec<(Id, Id, SheetPin)> = Vec::new();
+        for sheet in s.sheets.iter() {
+            let Some(parent) = sheet.parent else { continue };
+            let (_, pins) = sheet.layout(ports.get(&sheet.id).map_or(&[][..], Vec::as_slice));
+            sheet_pins.extend(pins.into_iter().map(|p| (sheet.id, parent, p)));
+        }
+        nodes.extend((0..sheet_pins.len()).map(Node::SheetPin));
         let index: HashMap<Node, usize> = nodes.iter().enumerate().map(|(i, &n)| (n, i)).collect();
         let mut uf = UnionFind((0..nodes.len() as u32).collect());
 
@@ -274,6 +297,11 @@ impl Connectivity {
             at.nodes.push(index[&Node::Junction(j.id)]);
             at.junction = true;
         }
+        for (i, (_, parent, pin)) in sheet_pins.iter().enumerate() {
+            let at = points.entry((*parent, pin.pos)).or_default();
+            at.nodes.push(index[&Node::SheetPin(i)]);
+            at.pins += 1;
+        }
         for at in points.values() {
             for w in at.nodes.windows(2) {
                 uf.union(w[0], w[1]);
@@ -291,6 +319,8 @@ impl Connectivity {
             }
         }
         let mut dots = Vec::new();
+        // Points something reaches from the inside of a wire.
+        let mut on_wire: std::collections::HashSet<(Id, Point)> = Default::default();
         for (&(sheet, p), at) in &points {
             let mut inside = 0;
             if let Some(ws) = grid.get(&(sheet, cell(p))) {
@@ -301,6 +331,9 @@ impl Connectivity {
                     }
                 }
             }
+            if inside > 0 {
+                on_wire.insert((sheet, p));
+            }
             let count = at.wire_ends + 2 * inside + at.pins;
             if count >= 3 && (at.wire_ends > 0 || inside > 0) && !at.junction {
                 dots.push((sheet, p));
@@ -309,7 +342,7 @@ impl Connectivity {
         dots.sort_by_key(|&(s, p)| (s, p.x, p.y));
 
         // ---- Labels with the same name: global and power labels across all sheets, local
-        // (and, until sheet pins connect them, hierarchical) labels on their own sheet.
+        // and hierarchical labels on their own sheet.
         let mut by_name: HashMap<(Option<Id>, &str), usize> = HashMap::default();
         for l in s.labels.iter().filter(|l| !bus_label(l)) {
             let n = index[&Node::Label(l.id)];
@@ -319,6 +352,45 @@ impl Connectivity {
                 None => {
                     by_name.insert(key, n);
                 }
+            }
+        }
+
+        // ---- Sheet pins join their sub-sheet's labels.
+        let mut problems = Vec::new();
+        for (i, (sheet, parent, pin)) in sheet_pins.iter().enumerate() {
+            let n = index[&Node::SheetPin(i)];
+            match by_name.get(&(Some(*sheet), pin.name.as_str())) {
+                Some(&label) => uf.union(label, n),
+                None => problems.push(Problem::new(
+                    format!(
+                        "Sheet pin {} of {}: hierarchical bus pins don't connect yet",
+                        pin.name,
+                        s.display_path(*sheet)
+                    ),
+                    vec![ObjectId::Sheet(*sheet)],
+                    Some(pin.pos),
+                )),
+            }
+            let wired = points.get(&(*parent, pin.pos)).is_some_and(|at| at.nodes.len() > 1)
+                || on_wire.contains(&(*parent, pin.pos));
+            if !wired {
+                problems.push(Problem::new(
+                    format!("Sheet pin {} of {} is not connected", pin.name, s.display_path(*sheet)),
+                    vec![ObjectId::Sheet(*sheet)],
+                    Some(pin.pos),
+                ));
+            }
+        }
+        for l in s.labels.iter().filter(|l| l.kind == LabelKind::Hierarchical) {
+            if s.sheets.get(l.sheet).is_some_and(Sheet::is_root) {
+                problems.push(Problem::new(
+                    format!(
+                        "Hierarchical label {} is on the root sheet: there is no sheet pin to connect it to",
+                        l.name
+                    ),
+                    vec![ObjectId::Label(l.id)],
+                    Some(l.pos),
+                ));
             }
         }
 
@@ -333,9 +405,9 @@ impl Connectivity {
                 Node::Label(id) => net.labels.push(id),
                 Node::Junction(id) => net.junctions.push(id),
                 Node::Entry(id) => net.entries.push(id),
+                Node::SheetPin(i) => net.sheet_pins.push((sheet_pins[i].0, sheet_pins[i].2.name.clone())),
             }
         }
-        let mut problems = Vec::new();
         let mut unconnected = Vec::new();
         let mut nets: Vec<Net> = Vec::new();
         for (_, mut net) in groups {
@@ -347,33 +419,46 @@ impl Connectivity {
                 && net.labels.is_empty()
                 && net.junctions.is_empty()
                 && net.entries.is_empty()
+                && net.sheet_pins.is_empty()
             {
                 let p = &net.pins[0];
                 unconnected.push((p.symbol, p.pin, p.pos));
             }
-            // Name, as KiCad does: power ports first, then global labels, then local labels
-            // by their sheet path (`/NAME` on the root sheet), the shortest path first.
-            let mut names: Vec<(u8, usize, String)> = net
-                .labels
-                .iter()
-                .filter_map(|&id| s.labels.get(id))
-                .map(|l| match l.kind {
-                    LabelKind::Power => (0, 0, l.name.clone()),
-                    LabelKind::Global => (1, 0, l.name.clone()),
-                    LabelKind::Local | LabelKind::Hierarchical => {
-                        let path = s.sheet_path(l.sheet);
-                        (2, path.matches('/').count(), format!("{path}/{}", l.name))
-                    }
-                })
-                .collect();
+            // Name, as KiCad does: power ports first, then global labels, then local and
+            // then hierarchical labels by their sheet path (`/NAME` on the root sheet), the
+            // shortest path first.
+            let full_name = |l: &NetLabel| match l.kind {
+                LabelKind::Power => (0, 0, l.name.clone()),
+                LabelKind::Global => (1, 0, l.name.clone()),
+                LabelKind::Local | LabelKind::Hierarchical => {
+                    let path = s.sheet_path(l.sheet);
+                    let tier = if l.kind == LabelKind::Local { 2 } else { 3 };
+                    (tier, path.matches('/').count(), format!("{path}/{}", l.name))
+                }
+            };
+            let labels: Vec<&NetLabel> = net.labels.iter().filter_map(|&id| s.labels.get(id)).collect();
+            let mut names: Vec<(u8, usize, String)> = labels.iter().map(|l| full_name(l)).collect();
             names.sort();
             names.dedup();
             if let Some((_, _, name)) = names.first() {
-                if names.len() > 1 {
-                    let all: Vec<&str> = names.iter().map(|n| n.2.as_str()).collect();
-                    let objects: Vec<ObjectId> = net.labels.iter().map(|&l| ObjectId::Label(l)).collect();
-                    let pos = net.labels.first().and_then(|&l| s.labels.get(l)).map(|l| l.pos);
-                    problems.push(Problem::new(format!("Net has several names: {}", all.join(", ")), objects, pos));
+                // Different names on one sheet conflict; hierarchical labels only carry a
+                // net between sheets, so a net named differently on each sheet is fine.
+                let mut sheets: Vec<Id> = labels.iter().map(|l| l.sheet).collect();
+                sheets.sort();
+                sheets.dedup();
+                for sheet in sheets {
+                    let here: Vec<&&NetLabel> =
+                        labels.iter().filter(|l| l.sheet == sheet && l.kind != LabelKind::Hierarchical).collect();
+                    let mut all: Vec<(u8, usize, String)> = here.iter().map(|l| full_name(l)).collect();
+                    all.sort();
+                    all.dedup();
+                    if all.len() > 1 {
+                        let all: Vec<&str> = all.iter().map(|n| n.2.as_str()).collect();
+                        let objects: Vec<ObjectId> = here.iter().map(|l| ObjectId::Label(l.id)).collect();
+                        let pos = here.first().map(|l| l.pos);
+                        let msg = format!("Net has several names: {}", all.join(", "));
+                        problems.push(Problem::new(msg, objects, pos));
+                    }
                 }
                 net.name = name.clone();
                 net.named = true;

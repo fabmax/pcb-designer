@@ -451,3 +451,78 @@ fn label_scopes_and_net_names_follow_kicad() {
 fn label_at(s: &Sch, x: f64) -> Id {
     s.ed.project().schematic.labels.iter().find(|l| l.pos == Point::mm(x, 0.0)).unwrap().id
 }
+
+#[test]
+fn sheet_pins_connect_hierarchical_labels() {
+    let mut s = Sch::new();
+    let r1 = s.place(PART_RESISTOR, 0.0, 0.0, 0.0);
+    let cmd = Command::AddSheet { parent: None, name: "Amp".into(), pos: Point::mm(50.8, 0.0), size: None };
+    let changes = s.ed.execute(cmd).unwrap();
+    let sub = changes.ids().find_map(|id| if let ObjectId::Sheet(s) = id { Some(s) } else { None }).unwrap();
+    // On the sub-sheet: a resistor between hierarchical labels IN (input) and OUT (output).
+    let cmd = Command::PlacePart {
+        part: PART_RESISTOR,
+        variant: None,
+        sheet: Some(sub),
+        pos: Point::mm(0.0, 0.0),
+        rotation: Angle::ZERO,
+        mirror: false,
+        refdes: None,
+        value: None,
+    };
+    let changes = s.ed.execute(cmd).unwrap();
+    let r2 = changes.ids().find_map(|id| if let ObjectId::Symbol(s) = id { Some(s) } else { None }).unwrap();
+    for (pin, name, shape) in [("1", "IN", LabelShape::Input), ("2", "OUT", LabelShape::Output)] {
+        let pos = s.pin(r2, pin);
+        let kind = LabelKind::Hierarchical;
+        let cmd = Command::AddLabel { sheet: Some(sub), pos, name: name.into(), kind, shape, rotation: Angle::ZERO };
+        s.ed.execute(cmd).unwrap();
+    }
+
+    // Pins: inputs left, the rest right, from the top down.
+    let (rect, pins) = s.ed.project().schematic.sheet_symbol(sub).unwrap();
+    assert_eq!(rect, Rect::from_points(Point::mm(50.8, 0.0), Point::mm(76.2, 20.32)));
+    let at: Vec<(&str, Point, bool)> = pins.iter().map(|p| (p.name.as_str(), p.pos, p.right)).collect();
+    assert_eq!(at, [("IN", Point::mm(50.8, 17.78), false), ("OUT", Point::mm(76.2, 17.78), true)]);
+
+    // Unwired pins are problems; the sub-sheet's net is named by its hierarchical label.
+    let c = s.conn();
+    let unwired: Vec<&str> =
+        c.problems.iter().map(|p| p.message.as_str()).filter(|m| m.contains("not connected")).collect();
+    assert_eq!(unwired.len(), 2, "{unwired:?}");
+
+    // A wire from R1 to the IN pin joins R1.2 and R2.1, across the sheets.
+    let r1_2 = s.pin(r1, "2");
+    s.wire(&l_path(r1_2, Point::mm(50.8, 17.78)));
+    let text = s.netlist();
+    assert!(text.contains("/Amp/IN: R1.2 R2.1"), "{text}");
+    let c = s.conn();
+    let net = c.net("/Amp/IN").unwrap();
+    assert_eq!(net.sheet_pins, vec![(sub, "IN".to_string())]);
+    assert_eq!(c.problems.iter().filter(|p| p.message.contains("not connected")).count(), 1, "OUT still open");
+
+    // A label on the parent names the net; a different name on each sheet is no conflict.
+    s.label(r1_2, "SIG", LabelKind::Local);
+    let c = s.conn();
+    assert!(c.net("/SIG").is_some_and(|n| n.pins.len() == 2));
+    assert!(!c.problems.iter().any(|p| p.message.contains("several names")), "{:?}", c.problems);
+
+    // Hierarchical labels on the root sheet have no pin to connect to.
+    s.label(Point::mm(0.0, 30.0), "LOST", LabelKind::Hierarchical);
+    assert!(s.conn().problems.iter().any(|p| p.message.contains("Hierarchical label LOST is on the root sheet")));
+
+    // Many pins: the symbol grows downwards, its top edge stays.
+    for i in 0..8 {
+        let pos = Point::mm(30.0, i as f64 * 2.54);
+        let kind = LabelKind::Hierarchical;
+        let shape = LabelShape::Input;
+        let cmd =
+            Command::AddLabel { sheet: Some(sub), pos, name: format!("D{i}"), kind, shape, rotation: Angle::ZERO };
+        s.ed.execute(cmd).unwrap();
+    }
+    let (rect, pins) = s.ed.project().schematic.sheet_symbol(sub).unwrap();
+    assert_eq!(rect.max.y, Point::mm(0.0, 20.32).y);
+    assert_eq!(rect.min.y, Point::mm(0.0, 20.32 - 10.0 * 2.54).y, "9 inputs + 1 row of margin");
+    let left: Vec<&str> = pins.iter().filter(|p| !p.right).map(|p| p.name.as_str()).collect();
+    assert_eq!(left, ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "IN"]);
+}

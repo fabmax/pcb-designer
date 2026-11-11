@@ -559,11 +559,7 @@ fn project_summary(doc: &Document) -> Value {
         "units": "Coordinates and sizes are integers in nanometers (1 mm = 1000000, 1 mil = 25400). \
                   Angles are degrees, counter-clockwise. Y points up in both views.",
         "counts": counts,
-        "sheets": p.schematic.sheets.iter().map(|s| json!({
-            "id": s.id,
-            "path": p.schematic.display_path(s.id),
-            "symbols": p.schematic.symbols.iter().filter(|y| y.sheet == s.id).count(),
-        })).collect::<Vec<_>>(),
+        "sheets": p.schematic.sheets.iter().map(|s| sheet_summary(p, s)).collect::<Vec<_>>(),
         "components": components,
         "board": {
             "layers": p.board.layers.iter().map(|l| json!({ "id": l.id, "name": l.name, "function": l.function })).collect::<Vec<_>>(),
@@ -572,6 +568,26 @@ fn project_summary(doc: &Document) -> Value {
         },
         "library_parts": p.library.parts.iter().map(|part| json!({ "id": part.id, "name": part.name })).collect::<Vec<_>>(),
     })
+}
+
+/// A sheet for `get_project`: path, symbol count, and for sub-sheets the symbol's
+/// rectangle and pins on the parent sheet.
+fn sheet_summary(p: &Project, s: &Sheet) -> Value {
+    let mut v = json!({
+        "id": s.id,
+        "path": p.schematic.display_path(s.id),
+        "symbols": p.schematic.symbols.iter().filter(|y| y.sheet == s.id).count(),
+    });
+    if !s.is_root() {
+        let (rect, pins) = s.layout(&p.schematic.hier_ports(s.id));
+        v["symbol"] = json!({ "min": rect.min, "max": rect.max });
+        v["pins"] = pins
+            .iter()
+            .map(|pin| json!({ "name": pin.name, "shape": pin.shape, "pos": pin.pos }))
+            .collect::<Vec<_>>()
+            .into();
+    }
+    v
 }
 
 fn library_parts(lib: &Library) -> Value {
@@ -691,7 +707,16 @@ fn netlist(project: &Project, c: &editor_core::connectivity::Connectivity) -> Va
                 .iter()
                 .map(|p| json!({ "ref": p.refdes, "pin": p.pin_name, "pads": p.pads, "pos": p.pos }))
                 .collect();
-            json!({ "name": n.name, "pins": pins })
+            let mut net = json!({ "name": n.name, "pins": pins });
+            if !n.sheet_pins.is_empty() {
+                let sheet_pins: Vec<String> = n
+                    .sheet_pins
+                    .iter()
+                    .map(|(sheet, name)| format!("{}:{name}", project.schematic.display_path(*sheet)))
+                    .collect();
+                net["sheet_pins"] = json!(sheet_pins);
+            }
+            net
         })
         .collect();
     let open: std::collections::HashSet<(Id, Id)> = c.unconnected.iter().map(|&(s, p, _)| (s, p)).collect();

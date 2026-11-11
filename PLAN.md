@@ -23,7 +23,7 @@ and hierarchical sheets.
 | Schematic → PCB | Always live, inside the same command transaction. PCB → schematic: never |
 | Copper | Tracks have no stored net; nets come from the pads they touch. Copper whose net no longer fits is flagged, never deleted |
 | Library parts | Copied into the project (Project Library). Each copy keeps `source` (library id, part id, content hash) for "update from library" |
-| Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported later: buses, label scopes (local / global / hierarchical / power), net names and hierarchical sheets as KiCad does (sheet pins still to come, see Later). Multi-unit parts work |
+| Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported later: buses, label scopes (local / global / hierarchical / power), net names and hierarchical sheets with sheet pins as KiCad does. Multi-unit parts work |
 | Files | JSON, pretty, stable order, integer nm. A project is a folder (`<name>.pcbproj/`: `project.json`, `library.json`, `schematic.json`, `board.json`); a library is one `*.pcblib`. No migrations until production use (`model::io::MIGRATIONS` stays empty) |
 | MCP | In the app (Streamable HTTP on 127.0.0.1, opt-in) and headless over stdio. Every tool goes through editor-core commands |
 | Platforms | macOS first. macOS-only chrome (native menu, title strip) is `cfg`'d; Windows/Linux keep the egui menu bar and system title bar |
@@ -76,14 +76,24 @@ and hierarchical sheets.
 
 ## Connectivity, copper, zones, DRC (`editor-core`)
 
-- **Schematic** (`connectivity`): union-find over pins, wire ends, labels, junctions and
-  entry wire ends (`Node::Entry`). Coinciding points connect; an end inside a wire is a T
-  connection; crossings need a junction. Same-named labels join: local (and, until sheet
-  pins exist, hierarchical) ones on their sheet, global and power ones on all sheets
-  (`LabelKind::is_global`). Net name as in KiCad: power, then global, then local as
-  `{sheet path}/{name}` (`/A`, `/Power/A`; `Schematic::sheet_path`), fewest `/` first,
-  else `Net-(R1-1)`. Gotcha: local nets are `/NAME`; tests that only need a named net
-  use global labels. Problems are `Problem {message, objects, pos}`.
+- **Schematic** (`connectivity`): union-find over pins, wire ends, labels, junctions,
+  entry wire ends (`Node::Entry`) and sheet pins. Coinciding points connect; an end
+  inside a wire is a T connection; crossings need a junction. Same-named labels join:
+  local and hierarchical ones on their sheet, global and power ones on all sheets
+  (`LabelKind::is_global`). Net name as in KiCad: power, then global, then local, then
+  hierarchical as `{sheet path}/{name}` (`/A`, `/Power/A`; `Schematic::sheet_path`),
+  fewest `/` first, else `Net-(R1-1)`. "Several names" is reported per sheet only (a net
+  may be named differently on each side of a sheet pin). Gotcha: local nets are
+  `/NAME`; tests that only need a named net use global labels. Problems are `Problem
+  {message, objects, pos}`.
+- **Sheet pins** are derived, never stored: one per hierarchical label name of the
+  sub-sheet (`Schematic::hier_ports`, first label's shape), laid out by `Sheet::layout`
+  (inputs left, the rest right, by name, 2.54 mm from the top; the drawn rectangle grows
+  downwards past the stored `size` to fit). On the parent they connect like component
+  pins (`Net::sheet_pins`) and join the sub-sheet's labels of their name. ERC: unwired
+  sheet pins, hierarchical labels on the root sheet, bus-named pins. The view redraws a
+  sheet's symbol when a hierarchical label on it changes (`apply_objects`); pins are
+  drawn as the label glyph with `LabelShape::reversed`.
   Junction dots and unconnected-pin rings are drawn automatically.
 - **Buses:** a bus only groups signals; bus wires and entries never join nets, and a wire
   or pin touching a bus is a problem. Bus names follow KiCad (`D[0..7]`, `{SDA SCL}`,
@@ -275,14 +285,13 @@ Things decided to do later, by area. Remove an entry when it's done; add what a 
 defers.
 
 **Schematic**
-- Sheet pins (next): derived from the sub-sheet's hierarchical labels (inputs left,
-  others right, by name; the symbol grows to fit), connecting like component pins, with
-  ERC. Until then hierarchical labels join like local ones on their sheet. Reused KiCad
-  sheets get duplicated on import (no reuse here).
+- KiCad import/export of hierarchical schematics: reused KiCad sheets get duplicated on
+  import (no reuse here); stored sheet pin positions would be recomputed.
 - GPU scenes of closed sheet canvases stay allocated until the app quits
   (`CanvasResources::scenes` is never pruned).
 - After sheets: re-parenting sheets, moving objects between sheets, hierarchical bus
-  pins.
+  pins (bus-named hierarchical labels are drawn as pins but don't connect), ERC of pin
+  directions across sheet pins.
 - KiCad's "unfold bus".
 - ERC (pin type checks).
 - Wire posture that flips automatically with the cursor.

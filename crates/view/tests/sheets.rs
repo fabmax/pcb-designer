@@ -1,9 +1,9 @@
 //! One view per schematic sheet: each draws only its own sheet's objects.
 
 use editor_core::Command;
-use model::{ObjectId, Point};
+use model::{Angle, LabelKind, LabelShape, ObjectId, Point};
 use view::demo::demo_project;
-use view::{Document, ViewId};
+use view::{Document, View, ViewId};
 
 #[test]
 fn each_sheet_view_draws_its_own_objects() {
@@ -40,4 +40,37 @@ fn each_sheet_view_draws_its_own_objects() {
     doc.redo();
     assert_eq!(doc.sheet_views().count(), before + 1);
     assert!(doc.view(root).index.bounds(ObjectId::Sheet(sub)).is_some());
+}
+
+#[test]
+fn hierarchical_labels_redraw_the_sheet_symbol() {
+    let mut doc = Document::new(demo_project());
+    let root = doc.root();
+    let s = &doc.project().schematic;
+    let sub = s.sheets.iter().find(|sh| !sh.is_root()).unwrap().id;
+    let bounds = |doc: &Document| doc.view(root).index.bounds(ObjectId::Sheet(sub)).unwrap();
+    let before = bounds(&doc);
+    // Pins that don't fit: the symbol grows.
+    for i in 0..10 {
+        doc.execute(Command::AddLabel {
+            sheet: Some(sub),
+            pos: Point::mm(100.0, i as f64 * 2.54),
+            name: format!("A{i}"),
+            kind: LabelKind::Hierarchical,
+            shape: LabelShape::Input,
+            rotation: Angle::ZERO,
+        })
+        .unwrap();
+    }
+    let grown = bounds(&doc);
+    assert!(grown.min.y < before.min.y, "{grown:?} {before:?}");
+    doc.update_connectivity(false);
+    let mut fresh = View::new(root, doc.project());
+    fresh.set_connectivity(doc.connectivity());
+    assert_eq!(fresh.index.bounds(ObjectId::Sheet(sub)), Some(grown));
+    assert_eq!(fresh.scene.instance_count(), doc.view(root).scene.instance_count());
+    for _ in 0..10 {
+        doc.undo();
+    }
+    assert_eq!(bounds(&doc), before);
 }

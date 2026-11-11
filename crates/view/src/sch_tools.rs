@@ -337,8 +337,8 @@ pub fn wire_path(a: Point, b: Point, vertical_first: bool) -> Vec<Point> {
     vec![a, corner, b]
 }
 
-/// Is `p` a connection point on `sheet`: a pin, wire end or wire interior, label, junction
-/// or a bus entry's wire end?
+/// Is `p` a connection point on `sheet`: a pin, sheet pin, wire end or wire interior,
+/// label, junction or a bus entry's wire end?
 pub fn connects(project: &Project, conn: &Connectivity, sheet: Id, p: Point) -> bool {
     let s = &project.schematic;
     let pin_here = |symbol: Id| s.symbols.get(symbol).is_some_and(|i| i.sheet == sheet);
@@ -347,6 +347,7 @@ pub fn connects(project: &Project, conn: &Connectivity, sheet: Id, p: Point) -> 
         || s.junctions.iter().any(|j| j.sheet == sheet && j.pos == p)
         || s.bus_entries.iter().any(|e| e.sheet == sheet && e.wire_end() == p)
         || conn.nets.iter().any(|n| n.pins.iter().any(|pin| pin.pos == p && pin_here(pin.symbol)))
+        || s.children(sheet).any(|c| s.sheet_symbol(c.id).is_some_and(|(_, pins)| pins.iter().any(|pin| pin.pos == p)))
 }
 
 /// Is `p` on a bus on `sheet`: a bus wire's end or interior, or a bus entry's bus end?

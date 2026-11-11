@@ -10,9 +10,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::geom::{Angle, Point, Rect, Size, Text, Transform};
 use crate::id::Id;
-use crate::library::has_id;
+use crate::library::{has_id, natural_cmp};
 use crate::object::ObjectId;
 use crate::store::Store;
+use crate::units::Coord;
 
 /// A schematic sheet, as in KiCad: the root sheet, or a sub-sheet placed exactly once on
 /// its parent as a sheet symbol (a rectangle; its pins come from the sub-sheet's
@@ -40,10 +41,49 @@ impl Sheet {
         self.parent.is_none()
     }
 
-    /// The sheet symbol's rectangle on the parent sheet.
+    /// The sheet symbol's rectangle on the parent sheet, as stored (see [`Sheet::layout`]
+    /// for the one drawn).
     pub fn rect(&self) -> Rect {
         Rect::from_points(self.pos, self.pos + Point::new(self.size.w, self.size.h))
     }
+
+    /// The symbol and its pins for the sheet's hierarchical labels (`ports`, from
+    /// [`Schematic::hier_ports`]): inputs on the left, the others on the right, each side
+    /// in name order, one [`SHEET_PIN_PITCH`] apart from the top. The symbol grows
+    /// downwards when they don't fit.
+    pub fn layout(&self, ports: &[(&str, LabelShape)]) -> (Rect, Vec<SheetPin>) {
+        let mut left: Vec<&(&str, LabelShape)> = ports.iter().filter(|p| p.1 == LabelShape::Input).collect();
+        let mut right: Vec<&(&str, LabelShape)> = ports.iter().filter(|p| p.1 != LabelShape::Input).collect();
+        left.sort_by(|a, b| natural_cmp(a.0, b.0));
+        right.sort_by(|a, b| natural_cmp(a.0, b.0));
+        let rows = left.len().max(right.len()) as Coord;
+        let top = self.pos.y + self.size.h;
+        let h = self.size.h.max((rows + 1) * SHEET_PIN_PITCH);
+        let r = Rect::from_points(Point::new(self.pos.x, top - h), Point::new(self.pos.x + self.size.w, top));
+        let mut pins = Vec::with_capacity(ports.len());
+        for (side, right) in [(left, false), (right, true)] {
+            for (i, &&(name, shape)) in side.iter().enumerate() {
+                let x = if right { r.max.x } else { r.min.x };
+                let pos = Point::new(x, top - (i as Coord + 1) * SHEET_PIN_PITCH);
+                pins.push(SheetPin { name: name.to_string(), shape, pos, right });
+            }
+        }
+        (r, pins)
+    }
+}
+
+/// Distance between sheet pins, and from the symbol's top edge to the first one.
+pub const SHEET_PIN_PITCH: Coord = 2_540_000;
+
+/// A pin of a sheet symbol: where a hierarchical label of the sheet connects on the
+/// parent sheet. Derived, not stored ([`Sheet::layout`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SheetPin {
+    pub name: String,
+    pub shape: LabelShape,
+    pub pos: Point,
+    /// On the right edge (else the left).
+    pub right: bool,
 }
 
 /// A part used in the design. Its footprint on the board follows automatically.
@@ -239,6 +279,16 @@ impl LabelShape {
         }
     }
 
+    /// The shape seen from the other side: a sheet pin for an input label is an output
+    /// of the parent sheet's circuit, drawn pointing into the sheet.
+    pub fn reversed(self) -> LabelShape {
+        match self {
+            LabelShape::Input => LabelShape::Output,
+            LabelShape::Output => LabelShape::Input,
+            other => other,
+        }
+    }
+
     /// Which ends of the outline are pointed: (at the connection point, away from it).
     pub fn points(self) -> (bool, bool) {
         match self {
@@ -346,6 +396,24 @@ impl Schematic {
             at = self.sheets.get(parent);
         }
         names.iter().rev().map(|n| format!("/{n}")).collect()
+    }
+
+    /// The hierarchical labels of `sheet` as ports of its symbol: one per name, with the
+    /// first label's shape.
+    pub fn hier_ports(&self, sheet: Id) -> Vec<(&str, LabelShape)> {
+        let mut out: Vec<(&str, LabelShape)> = Vec::new();
+        for l in self.labels.iter().filter(|l| l.sheet == sheet && l.kind == LabelKind::Hierarchical) {
+            if !out.iter().any(|p| p.0 == l.name) {
+                out.push((l.name.as_str(), l.shape));
+            }
+        }
+        out
+    }
+
+    /// [`Sheet::layout`] of a sheet's symbol with its ports.
+    pub fn sheet_symbol(&self, sheet: Id) -> Option<(Rect, Vec<SheetPin>)> {
+        let s = self.sheets.get(sheet)?;
+        Some(s.layout(&self.hier_ports(sheet)))
     }
 
     /// What is wrong with naming a sheet below `parent` `name` (`sheet`: the sheet being

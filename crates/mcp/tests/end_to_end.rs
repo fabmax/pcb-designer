@@ -204,7 +204,7 @@ async fn agent_session() {
     assert_eq!(r.is_error, Some(true));
     assert!(text(&r).contains("command 2 of 2 failed"), "{}", text(&r));
     let project = ok_json(call("get_project", Value::Null).await);
-    assert_eq!(project["counts"]["wire"], 10, "first command was rolled back");
+    assert_eq!(project["counts"]["wire"], 11, "first command was rolled back");
 
     // Select, screenshot, undo.
     let sym = info["symbols"][0]["symbol"]["id"].clone();
