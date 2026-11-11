@@ -20,6 +20,8 @@ pub enum SchTool {
     Junction,
     /// Place parts (see [`SchPlacer::placing`]).
     Place,
+    /// Place the symbol of a new sheet (see [`SchPlacer::place_sheet`]).
+    Sheet,
 }
 
 impl SchTool {
@@ -44,6 +46,7 @@ impl SchTool {
             SchTool::Power => "Power",
             SchTool::Junction => "Junction",
             SchTool::Place => "Place",
+            SchTool::Sheet => "Sheet",
         }
     }
 
@@ -59,6 +62,7 @@ impl SchTool {
             SchTool::Label | SchTool::Power => "Click to place · R rotate · Esc done",
             SchTool::Junction => "Click to place a junction · Esc done",
             SchTool::Place => "Click to place · R rotate · X mirror · Esc done",
+            SchTool::Sheet => "Click to place the sheet's top left corner · Esc cancels",
         }
     }
 }
@@ -126,14 +130,19 @@ pub enum SchGhost {
     },
     /// The cursor is on a connection point (a wire would end there).
     Target(Point),
+    /// A new sheet's symbol.
+    Sheet {
+        rect: Rect,
+        name: String,
+    },
 }
 
 /// A name the editor asks for after drawing (see [`SchPlacer::take_prompt`]). Answering
 /// adds a label ([`SchPrompt::label`]).
 #[derive(Clone, Debug, PartialEq)]
 pub enum SchPrompt {
-    /// A new bus has no name; its label goes to `pos`.
-    BusName { pos: Point, rotation: Angle },
+    /// A new bus has no name; its label goes to `pos` on `sheet`.
+    BusName { sheet: Id, pos: Point, rotation: Angle },
     /// An unnamed net leaves bus `bus` through an entry; its label goes to `pos`.
     EntryNet {
         bus: String,
@@ -141,6 +150,7 @@ pub enum SchPrompt {
         /// elsewhere: a signal leaving the bus and arriving somewhere has two).
         members: Vec<String>,
         uses: Vec<usize>,
+        sheet: Id,
         pos: Point,
         rotation: Angle,
     },
@@ -163,9 +173,9 @@ impl SchPrompt {
     /// The command adding the label `name`.
     pub fn label(&self, name: &str) -> Result<Command, String> {
         self.check(name)?;
-        let (SchPrompt::BusName { pos, rotation } | SchPrompt::EntryNet { pos, rotation, .. }) = self;
+        let (SchPrompt::BusName { sheet, pos, rotation } | SchPrompt::EntryNet { sheet, pos, rotation, .. }) = self;
         Ok(Command::AddLabel {
-            sheet: None,
+            sheet: Some(*sheet),
             pos: *pos,
             name: name.trim().to_string(),
             kind: LabelKind::Local,
@@ -213,7 +223,7 @@ fn prompt_for(project: &Project, conn: &Connectivity, finished: &[ObjectId], gri
             mid
         };
         let on = snapped == w.a || snapped == w.b || on_segment_inside(snapped, w.a, w.b);
-        return Some(SchPrompt::BusName { pos: if on { snapped } else { mid }, rotation });
+        return Some(SchPrompt::BusName { sheet: w.sheet, pos: if on { snapped } else { mid }, rotation });
     }
 
     // An unnamed net now reaching a bus entry: offer the bus's members.
@@ -255,6 +265,7 @@ fn prompt_for(project: &Project, conn: &Connectivity, finished: &[ObjectId], gri
                 bus: bus.name.clone(),
                 members: bus.members.clone(),
                 uses,
+                sheet: entry.sheet,
                 pos,
                 rotation,
             });
@@ -279,8 +290,13 @@ pub struct Placed {
 #[derive(Clone, Debug)]
 pub struct SchPlacer {
     tool: SchTool,
+    /// The sheet the tool works on (`None`: the root sheet). The app sets it to the sheet
+    /// of the view the pointer is in.
+    pub sheet: Option<Id>,
     pub settings: SchSettings,
     pub placing: Option<Placing>,
+    /// Name of the sheet placed by [`SchTool::Sheet`].
+    pub new_sheet: Option<String>,
     /// Start of the wire segment being drawn.
     start: Option<Point>,
     /// Wires or bus wires of the chain being drawn.
@@ -298,8 +314,10 @@ impl Default for SchPlacer {
     fn default() -> Self {
         SchPlacer {
             tool: SchTool::Select,
+            sheet: None,
             settings: SchSettings::default(),
             placing: None,
+            new_sheet: None,
             start: None,
             chain: Vec::new(),
             finished: Vec::new(),
@@ -319,29 +337,30 @@ pub fn wire_path(a: Point, b: Point, vertical_first: bool) -> Vec<Point> {
     vec![a, corner, b]
 }
 
-/// Is `p` a connection point: a pin, wire end or wire interior, label, junction or a bus
-/// entry's wire end?
-pub fn connects(project: &Project, conn: &Connectivity, p: Point) -> bool {
+/// Is `p` a connection point on `sheet`: a pin, wire end or wire interior, label, junction
+/// or a bus entry's wire end?
+pub fn connects(project: &Project, conn: &Connectivity, sheet: Id, p: Point) -> bool {
     let s = &project.schematic;
-    s.wires.iter().any(|w| w.a == p || w.b == p || on_segment_inside(p, w.a, w.b))
-        || s.labels.iter().any(|l| l.pos == p)
-        || s.junctions.iter().any(|j| j.pos == p)
-        || s.bus_entries.iter().any(|e| e.wire_end() == p)
-        || conn.nets.iter().any(|n| n.pins.iter().any(|pin| pin.pos == p))
+    let pin_here = |symbol: Id| s.symbols.get(symbol).is_some_and(|i| i.sheet == sheet);
+    s.wires.iter().any(|w| w.sheet == sheet && (w.a == p || w.b == p || on_segment_inside(p, w.a, w.b)))
+        || s.labels.iter().any(|l| l.sheet == sheet && l.pos == p)
+        || s.junctions.iter().any(|j| j.sheet == sheet && j.pos == p)
+        || s.bus_entries.iter().any(|e| e.sheet == sheet && e.wire_end() == p)
+        || conn.nets.iter().any(|n| n.pins.iter().any(|pin| pin.pos == p && pin_here(pin.symbol)))
 }
 
-/// Is `p` on a bus: a bus wire's end or interior, or a bus entry's bus end?
-pub fn on_bus(project: &Project, p: Point) -> bool {
+/// Is `p` on a bus on `sheet`: a bus wire's end or interior, or a bus entry's bus end?
+pub fn on_bus(project: &Project, sheet: Id, p: Point) -> bool {
     let s = &project.schematic;
-    s.bus_wires.iter().any(|w| w.a == p || w.b == p || on_segment_inside(p, w.a, w.b))
-        || s.bus_entries.iter().any(|e| e.pos == p)
+    s.bus_wires.iter().any(|w| w.sheet == sheet && (w.a == p || w.b == p || on_segment_inside(p, w.a, w.b)))
+        || s.bus_entries.iter().any(|e| e.sheet == sheet && e.pos == p)
 }
 
 impl Document {
-    /// Is `p` a connection point of the schematic (see [`connects`])?
-    pub fn connects(&mut self, p: Point) -> bool {
+    /// Is `p` a connection point on `sheet` (see [`connects`])?
+    pub fn connects(&mut self, sheet: Id, p: Point) -> bool {
         self.update_connectivity(false);
-        connects(self.project(), self.connectivity(), p)
+        connects(self.project(), self.connectivity(), sheet, p)
     }
 }
 
@@ -366,6 +385,9 @@ impl SchPlacer {
         if tool != SchTool::Place {
             self.placing = None;
         }
+        if tool != SchTool::Sheet {
+            self.new_sheet = None;
+        }
         if matches!(tool, SchTool::Label | SchTool::Power | SchTool::Place) {
             self.settings.rotation = Angle::ZERO;
             self.settings.mirror = false;
@@ -376,6 +398,31 @@ impl SchPlacer {
     pub fn place(&mut self, part: Id) {
         self.set_tool(SchTool::Place);
         self.placing = Some(Placing { part, component: None, unit: 0 });
+    }
+
+    /// Start placing the symbol of a new sheet named `name` on [`Self::sheet`]. One click
+    /// adds the sheet ([`Command::AddSheet`]); the tool then returns to select.
+    pub fn place_sheet(&mut self, name: String) {
+        self.set_tool(SchTool::Sheet);
+        self.new_sheet = Some(name);
+    }
+
+    /// Work on `sheet` from now on; a wire being drawn on another sheet ends. Returns the
+    /// sheet worked on before if it changed: the app clears the preview in its view.
+    pub fn set_sheet(&mut self, sheet: Id) -> Option<Id> {
+        if self.sheet == Some(sheet) {
+            return None;
+        }
+        self.end_chain();
+        self.cursor = None;
+        self.on_target = false;
+        self.shown.clear();
+        self.sheet.replace(sheet)
+    }
+
+    /// The sheet the tool works on.
+    pub fn sheet_in(&self, project: &Project) -> Id {
+        self.sheet.or(project.schematic.root_sheet()).unwrap_or(Id::from_u128(0))
     }
 
     pub fn rotate(&mut self) {
@@ -414,9 +461,10 @@ impl SchPlacer {
     pub fn hover(&mut self, doc: &mut Document, p: Option<Point>) {
         if p != self.cursor {
             self.cursor = p;
+            let sheet = self.sheet_in(doc.project());
             self.on_target = match self.tool {
-                SchTool::Wire => p.is_some_and(|p| doc.connects(p)),
-                SchTool::Bus | SchTool::BusEntry => p.is_some_and(|p| on_bus(doc.project(), p)),
+                SchTool::Wire => p.is_some_and(|p| doc.connects(sheet, p)),
+                SchTool::Bus | SchTool::BusEntry => p.is_some_and(|p| on_bus(doc.project(), sheet, p)),
                 _ => false,
             };
         }
@@ -425,6 +473,7 @@ impl SchPlacer {
     /// A click at the snapped point `p`.
     pub fn click(&mut self, doc: &mut Document, p: Point) -> Result<Placed, String> {
         self.cursor = Some(p);
+        let sheet = self.sheet_in(doc.project());
         let s = &self.settings;
         let mut placed = Placed::default();
         let command = match self.tool {
@@ -440,10 +489,10 @@ impl SchPlacer {
                     placed.finished = true;
                     return Ok(placed);
                 }
-                let ends = doc.connects(p);
+                let ends = doc.connects(sheet, p);
                 self.start = if ends { None } else { Some(p) };
                 placed.finished = ends;
-                Command::AddWire { sheet: None, points: wire_path(start, p, s.vertical_first) }
+                Command::AddWire { sheet: Some(sheet), points: wire_path(start, p, s.vertical_first) }
             }
             SchTool::Bus => {
                 let Some(start) = self.start else {
@@ -455,14 +504,14 @@ impl SchPlacer {
                     placed.finished = true;
                     return Ok(placed);
                 }
-                let ends = on_bus(doc.project(), p);
+                let ends = on_bus(doc.project(), sheet, p);
                 self.start = if ends { None } else { Some(p) };
                 placed.finished = ends;
-                Command::AddBus { sheet: None, points: wire_path(start, p, s.vertical_first) }
+                Command::AddBus { sheet: Some(sheet), points: wire_path(start, p, s.vertical_first) }
             }
-            SchTool::BusEntry => Command::AddBusEntry { sheet: None, pos: p, dir: s.entry },
+            SchTool::BusEntry => Command::AddBusEntry { sheet: Some(sheet), pos: p, dir: s.entry },
             SchTool::Label => Command::AddLabel {
-                sheet: None,
+                sheet: Some(sheet),
                 pos: p,
                 name: s.label.clone(),
                 kind: s.label_kind,
@@ -470,21 +519,27 @@ impl SchPlacer {
                 rotation: s.rotation,
             },
             SchTool::Power => Command::AddLabel {
-                sheet: None,
+                sheet: Some(sheet),
                 pos: p,
                 name: s.power.clone(),
                 kind: LabelKind::Power,
                 shape: LabelShape::default(),
                 rotation: s.rotation,
             },
-            SchTool::Junction => Command::AddJunction { sheet: None, pos: p },
+            SchTool::Junction => Command::AddJunction { sheet: Some(sheet), pos: p },
+            SchTool::Sheet => {
+                let Some(name) = self.new_sheet.clone() else { return Ok(placed) };
+                // The cursor is the top left corner (y points up).
+                let pos = Point::new(p.x, p.y - Sheet::SIZE.h);
+                Command::AddSheet { parent: Some(sheet), name, pos, size: None }
+            }
             SchTool::Place => {
                 let Some(pl) = self.placing else { return Ok(placed) };
                 match pl.component {
                     None => Command::PlacePart {
                         part: pl.part,
                         variant: None,
-                        sheet: None,
+                        sheet: Some(sheet),
                         pos: p,
                         rotation: s.rotation,
                         mirror: s.mirror,
@@ -494,7 +549,7 @@ impl SchPlacer {
                     Some(component) => Command::PlaceUnit {
                         component,
                         unit: pl.unit,
-                        sheet: None,
+                        sheet: Some(sheet),
                         pos: p,
                         rotation: s.rotation,
                         mirror: s.mirror,
@@ -515,6 +570,7 @@ impl SchPlacer {
             SchTool::BusEntry => self.finished.extend(placed.objects.iter().copied()),
             SchTool::Label => self.settings.label = increment_name(&self.settings.label),
             SchTool::Place => self.advance_unit(doc.project(), &placed.objects),
+            SchTool::Sheet => self.set_tool(SchTool::Select),
             _ => {}
         }
         Ok(placed)
@@ -606,6 +662,14 @@ impl SchPlacer {
                 vec![SchGhost::Label(NetLabel { id, sheet, pos: p, name, kind, shape, rotation: s.rotation })]
             }
             SchTool::Junction => vec![SchGhost::Junction(p)],
+            SchTool::Sheet => self
+                .new_sheet
+                .iter()
+                .map(|name| SchGhost::Sheet {
+                    rect: Rect::from_points(Point::new(p.x, p.y - Sheet::SIZE.h), Point::new(p.x + Sheet::SIZE.w, p.y)),
+                    name: name.clone(),
+                })
+                .collect(),
             SchTool::Place => self
                 .placing
                 .map(|pl| SchGhost::Symbol {

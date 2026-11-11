@@ -44,6 +44,9 @@ pub struct Palette {
     pub sch_global_label: Color,
     pub sch_hier_label: Color,
     pub sch_power: Color,
+    /// Sheet symbols: outline (and name), fill.
+    pub sch_sheet: Color,
+    pub sch_sheet_fill: Color,
     pub sch_text: Color,
     pub sch_junction: Color,
     /// Bus wires and bus entries.
@@ -102,6 +105,8 @@ pub static DARK: Palette = Palette {
     sch_global_label: Color::rgb(0xf0, 0xa0, 0x60),
     sch_hier_label: Color::rgb(0xd0, 0xb0, 0x40),
     sch_power: Color::rgb(0xe0, 0x80, 0x80),
+    sch_sheet: Color::rgb(0xb0, 0x90, 0xe0),
+    sch_sheet_fill: Color::rgba(0xb0, 0x90, 0xe0, 0x18),
     sch_text: Color::rgb(0x9f, 0xb4, 0xff),
     sch_junction: Color::rgb(0x5f, 0xd3, 0xa0),
     sch_bus: Color::rgb(0x7c, 0x8a, 0xff),
@@ -156,6 +161,8 @@ pub static LIGHT: Palette = Palette {
     sch_global_label: Color::rgb(0xb0, 0x40, 0x00),
     sch_hier_label: Color::rgb(0x70, 0x50, 0x10),
     sch_power: Color::rgb(0xa0, 0x20, 0x20),
+    sch_sheet: Color::rgb(0x6a, 0x3a, 0xa0),
+    sch_sheet_fill: Color::rgba(0xf3, 0xee, 0xfb, 0xff),
     sch_text: Color::rgb(0x1a, 0x3a, 0xb0),
     sch_junction: Color::rgb(0x0f, 0x7a, 0x4a),
     sch_bus: Color::rgb(0x22, 0x30, 0xa0),

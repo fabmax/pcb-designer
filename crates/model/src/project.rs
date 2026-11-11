@@ -72,6 +72,7 @@ impl Project {
                 }
             }
         }
+        issues.extend(sch.sheet_issues());
         let sheet_refs = sch
             .wires
             .iter()

@@ -222,6 +222,36 @@ async fn agent_session() {
     let window = call("screenshot", json!({ "target": "window" })).await;
     assert_eq!(window.is_error, Some(true), "headless host has no window");
 
+    // Sheets: add one by parent path, draw on it by name, address it by path.
+    let r = ok_json(
+        call(
+            "execute",
+            json!({ "commands": [
+                { "command": "add_sheet", "parent": "/", "name": "Power", "pos": [100_000_000, 0] },
+                { "command": "add_wire", "sheet": "Power", "points": [[0, 0], [5_080_000, 0]] }
+            ]}),
+        )
+        .await,
+    );
+    let wire = r["changes"]["inserted"].as_array().unwrap().iter().find(|i| i["type"] == "wire").unwrap().clone();
+    let project = ok_json(call("get_project", Value::Null).await);
+    let paths: Vec<&str> = project["sheets"].as_array().unwrap().iter().map(|s| s["path"].as_str().unwrap()).collect();
+    assert!(paths.contains(&"/Power"), "{paths:?}");
+    let r = call("set_selection", json!({ "view": "schematic", "ids": [wire] })).await;
+    assert_eq!(r.is_error, Some(true), "the wire is not on the root sheet");
+    assert!(text(&r).contains("/Power"), "{}", text(&r));
+    let sel = ok_json(call("set_selection", json!({ "view": "schematic", "sheet": "/Power", "ids": [wire] })).await);
+    assert_eq!(sel["selected"], 1);
+    let got = ok_json(call("get_selection", json!({ "view": "schematic", "sheet": "Power" })).await);
+    assert_eq!(got.as_array().unwrap().len(), 1);
+    let shot =
+        call("screenshot", json!({ "target": "schematic", "sheet": "/Power", "width": 200, "height": 200 })).await;
+    assert!(matches!(shot.content.first(), Some(ContentBlock::Image(_))), "{shot:?}");
+    let r = call("screenshot", json!({ "target": "schematic", "sheet": "Nope" })).await;
+    assert_eq!(r.is_error, Some(true));
+    assert!(text(&r).contains("no sheet"), "{}", text(&r));
+    ok_json(call("undo", Value::Null).await);
+
     let r = ok_json(call("undo", Value::Null).await);
     assert_eq!(r["undone"], "Place part");
 

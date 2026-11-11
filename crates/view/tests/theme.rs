@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use render::scene::LayerData;
 use view::demo::demo_project;
 use view::style::{self, Theme};
-use view::{Document, View, ViewKind};
+use view::{Document, View, ViewId};
 
 /// Instance colors per layer (order-independent), excluding empty slots.
 fn colors(view: &View) -> Vec<BTreeMap<[u8; 4], usize>> {
@@ -31,18 +31,19 @@ fn colors(view: &View) -> Vec<BTreeMap<[u8; 4], usize>> {
 fn restyle_matches_a_fresh_build() {
     let mut doc = Document::new(demo_project());
     doc.run_drc();
-    let dark: Vec<_> = [ViewKind::Schematic, ViewKind::Board].map(|k| colors(doc.view(k))).into();
+    let views = [doc.root(), ViewId::Board];
+    let dark: Vec<_> = views.map(|k| colors(doc.view(k))).into();
 
     style::set_theme(Theme::Light);
     doc.restyle();
     let fresh = Document::new(doc.project().clone());
-    for (i, k) in [ViewKind::Schematic, ViewKind::Board].into_iter().enumerate() {
+    for (i, k) in views.into_iter().enumerate() {
         let restyled = colors(doc.view(k));
         assert_ne!(restyled, dark[i], "{k:?} changed colors");
         // The fresh document has no DRC markers: compare everything else.
         let mut expected = colors(fresh.view(k));
         let mut got = restyled.clone();
-        if k == ViewKind::Board {
+        if k == ViewId::Board {
             let marker = style::pal().drc_marker.0;
             for (a, b) in got.iter_mut().zip(expected.iter_mut()) {
                 a.remove(&marker);
@@ -55,5 +56,5 @@ fn restyle_matches_a_fresh_build() {
 
     style::set_theme(Theme::Dark);
     doc.restyle();
-    assert_eq!(colors(doc.view(ViewKind::Schematic)), dark[0]);
+    assert_eq!(colors(doc.view(doc.root())), dark[0]);
 }

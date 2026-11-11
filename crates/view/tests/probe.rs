@@ -5,7 +5,7 @@ use editor_core::Command;
 use model::*;
 use view::demo::demo_project;
 use view::probe::cross_probe;
-use view::{Document, ViewKind};
+use view::{Document, ViewId, ViewKind};
 
 fn component(doc: &Document, refdes: &str) -> Id {
     doc.project().schematic.component_by_refdes(refdes).unwrap().id
@@ -49,10 +49,18 @@ fn nets_probe_between_wires_and_tracks() {
     // Highlights reach the views.
     doc.highlight_nets(&p.nets);
     assert_eq!(doc.board.highlighted_nets(), p.nets.as_slice());
-    let before = doc.schematic.scene.instance_count();
-    let (project, view) = doc.project_and_view(ViewKind::Schematic);
-    view.set_probe(project, &p.objects);
-    assert!(doc.schematic.scene.instance_count() > before);
+    // The wire is on the Indicator sheet: its view shows the probe, the root's doesn't.
+    let sheet = ViewId::Sheet(doc.project().schematic.wires.get(wire).unwrap().sheet);
+    assert_ne!(sheet, doc.root());
+    let counts = |doc: &Document| [doc.view(sheet).scene.instance_count(), doc.schematic().scene.instance_count()];
+    let before = counts(&doc);
+    let (project, views) = doc.project_and_views();
+    for view in views.filter(|v| v.kind == ViewKind::Schematic) {
+        view.set_probe(project, &p.objects);
+    }
+    let after = counts(&doc);
+    assert!(after[0] > before[0]);
+    assert_eq!(after[1], before[1]);
 }
 
 #[test]
@@ -70,7 +78,7 @@ fn board_view_stays_consistent_through_schematic_edits() {
     doc.undo();
     doc.redo();
     doc.update_connectivity(false);
-    let mut fresh = view::View::new(ViewKind::Board, doc.project());
+    let mut fresh = view::View::new(ViewId::Board, doc.project());
     fresh.set_copper(doc.project(), doc.copper());
     assert_eq!(doc.board.scene.instance_count(), fresh.scene.instance_count());
     assert_eq!(doc.board.index.len(), fresh.index.len());

@@ -8,17 +8,20 @@ use editor_core::copper::BoardConnectivity;
 use editor_core::drc::{self, Violation};
 use editor_core::{ChangeSet, Command, CommandError, Editor};
 use model::io::{FileError, load_project, save_project};
-use model::{Coord, ObjectId, Point, Project, Rect};
+use model::{Coord, Id, ObjectId, ObjectKind, Point, Project, Rect};
 
 use crate::interaction::{Edit, Target, reference_point};
-use crate::view::{View, ViewKind};
+use crate::view::{View, ViewId, ViewKind};
 
 pub struct Document {
     editor: Editor,
     /// Project folder; `None` until saved.
     pub path: Option<PathBuf>,
-    pub schematic: View,
+    /// One view per schematic sheet (in the project's sheet order).
+    sheets: Vec<View>,
     pub board: View,
+    /// Stands in for a sheet that doesn't exist (any more): draws nothing.
+    no_sheet: View,
     /// Bumped on every model change, so UI caches can tell when to refresh.
     pub revision: u64,
     connectivity: Connectivity,
@@ -54,13 +57,15 @@ pub struct DrcReport {
 
 impl Document {
     pub fn new(project: Project) -> Self {
-        let schematic = View::new(ViewKind::Schematic, &project);
-        let board = View::new(ViewKind::Board, &project);
+        let sheets = project.schematic.sheets.ids().map(|s| View::new(ViewId::Sheet(s), &project)).collect();
+        let board = View::new(ViewId::Board, &project);
+        let no_sheet = View::new(ViewId::Sheet(Id::from_u128(0)), &project);
         let mut doc = Document {
             editor: Editor::new(project),
             path: None,
-            schematic,
+            sheets,
             board,
+            no_sheet,
             revision: 0,
             connectivity: Connectivity::default(),
             connectivity_stale: true,
@@ -127,13 +132,15 @@ impl Document {
     /// [`crate::style::set_theme`]).
     pub fn restyle(&mut self) {
         let project = self.editor.project();
-        for view in [&mut self.schematic, &mut self.board] {
+        for view in self.sheets.iter_mut().chain([&mut self.board]) {
             let probed = view.probed().to_vec();
             view.rebuild(project);
             view.set_probe(project, &probed);
         }
         self.stale_library.clear();
-        self.schematic.set_connectivity(&self.connectivity);
+        for view in &mut self.sheets {
+            view.set_connectivity(&self.connectivity);
+        }
         self.board.set_copper(project, &self.copper);
     }
 
@@ -165,7 +172,9 @@ impl Document {
             self.connectivity_time = t.elapsed();
             self.connectivity_stale = false;
             self.copper_stale = true;
-            self.schematic.set_connectivity(&self.connectivity);
+            for view in &mut self.sheets {
+                view.set_connectivity(&self.connectivity);
+            }
             done = true;
         }
         if self.copper_stale && !self.connectivity_stale && !slow(self.copper_time) {
@@ -210,27 +219,48 @@ impl Document {
         &self.editor
     }
 
-    pub fn view(&self, kind: ViewKind) -> &View {
-        match kind {
-            ViewKind::Schematic => &self.schematic,
-            ViewKind::Board => &self.board,
+    /// The view of the root sheet.
+    pub fn root(&self) -> ViewId {
+        ViewId::root(self.project())
+    }
+
+    /// The root sheet's view.
+    pub fn schematic(&self) -> &View {
+        self.view(self.root())
+    }
+
+    /// The views of all sheets.
+    pub fn sheet_views(&self) -> impl Iterator<Item = &View> {
+        self.sheets.iter()
+    }
+
+    /// A sheet's view or the board. A sheet that doesn't exist gets an empty view.
+    pub fn view(&self, id: ViewId) -> &View {
+        match id {
+            ViewId::Board => &self.board,
+            ViewId::Sheet(_) => self.sheets.iter().find(|v| v.id == id).unwrap_or(&self.no_sheet),
         }
     }
 
-    pub fn view_mut(&mut self, kind: ViewKind) -> &mut View {
-        match kind {
-            ViewKind::Schematic => &mut self.schematic,
-            ViewKind::Board => &mut self.board,
+    pub fn view_mut(&mut self, id: ViewId) -> &mut View {
+        match id {
+            ViewId::Board => &mut self.board,
+            ViewId::Sheet(_) => self.sheets.iter_mut().find(|v| v.id == id).unwrap_or(&mut self.no_sheet),
         }
     }
 
     /// The project and one view, borrowed together.
-    pub fn project_and_view(&mut self, kind: ViewKind) -> (&Project, &mut View) {
-        let view = match kind {
-            ViewKind::Schematic => &mut self.schematic,
-            ViewKind::Board => &mut self.board,
+    pub fn project_and_view(&mut self, id: ViewId) -> (&Project, &mut View) {
+        let view = match id {
+            ViewId::Board => &mut self.board,
+            ViewId::Sheet(_) => self.sheets.iter_mut().find(|v| v.id == id).unwrap_or(&mut self.no_sheet),
         };
         (self.editor.project(), view)
+    }
+
+    /// Every view (all sheets, then the board) with the project.
+    pub fn project_and_views(&mut self) -> (&Project, impl Iterator<Item = &mut View>) {
+        (self.editor.project(), self.sheets.iter_mut().chain([&mut self.board]))
     }
 
     pub fn is_modified(&self) -> bool {
@@ -292,9 +322,23 @@ impl Document {
         if changes.touches_board() || self.connectivity_stale {
             self.copper_stale = true;
         }
+        // Sheets that came or went (also by undo) get or lose their view.
         let project = self.editor.project();
-        self.schematic.apply_objects(project, changes);
-        self.board.apply_objects(project, changes);
+        for c in changes.changes.iter().filter(|c| c.id.kind() == ObjectKind::Sheet) {
+            let id = ViewId::Sheet(c.id.raw());
+            let exists = project.schematic.sheets.contains(c.id.raw());
+            let has_view = self.sheets.iter().any(|v| v.id == id);
+            if exists && !has_view {
+                let mut view = View::new(id, project);
+                view.set_connectivity(&self.connectivity);
+                self.sheets.push(view);
+            } else if !exists {
+                self.sheets.retain(|v| v.id != id);
+            }
+        }
+        for view in self.sheets.iter_mut().chain([&mut self.board]) {
+            view.apply_objects(project, changes);
+        }
         let library = crate::view::drawn_library_changes(changes);
         if self.busy && self.library_time > self.slow {
             for id in library {
@@ -310,8 +354,9 @@ impl Document {
     fn redraw_library_users(&mut self, library: &[ObjectId]) {
         let t = Instant::now();
         let project = self.editor.project();
-        self.schematic.redraw_users(project, library);
-        self.board.redraw_users(project, library);
+        for view in self.sheets.iter_mut().chain([&mut self.board]) {
+            view.redraw_users(project, library);
+        }
         self.library_time = t.elapsed();
     }
 }
@@ -319,12 +364,12 @@ impl Document {
 /// A schematic or board view of a document, as an interaction [`Target`].
 pub struct ProjectTarget<'a> {
     pub doc: &'a mut Document,
-    pub kind: ViewKind,
+    pub view: ViewId,
 }
 
 impl Document {
-    pub fn target(&mut self, kind: ViewKind) -> ProjectTarget<'_> {
-        ProjectTarget { doc: self, kind }
+    pub fn target(&mut self, view: ViewId) -> ProjectTarget<'_> {
+        ProjectTarget { doc: self, view }
     }
 }
 
@@ -338,19 +383,19 @@ impl Target for ProjectTarget<'_> {
     type Id = ObjectId;
 
     fn hit(&self, p: Point, tol: Coord) -> Option<ObjectId> {
-        self.doc.view(self.kind).hit(self.doc.project(), p, tol)
+        self.doc.view(self.view).hit(self.doc.project(), p, tol)
     }
 
     fn in_rect(&self, r: Rect, crossing: bool) -> Vec<ObjectId> {
-        self.doc.view(self.kind).select_rect(r, crossing)
+        self.doc.view(self.view).select_rect(r, crossing)
     }
 
     fn all(&self) -> Vec<ObjectId> {
-        self.doc.view(self.kind).index.ids()
+        self.doc.view(self.view).index.ids()
     }
 
     fn bounds(&self, id: ObjectId) -> Option<Rect> {
-        self.doc.view(self.kind).index.bounds(id)
+        self.doc.view(self.view).index.bounds(id)
     }
 
     fn exists(&self, id: ObjectId) -> bool {
@@ -368,13 +413,13 @@ impl Target for ProjectTarget<'_> {
     fn edit(&mut self, edit: Edit<ObjectId>, group: Option<u64>) -> Result<Option<String>, String> {
         let is_fp = |id: &ObjectId| matches!(id, ObjectId::Footprint(_));
         // Wires stay attached to what moves in the schematic.
-        let sch = self.kind == ViewKind::Schematic;
+        let sch = self.view.kind() == ViewKind::Schematic;
         match edit {
             Edit::Move { ids, delta } => self.run(Command::Move { ids, delta, keep_connected: sch }, group)?,
             Edit::Rotate { ids, center, angle } => {
                 self.run(Command::Rotate { ids, center, angle, keep_connected: sch }, group)?
             }
-            Edit::Mirror { ids, axis_x } | Edit::Flip { ids, axis_x } => match self.kind {
+            Edit::Mirror { ids, axis_x } | Edit::Flip { ids, axis_x } => match self.view.kind() {
                 ViewKind::Schematic => self.run(Command::Mirror { ids, axis_x, keep_connected: true }, group)?,
                 ViewKind::Board => {
                     let ids: Vec<ObjectId> = ids.into_iter().filter(is_fp).collect();
@@ -406,7 +451,7 @@ impl Target for ProjectTarget<'_> {
     }
 
     fn highlight(&mut self, selection: &[ObjectId], hover: Option<ObjectId>) {
-        let (project, view) = self.doc.project_and_view(self.kind);
+        let (project, view) = self.doc.project_and_view(self.view);
         view.set_highlight(project, selection, hover);
     }
 }

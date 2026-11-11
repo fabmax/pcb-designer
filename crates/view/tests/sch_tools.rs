@@ -194,7 +194,8 @@ fn new_buses_and_signals_leaving_them_ask_for_a_name() {
     assert_eq!(t.take_prompt(&mut doc, grid), None, "still drawing");
     assert!(!t.escape(), "Esc ends the chain");
     let prompt = t.take_prompt(&mut doc, grid).expect("asks for the bus name");
-    assert_eq!(prompt, SchPrompt::BusName { pos: p(0.0, 11.43), rotation: Angle::DEG90 });
+    let sheet = doc.project().schematic.root_sheet().unwrap();
+    assert_eq!(prompt, SchPrompt::BusName { sheet, pos: p(0.0, 11.43), rotation: Angle::DEG90 });
     assert_eq!(t.take_prompt(&mut doc, grid), None, "asked once");
     assert!(prompt.label("D0").is_err(), "not a bus name");
     doc.execute(prompt.label(" D[0..3] ").unwrap()).unwrap();
@@ -231,7 +232,7 @@ fn new_buses_and_signals_leaving_them_ask_for_a_name() {
     t.click(&mut doc, pin1).unwrap();
     assert!(t.click(&mut doc, p(2.54, 7.62)).unwrap().finished);
     let prompt = t.take_prompt(&mut doc, grid).expect("asks for the signal");
-    let SchPrompt::EntryNet { bus, members, uses, pos, rotation } = &prompt else { panic!("{prompt:?}") };
+    let SchPrompt::EntryNet { bus, members, uses, pos, rotation, .. } = &prompt else { panic!("{prompt:?}") };
     assert_eq!((bus.as_str(), members.len(), uses.as_slice()), ("D[0..3]", 4, &[0, 0, 0, 0][..]));
     assert_eq!((*pos, *rotation), (p(5.08, 7.62), Angle::ZERO), "on the wire, next to the entry");
     doc.execute(prompt.label("D1").unwrap()).unwrap();

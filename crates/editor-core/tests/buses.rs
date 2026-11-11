@@ -98,7 +98,7 @@ fn touching_bus_wires_form_one_bus_named_by_its_labels() {
     let i2c = c.bus_of(ObjectId::BusWire(other[0])).unwrap();
     assert_eq!(i2c.members, ["I2C.SDA", "I2C.SCL"]);
     // The T-joint gets a dot; bus labels make no nets.
-    assert_eq!(c.dots, vec![(ed.project().schematic.first_sheet().unwrap(), P(10.16, 0.0))]);
+    assert_eq!(c.dots, vec![(ed.project().schematic.root_sheet().unwrap(), P(10.16, 0.0))]);
     assert!(c.nets.is_empty(), "{:?}", c.nets);
     assert!(c.problems.is_empty(), "{:?}", messages(&c));
 }

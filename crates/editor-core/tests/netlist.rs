@@ -420,8 +420,9 @@ fn units_of_a_dual_opamp_are_separate_symbols() {
 #[test]
 fn label_scopes_and_net_names_follow_kicad() {
     let mut s = Sch::new();
-    let sub = Id::new();
-    s.ed.execute(Command::Insert { objects: vec![Object::Sheet(Sheet { id: sub, name: "Power".into() })] }).unwrap();
+    let cmd = Command::AddSheet { parent: None, name: "Power".into(), pos: Point::mm(50.0, 0.0), size: None };
+    let changes = s.ed.execute(cmd).unwrap();
+    let sub = changes.ids().find_map(|id| if let ObjectId::Sheet(s) = id { Some(s) } else { None }).unwrap();
     let net_at = |s: &Sch, x: f64| s.conn().net_of(ObjectId::Label(label_at(s, x))).map(|n| n.name.clone());
 
     // Local labels: same sheet only, named by the sheet path.

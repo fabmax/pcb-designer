@@ -10,9 +10,9 @@ use mcp::{Call, Host, McpServer, Reply};
 use model::{Library, ObjectId};
 use render::offscreen::Offscreen;
 use serde_json::{Value, json};
-use view::{Document, ViewKind};
+use view::{Document, ViewId};
 
-use crate::app::Pane;
+use crate::app::Panes;
 use crate::kicad_import::KicadImport;
 
 pub const DEFAULT_PORT: u16 = 7340;
@@ -71,7 +71,7 @@ impl Agent {
         &mut self,
         ctx: &egui::Context,
         doc: &mut Document,
-        panes: &mut [Pane; 2],
+        panes: &mut Panes,
         libraries: &[&Library],
         kicad: &mut KicadImport,
     ) -> Vec<Job> {
@@ -94,7 +94,7 @@ impl Agent {
 struct AppHost<'a> {
     ctx: &'a egui::Context,
     doc: &'a mut Document,
-    panes: &'a mut [Pane; 2],
+    panes: &'a mut Panes,
     libraries: &'a [&'a Library],
     offscreen: &'a mut Option<Offscreen>,
     kicad: &'a mut KicadImport,
@@ -110,16 +110,16 @@ impl Host for AppHost<'_> {
         self.libraries.to_vec()
     }
 
-    fn selection(&self, view: ViewKind) -> Vec<ObjectId> {
-        self.panes[view as usize].it.selection.clone()
+    fn selection(&self, view: ViewId) -> Vec<ObjectId> {
+        self.panes.selection(view)
     }
 
-    fn set_selection(&mut self, view: ViewKind, ids: Vec<ObjectId>) {
-        self.panes[view as usize].it.set_selection(&mut self.doc.target(view), ids);
+    fn set_selection(&mut self, view: ViewId, ids: Vec<ObjectId>) {
+        self.panes.get(view).it.set_selection(&mut self.doc.target(view), ids);
     }
 
-    fn render_view(&mut self, view: ViewKind, fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String> {
-        let canvas = &self.panes[view as usize].canvas;
+    fn render_view(&mut self, view: ViewId, fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String> {
+        let canvas = &self.panes.get(view).canvas;
         // The user's camera, scaled so the image shows the same region as the canvas.
         let camera = (!fit).then(|| {
             let mut cam = canvas.camera;

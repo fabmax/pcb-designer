@@ -375,6 +375,7 @@ pub fn reference_point(project: &Project, id: ObjectId) -> Option<Point> {
     let s = &project.schematic;
     let b = &project.board;
     match id {
+        ObjectId::Sheet(i) => s.sheets.get(i).map(|o| o.pos),
         ObjectId::Symbol(i) => s.symbols.get(i).map(|o| o.pos),
         ObjectId::Wire(i) => s.wires.get(i).map(|o| o.a),
         ObjectId::BusWire(i) => s.bus_wires.get(i).map(|o| o.a),

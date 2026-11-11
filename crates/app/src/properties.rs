@@ -104,6 +104,37 @@ impl Properties {
         match object {
             Object::Symbol(s) => self.symbol(ui, cx, s),
             Object::Footprint(f) => self.footprint(ui, cx, f),
+            Object::Sheet(mut sh) => {
+                let path = cx.doc.project().schematic.display_path(sh.id);
+                heading(ui, "Sheet", &path);
+                grid(ui, |ui| {
+                    label(ui, "Name");
+                    if let Some(name) = self.text(ui, id, "name", &sh.name) {
+                        sh.name = name.trim().to_string();
+                        self.update(cx, Object::Sheet(sh.clone()), false);
+                    }
+                    ui.end_row();
+                    if !sh.is_root() {
+                        label(ui, "Width");
+                        if let Some(w) = self.length(ui, sh.size.w, 2.54) {
+                            sh.size.w = w;
+                            self.update(cx, Object::Sheet(sh.clone()), true);
+                        }
+                        ui.end_row();
+                        label(ui, "Height");
+                        if let Some(h) = self.length(ui, sh.size.h, 2.54) {
+                            sh.size.h = h;
+                            self.update(cx, Object::Sheet(sh.clone()), true);
+                        }
+                        ui.end_row();
+                        row(ui, "Position", fmt_point(sh.pos));
+                    }
+                    let s = &cx.doc.project().schematic;
+                    let symbols = s.symbols.iter().filter(|y| y.sheet == sh.id).count();
+                    row(ui, "Symbols", symbols.to_string());
+                    row(ui, "Sub-sheets", s.children(sh.id).count().to_string());
+                });
+            }
             Object::Wire(w) => {
                 heading(ui, "Wire", "");
                 grid(ui, |ui| {

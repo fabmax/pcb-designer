@@ -7,7 +7,7 @@ use view::demo::demo_project;
 #[test]
 fn every_object_kind_round_trips() {
     let mut p = demo_project();
-    let sheet = p.schematic.first_sheet().unwrap();
+    let sheet = p.schematic.root_sheet().unwrap();
     p.put(Object::Junction(Junction { id: Id::new(), sheet, pos: Point::mm(1.0, 2.0) }), None);
     p.put(Object::BusWire(BusWire { id: Id::new(), sheet, a: Point::mm(0.0, 0.0), b: Point::mm(0.0, 5.08) }), None);
     p.put(

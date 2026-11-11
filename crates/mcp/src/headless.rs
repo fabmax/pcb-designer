@@ -16,7 +16,7 @@ use render::gpu::Background;
 use render::offscreen::Offscreen;
 use serde_json::Value;
 use view::project_libs::{self, MissingLibrary};
-use view::{Document, LibraryDoc, ViewKind};
+use view::{Document, LibraryDoc, ViewId, ViewKind};
 
 use crate::host::{
     Host, KicadImport, Reply, Responder, kicad_download_reply, kicad_import_reply, kicad_request, render_png,
@@ -35,7 +35,7 @@ pub struct HeadlessHost {
     pub kicad_paths: Vec<PathBuf>,
     pub kicad_source: Source,
     catalog: Option<Catalog>,
-    selection: [Vec<ObjectId>; 2],
+    selection: std::collections::HashMap<ViewId, Vec<ObjectId>>,
     offscreen: Option<Offscreen>,
 }
 
@@ -121,18 +121,19 @@ impl Host for HeadlessHost {
         self.libraries.iter().map(LibraryDoc::library).collect()
     }
 
-    fn selection(&self, view: ViewKind) -> Vec<ObjectId> {
-        self.selection[view as usize].clone()
+    fn selection(&self, view: ViewId) -> Vec<ObjectId> {
+        self.selection.get(&view).cloned().unwrap_or_default()
     }
 
-    fn set_selection(&mut self, view: ViewKind, ids: Vec<ObjectId>) {
+    fn set_selection(&mut self, view: ViewId, ids: Vec<ObjectId>) {
         let (project, v) = self.doc.project_and_view(view);
         v.set_highlight(project, &ids, None);
-        self.selection[view as usize] = ids;
+        self.selection.insert(view, ids);
     }
 
-    fn render_view(&mut self, view: ViewKind, _fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String> {
-        render_png(&mut self.offscreen, &self.doc.view(view).scene, None, &background(view), width, height)
+    fn render_view(&mut self, view: ViewId, _fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String> {
+        let bg = background(view.kind());
+        render_png(&mut self.offscreen, &self.doc.view(view).scene, None, &bg, width, height)
     }
 
     fn kicad_search(&mut self, query: &str, footprints: bool, limit: usize) -> Result<Value, String> {

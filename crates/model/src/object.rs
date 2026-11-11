@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn take_and_put_restore_position() {
         let mut p = Project::new("t");
-        let sheet = p.schematic.first_sheet().unwrap();
+        let sheet = p.schematic.root_sheet().unwrap();
         let wires: Vec<Wire> =
             (0..3).map(|i| Wire { id: Id::new(), sheet, a: Point::new(i, 0), b: Point::new(i, 10) }).collect();
         for w in &wires {

@@ -1,7 +1,7 @@
 use editor_core::Command;
 use model::*;
 use view::demo::demo_project;
-use view::{Document, Interaction, KeyAction, PointerInput, ProjectTarget, ViewKind};
+use view::{Document, Interaction, KeyAction, PointerInput, ProjectTarget, ViewId};
 
 fn input(p: Point) -> PointerInput {
     PointerInput { world: Some(p), tolerance: mm(0.3), drag_threshold: mm(0.5), ..Default::default() }
@@ -29,16 +29,18 @@ fn click_selects_and_drag_is_one_undo_step() {
     let mut doc = Document::new(demo_project());
     let mut it = Interaction::new(mm(1.27));
     let r1 = symbol(&doc, "R1");
+    // R1 is on the demo's Indicator sheet.
+    let v = ViewId::Sheet(r1.sheet);
     let id = ObjectId::Symbol(r1.id);
 
-    press(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos);
+    press(&mut it, &mut doc.target(v), r1.pos);
     assert_eq!(it.selection, vec![id]);
     // Several intermediate positions, final one off-grid: the result snaps.
     for x in [1.0, 2.0, 3.0, 5.3] {
-        drag(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos + Point::mm(x, 0.0));
+        drag(&mut it, &mut doc.target(v), r1.pos + Point::mm(x, 0.0));
     }
     assert!(it.is_dragging());
-    release(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos + Point::mm(5.3, 0.0));
+    release(&mut it, &mut doc.target(v), r1.pos + Point::mm(5.3, 0.0));
     let moved = symbol(&doc, "R1");
     assert_eq!(moved.pos, r1.pos + Point::mm(5.08, 0.0));
 
@@ -49,9 +51,9 @@ fn click_selects_and_drag_is_one_undo_step() {
 
     // Without snapping the drag lands exactly where the pointer went.
     it.snap = false;
-    press(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos);
-    drag(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos + Point::mm(5.3, 0.0));
-    release(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos + Point::mm(5.3, 0.0));
+    press(&mut it, &mut doc.target(v), r1.pos);
+    drag(&mut it, &mut doc.target(v), r1.pos + Point::mm(5.3, 0.0));
+    release(&mut it, &mut doc.target(v), r1.pos + Point::mm(5.3, 0.0));
     assert_eq!(symbol(&doc, "R1").pos, r1.pos + Point::mm(5.3, 0.0));
     assert_eq!(it.snap(Point::mm(0.123, 0.0)), Point::mm(0.123, 0.0));
 }
@@ -61,11 +63,13 @@ fn escape_cancels_drag_including_rotation() {
     let mut doc = Document::new(demo_project());
     let mut it = Interaction::new(mm(1.27));
     let r1 = symbol(&doc, "R1");
-    press(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos);
-    drag(&mut it, &mut doc.target(ViewKind::Schematic), r1.pos + Point::mm(10.0, 0.0));
-    it.key(&mut doc.target(ViewKind::Schematic), KeyAction::Rotate);
+    // R1 is on the demo's Indicator sheet.
+    let v = ViewId::Sheet(r1.sheet);
+    press(&mut it, &mut doc.target(v), r1.pos);
+    drag(&mut it, &mut doc.target(v), r1.pos + Point::mm(10.0, 0.0));
+    it.key(&mut doc.target(v), KeyAction::Rotate);
     assert_ne!(symbol(&doc, "R1").rotation, r1.rotation);
-    it.key(&mut doc.target(ViewKind::Schematic), KeyAction::Escape);
+    it.key(&mut doc.target(v), KeyAction::Escape);
     assert_eq!(symbol(&doc, "R1"), r1);
     assert!(!doc.is_modified());
     assert!(!it.is_dragging());
@@ -76,26 +80,28 @@ fn box_select_inside_and_crossing() {
     let mut doc = Document::new(demo_project());
     let mut it = Interaction::new(mm(1.27));
     let r1 = symbol(&doc, "R1");
+    // R1 is on the demo's Indicator sheet.
+    let v = ViewId::Sheet(r1.sheet);
     // Empty area far away from everything, dragging left to right around R1 only.
     let a = r1.pos + Point::mm(-6.5, 6.0);
     let b = r1.pos + Point::mm(6.5, -6.0);
-    press(&mut it, &mut doc.target(ViewKind::Schematic), a);
-    drag(&mut it, &mut doc.target(ViewKind::Schematic), b);
+    press(&mut it, &mut doc.target(v), a);
+    drag(&mut it, &mut doc.target(v), b);
     assert!(it.box_rect().is_some_and(|(_, crossing)| !crossing));
-    release(&mut it, &mut doc.target(ViewKind::Schematic), b);
+    release(&mut it, &mut doc.target(v), b);
     assert!(it.selection.contains(&ObjectId::Symbol(r1.id)));
     let window = it.selection.len();
 
     // Crossing (right to left) selects at least as much.
-    press(&mut it, &mut doc.target(ViewKind::Schematic), b);
-    drag(&mut it, &mut doc.target(ViewKind::Schematic), a);
-    release(&mut it, &mut doc.target(ViewKind::Schematic), a);
+    press(&mut it, &mut doc.target(v), b);
+    drag(&mut it, &mut doc.target(v), a);
+    release(&mut it, &mut doc.target(v), a);
     assert!(it.selection.len() >= window);
 
     // Clicking empty space clears.
     let far = Point::mm(500.0, 500.0);
-    press(&mut it, &mut doc.target(ViewKind::Schematic), far);
-    release(&mut it, &mut doc.target(ViewKind::Schematic), far);
+    press(&mut it, &mut doc.target(v), far);
+    release(&mut it, &mut doc.target(v), far);
     assert!(it.selection.is_empty());
 }
 
@@ -108,15 +114,15 @@ fn locked_footprints_do_not_move_and_delete_explains() {
     locked.locked = true;
     doc.execute(editor_core::Command::Update { objects: vec![Object::Footprint(locked)] }).unwrap();
 
-    it.set_selection(&mut doc.target(ViewKind::Board), vec![ObjectId::Footprint(fp.id)]);
-    press(&mut it, &mut doc.target(ViewKind::Board), fp.pos);
-    drag(&mut it, &mut doc.target(ViewKind::Board), fp.pos + Point::mm(5.0, 0.0));
-    release(&mut it, &mut doc.target(ViewKind::Board), fp.pos + Point::mm(5.0, 0.0));
+    it.set_selection(&mut doc.target(ViewId::Board), vec![ObjectId::Footprint(fp.id)]);
+    press(&mut it, &mut doc.target(ViewId::Board), fp.pos);
+    drag(&mut it, &mut doc.target(ViewId::Board), fp.pos + Point::mm(5.0, 0.0));
+    release(&mut it, &mut doc.target(ViewId::Board), fp.pos + Point::mm(5.0, 0.0));
     assert_eq!(doc.project().board.footprints.get(fp.id).unwrap().pos, fp.pos);
     assert!(it.message.is_some());
 
-    it.set_selection(&mut doc.target(ViewKind::Board), vec![ObjectId::Footprint(fp.id)]);
-    it.key(&mut doc.target(ViewKind::Board), KeyAction::Delete);
+    it.set_selection(&mut doc.target(ViewId::Board), vec![ObjectId::Footprint(fp.id)]);
+    it.key(&mut doc.target(ViewId::Board), KeyAction::Delete);
     assert!(doc.project().board.footprints.contains(fp.id));
     assert!(it.message.as_deref().unwrap().contains("schematic"));
 }
@@ -125,17 +131,20 @@ fn locked_footprints_do_not_move_and_delete_explains() {
 fn incremental_views_match_rebuild() {
     let mut doc = Document::new(demo_project());
     let mut it = Interaction::new(mm(1.27));
-    it.key(&mut doc.target(ViewKind::Schematic), KeyAction::SelectAll);
-    it.key(&mut doc.target(ViewKind::Schematic), KeyAction::Rotate);
-    it.key(&mut doc.target(ViewKind::Schematic), KeyAction::Mirror);
+    it.key(&mut doc.target(doc.root()), KeyAction::SelectAll);
+    it.key(&mut doc.target(doc.root()), KeyAction::Rotate);
+    it.key(&mut doc.target(doc.root()), KeyAction::Mirror);
+    it.set_selection(&mut doc.target(doc.root()), vec![]);
     let r1 = symbol(&doc, "R1");
-    it.set_selection(&mut doc.target(ViewKind::Schematic), vec![ObjectId::Symbol(r1.id)]);
-    it.key(&mut doc.target(ViewKind::Schematic), KeyAction::Delete);
+    let v = ViewId::Sheet(r1.sheet);
+    it.set_selection(&mut doc.target(v), vec![ObjectId::Symbol(r1.id)]);
+    it.key(&mut doc.target(v), KeyAction::Delete);
     doc.undo();
-    it.set_selection(&mut doc.target(ViewKind::Schematic), vec![]);
+    it.set_selection(&mut doc.target(v), vec![]);
 
     doc.update_connectivity(false);
-    for kind in [ViewKind::Schematic, ViewKind::Board] {
+    let views: Vec<ViewId> = doc.sheet_views().map(|v| v.id).chain([ViewId::Board]).collect();
+    for kind in views {
         let mut fresh = view::View::new(kind, doc.project());
         fresh.set_connectivity(doc.connectivity());
         fresh.set_copper(doc.project(), doc.copper());
@@ -151,7 +160,12 @@ fn hit_prefers_wires_over_symbol_bodies() {
     let doc = Document::new(demo_project());
     let w = doc.project().schematic.wires.iter().next().unwrap().clone();
     let mid = Point::new((w.a.x + w.b.x) / 2, (w.a.y + w.b.y) / 2);
-    assert_eq!(doc.schematic.hit(doc.project(), mid, mm(0.2)), Some(ObjectId::Wire(w.id)));
+    let view = doc.view(ViewId::Sheet(w.sheet));
+    assert_eq!(view.hit(doc.project(), mid, mm(0.2)), Some(ObjectId::Wire(w.id)));
+    // Other sheets don't have it.
+    for other in doc.sheet_views().filter(|v| v.id != ViewId::Sheet(w.sheet)) {
+        assert_ne!(other.hit(doc.project(), mid, mm(0.2)), Some(ObjectId::Wire(w.id)));
+    }
 }
 
 #[test]
@@ -161,16 +175,16 @@ fn save_and_reopen_document() {
     let mut doc = Document::new(demo_project());
     assert!(doc.save().is_err(), "no path yet");
     let mut it = Interaction::new(mm(1.27));
-    it.key(&mut doc.target(ViewKind::Schematic), KeyAction::SelectAll);
-    it.key(&mut doc.target(ViewKind::Schematic), KeyAction::Rotate);
+    it.key(&mut doc.target(doc.root()), KeyAction::SelectAll);
+    it.key(&mut doc.target(doc.root()), KeyAction::Rotate);
     assert!(doc.is_modified());
     doc.save_as(&path).unwrap();
     assert!(!doc.is_modified());
     let reopened = Document::open(&path).unwrap();
     assert_eq!(reopened.project(), doc.project());
-    let mut fresh = view::View::new(ViewKind::Schematic, doc.project());
+    let mut fresh = view::View::new(doc.root(), doc.project());
     fresh.set_connectivity(reopened.connectivity());
-    assert_eq!(reopened.schematic.scene.instance_count(), fresh.scene.instance_count());
+    assert_eq!(reopened.schematic().scene.instance_count(), fresh.scene.instance_count());
 }
 
 /// Library edits redraw only the symbols and footprints drawn from them, and must leave
@@ -190,7 +204,8 @@ fn library_edits_redraw_their_users() {
 
     let matches_rebuild = |doc: &mut Document, step: &str| {
         doc.update_connectivity(false);
-        for kind in [ViewKind::Schematic, ViewKind::Board] {
+        let views: Vec<ViewId> = doc.sheet_views().map(|v| v.id).chain([ViewId::Board]).collect();
+        for kind in views {
             let mut fresh = view::View::new(kind, doc.project());
             fresh.set_connectivity(doc.connectivity());
             fresh.set_copper(doc.project(), doc.copper());
@@ -204,11 +219,11 @@ fn library_edits_redraw_their_users() {
     };
 
     // A line in the symbol: every resistor grows, nets stay as they are.
-    let before = doc.schematic.index.bounds(ObjectId::Symbol(r1.id)).unwrap();
+    let before = doc.view(ViewId::Sheet(r1.sheet)).index.bounds(ObjectId::Symbol(r1.id)).unwrap();
     sym.graphics.push(Shape::Line { a: Point::mm(0.0, 0.0), b: Point::mm(20.0, 0.0), width: mm(0.25) });
     doc.execute(Command::Update { objects: vec![Object::LibSymbol(sym)] }).unwrap();
     assert!(!doc.update_connectivity(false), "graphics don't change connectivity");
-    assert_ne!(doc.schematic.index.bounds(ObjectId::Symbol(r1.id)).unwrap(), before);
+    assert_ne!(doc.view(ViewId::Sheet(r1.sheet)).index.bounds(ObjectId::Symbol(r1.id)).unwrap(), before);
     matches_rebuild(&mut doc, "symbol line");
 
     // Moved pads: the footprints change, and so does the copper.
@@ -226,7 +241,7 @@ fn library_edits_redraw_their_users() {
 
     // Symbols show pad names, so a footprint redraws its symbols too.
     let fp_id = doc.project().library.footprint_of(c_part, c_variant).unwrap().id;
-    let users = doc.schematic.users_of(doc.project(), &[ObjectId::LibFootprint(fp_id)]);
+    let users = doc.view(ViewId::Sheet(r1.sheet)).users_of(doc.project(), &[ObjectId::LibFootprint(fp_id)]);
     assert!(users.contains(&ObjectId::Symbol(r1.id)));
     assert!(
         doc.board.users_of(doc.project(), &[ObjectId::LibFootprint(fp_id)]).contains(&ObjectId::Footprint(fp_inst))
@@ -244,7 +259,7 @@ fn slow_library_redraws_wait_for_the_drag() {
     let c = doc.project().schematic.components.get(r1.component).unwrap();
     let part = doc.project().library.parts.get(c.part).unwrap();
     let mut sym = doc.project().library.symbols.get(part.units[r1.unit as usize].symbol).unwrap().clone();
-    let bounds = |doc: &Document| doc.schematic.index.bounds(ObjectId::Symbol(r1.id)).unwrap();
+    let bounds = |doc: &Document| doc.view(ViewId::Sheet(r1.sheet)).index.bounds(ObjectId::Symbol(r1.id)).unwrap();
     let mut grow = |doc: &mut Document, x: f64| {
         sym.graphics.push(Shape::Line { a: Point::ZERO, b: Point::mm(x, 0.0), width: mm(0.25) });
         doc.execute_grouped(Command::Update { objects: vec![Object::LibSymbol(sym.clone())] }, Some(1)).unwrap();
@@ -260,6 +275,6 @@ fn slow_library_redraws_wait_for_the_drag() {
     assert_eq!(bounds(&doc), first, "waits for the drag");
     assert!(doc.update_connectivity(false));
     assert_ne!(bounds(&doc), first, "caught up");
-    let fresh = view::View::new(ViewKind::Schematic, doc.project());
+    let fresh = view::View::new(ViewId::Sheet(r1.sheet), doc.project());
     assert_eq!(fresh.index.bounds(ObjectId::Symbol(r1.id)), Some(bounds(&doc)));
 }

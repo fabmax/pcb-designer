@@ -1,6 +1,7 @@
 //! The Project panel, IntelliJ style: a tree of
 //!
-//! * the project: Schematic, PCB and the Project Library (the parts the design uses);
+//! * the project: the schematic (the root sheet, its sub-sheets below it), the PCB and the
+//!   Project Library (the parts the design uses);
 //! * the Built-in Library (read-only);
 //! * External Libraries: the project's library files, unsaved libraries, and files that
 //!   could not be loaded.
@@ -14,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use egui::{Color32, Key, Modifiers, RichText, Sense, Ui, vec2};
 use model::{Id, ObjectId};
-use view::ViewKind;
+use view::ViewId;
 use view::item::Item;
 use view::tree::{Node, Row, TreeEvent, TreeKey, TreeState};
 
@@ -39,7 +40,8 @@ pub enum Group {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum NodeId {
     Project,
-    Schematic,
+    /// A schematic sheet (the root sheet is the Schematic node).
+    Sheet(Id),
     Board,
     ExternalLibraries,
     /// `Owner::Project`: the Project Library.
@@ -83,7 +85,13 @@ pub type TreeNode = Node<NodeId, Info>;
 /// Something the user asked for in the tree; the app carries it out.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Act {
-    ShowView(ViewKind),
+    ShowView(ViewId),
+    /// Ask for a name, then place the new sheet's symbol on `parent` (`None`: the sheet
+    /// shown last).
+    NewSheet(Option<Id>),
+    RenameSheet(Id),
+    /// Delete a sheet with its contents (asking first if it has any).
+    DeleteSheet(Id),
     SaveProject,
     SaveProjectAs,
     Reveal(PathBuf),
@@ -121,7 +129,14 @@ pub fn key(owner: Owner) -> u64 {
     }
 }
 
-/// The + menu (header) and the External Libraries menu.
+/// The header's + menu.
+pub fn plus_menu() -> Vec<Entry> {
+    let mut out = vec![Entry::Act("New sheet…", Act::NewSheet(None)), Entry::Separator];
+    out.extend(add_menu());
+    out
+}
+
+/// The External Libraries menu.
 pub fn add_menu() -> Vec<Entry> {
     vec![
         Entry::Act("New library…", Act::NewLibrary),
@@ -158,8 +173,17 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
             out.push(A("Save project as…", Act::SaveProjectAs));
             reveal(&mut out);
         }
-        NodeId::Schematic => out.push(A("Open", Act::ShowView(ViewKind::Schematic))),
-        NodeId::Board => out.push(A("Open", Act::ShowView(ViewKind::Board))),
+        NodeId::Sheet(s) => {
+            out.push(A("Open", Act::ShowView(ViewId::Sheet(s))));
+            out.push(A("New sub-sheet…", Act::NewSheet(Some(s))));
+            // Sub-sheets (the root sheet is the schematic itself).
+            if info.editable {
+                out.push(Separator);
+                out.push(A("Rename…", Act::RenameSheet(s)));
+                out.push(A("Delete", Act::DeleteSheet(s)));
+            }
+        }
+        NodeId::Board => out.push(A("Open", Act::ShowView(ViewId::Board))),
         NodeId::ExternalLibraries => out = add_menu(),
         NodeId::Library(Owner::Project) => {
             out.push(A("Open", Act::OpenLibrary(PROJECT_LIB)));
@@ -241,8 +265,8 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
 /// What Enter and double-click do (`None`: expand or collapse).
 pub fn activate(id: NodeId, info: &Info) -> Option<Act> {
     match id {
-        NodeId::Schematic => Some(Act::ShowView(ViewKind::Schematic)),
-        NodeId::Board => Some(Act::ShowView(ViewKind::Board)),
+        NodeId::Sheet(s) => Some(Act::ShowView(ViewId::Sheet(s))),
+        NodeId::Board => Some(Act::ShowView(ViewId::Board)),
         NodeId::Library(owner) => Some(Act::OpenLibrary(key(owner))),
         NodeId::Missing(_) => info.path.clone().map(Act::Locate),
         NodeId::Item(owner, item) => Some(Act::OpenItem(key(owner), open_of(item))),
@@ -412,9 +436,14 @@ impl ProjectPanel {
     }
 
     /// Expand the project and External Libraries on first use.
-    pub fn expand_defaults(&mut self) {
+    /// At first: the project (with the root sheet's sub-sheets) and External Libraries
+    /// expanded.
+    pub fn expand_defaults(&mut self, root_sheet: Option<Id>) {
         if self.state.expanded.is_empty() && self.state.selected.is_none() {
             self.state.set_expanded(NodeId::Project, true);
+            if let Some(root) = root_sheet {
+                self.state.set_expanded(NodeId::Sheet(root), true);
+            }
             self.state.set_expanded(NodeId::ExternalLibraries, true);
         }
     }
@@ -437,10 +466,10 @@ impl ProjectPanel {
                 self.focus_search = true;
             }
         }
-        let plus = header_button(ui, Icon::Plus, "Add a library", false);
+        let plus = header_button(ui, Icon::Plus, "Add a sheet or a library", false);
         egui::Popup::menu(&plus).show(|ui| {
             ui.set_min_width(170.0);
-            act = menu_ui(ui, add_menu());
+            act = menu_ui(ui, plus_menu());
         });
         act
     }
@@ -627,7 +656,7 @@ impl ProjectPanel {
                 _ => None,
             })
         };
-        let delete = selected.and_then(|r| find(r, |a| matches!(a, Act::Delete(..))));
+        let delete = selected.and_then(|r| find(r, |a| matches!(a, Act::Delete(..) | Act::DeleteSheet(_))));
         if let Some(d) = delete
             && (pressed(ui, Key::Delete) || pressed(ui, Key::Backspace))
         {
@@ -838,7 +867,13 @@ mod tests {
         assert!(!a.iter().any(|a| matches!(a, Act::CopyToProject(..))));
         let lib = Info { editable: true, unused: 2, ..Default::default() };
         assert!(acts(menu(NodeId::Library(Owner::Project), &lib)).contains(&Act::RemoveUnused));
-        assert_eq!(activate(NodeId::Board, &Info::default()), Some(Act::ShowView(ViewKind::Board)));
+        assert_eq!(activate(NodeId::Board, &Info::default()), Some(Act::ShowView(ViewId::Board)));
+        // The root sheet can't be renamed or deleted; sub-sheets can.
+        let s = Id::new();
+        let root = acts(menu(NodeId::Sheet(s), &Info::default()));
+        assert!(root.contains(&Act::NewSheet(Some(s))) && !root.contains(&Act::DeleteSheet(s)));
+        let sub = acts(menu(NodeId::Sheet(s), &Info { editable: true, ..Default::default() }));
+        assert!(sub.contains(&Act::RenameSheet(s)) && sub.contains(&Act::DeleteSheet(s)));
         assert_eq!(activate(NodeId::Project, &Info::default()), None, "expands");
     }
 }
