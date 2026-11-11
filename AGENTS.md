@@ -36,7 +36,8 @@ Breaking changes are fine: the project is far from production. Rename or remove 
 ## Crates
 
 Dependency direction: `model` → `editor-core` → `view` → `mcp` → `app`. `render` is
-standalone, and `kicad` sits on `model` and `view`.
+standalone, `gerber` sits on `editor-core` and `render` (under `view`), and `kicad` sits on
+`model` and `view`.
 
 - `model`: pure data. Lengths are integer nanometres (`Coord`), every object has a UUID,
   and `Store` keeps insertion order so saved files diff well.
@@ -48,6 +49,7 @@ standalone, and `kicad` sits on `model` and `view`.
   palettes (`style.rs`). It's GUI-toolkit independent.
 - `mcp`: MCP tools (`server.rs`), and their execution against a `Host` (`host.rs`, with
   `describe` and `respond`). It also has the headless host and stdio mode.
+- `gerber`: Gerber X2 and Excellon export of the board (and the zip and manifest).
 - `kicad`: imports KiCad symbols and footprints.
 - `app`: the egui shell (binary `pcb-designer`). It holds tabs (egui_tiles), panels,
   menus, settings, keymap, chrome theme and floating tool bars.
@@ -115,4 +117,5 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
   - `ui-click` on menus is unreliable.
 - Without a window: `cargo run -p mcp --example render_board -- out.png [w h] [--light]
   [--schematic] [--show-layer "Top Solder Mask"]`.
+- Gerber files of the demo: `cargo run -p view --example export_demo -- DIR`.
 - Call a running app's MCP tool: `cargo run -p mcp --example mcp_call -- URL TOOL '{…}'`.

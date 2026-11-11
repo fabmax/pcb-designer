@@ -51,6 +51,8 @@ pub enum Request {
     Drc {
         limit: usize,
     },
+    /// Gerber and drill files into the project folder.
+    ExportGerber,
     /// Commands as JSON: `sheet` and `parent` may name a sheet (see [`resolve_sheets`]).
     Execute {
         commands: Vec<Value>,
@@ -158,6 +160,7 @@ impl Request {
             Request::Netlist => "read netlist".into(),
             Request::Routing => "read routing state".into(),
             Request::Drc { .. } => "run the design rule check".into(),
+            Request::ExportGerber => "export Gerber files".into(),
             Request::Execute { commands } => match &commands[..] {
                 [one] => one.get("command").and_then(Value::as_str).unwrap_or("command").replace('_', " "),
                 many => format!("{} commands", many.len()),
@@ -413,6 +416,20 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
                 "by_kind": by_kind,
                 "violations": &v[..v.len().min(limit)],
                 "truncated": v.len() > limit,
+            })
+        }
+        Request::ExportGerber => {
+            let export = host.document().export_gerber().map_err(|e| e.to_string())?;
+            let mut by_kind: std::collections::BTreeMap<&str, usize> = Default::default();
+            for x in &export.warnings {
+                *by_kind.entry(x.kind.label()).or_default() += 1;
+            }
+            json!({
+                "dir": export.dir,
+                "zip": export.dir.parent().map(|d| d.join(&export.manifest.zip)),
+                "files": export.manifest.files.iter().map(|f| json!({"name": f.name, "label": f.label})).collect::<Vec<_>>(),
+                "drc_violations": export.warnings.len(),
+                "drc_by_kind": by_kind,
             })
         }
         Request::KicadSearch { query, footprints, limit } => host.kicad_search(&query, footprints, limit)?,

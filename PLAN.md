@@ -121,6 +121,26 @@ and hierarchical sheets.
 - **Slow rebuilds wait:** when connectivity (or redrawing library users) took over 4 ms
   (`Document::slow`), it is deferred during a drag and caught up afterwards.
 
+## Gerber export (`gerber`)
+
+- `gerber::generate` writes one Gerber X2 file per layer (copper, mask, paste, silk,
+  outline; mm, format 4.6, so coordinates are nm) and Excellon drills (plated: TH pads
+  and vias; non-plated), named like KiCad's (`Demo-F_Cu.gbr`, `-PTH.drl`). `export`
+  replaces `<project>/output/gerber/`, writes `output/<name>-gerber.zip` (own minimal
+  zip writer, fixed dates) and `export.json` (`Manifest`: files, labels and
+  `design_hash` of board + schematic + library, for "outdated"). `Document::export_gerber`
+  refills, runs DRC (violations are warnings) and needs a saved project and an outline.
+  Used by the menu (⇧⌘E), MCP `export_gerber` and `pcb-designer export-gerber DIR`.
+- Pads are flashes; rectangles and ovals at quarter turns use R/O with swapped sides,
+  everything else the `RoundRect` macro with the corner centres pre-rotated (readers
+  such as PyGerber ignore the rotation of circle primitives). Polygon pads and zone
+  fills are regions; holes are bridged into the outline with cut-in lines
+  (`bridge_holes`), never drawn clear, as clear polarity would also erase other copper
+  inside the hole. Mask files are written with negative polarity (drawn = opening).
+- Text is stroked from the stroke font and mirrored around its anchor on bottom layers
+  (the editor never mirrors text).
+- Checked against PyGerber renders (in a throwaway venv); no files are committed.
+
 ## Rendering (`render`)
 
 - Instanced primitives in one 32-byte instance: capsule, circle/ring, rounded rect, arc,
@@ -306,9 +326,9 @@ defers.
 - KiCad project import (the bus model already maps one to one).
 
 **Board**
-- Gerber export: the writer (Gerber 2) and the reader and read-only viewer (Gerber 3),
-  as agreed. Afterwards: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel
-  file extensions, a measure tool in the viewer.
+- Gerber reader and read-only viewer with the Outputs tree node (Gerber 3). Afterwards: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel
+  file extensions, a measure tool in the viewer, `%TO` object attributes (nets, pads),
+  silkscreen clipped at mask openings, mirrored bottom text in the editor.
 - Per-pad mask and paste overrides; mask/paste openings in the footprint editor.
 - Clearance checking while routing; push-and-shove; dragging tracks that stay connected.
 - Blind and buried vias in the UI.

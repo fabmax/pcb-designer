@@ -8,6 +8,10 @@
 //!                     [--screenshot FILE.png [--frames N] [--select all|REFDES]]
 //!                     [--panel NAME]... [--script STEPS]
 //!        pcb-designer --mcp-stdio [PROJECT_DIR | --demo]
+//!        pcb-designer export-gerber PROJECT_DIR
+//!
+//! `export-gerber` writes the Gerber and drill files into `PROJECT_DIR/output/gerber/`
+//! without a window, listing design rule violations as warnings.
 //!
 //! `--mcp-stdio` runs without a window: an MCP server on stdin/stdout for agents. A
 //! project folder that doesn't exist yet becomes a new project saved there.
@@ -73,6 +77,17 @@ fn main() -> eframe::Result {
     let mut stdio = false;
     let mut startup_given = false;
     let mut args = std::env::args().skip(1);
+    if std::env::args().nth(1).as_deref() == Some("export-gerber") {
+        let Some(dir) = std::env::args().nth(2) else {
+            eprintln!("usage: pcb-designer export-gerber PROJECT_DIR");
+            std::process::exit(2);
+        };
+        if let Err(e) = export_gerber(dir.as_ref()) {
+            eprintln!("pcb-designer: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     while let Some(a) = args.next() {
         match a.as_str() {
             "--demo" => (opts.startup, startup_given) = (Startup::Demo, true),
@@ -152,6 +167,19 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native("PCB Designer", options, Box::new(move |cc| Ok(Box::new(app::PcbApp::new(cc, opts)))))
+}
+
+/// `export-gerber`: Gerber and drill files of a project, without a window.
+fn export_gerber(dir: &std::path::Path) -> Result<(), String> {
+    let mut doc = view::Document::open(dir).map_err(|e| format!("cannot open {}: {e}", dir.display()))?;
+    let export = doc.export_gerber().map_err(|e| e.to_string())?;
+    for v in &export.warnings {
+        eprintln!("warning: {}: {}", v.kind.label(), v.message);
+    }
+    for f in &export.manifest.files {
+        println!("{}", export.dir.join(&f.name).display());
+    }
+    Ok(())
 }
 
 /// Headless MCP server on stdin/stdout.

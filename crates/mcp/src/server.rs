@@ -468,6 +468,16 @@ impl PcbTools {
         self.call(Request::Drc { limit: p.limit.unwrap_or(200) }).await
     }
 
+    #[tool(description = "Export the board for manufacturing: Gerber X2 files (copper, solder \
+        mask, paste, silkscreen, board outline) and Excellon drill files (plated, non-plated) \
+        into <project folder>/output/gerber/, replacing the previous export, plus a zip next to \
+        that folder. Zones are refilled and the design rules checked first; violations are \
+        reported but don't stop the export. Fails without a board outline or when the project \
+        was never saved.")]
+    async fn export_gerber(&self) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::ExportGerber).await
+    }
+
     #[tool(description = "Execute editing commands (the same ones the GUI uses) as a single undo \
         step, all-or-nothing. Returns the changed object ids and the created objects.")]
     async fn execute(&self, Parameters(p): Parameters<ExecuteParams>) -> Result<CallToolResult, ErrorData> {

@@ -625,6 +625,27 @@ impl PcbApp {
         }
     }
 
+    /// Export the Gerber and drill files into the project folder (saving a new project
+    /// first). Design rule violations are reported in Messages but don't stop it.
+    fn export_gerber(&mut self) {
+        if self.project.lib.doc.path.is_none() && !self.save(false) {
+            return;
+        }
+        match self.project.lib.doc.export_gerber() {
+            Ok(export) => {
+                let files = export.manifest.files.len();
+                self.set_status(match export.warnings.len() {
+                    0 => format!("Exported {files} Gerber and drill files to {}", export.dir.display()),
+                    n => format!(
+                        "Exported {files} Gerber and drill files to {}, with {n} design rule violation(s) (see Messages)",
+                        export.dir.display()
+                    ),
+                });
+            }
+            Err(e) => self.set_status(format!("Gerber export failed: {e}")),
+        }
+    }
+
     // ------------------------------------------------------------------------------------
     // Libraries
 
@@ -1341,6 +1362,7 @@ impl PcbApp {
                 self.save(true);
                 return;
             }
+            Action::ExportGerber => return self.export_gerber(),
             Action::Undo => return self.undo(),
             Action::Redo => return self.redo(),
             _ if !view_keys => return,
@@ -1416,7 +1438,7 @@ impl PcbApp {
     /// Handle an action for a focused library. Returns false for project-level actions.
     fn lib_action(&mut self, key: u64, action: Action) -> bool {
         match action {
-            Action::New | Action::Open | Action::Settings => return false,
+            Action::New | Action::Open | Action::Settings | Action::ExportGerber => return false,
             Action::Save | Action::SaveAs => {
                 self.save_library(key, action == Action::SaveAs);
                 return true;
@@ -1442,7 +1464,9 @@ impl PcbApp {
             Action::ToolRect => tool_msg(l, Tool::Rect),
             Action::ToolCircle => tool_msg(l, Tool::Circle),
             Action::ToolText => tool_msg(l, Tool::Text),
-            Action::New | Action::Open | Action::Save | Action::SaveAs | Action::Settings => None,
+            Action::New | Action::Open | Action::Save | Action::SaveAs | Action::Settings | Action::ExportGerber => {
+                None
+            }
             Action::SchWire
             | Action::SchBus
             | Action::SchBusEntry

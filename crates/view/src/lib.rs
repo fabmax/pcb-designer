@@ -22,7 +22,8 @@ pub mod tools;
 pub mod tree;
 pub mod view;
 
-pub use document::{Document, DrcReport, ProjectTarget};
+pub use document::{Document, DrcReport, GerberExport, ProjectTarget};
+pub use gerber;
 pub use interaction::{Edit, Interaction, KeyAction, PointerInput, Target};
 pub use item::{Elem, Item, ItemTarget, ItemView};
 pub use library_doc::LibraryDoc;
