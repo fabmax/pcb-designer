@@ -4,8 +4,9 @@ PCB Designer: a schematic, PCB and part editor in Rust (egui + wgpu). Projects a
 of JSON files, and an MCP server lets agents edit the open project.
 
 - Requirements: [pcb-designer.md](pcb-designer.md).
-- Decisions, milestones and the notes from each change: [PLAN.md](PLAN.md). Read its
-  section on the area you're touching before changing a design decision.
+- Decisions, the design of each area with its gotchas, and the Later list:
+  [PLAN.md](PLAN.md). Read its section on the area you're touching before changing a
+  design decision.
 - User-facing usage (CLI, MCP setup, settings): [README.md](README.md).
 
 ## Workflow
@@ -19,8 +20,10 @@ Each change (a milestone or a refinement) runs through these steps:
    zero warnings, and `cargo fmt`.
 4. For anything visible, look at it in a real-window screenshot (see below): both themes,
    and `--side-by-side` when layout is involved.
-5. Append a note to PLAN.md, under the current milestone or refinement section. Say
-   what changed, why, and the gotchas a later change needs to know.
+5. Update PLAN.md. It is a reference, not a changelog (the commit message says what
+   changed). Update the section of the area you touched with the current design and the
+   gotchas a later change needs to know, keeping it short. Add what you defer to
+   **Later**, and remove what you finished from it.
 6. Commit with a message like `M9: copper zones …` or `GUI: floating icon tool bars …`.
    End it with the attribution trailer.
 7. `git checkout main && git merge --no-ff <branch>`, with a `Merge …` message. Then

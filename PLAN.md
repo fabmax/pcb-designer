@@ -1,1258 +1,316 @@
-# PCB Designer – Implementation Plan
+# PCB Designer – Plan and design notes
 
-Living document. Requirements are in [pcb-designer.md](pcb-designer.md).
+Requirements are in [pcb-designer.md](pcb-designer.md). This file holds the decisions,
+the current design of each area with the gotchas a change needs to know, and the list of
+things to do **later**. The detailed notes of every finished milestone (M0–M10 and the
+refinements up to 2026-11-10) are in git history: `git show 5574459:PLAN.md`.
+
+## Status
+
+Milestones 0–10 are done: performance spike, model + undo, canvas editing, MCP, part
+editor, KiCad import, schematic editor, PCB editor, sync edge cases + cross-probing,
+zones + DRC, themes + settings + headless MCP. After them: buses, KiCad library
+download, tool window bars, MCP library tools, the project tree with an editable Project
+Library, and macOS chrome (system menu bar, title strip, app bundle, app icon).
 
 ## Decisions
 
 | Topic | Decision |
 |---|---|
-| UI elements | **egui / eframe** with a custom dark theme; **egui_tiles** for docking/split panes |
-| Canvas rendering | **Custom wgpu renderer** embedded via egui paint callbacks |
-| Schematic → PCB sync | **Always live.** Validated in the milestone-0 performance spike; we revisit if it is too slow |
-| PCB → schematic | Never. PCB edits only change physical layout |
-| Library parts | **Copied into the project** when placed. Each copy remembers its source library, part id and content hash, so "update from library" can detect and pull changes |
-| Schematic scope v1 | One sheet, but the model holds `sheets: Vec<Sheet>`. Buses and multi-unit parts come later; the part model already has `units: Vec<Unit>` (only one unit is supported at first) |
-| Copper zones + DRC | In scope |
-| KiCad import | In scope (symbols `.kicad_sym`, footprints `.kicad_mod`) |
-| MCP interface | In scope (see below) |
-| Theme | Dark first |
-| Files | JSON (serde), pretty-printed, stable ordering, integer coordinates, `format`/`version` header. **No migrations until production use**: format changes may break older files (the mechanism, `model::io::MIGRATIONS`, exists but stays empty). **A project is a folder** (`<name>.pcbproj/` with `project.json`, `library.json`, `schematic.json`, `board.json`); a library is a single `*.pcblib` file |
-
-## Architecture (Cargo workspace)
-
-```
-crates/
-  model/        Pure data: units (i64 nm), geometry, Library/Symbol/Footprint/Part,
-                Schematic, Board, JSON I/O + format versioning. No GUI deps.
-  netlist/      Connectivity schematic → nets (incremental), ratsnest (per-net MST)
-  editor-core/  Commands (serializable), undo/redo, selection, tools as state machines,
-                query API. GUI-agnostic, testable headless.
-  render/       wgpu canvas renderer: camera, layers, instanced primitives,
-                offscreen render-to-PNG
-  view/         Model → scene drawing (incremental), spatial index + hit testing,
-                Document (editor + views), Interaction (selection/drag/box/keys).
-                GUI-toolkit independent and unit tested.
-  mcp/          MCP server exposing editor-core commands + queries
-  kicad-import/ S-expression parser + converters for KiCad symbols/footprints
-  app/          egui shell: docking, menus, panels, dialogs
-```
-
-The symbol editor is a small schematic editor and the footprint editor is a small PCB
-editor, so there is **one generic canvas editor framework** (camera, grid, snapping,
-selection, tools, undo) reused by all four editing surfaces.
-
-## Rendering
-
-- Internal coordinates: integer nanometers (i64). The GPU receives f32 values relative to
-  a chunk/camera origin, so precision does not suffer on large boards.
-- Primitives drawn as **instanced shapes with exact edges at any zoom (signed distance
-  fields)**: capsule (line/track with width), arc, circle/ring, rounded rect. Polygons
-  (zones, custom pads) are tessellated with lyon.
-- Text: **stroke (vector) font**, which turns into capsules. It reuses the same pipeline
-  and is directly usable for Gerber later.
-- Per-layer GPU buffers, updated only where something changed. Panning and zooming only
-  change a uniform. Small details (text, pad numbers) are hidden when zoomed far out.
-- Offscreen rendering to PNG, used for visual tests, the MCP screenshot tool and
-  development checks.
-
-## Live sync
-
-There is one in-memory `Project`. Each schematic command marks what it touched, which
-triggers this chain:
-
-1. An incremental connectivity update (union-find over pins, wires and labels).
-2. A recomputed set of affected nets.
-3. A board update:
-   - A new component spawns its footprint in a staging area next to the board.
-   - A removed component removes its footprint.
-   - A changed footprint variant swaps the footprint and keeps its position.
-4. A per-net ratsnest update for affected nets only.
-5. A GPU buffer update for touched items only.
-
-Tracks and vias whose net no longer matches are **flagged, not deleted**.
-Cross-probing: selecting a part in one editor highlights it in the other.
-
-Undo/redo uses one stack per project, so undoing a schematic change also reverts its
-effect on the board.
-
-## MCP interface
-
-- The running app hosts an **MCP server (Streamable HTTP on 127.0.0.1, opt-in via the
-  Tools menu or `--mcp`)** using the official Rust SDK (`rmcp`). Agents operate on the open project,
-  and the user watches the changes live.
-- A headless mode (`pcb-designer --mcp-stdio project.pcbproj`) serves agents without a
-  GUI (M10).
-- **Every MCP tool goes through the editor-core command API**, the same path as the GUI.
-  Undo, live sync and validation therefore work the same way for agents and humans.
-- Threading: the server runs on a tokio runtime. Requests travel over a channel to the app
-  thread, are applied between frames, and the reply is sent back. The server then calls
-  `request_repaint()`.
-- Tool groups:
-  - **Query:** project summary, components, nets, unrouted connections, DRC results.
-  - **Schematic edits:** place component, wire/connect pins, labels, set properties.
-  - **Board edits:** move/rotate footprints, tracks, vias, zones.
-  - **Libraries:** search parts, create parts, import KiCad files, update from library.
-  - **View:** render a region of the schematic or PCB to PNG.
-  - **File:** save.
-- The MCP foundation (server, screenshot, query, generic command passthrough) comes early,
-  because it also helps develop and test the editors. Each editor milestone then adds its
-  own tools.
-
-## Milestones
-
-| # | Milestone | Done when… |
-|---|---|---|
-| 0 | **Spikes.** Workspace, eframe + wgpu window, dark theme, docking, canvas with pan/zoom/grid. (a) Rendering performance test. (b) Live-sync performance test on a synthetic large project. Offscreen PNG rendering | ≥60 fps pan/zoom with ~10k footprints / 100k+ primitives. Schematic edit → nets → ratsnest → GPU buffers within one frame (<16 ms) at that size |
-| 1 | Core model, units, geometry, JSON save/load + versioning, command/undo framework, query API | Round-trip and undo tests pass |
-| 2 | Generic canvas editor framework: selection, move/rotate/mirror, snapping, property panel | Used by everything below |
-| 3 | MCP foundation: server in app, threading, screenshot, query, command passthrough | An agent can inspect the app and take screenshots |
-| 4 | **Part editor:** symbol editor, footprint editor, pin↔pad mapping UI, library bundles, update-from-library flow, small starter library | A part can be built from scratch and updated in a project |
-| 5 | **KiCad import** of symbols and footprints | Standard KiCad libraries import correctly |
-| 6 | **Schematic editor:** place parts, wires, junctions, labels, power symbols, connectivity | Correct netlist for sample circuits |
-| 7 | **PCB editor:** outline, layer stack (N layers, 2 by default), live footprint sync, ratsnest, manual routing (45°/90°), vias, net highlighting | A small board can be fully routed |
-| 8 | Sync edge cases (flagged tracks, swaps), cross-probing | Schematic edits update the PCB correctly in all cases |
-| 9 | **Copper zones** (fill with clearance, thermal reliefs) + **DRC** (clearance, unrouted, overlaps) | Zones fill correctly; DRC finds seeded errors |
-| 10 | UX polish, theming, headless MCP mode | An agent edits, checks and saves a project over stdio without a window; dark/light themes recolour everything and persist with key bindings and recent projects |
-
-**Later:** multi-sheet/hierarchical schematics (buses are done, see below), Gerber export,
-autoplacement, autorouting, simulation.
-
-## Milestone 0 results (2026-11-08, Apple M4, release build)
-
-Synthetic project: 10,000 components, 88k pins, 67k wires, 47k labels, 31.8k nets
-(largest: GND with 7,110 pins), 25k tracks, 5k vias → 2.5 M schematic and 0.5 M PCB
-render primitives.
-
-**Live sync** (`cargo run --release -p spike --bin sync_bench`), schematic edit → nets →
-footprints → ratsnest → scene diff:
-
-| | p50 | p95 | max |
-|---|---|---|---|
-| All edit kinds (600 random edits) | 2.5 ms | 2.9 ms | 3.6 ms |
-| Edits not touching GND | 0.01–0.2 ms | | |
-| GPU diff per edit | 0.005 ms | 0.11 ms | 0.46 ms (≤ 2.3 MB) |
-
-- Connectivity is incremental. Additions merge nets (smaller into larger). Removals run an
-  interleaved split search, so cost depends on the smaller side. Edits touching GND
-  dropped from 8 ms (re-flood) to about 0.2 ms.
-- The worst case is now the ratsnest of the 7k-pad GND net (Delaunay + Kruskal, about
-  2.3 ms). Options for later: incremental MST, or computing very large nets on a worker
-  thread.
-- **Conclusion: always-live sync works with a comfortable margin.**
-
-**Rendering** (`pcb-designer --components 10000 --no-vsync --animate`): both canvases
-animated at once (about 3 M primitives), 90–170 fps uncapped. There is no culling yet;
-fully zoomed-out views are the slowest. Possible improvements: per-chunk viewport culling
-and level of detail for tiny primitives.
-
-**Open items from the spike**
-- The spike's copper islands are known by construction. The real board needs geometric
-  copper connectivity (M7).
-- The placeholder stroke font needs replacing (moved to M10; it is readable enough until then).
-- Same-layer transparency (render each layer to a texture, then composite) is still open.
-
-## Milestone 1 design notes (2026-11-08)
-
-- **`model` crate**
-  - Integer-nanometer `Point`/`Size`, which serialize as `[x, y]`.
-  - `Angle` in degrees, normalized; multiples of 90° rotate exactly.
-  - `Transform` applies mirror, then rotation, then translation.
-  - `Shape` and stroke-font `Text`.
-  - Every object has a UUID `Id`.
-  - `Store<T>` is an insertion-ordered map, saved as a JSON array. Removing an object and
-    re-inserting it at its old index restores the order exactly.
-- **Library**
-  - `Symbol` pins have names. `Footprint` pads have numbers.
-  - `Part` = units (one symbol per unit) + variants (footprint + pad → `(unit, pin)`
-    mapping). A pin can have several pads.
-  - Embedded parts keep `source` provenance (library id, part id, content hash) for
-    "update from library".
-- **Schematic**
-  - Design-wide `Component`s (refdes, value, part, variant).
-  - Each unit is placed as a `SymbolInstance`. Every graphical object carries its sheet
-    id, so multi-sheet support only needs more sheets.
-- **Board**
-  - `FootprintInstance` stores only the placement of a component. The footprint is
-    derived from the component's variant, so swapping the variant needs no board edit.
-  - Layer ids: copper 0 (top) … 63 (bottom), technical layers from 100.
-- **`editor-core` crate**
-  - Serializable `Command`s (JSON with a `"command"` tag) are the only way to modify a
-    project. The same commands will back the GUI tools and MCP.
-  - Each command runs in a `Transaction` that records object-level before/after
-    snapshots. Commands are atomic: on error the transaction rolls back.
-  - Schematic → board sync runs inside the same transaction, so one undo step reverts
-    both. Undo/redo replays the change sets; tests check byte-identical files after
-    undo all / redo all.
-  - The returned `ChangeSet` tells consumers what changed (input for incremental
-    connectivity and render updates).
-- **Built-in starter library** (fixed ids): resistor (0603/0805), capacitor, LED
-  (pins A/K → pads 2/1), 1x4 header.
-- **Deferred:**
-  - Multi-unit placement (only unit 0 is placed).
-  - Flagging tracks whose net changed: needs board connectivity (M7).
-  - Performance of linear scans (refdes numbering, sync lookups): fine for now, revisit
-    with 10k-part projects.
-
-## Milestone 2 results (2026-11-08)
-
-- **`view` crate**
-  - `View`: draws the schematic or board into a render `Scene` and updates it per
-    `ChangeSet`. Component edits redraw their symbols/footprint; library edits rebuild.
-    Selection/hover overlays are separate scene items. An R*-tree over object bounds
-    does hit testing (thin objects beat bodies, smaller bodies beat larger ones) and box
-    selection.
-  - `Document`: editor + folder path + both views, kept in sync on execute/undo/redo.
-  - `Interaction`: click / shift / cmd selection, box select (left→right inside,
-    right→left crossing), hover, drag with grid snapping of the grabbed object's
-    reference point (one undo step per drag; R rotates while dragging; Esc cancels it),
-    rotate / mirror / flip / delete / select all. Locked footprints don't move;
-    deleting footprints is explained (they follow the schematic).
-  - Demo project and `stress_project(n)` generators.
-- **App** now edits real projects: File New / Open / Save / Save As (project folders),
-  unsaved-changes prompt (also on window close), undo/redo with labels, library panel
-  with Place, properties panel (refdes, value, footprint variant, position, rotation,
-  mirror, side, locked, track width/layer, via sizes, labels, zones, texts; grouped
-  undo for drags), per-view layer toggles and grid presets, status bar.
-  `pcb-designer [DIR | --demo | --new | --stress N]`.
-- **Performance** (`cargo run -p view --release --example edit_bench`, 10k components,
-  0.58 M primitives per view):
-  - Generate + build both views: 0.42 s.
-  - Dragging a symbol: 0.035 ms per frame (command + both views). Hit test: 0.2 µs.
-  - Rotate all 20k schematic objects: 73 ms (editor 7.5 ms after making in-place
-    updates O(1); it was 580 ms).
-  - Delete all (30k objects incl. footprints): 0.42 s. `Store` removals shift the index
-    map (O(n) each); revisit if bulk deletes matter.
-- **Panels** keep their width (scroll areas fill the panel instead of shrinking to their
-  content), so the canvases no longer jump when the selection changes.
-- **Key bindings** go through a `Keymap` (action → shortcuts, exact modifier matching,
-  JSON like `{"rotate": ["Space"]}` on top of the defaults, conflict detection). Menus
-  show the current bindings; Help → Keyboard shortcuts lists them.
-  `pcb-designer --keymap FILE.json` loads custom ones. A settings UI to edit and persist
-  them comes with M10.
-- **Deferred:** filled polygons in the renderer (zones/polygons draw as outlines),
-  zone fill display (M9), text editing on canvas, the spike-based benchmark app mode
-  (the `spike` crate is kept for `sync_bench`).
-
-## Milestone 3 results (2026-11-08)
-
-- **`mcp` crate:** rmcp 3.9 Streamable HTTP server on its own thread (tokio, 2 workers),
-  bound to 127.0.0.1. `Host` validation (loopback only, rmcp default) and Origin
-  validation (any browser Origin is rejected) are on; both are covered by a test.
-- **Bridge:** each tool call becomes a `Call` on a std channel and wakes the GUI
-  (`request_repaint`). The app answers queued calls between frames, but not during a
-  drag or box selection. Replies go back through a oneshot channel, and the tool times
-  out after 60 s (for example while a modal file dialog is open).
-- **`Host` trait:** what the tools need from the application (document, library,
-  selection per view, view rendering, window screenshot). It is implemented by the GUI
-  app and by `HeadlessHost` (tests now; headless mode in M10).
-- **Tools:** `get_project`, `list_library_parts`, `import_parts`, `list_objects`
-  (paginated), `get_objects`, `get_component` (pin/pad world positions,
-  pin↔pad map), `execute` (batch of editor commands, one undo step, all-or-nothing;
-  returns created objects), `undo`, `redo`, `get_selection`, `set_selection`,
-  `screenshot` (schematic/board via offscreen render, fit or the user's current view;
-  or the whole window via egui), `save_project`. Server instructions explain units,
-  workflow and the schematic↔board link.
-- **Schemas:** all model types and `Command` derive `JsonSchema`, so `execute`
-  advertises the full command schema (about 22 KB) to agents.
-- **Fixes found along the way:**
-  - `Object`/`ObjectId` JSON now use a `"type"` tag. With `"kind"`, labels (which have
-    their own `kind` field) produced duplicate keys. A test round-trips every object
-    kind.
-  - `Offscreen::render` no longer consumes the scene's incremental upload state
-    (`Scene::snapshot`).
-- **Verification:**
-  - End-to-end test with rmcp's HTTP client against a headless host: list tools, read,
-    place, failing batch rolls back, select, screenshot, undo.
-  - Driving the live GUI with the `mcp_call` example: batch edits appear instantly in
-    both views, window capture works.
-- **Next for MCP:** net/connectivity queries (M6/M7), DRC results (M9), library
-  tools (M4/M5), headless `--mcp-stdio` mode (M10), and possibly an activity log panel
-  listing agent edits.
-
-## Milestone 4 results (2026-11-08)
-
-- **Library documents:** a library file (`.pcblib`, JSON) is edited as an ordinary
-  `Document` whose project holds only the library (`view::LibraryDoc`). So symbol,
-  footprint and part edits are normal `insert`/`update`/`delete` commands with undo,
-  grouping and validation. Deleting a symbol or footprint that a part still uses is
-  refused. Save As names the library after the file. The starter library is always open
-  as a built-in library with no file; Save As turns it into a file.
-- **Generic editing reused:** `Interaction` (selection, box, drag with snapping,
-  rotate/mirror, delete) works on symbols and footprints through `ItemTarget` (elements:
-  pins, pads, graphics and texts by index). `SpatialIndex` is generic over its key.
-  `ItemView` draws one item with per-element hit testing (pins and pads first, then
-  outlines, then areas), hover/selection overlays and an origin cross. Hidden pin names
-  stay visible, dimmed, while editing.
-- **Tools (`view::tools::Placer`):** Pin/Pad, Line (chained, end on the last point or
-  Esc), Rectangle and Circle (two clicks) and Text, with a ghost preview. R rotates.
-  Names auto-increment (`A9` → `A10`, `007` → `008`). Tool settings (pin length and
-  type, pad shape/size/type/drill, layer, width, fill, text size) are in the right panel.
-  Shortcuts S/P/L/B/C/T are in the keymap.
-- **Part form:** name, prefix, default value, description; units (one symbol each);
-  footprint variants with a pin↔pad mapping grid. Mapping can be automatic: "Map by
-  name" (pad "1" ↔ pin "1") or "Map in order" (pin order ↔ pads in natural order:
-  1, 2, …, 10). The form also has a key/value properties editor and lists validation
-  problems for the part. Removing a unit renumbers the connections; changing a unit's
-  symbol drops its connections.
-- **Update from library:** `Command::UpdateParts` replaces a project's copy of parts by
-  the library version in one undo step. Components keep their variant (matched by id,
-  then by name, else the first). Symbols and footprints no longer used are removed. The
-  update is refused if placed units would disappear. `query::part_statuses` compares
-  content hashes (states: up to date / changed / library not open / removed from library /
-  local). The project's left panel lists every open library (Place, Edit) and the
-  project parts with per-part Update and Update all.
-- **App:** library tabs dock next to the schematic and can be closed (with an unsaved
-  changes prompt, also on quit). Focus is the project or a library tab, and the side
-  panels, shortcuts, undo and Save follow it. File menu: New/Open library, Open starter
-  library. Command-line options: `--library FILE` and `--show [part:|symbol:|footprint:]NAME`
-  (screenshots).
-- **Starter library:** added Diode (SOD-123), NPN (SOT-23) and OpAmp (SOIC-8, named pins
-  on numbered pads), 7 parts in total.
-- **MCP:** `list_library_parts` covers all open libraries and reports the state of each
-  project part. The new `update_parts` tool updates every changed part or the given ones.
-  Agents can still create parts directly in a project by inserting
-  `lib_symbol`/`lib_footprint`/`lib_part`.
-- **Tests:** `view/tests/part_editor.rs`:
-  - Build a part from scratch with the tools, map it and use it in a project.
-  - Drag and rotate a pad, then update the project.
-  - Mirror, delete and undo in a symbol.
-  - Create, duplicate and delete library objects.
-  - Natural-order mapping.
-  - Library file round trip.
-
-  Also `editor-core/tests/library_update.rs` (variant removal, refusal to drop units),
-  op amp pinout and MCP library tools.
-- **Not yet:**
-  - Arcs and polygons can only be edited numerically (no drawing tools yet).
-  - No pad arrays or footprint wizards (KiCad import in M5 covers most needs).
-  - Library editing over MCP.
-  - Library rename other than by Save As.
-  - A part preview in the part form.
-
-## Milestone 5 results (2026-11-09)
-
-- **New crate `kicad`:** a small S-expression parser plus converters for the formats of
-  KiCad 6–10:
-  - `.kicad_sym` libraries (many symbols per file);
-  - `.kicad_symdir` folders (KiCad 10, one file per symbol; file names may differ in case
-    from the symbol name);
-  - `.pretty` folders of `.kicad_mod` footprints (also the legacy `module` head).
-  Both flag spellings (bare `hide` and `(hide yes)`) are accepted.
-- **Symbols:**
-  - Sub-symbols `NAME_U_C` become one symbol per unit (named "LM358 A", …). Pins shared
-    by all units go to unit A. The De Morgan body style is skipped with a note.
-  - `extends` takes the parent's graphics and pins and merges the properties.
-  - Power symbols are not imported (net labels play that role here).
-  - Pins keep their KiCad number (new `Pin::number`; `Pin::key()` = number or name).
-    Unnamed pins ("~") show their number only.
-  - Graphics: rectangles, circles, arcs (three points), polylines and Béziers, filled or
-    not. Symbol texts use tenths of a degree. Visible Reference and Value fields become
-    `${REF}`/`${VALUE}` texts.
-- **Footprints:**
-  - y is flipped (KiCad footprints are y-down). Angles keep their value: both are
-    counterclockwise on screen.
-  - Only front layers (F.Cu/SilkS/Fab/CrtYd/Mask/Paste) are imported. Back-side and
-    inner-layer graphics and keepout zones are skipped with notes.
-  - Pad shapes: roundrect, chamfered (as a polygon), trapezoid (as a polygon), oval,
-    circle, rect.
-  - Custom pads: a single polygon that contains the anchor becomes a polygon pad.
-    Otherwise the anchor is the pad and the primitives become copper graphics.
-  - Holes: oval drills become round (minimum size). Drill offsets are ignored.
-  - Aperture-only pads become filled paste/mask graphics.
-  - Back-side copies of exposed pads (thermal-via footprints) are dropped; back-only pads
-    move to the front.
-- **Deterministic ids:** an FNV hash of library, name and element. Re-importing updates
-  library objects in place, so "update from library" works for projects that use them.
-- **Catalog:**
-  - Indexes names only, about 0.1 s for all KiCad libraries. Parses lazily and caches
-    whole-library files.
-  - Searches by words in "Lib:Name".
-  - Finds KiCad: `KICADn_SYMBOL_DIR`/`KICADn_FOOTPRINT_DIR`, the macOS app bundle,
-    /usr/share/kicad and Program Files.
-  - Footprint suggestion uses the symbol's default footprint if it exists. Otherwise it
-    picks among `ki_fp_filters` matches: first all pin numbers present and the same pad
-    count, then filter order, fewest extra pads, and common packages (0603, SOT-23,
-    SOIC…).
-- **Parts:**
-  - One variant per chosen footprint. Pads connect to pins with the same number; several
-    pads may share a pin (split thermal pads).
-  - Properties: KiCad symbol, Datasheet, Keywords.
-- **Renderer:** filled polygons. There is a new TRIANGLE primitive (three vertices in the
-  existing 32-byte instance) plus ear-clipping triangulation (`render::tess`). Outline
-  edges are anti-aliased; inner edges are hard, so no seams. Used for filled symbol
-  bodies, filled silkscreen and polygon pads (and later zones).
-- **Library upsert:** `LibraryDoc::upsert` adds and replaces objects in one undo step.
-  New objects that clash with existing names get "NAME 2".
-- **App:** File › Import from KiCad… (also in the Libraries panel) opens a window with:
-  - symbol/footprint search;
-  - a list of picks, each with a footprint picker (suggestion plus filter matches; a
-    footprint search result can be assigned with Use);
-  - the target library (new or open);
-  - a report with notes.
-  The import opens the first part in the library editor. Command line: `--kicad DIR`,
-  `--kicad-pick [footprint:]LIB:NAME`, `--kicad-import`, `--kicad-search TEXT`.
-- **MCP:** `search_kicad` and `import_kicad` (symbols with optional footprints, lone
-  footprints, target library by name). The import returns part ids for `import_parts`.
-  Verified live: search NE555, import, import_parts, place_part.
-- **Verification against the official libraries** (`kicad/tests/corpus.rs`, enabled by
-  `KICAD_SYMBOL_DIR`/`KICAD_FOOTPRINT_DIR`):
-  - KiCad 10.0 (22,911 symbols in `.kicad_symdir`) and 9.0 (22,583 symbols in
-    `.kicad_sym`) with 15,468 footprints: everything parses and converts, with JSON
-    round trips.
-  - All symbols with a suggested footprint become valid parts (21,583), and the library
-    validates.
-  - Spot checks: Device:R → R_0603 with both pads; LM2904 → 3 units on SOIC-8, 8/8
-    pads.
-  - 3.6% of parts have a pin without a pad. They come from KiCad's own data: filters
-    that name the wrong package (74LS20: `DIP?12*`) or default footprints numbered
-    differently. The part form shows these as "Pins without a pad".
-  - Unit tests have handwritten KiCad 6- and 10-style fixtures. `library_import.rs` covers
-    both symbol formats on disk, re-import, undo and name clashes.
-- **Not yet:**
-  - Back-side footprint content.
-  - Text boxes, De Morgan bodies, alternate pin functions.
-  - Oval drills (approximated).
-  - 3D models.
-  - Symbol and footprint preview inside the import window (the editor shows the result).
-
-## Milestone 6 results (2026-11-09)
-
-- **Connectivity** (`editor_core::connectivity`, rebuilt from the project):
-  - Union-find over pins, wire ends, labels and junctions. Points that coincide
-    connect. A wire end, pin, label or junction lying inside a wire connects to it
-    (T connection). Crossing wires connect only with a junction. Labels connect by name.
-  - Net names: power label, then net label, else `Net-(R1-1)` from the lowest
-    reference and pad. Two different label names on one net are reported as a problem.
-  - Junction dots are drawn automatically where three or more connections meet, and
-    unconnected pins get a ring. Both are a separate scene item, updated after each change.
-  - A full rebuild takes about 13 ms at 10k components (release). The document skips
-    recomputing during a drag when a build takes over 4 ms, and catches up afterwards.
-    An incremental version is deferred until it's needed.
-- **Dragging keeps wires attached** (`keep_connected` on `Move`/`Rotate`/`Mirror`; the
-  schematic view sets it, commands default to false):
-  - Horizontal and vertical wires attached at one end shift sideways and stay
-    orthogonal. At the far end, the single aligned neighbour stretches, or a dogleg wire
-    is inserted where something else is attached.
-  - All other wires, and every wire on rotate/mirror, stretch. Zero-length wires are
-    deleted.
-  - Stable over many small drag steps; the whole drag stays one undo step.
-- **Schematic tools** (`view::sch_tools`, toolbar above the schematic, settings in the
-  right panel):
-  - **Wire (W):** orthogonal L segments with a ghost. A chain ends on a pin, wire, label
-    or junction (that target is highlighted), on a repeated click, or with Esc. `/`
-    switches horizontal-first and vertical-first corners.
-  - **Label (L):** a trailing number counts up (NET1, NET2, …).
-  - **Power (P):** GND, +3V3, +5V and so on; any name works.
-  - **Junction (J).**
-  - **Place:** started from the library panel's Place button. The ghost follows the
-    cursor; R rotates and X mirrors. Clicks place repeatedly; multi-unit parts place
-    unit A, B, … of one component (new `PlaceUnit` command), then start a new component.
-  - New `AddLabel.rotation`.
-- **Context-dependent shortcuts:** each action is global or belongs to the library, the
-  schematic or the board. Contexts may share keys (L = line in the symbol editor, label
-  in the schematic). Conflicts are reported only within a context.
-- **Properties:**
-  - A selected wire, label or junction shows its net and pins.
-  - Symbols and footprints list pin, pad and net.
-  - The project summary counts nets and unconnected pins.
-- **MCP:** a `get_netlist` tool returns nets with pins (reference, pin, pads, position),
-  unconnected pins and connectivity problems.
-- **Tests:**
-  - `editor-core/tests/netlist.rs`: sample circuits (LED + resistor, inverting op amp,
-    dual op amp across units), T connections, crossings, labels, touching pins, and drag
-    behaviour.
-  - `view/tests/sch_tools.rs`: a circuit drawn with the tools, wire-chain rules,
-    unit-by-unit placement.
-  - MCP e2e: `get_netlist`.
-- **Development aid:** `--script "key W; click 7.62,15.24; move 17.78,22.86"` feeds input
-  events (schematic mm, or `ui-click x,y` in screen points) before `--screenshot`.
-- **Not yet:**
-  - Bus wires, sheet pins and hierarchical labels.
-  - ERC (pin type checks).
-  - Wire posture that flips automatically with the cursor.
-  - Drag of wire segments themselves (moving a wire moves it and drags its neighbours).
-
-## Milestone 7 results (2026-11-09)
-
-- **Board connectivity** (`editor_core::copper`, rebuilt after board or schematic changes):
-  - Copper items: pads (on their side's copper; through-hole on all layers), tracks and
-    vias. Shapes are capsules (tracks, vias, round and oval pads) or polygons (other
-    pads). Items on a common layer that touch form islands (grid broad phase, union-find).
-  - Nets come only from the schematic. A pad gets its pin's net; tracks and vias get the
-    net of the pads in their island. Tracks have no stored net. An island with pads of
-    two nets is reported as a short.
-  - Ratsnest: a minimum spanning tree per net over pad centers, via centers and track
-    ends, with points of one island already connected (Delaunay edges for large nets).
-    "Fully routed" means no ratsnest lines and no shorts.
-  - About 6 ms for 20k pads (10k components, release), on top of the ~13 ms schematic
-    connectivity. Same rule as the schematic: no rebuild during a drag if it is slow.
-- **Layer stack and design rules are undoable:** `SetCopperLayers { count }` (even, 2–32;
-  refuses to drop inner layers that still have copper) and `SetDesignRules`. A change set
-  carries the board setup before and after; the board view rebuilds its layers.
-- **Board tools** (`view::pcb_tools`, toolbar above the PCB with the active layer and
-  routing status, settings in the right panel):
-  - **Route (T):** 45° or 90° corners, straight-first or bend-first (`/`). Clicks snap
-    to pad and via centers and track ends within 8 px. A route ends on copper. L
-    switches to the next copper layer and adds a via at the current end when routing.
-    The net being routed is highlighted.
-  - **Via (Shift+V)** and **Outline (O)**: two corners make a rectangle on the Board
-    Outline layer.
-- **Net highlighting:** the routed net, or the nets of selected tracks and vias.
-  Track and via properties show their net.
-- **Board setup panel** (PCB with nothing selected): copper layer count and design rules,
-  edited live with one undo step per edit.
-- **MCP:** a `get_routing` tool returns unrouted connections (net, from, to), shorts,
-  layers and rules. Agents route with `add_track`/`add_via`.
-- **Demo:** D1 is rotated so its anode faces R1. The new short detection found that the
-  old R1→D1 track crossed D1's cathode pad.
-- **Tests:**
-  - `editor-core/tests/board.rs`: routing removes ratsnest lines, vias, shorts,
-    through-hole pads, a fully routed LED board, undoable layer stack and rules.
-  - `view/tests/pcb_tools.rs`: routing two nets with a layer change through the tool,
-    outline and vias.
-  - MCP e2e: route one ratsnest line.
-- **Not yet:**
-  - Clearance checking while routing (DRC is milestone 9).
-  - Push-and-shove routing; dragging tracks while keeping them connected.
-  - Blind and buried vias in the UI.
-  - Copper graphics inside footprints (from KiCad custom pads) don't count as connections.
-
-## Milestone 8 results (2026-11-09)
-
-- **Board follows the schematic** (tests in `editor-core/tests/board.rs` on a routed
-  board):
-  - Placing a part adds its footprint; deleting it removes the footprint, and undo
-    restores it in place.
-  - Variant changes swap the footprint in place; copper reconnects to the new pads.
-  - Renamed labels and swapped reference designators carry the routed copper along:
-    tracks have no stored net, and placements belong to components, not names.
-  - Flipping a footprint moves its SMD pads to the other side.
-- **Copper is flagged, never deleted.** After a schematic change, a track or via is
-  flagged when its island connects pads of different nets (`Short`) or touches no pad
-  (`Unconnected`):
-  - The board view draws an orange halo around flagged copper.
-  - The toolbar counts flagged items.
-  - Track and via properties name the problem.
-  - A "Board problems" section (PCB, nothing selected) lists shorts and selects all
-    flagged copper with one click.
-  - MCP `get_routing` lists flagged copper.
-- **Cross-probing** (`view::probe::cross_probe`, a pure function):
-  - The active view's selection highlights matching objects in the other view (yellow
-    overlay): symbols ↔ footprints.
-  - Schematic wires, labels and junctions highlight their nets' copper on the board.
-  - Tracks and vias highlight their nets' wires, labels and junctions in the schematic.
-  - The net being routed always wins.
-- `view/tests/probe.rs`: probing both ways. The board view stays identical to a rebuild
-  after variant changes, deletes, layer stack changes and undo/redo.
-- **Not yet:** pin/gate swaps driven from the board (back-annotation is out of scope:
-  the PCB never changes the schematic).
-
-## Milestone 9 results (2026-11-09)
-
-- **Zone fill** (`editor-core::zones`, i_overlay boolean operations on nm coordinates):
-  - Each zone fills its outline, clipped to the board outline minus the edge clearance.
-  - Other-net copper keeps the clearance (per-zone override or the design rule).
-  - Pads of the zone's net connect through thermal reliefs. The gap and spoke width are
-    new design rules (`thermal_gap`, `thermal_spoke`, default 0.5 mm; older files load
-    with the defaults).
-  - Tracks and vias of the zone's net, and copper without a net (stitching vias), are
-    flooded.
-  - Zones fill in priority order. Lower-priority zones keep the clearance to fills of
-    other nets.
-  - Islands touching no copper of the zone's net are removed.
-  - Fills are derived data, like connectivity: they are never saved.
-- **Two-pass connectivity:** board connectivity is built without zones, the zones are
-  filled using those nets, then connectivity is rebuilt with the fill pieces as copper
-  (`CopperItem::Zone`, `Geo::Region`). Zones satisfy ratsnest lines, and stitching
-  vias take the zone's net.
-  - `RegionIndex` grids a fill's edges for point and shape queries. Without it, a
-    full-board fill with 80k vertices took 0.7 s just for the touch tests.
-  - Fixed along the way: region–region touch tests only looked at one region's holes.
-- **Rendering:** fills are drawn translucent in their layer colour, triangulated with
-  i_triangle (holes, robust, O(n log n)). Edges used by only one triangle are the
-  outline, and only those are anti-aliased. Earcut needed 1.9 s for one fill with
-  thousands of holes.
-- **Zone tool** (Z on the board, also in the tool bar):
-  - Click corners; clicking the first or last corner again closes the zone.
-  - Its net comes from the tool settings, or else from the copper under the first
-    corner.
-  - The net being drawn is highlighted.
-- **DRC** (`editor-core::drc::run`, a pure function, sorted most severe first):
-  - Shorts.
-  - Clearance between copper of different nets on a shared layer (grid broad phase,
-    exact distances). Pad pairs within one footprint and zone fills are skipped; fills
-    keep the clearance by construction.
-  - Copper too close to or outside the board edge.
-  - Overlapping courtyards on the same side.
-  - Track width and drill (vias, through-hole pads) below the minimums.
-  - Copper touching no pad.
-  - Unrouted connections.
-  - Each violation has a message, a position and the objects involved.
-- **DRC in the GUI:**
-  - "Run DRC" in the board properties lists violations by kind.
-  - Clicking a violation selects its objects and centres the view on it.
-  - The board shows ⊗ markers, kept across view rebuilds.
-  - The panel says when the board has changed since the last run.
-- **DRC over MCP:** `run_drc` returns counts by kind plus the first `limit` violations,
-  and marks them in the GUI.
-- **Tests:**
-  - `editor-core/tests/board.rs` (zones):
-    - The fill connects its net.
-    - Clearance to other-net copper and to the edge.
-    - Thermal gap and spokes.
-    - Dead islands.
-    - Priority.
-    - Stitching vias.
-  - `editor-core/tests/drc.rs`: a clean routed board, plus seeded errors (one of each
-    kind, found exactly once).
-  - `view/tests/pcb_tools.rs`: drawing a zone with the tool.
-  - `render`: regions with holes.
-  - MCP end-to-end: `run_drc`.
-- **Performance** (`edit_bench`, release, Apple M4). The zone is one top-layer zone of
-  the largest net over the whole board:
-
-  | | 2k components | 10k components |
-  |---|---|---|
-  | Fill + connectivity + render | 0.10 s (80k vertices) | 0.54 s (400k vertices) |
-  | DRC | 8.5 ms | 13 ms |
-
-  Board changes refill all zones. While dragging, slow rebuilds are deferred until the
-  drag ends, as before.
-- **Not yet:**
-  - Incremental or background refill (only zones near the change).
-  - Arc outlines in fills (circles are polygons with 16–64 segments, circumscribed so
-    clearances are never undercut).
-  - Exact courtyard polygons (DRC uses bounding boxes).
-  - Per-net clearance classes.
-- Dev aid: `cargo run -p mcp --example render_board -- out.png` renders the demo board
-  offscreen after a DRC. It needs no window, which helps when the display is asleep.
-
-## Milestone 10 results (2026-11-09)
-
-- **Headless MCP mode:** `pcb-designer --mcp-stdio [PROJECT_DIR | --demo]`.
-  - `mcp::stdio::serve` runs the protocol on a background thread (current-thread tokio
-    runtime). The calling thread owns the `HeadlessHost` and answers calls until the
-    client disconnects.
-  - It serves the same tools as the GUI server; its instructions say it is headless.
-  - A folder that doesn't exist yet becomes a new project, saved there by
-    `save_project`.
-  - Screenshots render offscreen, and logs go to stderr.
-  - `mcp/tests/stdio.rs` drives a whole session over an in-memory pipe: read, route,
-    DRC, screenshot, save, reload from disk.
-  - The release binary was smoke-tested with raw JSON-RPC over real stdin/stdout.
-  - Tools → "Copy Claude Code command (headless)" gives the `claude mcp add … --
-    pcb-designer --mcp-stdio PROJECT` line.
-- **Themes (dark and light):**
-  - Canvas colours moved from constants into `view::style::Palette`, with `DARK` and
-    `LIGHT` palettes.
-  - The active palette is a global (`set_theme`, `pal()`). It is baked into scene
-    instances when objects are drawn.
-  - `Document::restyle` rebuilds both views with their overlays: connectivity, copper
-    and fills, net highlights, cross-probe, DRC markers. `ItemView::restyle` does the
-    same for library editors.
-  - Canvas backgrounds come from the palette too.
-  - App chrome colours are functions of the same theme, so chrome and canvases always
-    match.
-  - Switch with View → Dark/Light theme, or in Settings.
-  - `view/tests/theme.rs`: after a restyle, colours per layer equal a fresh build in
-    the new theme, and switching back restores the old colours.
-- **Settings** (`app::settings`, JSON in the platform configuration folder;
-  `PCB_DESIGNER_CONFIG` overrides it):
-  - Saves the theme, recent projects (newest first, 10) and the key bindings that
-    differ from the defaults. Broken files fall back to the defaults.
-  - **Edit → Settings…** (⌘,) has the theme and an editable shortcut list: `×` removes
-    a shortcut, `+` records the next key press with its modifiers (Esc cancels). It
-    warns about conflicts and can reset to the defaults. Help → Keyboard shortcuts
-    opens the same window.
-  - `--keymap FILE` still applies for one session.
-  - **File → Open recent** lists the projects; opening and saving add to the list.
-- **Small things:**
-  - Tools → Run design rule check.
-  - The README covers headless mode and settings.
-  - `render_board` example: `--light` and `--schematic`.
-- **Verification:** light-theme renders of board and schematic, made offscreen with
-  `cargo run -p mcp --example render_board -- out.png --light [--schematic]`. Window
-  screenshots weren't possible in this session: the display was asleep and eframe drew
-  no frames. The settings window and theme switch in the GUI still need a manual look.
-- **Not yet:**
-  - Saved window layout and pane sizes. The eframe persistence feature is off.
-  - Per-layer colour customisation.
-  - UI scale.
-
-## GUI refinements (2026-11-09)
-
-- **Default layout: tabs.** Schematic and PCB are full-size tabs of one area, with the
-  schematic in front. The usual workflow is schematic first, then layout, so a
-  permanent split wasted half the screen.
-  - View → Tabs / Side by side switches layouts; library tabs stay with the schematic.
-    Dragging tabs still works for any other arrangement.
-  - Keyboard focus follows the visible tab, whether it changed by a click, drag and
-    drop or closing a tab.
-  - Cross-probing works across tabs: with nothing selected in the active view, the
-    other view's selection is highlighted. For example, select R1 in the schematic,
-    open the PCB tab, and R1's footprint is highlighted.
-  - The script step `board` (dev aid) brings the PCB tab to the front.
-- **Panel styling (IntelliJ-like).** The window background shows through 6 pt gaps
-  between the side panels, the tab groups, the menu bar and the status bar. Panels and
-  tab groups have rounded corners (10 pt) and no outline (tried; flat looks better).
-  Hairlines inside separate the tab bar, tool bar and canvas. Side by side, the
-  schematic and PCB groups are now clearly separate.
-  - GPU canvases can't be clipped by egui, so their corners are masked afterwards with
-    the window background (`theme::round_corners`, drawn by egui_tiles'
-    `paint_on_top_of_tile`). A 1 pt stroke in the background colour anti-aliases the
-    rounded edge.
-  - Tabs are rounded pills: the active one is filled and the others highlight on hover.
-    The tool bars share the tab bar's colour, with a hairline to the canvas.
-  - `--side-by-side` starts in the split layout.
-- **Floating tool bars (Blender-like).** The canvas fills the whole tab; the tools float
-  over it (`toolbar.rs`).
-  - Icon buttons in a vertical strip at the top left, in rounded groups:
-    - Schematic: Select | Wire, Label, Power, Junction | Place (while placing).
-    - PCB: Select | Route, Via | Outline, Zone.
-    - Library: Select | Pin or Pad | Line, Rect, Circle, Text.
-  - The icons are vectors drawn with egui's painter (`icons.rs`), so they stay crisp
-    and follow the theme. The active tool is filled with the accent colour.
-  - Tooltips open to the right of the button. They show the name, the shortcut from
-    the keymap (so rebinding shows up) and a sentence on what the tool does.
-  - A header next to the strip holds the tool options. PCB: active layer and routing
-    status. Library: grid and Fit. The usage hint sits at the bottom left as a
-    non-interactive pill.
-  - Blocks have a soft shadow and a faint outline, so they read against any canvas.
-  - The bars are drawn after the canvas in the same layer, so they win egui's hit test.
-    They sense click and drag, so a press on them never reaches the canvas and starts
-    no box selection or placement. The header's size is only known after its
-    contents, so its background blocks clicks on the previous frame's rect.
-  - Script step `ui-move x,y` (dev aid): hover a screen position, e.g. to screenshot a
-    tooltip.
-- **Library navigation removed.** The Back / Forward bar above library items, its
-  history and the Back / Forward actions (View menu, ⌥← / ⌥→) are gone; the library
-  tree is the navigation, and the item canvas now fills the tab like the others.
-- **View buttons and units.** Grid and layer settings moved from the side panel to
-  floating buttons at the canvas' bottom left: Layers, Grid and Fit view. Each opens a
-  popup above itself. The usage hint now sits right of the buttons. The library item
-  editor uses the same buttons, so its grid/Fit header is gone.
-  - Layer popup: a checkbox per layer with a colour swatch in the colour the editor
-    draws it, plus All / None. The order and grouping come from
-    `View::layer_menu` / `ItemView::layer_menu`: copper top to bottom, vias and holes,
-    top and bottom technical layers, outline, then overlays. Hidden layers show a dimmed
-    swatch.
-  - Grid popup: units (mm / mil / in), grid size (presets plus a field for any value)
-    and Show grid. Schematic and symbol presets stay 100/50/25 mil in every unit.
-    Board and footprint presets are round numbers in the unit. Switching units moves
-    the grid to the nearest preset, so 0.5 mm becomes 25 mil instead of 19.69 mil.
-  - The unit is global (`app/src/units.rs`, like the theme) and saved in settings.json.
-    It applies everywhere lengths are shown or typed: property fields, tool settings,
-    design rules, the board problems list and the status bar. The model stays in nm.
-- **Snap to grid toggle** in the grid menu (per editor, `Interaction::snap`). Off:
-  pointer positions are used as they are, to the nm. The grid keeps its size and stays
-  visible, so turning snapping back on restores the spacing. The status bar shows
-  "no snap" while it is off. Copper snapping in the router (`snap_to_copper`) is
-  separate and stays on.
-- **Tab icons.** Schematic (resistor zigzag), PCB (board with a track) and library
-  (books) tabs have an icon. Each is coloured from the palette of what the tab shows:
-  schematic wire, top copper, label amber. The icon is dimmed on inactive tabs.
-
-## KiCad library download (2026-11-09)
-
-- **Download instead of a KiCad installation.** `kicad::download` fetches the official
-  `kicad-symbols` and `kicad-footprints` GitLab release archives. These are 12 MB each
-  and about 450 MB unpacked; no 3D models. They are unpacked into
-  `<config>/kicad/<version>/{symbols,footprints}`, which follows `PCB_DESIGNER_CONFIG`.
-  - Only stable tags of `SUPPORTED_MAJOR` (10) that both repositories have are used.
-    Release candidates are skipped, and KiCad 11 waits until the importer is tested
-    against it and the constant is raised.
-  - The download goes into `.download-<version>`, is renamed into place when complete,
-    and older versions are deleted afterwards. A cancel, error or killed process leaves
-    nothing half-installed (a leftover temp folder is replaced on the next try).
-  - Gotcha: cancelling uses its own error and flag. `io::ErrorKind::Interrupted` would
-    be retried forever by `std`'s and `tar`'s read loops.
-  - `download::ensure` is shared by the import window, the app's MCP host and headless
-    mode. With an existing download and no update request it makes no network access.
-  - Libraries searched: the folders added with `--kicad` or "Add folder…", then the
-    download if there is one, else an installed KiCad (`download::library_paths`).
-- **Import window:** offers the download when nothing is found, then shows progress
-  (bytes against an approximate total; GitLab sends no length) with Cancel. Afterwards
-  it shows the downloaded version and "Check for updates" → "Update to x.y.z". Errors
-  get a Retry. The work runs on threads polled each frame (`KicadImport::poll`).
-- **Agents:** `download_kicad_libraries {update}` waits for the download and returns the
-  version, folder and library counts. In the app it joins a download already running
-  from the window. Headless mode now supports `search_kicad`, `import_kicad` and the
-  download. Its imports go into a "KiCad import" library, and their parts straight into
-  the project (`Command::ImportParts`); the `library` parameter is ignored there.
-- **Tests:** `kicad/tests/download.rs` serves generated archives and tag lists from a
-  local HTTP server. It covers version choice, install, keeping a download without an
-  update, update and replacing the old version, cancel, and missing releases. The test
-  against the real gitlab.com is `#[ignore]`d: `cargo test -p kicad --test download --
-  --ignored`. `mcp/tests/kicad_headless.rs` covers headless search and import.
-
-## Buses (2026-11-09)
-
-KiCad's model, so a later KiCad project import maps one to one.
-
-- **Meaning.** A bus only groups signals. Bus wires and bus entries never join nets, and a
-  wire or pin touching a bus stays separate (and is flagged). Signals connect only through
-  same-named labels, exactly as before.
-- **Model.**
-  - `BusWire {id, sheet, a, b}` is a straight segment like `Wire`.
-  - `BusEntry {id, sheet, pos, dir}`: `pos` is the bus end. The wire end is
-    `pos + dir.offset()`, a fixed 2.54 × 2.54 mm diagonal (`EntryDir`: up/down × left/right,
-    world Y up). Rotate and mirror move both ends and re-derive `dir` (`EntryDir::of_offset`).
-  - Both live in `schematic.bus_wires` / `bus_entries` (left out of the JSON when empty).
-    Agents add them with `add_bus` / `add_bus_entry`.
-- **Bus names.** `editor_core::bus::members` parses KiCad syntax:
-  - vectors `D[0..7]`, also counting down;
-  - groups `{SDA SCL}`, whose members may be vectors;
-  - named groups `I2C{SDA SCL}` → `I2C.SDA`, `I2C.SCL`.
-
-  A label whose name parses is a bus label. It stays an ordinary `NetLabel` (placed with
-  the Label tool), but connectivity skips it for nets. Vectors are capped at 1024
-  members.
-- **Connectivity** (`Connectivity::buses`, `bus_of`).
-  - Bus wires touching at ends, T-joints or junctions form one `Bus`. Its members are
-    the union of its bus labels' members, and its name is the first label's.
-  - Bus T-joints get automatic dots like wires.
-  - An entry's *wire end* is a node in the net graph (`Node::Entry`), so `net_of(entry)`
-    tells which signal leaves there. Its bus end is not.
-- **Problems** became `Problem {message, objects, pos}` (they were strings). They feed
-  the new "Schematic problems" list (right panel, nothing selected; clicking selects the
-  objects and centres the view) and `get_netlist`'s `problems`. Bus checks:
-  - a wire end or pin on a bus;
-  - a bus without a bus label;
-  - a wire leaving an entry without a label, or with a label that isn't a member;
-  - an entry or bus label that isn't on a bus.
-- **Editing.**
-  - The Bus tool (B) draws like the wire tool and ends on a bus. The Bus entry tool (E)
-    places entries: R turns them counter-clockwise, X mirrors, and the direction is also
-    in the tool settings.
-  - The wire tool ends on an entry's wire end.
-  - Dragging: `rubber_band` is now generic over `Kind::{Wire, Bus}`. Bus wires follow
-    moved bus-wire ends, entries' bus ends, labels and junctions. Wires follow pins,
-    wire ends, entries' wire ends, labels and junctions. Entries themselves only move
-    when selected.
-- **Drawing.** Buses and entries are 2.5 wire widths (`BUS_WIDTH`) in `sch_bus` (blue)
-  on the wires layer.
-  - The stroke font gained `[ ] { } < > ~ # * ' " &`, needed for bus names.
-  - The UI font has no arrow glyphs, so entry directions are painted buttons
-    (`sch_ui::entry_dir_picker`).
-- **Agents.** `get_netlist` has `buses: [{name, members: [{name, net, pins}], bus_wires,
-  entries}]`. `net` is null when no net of that name exists. The MCP instructions
-  explain the syntax.
-- **Not yet:** KiCad's "unfold bus" and buses across sheets (sheet pins and hierarchical
-  labels come with multi-sheet schematics).
-
-### Bus naming prompts (2026-11-09)
-
-- **When it asks.**
-  - Finishing a bus chain (on a bus, by double-click, Esc or switching tools) whose bus
-    has no name asks for one.
-  - A finished wire chain or a placed entry that leaves an unnamed net with wires or
-    pins on an entry of a named bus asks for the signal. The bus's members are offered,
-    and the first that no label names yet is suggested.
-    - Each signal has a `×n` badge: how many net labels already use that name
-      (`SchPrompt::EntryNet::uses`). An entry plus an exit makes ×2. This replaced
-      dimming used signals, which hid the fact that most signals are used twice.
-    - The list sits on a darker inset and scrolls past about five rows. At most 1024
-      buttons are drawn; any other name can be typed. The suggestion is scrolled into
-      view.
-  - Named nets are left alone (a wrong name shows up as a problem).
-- **Where the label goes.**
-  - Bus: the middle of the longest new segment, snapped to the grid if that stays on the
-    segment, rotated along it.
-  - Signal: on the wire leaving the entry, 2.54 mm from the entry's wire end, rotated
-    along the wire (180°/270° text stays readable). If no wire ends there, at the
-    wire end.
-- **Split.**
-  - `SchPlacer` collects what finished chains and entries created (`finished`).
-    `take_prompt(doc, grid)` checks them against connectivity once and returns a
-    `SchPrompt`.
-  - `SchPrompt::check` and `label` validate the answer: a bus name for buses, a non-bus
-    name for signals.
-  - The app's `name_prompt.rs` shows an egui `Modal`, with Enter to confirm and
-    Esc/Skip/click outside to skip. Keyboard shortcuts are off while it is open.
-  - The label is its own undo step, after the bus or wire.
-
-- **Dialog style.** `theme::dialog` is a modal with a title bar: `panel_dark` background,
-  a bottom border line, and the title in `accent()` at 17 pt, bold. egui ships no bold
-  face, so `theme::bold_label` draws the text three times across 0.8 pt. Content has 18 pt padding.
-  Use it for new modal dialogs. The Settings and KiCad import windows are still plain
-  egui windows.
-
-## Tool window bars (2026-11-09)
-
-The fixed left (libraries) and right (properties) panels, whose content changed with the
-context, became IntelliJ-style tool windows (`app/src/dock.rs`).
-
-- **Bars.** A 36 pt icon bar on each window edge, one button per panel. The open panel's
-  button is tinted with the accent. The tooltip gives the name and shortcut (⌘1…⌘7).
-  - Left: Libraries (tree icon; to become a project browser), Library browser, then a
-    separator and Messages, which opens as a bottom panel between the side panels.
-  - Right: Properties, Tool settings, Board setup, Overview.
-- **One panel per side.** Clicking the open panel's button (or "–" in its header) hides
-  it; the bar stays. Panels never open or switch on their own. A panel that doesn't apply
-  says so (e.g. the Library browser without a library tab); buttons never disappear.
-- **Context.** Properties, Tool settings and Overview follow the last focused editor:
-  schematic, PCB or a library tab (library tool settings, element properties, library
-  summary). The Library browser shows the focused or last focused library tab, else the
-  first open one.
-- **Messages** (`messages.rs`). Three columns: Schematic (ERC problems), Board (shorts,
-  flagged copper, then Design rules with Run DRC and the grouped violations), Libraries
-  (`Library::issues`, which `validate` now wraps). Clicking a message shows its tab,
-  selects its objects and centres on them; a library issue opens the part.
-  - Badge: `Unseen` remembers the problem keys (hash of section + text) present while
-    the panel was open. A closed Messages button shows the count of problems not seen
-    yet, or a dot if only seen ones remain. A problem that goes away and comes back
-    counts as new.
-  - The glyph font has no ✔; headings say "OK".
-- **Persistence.** `Settings::dock` (open panel per side, sizes). Saved when it differs
-  from the last saved dock and no pointer button is down, so resizing doesn't write the
-  file every frame. `--panel NAME` (repeatable, dev aid) shows panels for one run without
-  saving them. The recorded size is the panel rect, and it round-trips without drift.
-- **Shortcuts work while typing** (`works_while_typing`), like the other window-level
-  actions.
-- **Scripts** now bring their tab to the front only at the start and on `board` /
-  `schematic` steps (`Script::take_switch`). Before, they forced it every frame, which
-  undid tab switches caused by clicks (like clicking a message).
-- **Later.** Dragging buttons to reorder them or move them between bars, a Nets panel,
-  stacking two panels on one side, the project browser.
-
-## MCP library tools (2026-11-09)
-
-Agents can now make a part from a datasheet entirely over MCP. Before, they could only
-insert library objects into the project, or import KiCad parts. Tested by building the
-Toshiba TBD62083A (symbol, four packages) in a running app.
-
-- **Tools** (`mcp/src/library.rs`): `list_libraries`, `create_library` (optionally saved
-  right away), `open_library`, `get_library_items`, `edit_library`, `save_library`, and
-  `render_library_item` (offscreen PNG of a symbol or footprint drawn by `ItemView`, as
-  in the editor). Libraries are named by their name, or their path. Items are named
-  `[part:|symbol:|footprint:]NAME` or by id, like `--show`.
-- **`edit_library` takes the file format, made writable by hand.** `upsert` objects
-  (`lib_symbol`, `lib_footprint`, `lib_part`) are matched by id, else name. A match is
-  updated; omitted fields keep their value (top-level merge over the existing object,
-  or over `blank_symbol` / `blank_footprint` / part defaults). Ids are optional:
-  - pins keep theirs by number (else name), pads by name, variants by name;
-  - so parts' pad mappings, and projects that use the part, stay valid when an agent
-    resends a footprint or symbol.
-  Parts name their symbols (`units: [{"symbol": NAME}]`, units named A, B, …) and
-  footprints (`variants: [{"footprint": NAME}]`, variant named after the footprint).
-  Connections default to `map_by_name` (pad name ↔ pin number). They can also be
-  `"in_order"`, or a list of `{pad: NAME, pin: NUMBER|NAME, unit?}`. Other defaults: pin
-  length 2.54 mm, text width size/7, prefix U, default value = name.
-- **All-or-nothing.** The edit is applied to a copy first. It is refused if
-  `Library::issues` reports anything new, such as a part using a deleted footprint or an
-  unknown pad or pin. Only new issues count, so a broken library can still be fixed step
-  by step. Commands then run in dependency order (inserts and updates of symbols and
-  footprints, then parts, then deletions, parts first) through `LibraryDoc::execute_all`:
-  one undo step in the library's tab.
-- **Reply.** For each touched part's variant: "N of M" pads connected, the unconnected
-  pads, and pins without a pad (an agent sees a wrong mapping at once).
-- **Hosts.** `Request::Library` goes to `Host::library_request`, which may answer later.
-  The app defers it like KiCad imports (`agent::Job`), because creating or opening a
-  library adds a tab. It then answers with `mcp::library::respond` over
-  `AgentLibraries`, an adapter over the library tabs. Edits show the changed part in its
-  tab without switching tabs. The headless host now keeps `libraries: Vec<LibraryDoc>`
-  (the starter first). KiCad imports go into the named library (no longer ignored
-  headless), else a "KiCad import" library created on demand.
-- **Gotcha.** `LibraryDoc::save_as` renames the library after the file stem, so
-  `create_library` with a path names the library after the file.
-
-
-## Project panel (2026-11-10)
-
-The Libraries panel becomes an IntelliJ-style project tree. Decided up front:
-- The tree: the project (Schematic, PCB, Project Library), the Built-in Library (formerly
-  Starter, read-only) and External Libraries.
-- The project's library files are stored per project.
-- The project's embedded library becomes an editable Project Library.
-- The Library browser panel is folded into the tree.
-
-Three changes, in this order.
-
-### 1. Per-project library files
-
-- **Model.** `Project::libraries: Vec<PathBuf>`, the External Libraries in the order they
-  were added. In memory the paths are absolute and normalized (`io::normalize`, which is
-  lexical, so missing files work). `project.json` stores them relative to the project
-  folder with `/` separators (`io::stored_path`). A path is stored absolute only when no
-  relative one exists (another drive). Loading joins them back onto the folder, so a
-  project moved together with its libraries keeps working.
-- **Commands.** `AddLibrary`, `RemoveLibrary` and `RelinkLibrary {from, to}`. Relink keeps
-  the entry's position; it is used by Locate… and by Save As of a listed library.
-  - They are undoable and mark the project modified. Paths must be absolute.
-  - `ChangeSet::libraries` holds the list before and after, like `setup` does for the
-    board setup. It isn't an object change, so views ignore it.
-- **Loaded libraries** (`view::project_libs`, shared by the app and the headless host).
-  - `sync(wanted, loaded, missing, make)` runs whenever the list changes, including on
-    undo and redo. It loads new files; a file that fails becomes a `MissingLibrary`, and
-    the project still opens.
-  - It drops libraries that are no longer listed, but keeps ones with unsaved changes, so
-    an undo never loses library edits. They show as `unlisted` to agents. It also keeps
-    libraries without a file: the built-in one, and unsaved ones.
-  - Missing files are not retried on every sync. They are retried only when their entry
-    leaves the list and comes back.
-  - `check_new` refuses a library whose id is already loaded, because a copied `.pcblib`
-    keeps its id and parts' `source` would become ambiguous.
-  - `after_save` gives the follow-up command for a save: a listed library saved under a
-    new name is relinked, and a library not in the list yet is added.
-  - `copy_for` makes a copy with a new id. Saving the built-in library saves such a copy,
-    adds it, and resets the built-in library.
-- **App.** A loaded library no longer means an open tab:
-  - `load_library` loads without a tab, `open_library_tab` shows one.
-  - At startup only the libraries passed with `--library` open tabs. The built-in library
-    loads without one.
-  - Closing the tab of a project library keeps it loaded. If its changes are discarded,
-    it is dropped and `sync` loads the file again.
-  - New library… asks for the file right away (defaulting to the project folder) and
-    adds it. Add library… replaces Open library…, and "Open starter library" is gone.
-  - Until the tree arrives, the panel has Remove, and Locate… / Remove for missing files.
-  - The demo writes `Demo parts.pcblib` (`view::demo::demo_library`: the starter's
-    diode, NPN and op amp with ids of its own) to the temp folder and lists it.
-- **Unsaved libraries** are still allowed: a KiCad import into a new library, or an
-  agent's `create_library` when the project has no folder yet. They stay out of the
-  project until saved, and saving adds them (`after_save`).
-- **MCP.**
-  - `create_library` without a path saves `NAME.pcblib` in the project folder.
-    `open_library` adds the file to the project; relative paths are relative to the
-    project folder.
-  - New `remove_library {library, discard}` refuses unsaved changes unless `discard` is
-    set, and refuses the built-in library.
-  - `save_library` with a path relinks the project to the new file.
-  - `list_libraries` gives each library a `kind`: `built_in`, `external`, `unsaved` or
-    `unlisted`, and lists missing files as `missing`.
-  - `Libraries` (the host adapter) changed: `get` / `get_mut`, `project` /
-    `project_mut`, `missing`, `push` and `remove`.
-  - `Host::sync_libraries` runs before every request, so the headless host follows undo
-    and redo. The app syncs every frame and after agent jobs.
-- **Tests:**
-  - `model` io: relative paths, and a round trip through a moved folder.
-  - `editor-core/tests/project_libraries.rs`: commands, undo, refusals.
-  - `view::project_libs`: sync, the copy refusal, `after_save`.
-  - `mcp/tests/library_tools.rs`: the project's libraries end to end, including undo,
-    Save As relinking, remove with unsaved changes, a missing file, and a project
-    without a folder.
-
-### 2. Project tree panel
-
-- **The panel.** `Panel::Project` (⌘1) replaces Libraries and the Library browser. The
-  Library browser panel and `LibraryEditor::browser_ui` are gone; ⌘2 is free.
-  - Header: + (New library…, Add library…, Import from KiCad…), search, Collapse all, –.
-  - Tree (`app/src/project_panel.rs`):
-    - the project (name in bold, folder in dim text): Schematic, PCB, Project Library;
-    - Built-in Library;
-    - External Libraries: listed files in the project's order, missing files, then
-      unsaved or unlisted libraries.
-    Each library expands to Parts / Symbols / Footprints → items, sorted with
-    `natural_cmp`.
-  - The app rebuilds the nodes every frame (`PcbApp::tree_nodes`); fine at today's sizes.
-    Cache them if a big KiCad import makes it slow. Only rows inside the clip rect are
-    painted.
-- **Tree model** (`view::tree`, toolkit independent, unit tested).
-  - `Node<K, T>` (id, label, data, children) and `TreeState<K>` (expanded set,
-    selection, search). `rows()` flattens the visible rows.
-  - Keys: ↑/↓, Home/End, ← collapses or goes to the parent, → expands or goes to the
-    first child, Enter activates. `reveal` expands the ancestors and selects.
-  - Search filters: only matches (case-insensitive substring) and their ancestors show.
-    Ancestors are force-expanded and matches show as leaves; ↑/↓ visit matches only.
-    `close_search` restores the expansion from before the search, plus the selection's
-    ancestors.
-- **Behaviour.**
-  - `NodeId` covers project nodes, `Library(Owner)`, `Missing(path hash)`,
-    `Group(Owner, Group)` and `Item(Owner, ObjectId)`. `Owner::Project` is the Project
-    Library.
-  - `Info` holds what painting and menus need: icon, detail, warn/dim/strong, tooltip,
-    `editable`, `flag` (listed library / part with a newer library version), `count`,
-    `path`.
-  - Context menus come from `menu(id, info)` and double-click / Enter from
-    `activate(id, info)`. Both are pure functions with a unit test. They return `Act`s,
-    which `PcbApp::tree_act` carries out.
-  - The tree follows the focused tab (`ProjectPanel::follow`): when the focus changes,
-    its node (the item open in a library tab, else Schematic / PCB) is revealed and
-    selected.
-  - Keyboard focus is a widget under the rows (`tree_id`). Clicking a row focuses it, and
-    a focus lock filter keeps arrows and Esc in the tree.
-    - Typing starts a search: the text goes to the field, which gets focus with the
-      cursor at the end.
-    - P places the selected part, and on anything else it is typed. Delete / Backspace
-      delete an item of an editable library.
-  - The search field has its own event filter. Gotcha: egui drops focus on Esc *before*
-    widgets run unless the focused widget's filter claims Esc.
-  - Rename… opens a small `theme::dialog` (`LibraryDoc::rename` keeps names unique per
-    kind). Duplicate, New part using this, and New part / symbol / footprint moved here
-    from the old browser.
-- **Built-in Library** (formerly Starter):
-  - `builtin_library()` is named "Built-in"; the tab says "Built-in Library".
-  - It is read-only: `Document::read_only` makes every command fail with a reason, and
-    `LibraryDoc::builtin()` sets it. Agents get the same refusal (`edit_library`,
-    `save_library`).
-  - Its tab shows the reason, and the part form has a "Save a copy…" button
-    (`LibraryEditor::save_copy`).
-- **Script steps** for testing the tree: `ui-double-click`, `ui-right-click` and
-  `type TEXT`.
-- **Project Library** is read-only in the tree for now. Its parts can be placed and
-  updated, and they show their state: "library changed" (with Update), "library not
-  loaded", "removed from library", or "local". Up-to-date parts show nothing. Editing it
-  comes in change 3.
-- Old `settings.json` files with `"libraries"` in the dock are ignored once (no
-  compatibility alias).
-
-### 3. Editable Project Library
-
-- **One document:** the app's project `Document` moved into a `LibraryEditor` keyed
-  `library::PROJECT_LIB` (`PcbApp::project`, formerly `doc`). Its `LibraryDoc` wraps the
-  project document, so the library tab's forms and item editors run ordinary project
-  commands on `Project::library`. That gives one undo history, and schematic and board
-  update right away.
-  - `PcbApp::lib(PROJECT_LIB)` returns this editor, and `focused_lib_ref()` is the read
-    path for the status bar and the tree's `focus_node`.
-  - `PROJECT_LIB` takes a different path in a few places:
-    - Save and Save as save the project.
-    - `confirm_discard_library` always passes.
-    - Close only closes the tab.
-    - The File menu's `lib_focus` excludes it, so it reads "Save project".
-  - Gotcha: every change to a project library item rebuilds the scenes, drags in the
-    symbol or footprint editor included. That's fine for the demo, but may be slow on
-    big projects; make it incremental if it shows up.
-- **Part states** (`query::part_statuses`): two comparisons against the stored
-  `source.content_hash` (the hash at import or update):
-  - the library's current hash tells whether the library changed;
-  - the copy's own hash tells whether it was changed in the project.
-  - Together they give `UpToDate`, `LibraryChanged`, `ModifiedLocally` and
-    `BothChanged`; on top of these are `LibraryMissing`, `RemovedFromLibrary` and
-    `Local`.
-  - The tree shows them as "library changed", "modified", "both changed", and so on.
-  - Updating a "both changed" part asks first (rfd dialog), since `UpdateParts` takes
-    the library's version and drops the local edit.
-- **Refusals** (Q15):
-  - `Command::Update` of a `LibPart` runs `check_part_still_fits`: dropping a variant a
-    component uses, or a unit that is placed, fails and names the component.
-  - Deleting a used part, or a symbol or footprint a used part needs, was already
-    refused by `Delete`.
-  - Pin and pad edits are allowed. ERC and DRC flag what no longer fits.
-- **Remove unused parts:** `query::unused_library_objects` lists parts nothing uses,
-  then the symbols and footprints only those parts (or nothing) need. The order matters:
-  one `Delete` removes the parts before the objects they reference, so the in-use
-  checks pass. Unused parts are dimmed in the tree, and the menu entry appears only when
-  some exist.
-- **MCP:** `list_libraries` starts with the Project Library (kind `project`). Agents
-  edit it with `execute` (`Update` of `LibPart` / `LibSymbol` / `LibFootprint`), not
-  with `edit_library`, which works on library files.
-
-### 4. Incremental library redraws
-
-This fixes the cost noted in change 3: a library edit used to rebuild both views.
-
-- **Only the users redraw.** `View::users_of` lists the placed symbols or footprints that
-  are drawn from the changed library objects, in one pass over the instances.
-  - Schematic symbols depend on their symbol, their part, *and* the component's footprint:
-    symbols show pad names.
-  - Board footprints depend on their footprint and part.
-  - `view::drawn_library_changes` leaves out part edits that keep units and variants
-    (name, description, prefix, default value). Placed parts don't draw those.
-  - `View::apply` is now `apply_objects` plus `redraw_users`, so `Document` can run the
-    two separately.
-- **Connectivity only when something connects:** `Change::affects_connectivity` (editor-core).
-  - Schematic changes always count.
-  - Library edits count only if they change symbol pins, footprint pads, or a part's units
-    or variants.
-  - Drawing graphics in the Project Library recomputes no nets, no copper and no zones.
-- **Slow redraws wait for the drag** (`Document::update_connectivity(busy)`), the same
-  rule as connectivity.
-  - If redrawing the users took longer than `Document::slow` (4 ms), later library edits
-    made while busy are collected in `stale_library`. They're redrawn once the
-    interaction ends.
-  - `Document` remembers `busy` from the last `update_connectivity`, which the app calls
-    every frame. The app's `busy` now includes the Project Library's editors.
-- **Measured** (`edit_bench`, release, 10k components; 3,333 capacitors edited):
-  - Redrawing the users of one capacitor edit: about 21 ms (schematic) + 18 ms (board),
-    roughly 6 µs per placed instance.
-  - The old full rebuild of both views: about 200 ms.
-  - Drag steps after the first: about 2 µs each.
-  - Parts placed a few hundred times redraw live.
-- **Scene fix:** `Scene::set_item` gives up the unused tail when an item shrinks in place
-  and counts it as garbage. Before, `instance_count` kept counting the blanked slots,
-  which made "matches a rebuild" tests fail after an item shrank.
-- Gotcha: the per-instance redraw (text glyphs mostly) is now the floor. Drawing symbols
-  as shared, transformed instances would be the next step if it is ever needed.
-
-### 5. Closable view tabs
-
-The Schematic and PCB tabs close like library tabs now that the tree reopens them.
-
-- `is_tab_closable` is true for every tab; `close_requests` carries `Tab`s, and the app
-  runs `close_view` / `close_library` after the tree is drawn.
-- **Closing a view** (`PcbApp::close_view`) removes its tile, cancels the tool in progress
-  and resets the interaction. The pane itself stays: camera, grid and selection come back
-  when it is reopened. The pane's tab group is remembered in `view_groups`.
-- **Reopening** goes through `show_view`, which every path to a view already used (tree,
-  messages, scripts, `focus_schematic` for placing). `insert_tab` picks the group: the
-  remembered one if it still exists, else the other view's or the Project Library's
-  group, else any tab group, else a new root (everything was closed).
-  - Gotcha: `TileId`s are sequential, so a remembered group must not be looked up in a
-    rebuilt tree. `set_layout` clears `view_groups`.
-  - In side-by-side layout, closing the PCB removes its (now empty) group; reopened, the
-    PCB becomes a tab next to the schematic. `is_side_by_side` is false then, so choosing
-    "Side by side" in the View menu rebuilds the layout with both views.
-- **With the active view closed** and no library focused, `is_open(active)` is false:
-  `run_action` only runs project-level actions (new/open/save/undo/redo/panels); the
-  status bar shows no editor info; the Properties panel has no selection; `focus_node`
-  highlights nothing in the tree. With every tab closed the central area shows a hint
-  (the tile tree isn't drawn: it would take the space).
-- `open_library_tab` uses `insert_tab` too (next to the schematic, else the Project
-  Library, else the PCB).
-
-## Multi-sheet schematics (2026-11-11)
-
-Hierarchical sheets, conceptually compatible with KiCad so its projects can be imported
-and exported later. Decisions (grilling):
-
-- A root sheet, and sub-sheets with a `parent`, each placed exactly once as a sheet
-  symbol on its parent. No sheet reuse: reused KiCad sheets would be duplicated on import.
-- Labels are local, global, hierarchical or power. Global and hierarchical labels have a
-  shape.
-- Sheet pins are derived from the sub-sheet's hierarchical labels: inputs on the left,
-  the rest on the right, in name order. They connect like component pins on the parent.
-- Net names follow KiCad: power > global > local by sheet path (`/A`, `/Power/A`), the
-  shortest path first.
-- Refdes stay design-wide. All sheets are kept in one `schematic.json`.
-- The tree's Schematic node is the root sheet, with the sub-sheets nested below it.
-  There's one closable tab per sheet.
-- A new sheet is named first, then its symbol is placed on the parent. Double-clicking
-  a sheet symbol enters the sheet. Deleting a sheet takes its contents along (the GUI
-  asks first); the root sheet can't be deleted.
-- MCP: sheets are handled with `execute` commands; `sheet` arguments accept an id, a
-  name or a path.
-- Not yet: moving objects between sheets, re-parenting, hierarchical bus pins.
-- Three changes: (1) label scopes, shapes and net names; (2) sheets, tabs, tree and
-  sheet symbols; (3) hierarchical labels through automatic sheet pins.
-
-### 1. Label scopes, shapes and net names
-
-- `LabelKind` is `Local | Global | Hierarchical | Power` (`Net` became `Local`; old files
-  with `"kind": "net"` don't load). `NetLabel.shape: LabelShape`, used for global and
-  hierarchical labels: input, output, bidirectional, tri-state, passive.
-  `LabelShape::points()` says which ends of the outline are pointed.
-- **Connectivity** (`Connectivity::build`): same-named labels join on their sheet, or
-  across all sheets if `kind.is_global()` (global, power). Hierarchical labels behave
-  like local ones until change 3 connects them through sheet pins.
-- **Net names:** power, then global, then local or hierarchical labels as
-  `{sheet path}/{name}`, the fewest `/` first, then alphabetical.
-  - `Schematic::sheet_path` is "" for the root. It is flat for now (first sheet = root,
-    others `/Name`); change 2 makes it follow parents.
-  - Gotcha: local nets are now `/NAME`. Tests that only need a named net for copper
-    use global labels (`board.rs`).
-  - Gotcha: bus members are *label* names (`D0`), not net names (`/D0`). Code that
-    finds a member's net goes through `Connectivity::member_net`, which looks up labels
-    the bus's sheet can see. The entry prompt counts uses the same way. Membership
-    checks compare label names.
-- **Drawing** (`draw_label`): KiCad style.
-  - A global label is an outline around the name, with ends pointed by shape.
-  - A hierarchical label is a small arrow (2 mm) in front of the name.
-  - New palette colours `sch_global_label` and `sch_hier_label`.
-  - `Text::upright` turns text by 180° and swaps its alignment when it would read
-    upside down or downwards. All label texts use it; rotated labels used to be drawn
-    upside down.
-- **Label tool:** L places local, global or hierarchical labels (kind picker in the tool
-  settings, plus the shape for global and hierarchical). Power keeps its own tool and
-  key. Properties edit the kind and shape.
-- MCP: `add_label` takes `kind` and `shape`; the instructions explain scopes; the
-  netlist's bus members report their net via `member_net`.
+| UI | egui / eframe, egui_tiles for tabs and splits. Dark and light themes |
+| Canvas | Custom wgpu renderer (SDF instanced primitives) inside egui paint callbacks |
+| Schematic → PCB | Always live, inside the same command transaction. PCB → schematic: never |
+| Copper | Tracks have no stored net; nets come from the pads they touch. Copper whose net no longer fits is flagged, never deleted |
+| Library parts | Copied into the project (Project Library). Each copy keeps `source` (library id, part id, content hash) for "update from library" |
+| Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported later: buses, label scopes (local / global / hierarchical / power) and net names as KiCad does. Hierarchical sheets in progress (see Later). Multi-unit parts work |
+| Files | JSON, pretty, stable order, integer nm. A project is a folder (`<name>.pcbproj/`: `project.json`, `library.json`, `schematic.json`, `board.json`); a library is one `*.pcblib`. No migrations until production use (`model::io::MIGRATIONS` stays empty) |
+| MCP | In the app (Streamable HTTP on 127.0.0.1, opt-in) and headless over stdio. Every tool goes through editor-core commands |
+| Platforms | macOS first. macOS-only chrome (native menu, title strip) is `cfg`'d; Windows/Linux keep the egui menu bar and system title bar |
+
+## Model and files (`model`)
+
+- Lengths are `i64` nm (`Coord`); `Point`/`Size` serialize as `[x, y]`. `Angle` in
+  degrees; multiples of 90° rotate exactly. `Transform`: mirror, then rotate, then
+  translate.
+- Every object has a UUID. `Store<T>` is insertion-ordered and saved as an array;
+  re-inserting at the old index restores the order exactly (undo).
+- Library: `Symbol` (named pins, `Pin::number`, `key()` = number or name), `Footprint`
+  (pads by number), `Part` = units (one symbol each) + variants (footprint + pad → `(unit,
+  pin)` map; several pads may share a pin).
+- Schematic: design-wide `Component`s (refdes, value, part, variant), units placed as
+  `SymbolInstance`s; every graphic carries its sheet id. Buses: `BusWire`, `BusEntry
+  {pos, dir}` (wire end = `pos + dir.offset()`, a fixed 2.54 mm diagonal).
+- Board: `FootprintInstance` stores only the placement; the footprint comes from the
+  component's variant, so variant swaps need no board edit. Copper layers 0 (top)…63,
+  technical layers from 100.
+- `Project::libraries`: external library paths, absolute in memory, stored relative to
+  the project folder with `/` (`io::stored_path`, `io::normalize` is lexical).
+- Object JSON uses a `"type"` tag (`"kind"` clashed with labels' own `kind` field).
+
+## Commands, undo and sync (`editor-core`)
+
+- Serializable `Command`s (`"command"` tag) are the only way to change a project. Each
+  runs in a `Transaction` with object-level before/after snapshots; on error it rolls
+  back. Schematic → board sync runs in the same transaction, so one undo reverts both.
+  Tests check byte-identical files after undo all / redo all.
+- The `ChangeSet` drives incremental updates. Board setup and the library list ride
+  along as before/after (`setup`, `libraries`); views ignore them.
+  `Change::affects_connectivity`: schematic changes always; library edits only when
+  pins, pads, units or variants change.
+- `Document::read_only` (Built-in Library) makes every command fail with a reason.
+- `UpdateParts` replaces project parts by the library version (variant kept by id, then
+  name). It refuses when placed units would disappear; `check_part_still_fits` guards
+  `Update` of a used `LibPart` the same way.
+- Part states (`query::part_statuses`): the stored `source.content_hash` is compared
+  with the library's hash and with the copy's own → up to date, library changed,
+  modified locally, both changed, library missing, removed from library, local.
+- `query::unused_library_objects` lists unused parts, then the symbols/footprints only
+  they need; deleting in that order passes the in-use checks.
+
+## Connectivity, copper, zones, DRC (`editor-core`)
+
+- **Schematic** (`connectivity`): union-find over pins, wire ends, labels, junctions and
+  entry wire ends (`Node::Entry`). Coinciding points connect; an end inside a wire is a T
+  connection; crossings need a junction. Same-named labels join: local (and, until sheet
+  pins exist, hierarchical) ones on their sheet, global and power ones on all sheets
+  (`LabelKind::is_global`). Net name as in KiCad: power, then global, then local as
+  `{sheet path}/{name}` (`/A`, `/Power/A`; `Schematic::sheet_path`), fewest `/` first,
+  else `Net-(R1-1)`. Gotcha: local nets are `/NAME`; tests that only need a named net
+  use global labels. Problems are `Problem {message, objects, pos}`.
+  Junction dots and unconnected-pin rings are drawn automatically.
+- **Buses:** a bus only groups signals; bus wires and entries never join nets, and a wire
+  or pin touching a bus is a problem. Bus names follow KiCad (`D[0..7]`, `{SDA SCL}`,
+  `I2C{SDA SCL}` → `I2C.SDA`), vectors capped at 1024. A label whose name parses is a
+  bus label and skipped for nets. Gotcha: members are *label* names (`D0`), not net
+  names (`/D0`); find a member's net with `Connectivity::member_net`.
+- **Board** (`copper`): pads (through-hole on all layers), tracks, vias and zone fill
+  pieces form islands (grid broad phase). Nets come from pads; an island with two nets
+  is a short; copper touching no pad is unconnected. Ratsnest: MST per net over pads,
+  vias and track ends (Delaunay for large nets).
+- **Zones** (`zones`, i_overlay on nm): clip to the board outline minus edge clearance,
+  keep clearance to other nets, thermal reliefs to own pads, flood own tracks/vias and
+  netless vias, priority order, drop dead islands. Fills are derived, never saved.
+  Two-pass connectivity: copper without zones → fill → rebuild with fills.
+  `RegionIndex` grids fill edges (without it, touch tests on 80k vertices took 0.7 s).
+- **DRC** (`drc::run`, pure, most severe first): shorts, clearance (pads within one
+  footprint and fills skipped), board edge, courtyard overlaps (bounding boxes), track
+  width and drill minimums, unconnected copper, unrouted.
+- **Slow rebuilds wait:** when connectivity (or redrawing library users) took over 4 ms
+  (`Document::slow`), it is deferred during a drag and caught up afterwards.
+
+## Rendering (`render`)
+
+- Instanced primitives in one 32-byte instance: capsule, circle/ring, rounded rect, arc,
+  triangle. Triangles mark outer edges (anti-aliased); inner edges are hard so polygons
+  show no seams (but a fan's hairline gaps can show: see the app icon).
+- Polygons: ear clipping (`render::tess`) for small ones, i_triangle for zone fills
+  (holes, O(n log n); earcut took 1.9 s on a fill with thousands of holes).
+- Stroke font → capsules (also usable for Gerber later). Small details hide when zoomed
+  out. Per-layer buffers; only dirty items upload; pan/zoom is a uniform.
+- `Scene::set_item` gives up a shrunk item's tail as garbage (else `instance_count`
+  drifts from a rebuild). `Scene::snapshot` doesn't consume the incremental upload.
+- `Offscreen` renders to PNG (tests, MCP screenshots, `render_board`, the app icon). Its
+  background is opaque.
+
+## Views and editing (`view`)
+
+- `View` draws schematic or board into a `Scene` incrementally; overlays (selection,
+  hover, highlights, DRC markers) are separate items. An R*-tree does hit testing (thin
+  beats body, small body beats large) and box selection. `ItemView` does the same for a
+  single symbol or footprint.
+- Library edits redraw only their users (`View::users_of`): symbols depend on symbol,
+  part and the component's footprint (pad names); footprints on footprint and part.
+  Edits that don't change drawing (name, prefix…) redraw nothing.
+- `Document` = editor + folder + both views. `LibraryDoc` wraps a document whose
+  project holds only a library; the Project Library's `LibraryDoc` wraps the project
+  document itself (one undo history).
+- `Interaction`: click/shift/cmd select, box (left→right inside, right→left crossing),
+  drag with snap of the grabbed reference point (one undo step; R rotates while
+  dragging), `snap` toggle. Locked footprints don't move.
+- Dragging keeps schematic wires attached (`keep_connected`; `rubber_band` over wires and
+  buses): orthogonal wires shift and stay orthogonal, the far end stretches or gets a
+  dogleg; rotate/mirror stretch.
+- Tools: `tools::Placer` (library: pin/pad, line, rect, circle, text; names
+  auto-increment), `sch_tools` (wire, bus, bus entry, label, power, junction, place;
+  `/` flips the corner), `pcb_tools` (route 45°/90° with copper snapping, L changes
+  layer + via, via, outline, zone). Bus naming prompts: `SchPlacer::take_prompt`
+  returns a `SchPrompt` for unnamed buses and entry signals.
+- Labels are drawn KiCad style: local with a dot, global as an outline around the name,
+  hierarchical as a small arrow before it; `LabelShape::points` says which ends are
+  pointed. Label text goes through `Text::upright` (turned 180° with swapped alignment
+  instead of upside down or reading downwards).
+- `cross_probe` (pure): selection ↔ symbols/footprints, wires ↔ copper of their nets;
+  the routed net wins.
+- Themes: `style::Palette` (`DARK`, `LIGHT`), a global baked into scene instances;
+  `Document::restyle` / `ItemView::restyle` rebuild everything with overlays.
+- `project_libs::sync` loads listed library files (failures become `MissingLibrary`),
+  keeps unsaved or file-less ones, refuses duplicate library ids (`check_new`);
+  `after_save` relinks or adds a saved library; `copy_for` copies with a new id.
+- `tree`: toolkit-independent tree model (`Node`, `TreeState`, keyboard, search that
+  restores the expansion afterwards).
+
+## Libraries and KiCad (`kicad`)
+
+- Imports `.kicad_sym`, `.kicad_symdir` (KiCad 10) and `.pretty` (KiCad 6–10). Units
+  from sub-symbols, `extends` merged, power symbols skipped, footprints y-flipped and
+  front layers only. Deterministic ids (FNV of library, name, element), so re-imports
+  update in place.
+- The catalog indexes names only (~0.1 s) and parses lazily. Footprint suggestion: the
+  default footprint, else the best `ki_fp_filters` match.
+- Download (`kicad::download`): official GitLab release archives of `SUPPORTED_MAJOR`
+  (10), unpacked into `<config>/kicad/<version>` via a temp folder and rename. Gotcha:
+  cancel has its own error; `io::ErrorKind::Interrupted` would be retried forever by
+  `std`'s and `tar`'s read loops.
+- Verified against the full KiCad 9 and 10 libraries (`kicad/tests/corpus.rs`, enabled
+  by `KICAD_SYMBOL_DIR`/`KICAD_FOOTPRINT_DIR`). 3.6% of parts have a pin without a pad,
+  from KiCad's own data.
+
+## MCP (`mcp`)
+
+- rmcp Streamable HTTP on its own tokio thread, loopback only, browser Origins refused.
+  Calls go over a channel to the app, run between frames (not mid-drag), and wake it
+  with `request_repaint`; 60 s timeout. Headless: `--mcp-stdio` with a `HeadlessHost`.
+- The `Host` trait is implemented by the app and the headless host. `Request` variants
+  are handled in `describe` and `respond` (`host.rs`). Library requests may answer later
+  (`agent::Job`) because they can add tabs.
+- `execute` takes a batch of commands (one undo step, all-or-nothing) and advertises the
+  full command JSON schema. `edit_library` takes the file format with merges by id or
+  name, refuses edits that add new `Library::issues`, and reports pad coverage.
+- Tools are listed in README.md.
+
+## App (`app`)
+
+- **Layout:** Schematic and PCB are tabs (View → Side by side splits them). Panels and
+  tab groups are rounded with 6 pt gaps of window background. GPU canvases can't be
+  clipped, so their corners are masked afterwards (`theme::round_corners`).
+- **Tabs:** every tab closes. A closed view keeps its pane (camera, selection);
+  `show_view` / `insert_tab` reopen it in its remembered group (`view_groups`). Gotcha:
+  `TileId`s are sequential, so `set_layout` clears `view_groups`.
+- **Floating tool bars** (`toolbar.rs`, vector icons in `icons.rs`) are drawn after the
+  canvas and sense click-and-drag, so presses never reach the canvas. View buttons
+  (layers, grid/units/snap, fit) sit at the bottom left.
+- **Tool windows** (`dock.rs`): icon bars on both edges, one open panel per side, never
+  opened automatically. Project (⌘1), Messages (⌘3, with an unseen-problems badge),
+  Properties, Tool settings, Board setup, Overview. Saved in settings when no pointer
+  button is down.
+- **Project tree** (`project_panel.rs`): project, Built-in Library (read-only), External
+  Libraries; menus and activation are pure functions returning `Act`s. Gotcha: egui
+  drops focus on Esc before widgets run unless the focused widget's event filter claims
+  Esc.
+- **Main menu** (`menu.rs`): described once as data, drawn by egui (`bar_ui`) or, on
+  macOS, natively with muda (`native_menu.rs`). Gotcha: macOS menus take their key
+  equivalents before the window sees the key, so only ⌘ shortcuts become key
+  equivalents, and picking one replays its shortcut as an egui key press (keymap context
+  and typing rules still apply). The native menu syncs every frame, in place when only
+  texts or states change. winit's default menu is off.
+- **macOS window** (`title_bar.rs`): transparent title bar with full-size content; our
+  strip shows the icon, the project name and "— Edited". Height and button extent come
+  from the `NSWindow` (32 pt on macOS 26). Drag → `StartDrag`; double-click follows
+  `AppleActionOnDoubleClick`; no strip in full screen; `setDocumentEdited` for the dot.
+  The window appearance follows the app theme. Gotcha: `theme::apply` pins egui's theme,
+  or a window appearance change swaps our visuals for egui's defaults.
+- **App icon:** `cargo run -p render --example app_icon -- crates/app/assets/icon.png`
+  (committed; deterministic). Drawn on black and white to recover alpha; the squircle is
+  two offset triangle fans so their hairline gaps cover each other. Used as the window
+  icon everywhere; `scripts/bundle-macos.sh` builds the `.app` with `AppIcon.icns`.
+  Unbundled (`cargo run`) macOS shows the app as `pcb-designer`; `setProcessName` and an
+  embedded `__info_plist` don't change that.
+- **Keymap** (`keymap.rs`): actions are global or per context (library, schematic,
+  board); contexts may share keys. `works_while_typing` for window-level actions.
+- **Settings** (`settings.rs`, `PCB_DESIGNER_CONFIG` overrides the folder): theme, unit,
+  recent projects, changed key bindings, dock.
+- **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
+  `theme::bold_label`). Bus prompts are `name_prompt.rs`.
+- **Dev aids:** `--script` steps (see AGENTS.md), `--screenshot` (captures egui output:
+  the native window buttons don't show), `--panel`, `--show`, `--select`.
+
+## Performance (Apple M4, release)
+
+Budget: about 10k footprints at 60 fps, an edit → board → GPU update within one frame.
+
+| Measurement (10k components unless noted) | Result |
+|---|---|
+| Live sync per schematic edit (spike, 600 random edits) | p50 2.5 ms, max 3.6 ms |
+| Schematic connectivity, full rebuild | ~13 ms |
+| Board copper connectivity (20k pads) | ~6 ms |
+| Zone fill + connectivity + render, whole-board zone | 0.10 s (2k) / 0.54 s (10k) |
+| DRC | 8.5 ms (2k) / 13 ms (10k) |
+| Redraw users of one library edit (3,333 capacitors) | ~21 ms + 18 ms (old full rebuild ~200 ms) |
+| Drag step | ~0.035 ms |
+| Both canvases animated, ~3 M primitives | 90–170 fps uncapped |
+
+Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
+`sync_bench` (`spike`) and `--stress N`.
+
+## Later
+
+Things decided to do later, by area. Remove an entry when it's done; add what a change
+defers.
+
+**Schematic**
+- Hierarchical sheets (decided 2026-11-11, KiCad's model): a root sheet and sub-sheets
+  with `parent`, each placed once as a sheet symbol on its parent (no reuse; reused
+  KiCad sheets get duplicated on import). One `schematic.json`; refdes stay design-wide.
+  Next changes: (2) sheets with `AddSheet` / `RemoveSheet` (with contents; root
+  protected), a tab per sheet, sub-sheets nested under the tree's Schematic node, new
+  sheet = name, then place its symbol (default 25.4 × 20 mm), double-click enters, MCP
+  `sheet` arguments by id, name or path, a demo "Indicator" sheet; (3) sheet pins
+  derived from the sub-sheet's hierarchical labels (inputs left, others right, by name)
+  that connect like component pins, with ERC.
+- After sheets: re-parenting sheets, moving objects between sheets, hierarchical bus
+  pins.
+- KiCad's "unfold bus".
+- ERC (pin type checks).
+- Wire posture that flips automatically with the cursor.
+- Dragging wire segments themselves.
+- Editing text on the canvas.
+- KiCad project import (the bus model already maps one to one).
+
+**Board**
+- Gerber export.
+- Clearance checking while routing; push-and-shove; dragging tracks that stay connected.
+- Blind and buried vias in the UI.
+- Copper graphics inside footprints (from KiCad custom pads) counting as connections.
+- Incremental or background zone refill (only zones near the change).
+- Arc outlines in zone fills (circles are 16–64-segment polygons today).
+- Exact courtyard polygons in DRC (bounding boxes today).
+- Per-net clearance classes.
+- Autoplacement and autorouting.
+
+**Libraries and parts**
+- Drawing tools for arcs and polygons (numeric editing only today).
+- Pad arrays and footprint wizards.
+- A part preview in the part form; symbol and footprint previews in the KiCad import
+  window.
+- KiCad import: back-side footprint content, text boxes, De Morgan bodies, alternate pin
+  functions, exact oval drills, 3D models.
+- KiCad 11 libraries (raise `SUPPORTED_MAJOR` once tested).
+
+**Performance**
+- Ratsnest of huge nets (7k-pad GND, ~2.3 ms): incremental MST or a worker thread.
+- Viewport culling per chunk and level of detail for tiny primitives.
+- Same-layer transparency (render each layer to a texture, then composite).
+- Incremental schematic connectivity (full rebuild today).
+- Drawing symbols as shared, transformed instances (per-instance redraw is the floor of
+  library edits).
+- `Store` bulk removals (O(n) each), linear scans for refdes numbering and sync lookups.
+- Cache the project tree nodes if big libraries make the per-frame rebuild slow.
+
+**GUI**
+- Save the window layout and pane sizes (eframe persistence is off).
+- Per-layer colour customisation; UI scale.
+- Tool window bars: drag buttons to reorder or move between bars, a Nets panel, two
+  panels stacked on one side.
+- Restyle the Settings and KiCad import windows with `theme::dialog`.
+- Replace the placeholder stroke font.
+- UI icons as SVG files instead of code (`icons.rs`): `egui_extras` `svg` feature
+  (resvg) with `install_image_loaders`. Monochrome icons drawn white and tinted
+  (`Image::tint`) to follow the theme; multi-colour ones (tab icons) as stacked tinted
+  layers or with colours substituted before parsing. Possibly the app icon too.
+- An MCP activity log panel listing agent edits.
+- macOS: a Liquid Glass app icon made with Icon Composer (needs Xcode's `actool`); more
+  content in the title strip; "Fill" on title double-click (no public API, zooms today).
+- Native menus don't show shortcuts without ⌘ (they would steal typing).
+
+**Other**
+- Simulation.
