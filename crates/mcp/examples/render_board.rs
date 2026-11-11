@@ -1,6 +1,7 @@
 //! Render the demo board offscreen (no window needed), after running the design rule
 //! check: `cargo run -p mcp --example render_board -- out.png [width height] [--light]
-//! [--schematic | --sheet NAME]`. Development aid for screenshots.
+//! [--schematic | --sheet NAME] [--show-layer NAME]…` (shows a board layer hidden by
+//! default, e.g. "Top Solder Mask"). Development aid for screenshots.
 
 use mcp::Host;
 use mcp::headless::HeadlessHost;
@@ -19,6 +20,11 @@ fn main() {
         args.remove(i);
         args.remove(i)
     });
+    let mut shown = Vec::new();
+    while let Some(i) = args.iter().position(|a| a == "--show-layer") {
+        args.remove(i);
+        shown.push(args.remove(i));
+    }
     if light {
         view::style::set_theme(view::style::Theme::Light);
     }
@@ -29,6 +35,12 @@ fn main() {
     let report = host.doc.run_drc();
     for v in &report.violations {
         println!("{:?}: {}", v.kind, v.message);
+    }
+    let scene = &mut host.doc.board.scene;
+    for i in 0..scene.layer_count() as u16 {
+        if shown.contains(&scene.layer(i).name) {
+            scene.layer_mut(i).visible = true;
+        }
     }
     let project = host.doc.project();
     let view = match sheet {

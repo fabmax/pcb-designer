@@ -112,6 +112,12 @@ and hierarchical sheets.
 - **DRC** (`drc::run`, pure, most severe first): shorts, clearance (pads within one
   footprint and fills skipped), board edge, courtyard overlaps (bounding boxes), track
   width and drill minimums, unconnected copper, unrouted.
+- **Mask and paste** (`fab`) are derived from pads, never stored: every pad opens the
+  mask on its side (holes on both sides) grown by `DesignRules::mask_expansion`; SMD
+  pads get paste grown by `paste_margin` (negative shrinks, as in KiCad). Vias stay
+  tented. Explicit footprint mask/paste graphics add to that. `fab::pad_outline` is the
+  one placed pad shape (rotation includes mirroring; grown rectangles keep sharp
+  corners, polygons offset with round joins) for the board view and the Gerber export.
 - **Slow rebuilds wait:** when connectivity (or redrawing library users) took over 4 ms
   (`Document::slow`), it is deferred during a drag and caught up afterwards.
 
@@ -300,7 +306,10 @@ defers.
 - KiCad project import (the bus model already maps one to one).
 
 **Board**
-- Gerber export.
+- Gerber export: the writer (Gerber 2) and the reader and read-only viewer (Gerber 3),
+  as agreed. Afterwards: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel
+  file extensions, a measure tool in the viewer.
+- Per-pad mask and paste overrides; mask/paste openings in the footprint editor.
 - Clearance checking while routing; push-and-shove; dragging tracks that stay connected.
 - Blind and buried vias in the UI.
 - Copper graphics inside footprints (from KiCad custom pads) counting as connections.

@@ -10,6 +10,7 @@ pub mod connectivity;
 pub mod copper;
 pub mod drc;
 pub mod editor;
+pub mod fab;
 pub mod history;
 pub mod query;
 mod rubber_band;

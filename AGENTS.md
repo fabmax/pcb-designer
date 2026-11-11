@@ -114,5 +114,5 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
     `schematic` steps; clicks may switch tabs afterwards.
   - `ui-click` on menus is unreliable.
 - Without a window: `cargo run -p mcp --example render_board -- out.png [w h] [--light]
-  [--schematic]`.
+  [--schematic] [--show-layer "Top Solder Mask"]`.
 - Call a running app's MCP tool: `cargo run -p mcp --example mcp_call -- URL TOOL '{…}'`.

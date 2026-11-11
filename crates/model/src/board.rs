@@ -210,6 +210,16 @@ pub struct DesignRules {
     /// Width of the thermal relief spokes.
     #[serde(default = "default_thermal_spoke")]
     pub thermal_spoke: Coord,
+    /// How far solder mask openings extend beyond their pads.
+    #[serde(default = "default_mask_expansion")]
+    pub mask_expansion: Coord,
+    /// Added to SMD pads for their paste (negative shrinks, as in KiCad).
+    #[serde(default)]
+    pub paste_margin: Coord,
+}
+
+fn default_mask_expansion() -> Coord {
+    mm(0.05)
 }
 
 fn default_thermal_gap() -> Coord {
@@ -231,6 +241,8 @@ impl Default for DesignRules {
             min_drill: mm(0.2),
             thermal_gap: default_thermal_gap(),
             thermal_spoke: default_thermal_spoke(),
+            mask_expansion: default_mask_expansion(),
+            paste_margin: 0,
         }
     }
 }
