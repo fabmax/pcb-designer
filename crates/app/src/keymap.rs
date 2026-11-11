@@ -129,7 +129,7 @@ impl Action {
             Action::SchWire => "Wire tool (schematic)",
             Action::SchBus => "Bus tool (schematic)",
             Action::SchBusEntry => "Bus entry tool (schematic)",
-            Action::SchLabel => "Net label tool (schematic)",
+            Action::SchLabel => "Label tool (schematic)",
             Action::SchPower => "Power port tool (schematic)",
             Action::SchJunction => "Junction tool (schematic)",
             Action::Posture => "Corner direction (wires, tracks)",

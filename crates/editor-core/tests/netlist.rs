@@ -54,9 +54,13 @@ impl Sch {
     }
 
     fn label(&mut self, pos: Point, name: &str, kind: LabelKind) {
-        self.ed
-            .execute(Command::AddLabel { sheet: None, pos, name: name.into(), kind, rotation: Angle::ZERO })
-            .unwrap();
+        self.label_on(None, pos, name, kind);
+    }
+
+    fn label_on(&mut self, sheet: Option<Id>, pos: Point, name: &str, kind: LabelKind) {
+        let shape = LabelShape::default();
+        let cmd = Command::AddLabel { sheet, pos, name: name.into(), kind, shape, rotation: Angle::ZERO };
+        self.ed.execute(cmd).unwrap();
     }
 
     fn junction(&mut self, pos: Point) {
@@ -147,11 +151,11 @@ fn labels_connect_by_name_and_name_the_net() {
     let p = s.pin(r1, "2");
     let q = s.pin(r2, "1");
     s.wire(&[p, p + Point::mm(5.08, 0.0)]);
-    s.label(p + Point::mm(5.08, 0.0), "SDA", LabelKind::Net);
+    s.label(p + Point::mm(5.08, 0.0), "SDA", LabelKind::Local);
     // A label in the middle of a wire also connects.
     s.wire(&[q - Point::mm(10.16, 0.0), q]);
-    s.label(q - Point::mm(5.08, 0.0), "SDA", LabelKind::Net);
-    assert!(s.netlist().contains("SDA: R1.2 R2.1\n"), "{}", s.netlist());
+    s.label(q - Point::mm(5.08, 0.0), "SDA", LabelKind::Local);
+    assert!(s.netlist().contains("/SDA: R1.2 R2.1\n"), "{}", s.netlist());
 
     // Two names on one net are reported; power ports win.
     s.label(p, "VCC", LabelKind::Power);
@@ -208,8 +212,8 @@ fn opamp_inverting_amplifier() {
     assert!(rf1.x > rin2.x && rf1.x < inm.x);
     s.wire(&[rf1, Point::new(rf1.x, inm.y)]);
     s.wire(&l_path(rf2, out));
-    s.label(s.pin(rin, "1"), "IN", LabelKind::Net);
-    s.label(out, "OUT", LabelKind::Net);
+    s.label(s.pin(rin, "1"), "IN", LabelKind::Local);
+    s.label(out, "OUT", LabelKind::Local);
     s.label(inp, "GND", LabelKind::Power);
     s.label(v_neg, "GND", LabelKind::Power);
     s.label(v_pos, "+5V", LabelKind::Power);
@@ -223,12 +227,12 @@ fn opamp_inverting_amplifier() {
     assert_eq!(
         text,
         format!(
-            "+5V: {}\nGND: {} {}\nIN: R1.1\nNet-(R1-2): R1.2 R2.1 {}\nOUT: R2.2 {}\n",
+            "+5V: {}\n/IN: R1.1\n/OUT: R2.2 {}\nGND: {} {}\nNet-(R1-2): R1.2 R2.1 {}\n",
             pad("V+"),
+            pad("OUT"),
             pad("+IN"),
             pad("V-"),
-            pad("-IN"),
-            pad("OUT")
+            pad("-IN")
         )
     );
     assert!(c.problems.is_empty());
@@ -411,4 +415,38 @@ fn units_of_a_dual_opamp_are_separate_symbols() {
     assert!(s.ed.project().schematic.components.contains(component));
     s.ed.execute(Command::Delete { ids: vec![ObjectId::Symbol(a)] }).unwrap();
     assert!(!s.ed.project().schematic.components.contains(component));
+}
+
+#[test]
+fn label_scopes_and_net_names_follow_kicad() {
+    let mut s = Sch::new();
+    let sub = Id::new();
+    s.ed.execute(Command::Insert { objects: vec![Object::Sheet(Sheet { id: sub, name: "Power".into() })] }).unwrap();
+    let net_at = |s: &Sch, x: f64| s.conn().net_of(ObjectId::Label(label_at(s, x))).map(|n| n.name.clone());
+
+    // Local labels: same sheet only, named by the sheet path.
+    s.label(Point::mm(0.0, 0.0), "EN", LabelKind::Local);
+    s.label_on(Some(sub), Point::mm(10.0, 0.0), "EN", LabelKind::Local);
+    assert_eq!(net_at(&s, 0.0).as_deref(), Some("/EN"));
+    assert_eq!(net_at(&s, 10.0).as_deref(), Some("/Power/EN"), "not joined across sheets");
+
+    // Global labels join across sheets and keep the plain name.
+    s.label(Point::mm(20.0, 0.0), "CLK", LabelKind::Global);
+    s.label_on(Some(sub), Point::mm(30.0, 0.0), "CLK", LabelKind::Global);
+    let c = s.conn();
+    let clk = c.net_of(ObjectId::Label(label_at(&s, 20.0))).unwrap();
+    assert_eq!(clk.name, "CLK");
+    assert_eq!(clk.labels.len(), 2);
+
+    // Several names: power beats global beats local; the root's local beats a sub-sheet's.
+    s.label(Point::mm(0.0, 0.0), "EN_GLOBAL", LabelKind::Global);
+    assert_eq!(net_at(&s, 0.0).as_deref(), Some("EN_GLOBAL"));
+    s.label(Point::mm(0.0, 0.0), "+3V3", LabelKind::Power);
+    assert_eq!(net_at(&s, 0.0).as_deref(), Some("+3V3"));
+    s.label_on(Some(sub), Point::mm(10.0, 0.0), "EN2", LabelKind::Local);
+    assert_eq!(net_at(&s, 10.0).as_deref(), Some("/Power/EN"), "alphabetical at the same depth");
+}
+
+fn label_at(s: &Sch, x: f64) -> Id {
+    s.ed.project().schematic.labels.iter().find(|l| l.pos == Point::mm(x, 0.0)).unwrap().id
 }

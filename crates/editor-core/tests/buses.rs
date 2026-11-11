@@ -38,7 +38,14 @@ fn entry(ed: &mut Editor, pos: Point, dir: EntryDir) -> Id {
 }
 
 fn label(ed: &mut Editor, pos: Point, name: &str) -> Id {
-    let cmd = Command::AddLabel { sheet: None, pos, name: name.into(), kind: LabelKind::Net, rotation: Angle::ZERO };
+    let cmd = Command::AddLabel {
+        sheet: None,
+        pos,
+        name: name.into(),
+        kind: LabelKind::Local,
+        shape: LabelShape::default(),
+        rotation: Angle::ZERO,
+    };
     created(ed, cmd, |id| match id {
         ObjectId::Label(l) => Some(l),
         _ => None,
@@ -114,8 +121,8 @@ fn signals_connect_through_entries_by_label_only() {
     let c = Connectivity::build(ed.project());
     assert!(c.problems.is_empty(), "{:?}", messages(&c));
     // The bus doesn't join D0 and D1; each entry knows its signal.
-    assert_eq!(c.net_of(ObjectId::BusEntry(e0)).unwrap().name, "D0");
-    assert_eq!(c.net_of(ObjectId::BusEntry(e1)).unwrap().name, "D1");
+    assert_eq!(c.net_of(ObjectId::BusEntry(e0)).unwrap().name, "/D0");
+    assert_eq!(c.net_of(ObjectId::BusEntry(e1)).unwrap().name, "/D1");
     assert_eq!(c.net_of(ObjectId::Wire(w0[0])).unwrap().pins.len(), 1);
     assert_eq!(c.net_of(ObjectId::Wire(w1[0])).unwrap().pins.len(), 1);
     assert_eq!(c.bus_of(ObjectId::BusEntry(e0)).unwrap().entries.len(), 2);

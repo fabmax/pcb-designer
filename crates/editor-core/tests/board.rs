@@ -52,9 +52,16 @@ impl B {
         self.ed.execute(Command::AddWire { sheet: None, points: pts }).unwrap();
     }
 
+    /// A global label: its net keeps the plain name (local ones are `/NAME`).
     fn label(&mut self, pos: Point, name: &str) {
-        let cmd =
-            Command::AddLabel { sheet: None, pos, name: name.into(), kind: LabelKind::Net, rotation: Angle::ZERO };
+        let cmd = Command::AddLabel {
+            sheet: None,
+            pos,
+            name: name.into(),
+            kind: LabelKind::Global,
+            shape: LabelShape::default(),
+            rotation: Angle::ZERO,
+        };
         self.ed.execute(cmd).unwrap();
     }
 

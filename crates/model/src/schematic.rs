@@ -146,14 +146,81 @@ pub struct Junction {
     pub pos: Point,
 }
 
+/// What a label connects to, as in KiCad.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LabelKind {
-    /// Connects to same-named labels.
+    /// Connects to same-named labels on the same sheet. The net is named by the sheet's
+    /// path: `/NAME` on the root sheet, `/Sub/NAME` below it.
     #[default]
-    Net,
-    /// Power port (GND, VCC, …), drawn as a power symbol.
+    Local,
+    /// Connects to same-named global labels on every sheet; the net keeps the name.
+    Global,
+    /// Connects to the same-named pin of this sheet's symbol on the parent sheet.
+    Hierarchical,
+    /// Power port (GND, VCC, …), drawn as a power symbol; global.
     Power,
+}
+
+impl LabelKind {
+    pub const ALL: [LabelKind; 4] = [LabelKind::Local, LabelKind::Global, LabelKind::Hierarchical, LabelKind::Power];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            LabelKind::Local => "Local",
+            LabelKind::Global => "Global",
+            LabelKind::Hierarchical => "Hierarchical",
+            LabelKind::Power => "Power",
+        }
+    }
+
+    /// Same-named labels of this kind connect across sheets.
+    pub fn is_global(self) -> bool {
+        matches!(self, LabelKind::Global | LabelKind::Power)
+    }
+
+    /// Global and hierarchical labels are drawn with a [`LabelShape`].
+    pub fn has_shape(self) -> bool {
+        matches!(self, LabelKind::Global | LabelKind::Hierarchical)
+    }
+}
+
+/// The outline of a global or hierarchical label (and of a sheet pin): the signal's
+/// direction, drawn as in KiCad. Documentation only; connectivity ignores it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LabelShape {
+    #[default]
+    Input,
+    Output,
+    Bidirectional,
+    TriState,
+    Passive,
+}
+
+impl LabelShape {
+    pub const ALL: [LabelShape; 5] =
+        [LabelShape::Input, LabelShape::Output, LabelShape::Bidirectional, LabelShape::TriState, LabelShape::Passive];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            LabelShape::Input => "Input",
+            LabelShape::Output => "Output",
+            LabelShape::Bidirectional => "Bidirectional",
+            LabelShape::TriState => "Tri-state",
+            LabelShape::Passive => "Passive",
+        }
+    }
+
+    /// Which ends of the outline are pointed: (at the connection point, away from it).
+    pub fn points(self) -> (bool, bool) {
+        match self {
+            LabelShape::Input => (true, false),
+            LabelShape::Output => (false, true),
+            LabelShape::Bidirectional | LabelShape::TriState => (true, true),
+            LabelShape::Passive => (false, false),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -164,6 +231,9 @@ pub struct NetLabel {
     pub name: String,
     #[serde(default)]
     pub kind: LabelKind,
+    /// Drawn for global and hierarchical labels only.
+    #[serde(default)]
+    pub shape: LabelShape,
     #[serde(default)]
     pub rotation: Angle,
 }
@@ -209,6 +279,16 @@ impl Schematic {
 
     pub fn first_sheet(&self) -> Option<Id> {
         self.sheets.ids().next()
+    }
+
+    /// The sheet's path in the hierarchy, as a prefix for net names: empty for the root,
+    /// `/Power/Regulator` below it (names of the sheets from the root down).
+    pub fn sheet_path(&self, sheet: Id) -> String {
+        // Sheets are flat until they get parents: the first is the root.
+        if self.first_sheet() == Some(sheet) {
+            return String::new();
+        }
+        self.sheets.get(sheet).map_or(String::new(), |s| format!("/{}", s.name))
     }
 
     pub fn component_by_refdes(&self, refdes: &str) -> Option<&Component> {

@@ -4,7 +4,7 @@ use editor_core::ChangeSet;
 use editor_core::copper::{BoardConnectivity, Geo};
 use editor_core::query::{footprint_of_instance, symbol_of_instance};
 use model::*;
-use render::{Color, Instance, Scene};
+use render::{Color, Instance, Scene, font};
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use std::hash::{Hash, Hasher};
 
@@ -944,16 +944,51 @@ fn draw_symbol_graphics(
     }
 }
 
+/// Half the height of a global or hierarchical label's outline, in mm.
+const LABEL_HALF_HEIGHT: f64 = 1.0;
+
 fn draw_label(lab: &NetLabel, l: &SchLayers, p: &mut Painter) {
     let t = Transform::new(lab.pos, lab.rotation, false);
     let line = |p: &mut Painter, a: (f64, f64), b: (f64, f64), color: Color| {
         p.line(l.labels, t.point(Point::mm(a.0, a.1)), t.point(Point::mm(b.0, b.1)), WIRE_WIDTH, color)
     };
     match lab.kind {
-        LabelKind::Net => {
+        LabelKind::Local => {
             p.circle(l.labels, lab.pos, 200_000, pal().sch_label);
-            let text = Text::new(lab.name.clone(), Point::mm(0.4, 0.3), 1_270_000).transformed(&t);
+            let text = Text::new(lab.name.clone(), Point::mm(0.4, 0.3), 1_270_000).transformed(&t).upright();
             p.text(l.labels, &text, pal().sch_label, &|s| s.to_string(), true);
+        }
+        LabelKind::Global | LabelKind::Hierarchical => {
+            // KiCad style: a global label is an outline around its name, a hierarchical one a
+            // small arrow in front of it; the shape says which ends are pointed.
+            let global = lab.kind == LabelKind::Global;
+            let color = if global { pal().sch_global_label } else { pal().sch_hier_label };
+            let (near, far) = lab.shape.points();
+            let h = LABEL_HALF_HEIGHT;
+            let tip = |pointed: bool| if pointed { h } else { 0.0 };
+            let width = font::text_width(&lab.name, 1.27) as f64;
+            let (end, text_x) = if global {
+                (tip(near) + 0.4 + width + 0.4 + tip(far), tip(near) + 0.4)
+            } else {
+                (2.0 * h, 2.0 * h + 0.4)
+            };
+            let mut outline = vec![(tip(near), h), (end - tip(far), h)];
+            if far {
+                outline.push((end, 0.0));
+            }
+            outline.extend([(end - tip(far), -h), (tip(near), -h)]);
+            if near {
+                outline.push((0.0, 0.0));
+            }
+            outline.push(outline[0]);
+            for w in outline.windows(2) {
+                line(p, w[0], w[1], color);
+            }
+            let text = Text::new(lab.name.clone(), Point::mm(text_x, 0.0), 1_270_000)
+                .aligned(HAlign::Left, VAlign::Center)
+                .transformed(&t)
+                .upright();
+            p.text(l.labels, &text, color, &|s| s.to_string(), true);
         }
         LabelKind::Power if lab.name.to_uppercase().contains("GND") => {
             line(p, (0.0, 0.0), (0.0, -1.27), pal().sch_power);

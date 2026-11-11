@@ -345,7 +345,11 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             json!(ids.iter().map(|&id| p.get(id)).collect::<Vec<_>>())
         }
         Request::Component { refdes } => component(host.document().project(), &refdes)?,
-        Request::Netlist => netlist(host.document().current_connectivity()),
+        Request::Netlist => {
+            let doc = host.document();
+            doc.update_connectivity(false);
+            netlist(doc.project(), doc.connectivity())
+        }
         Request::Routing => {
             let doc = host.document();
             doc.update_connectivity(false);
@@ -604,7 +608,7 @@ pub fn render_png(
     Ok(renderer.render(scene, &camera, background, width, height).encode_png())
 }
 
-fn netlist(c: &editor_core::connectivity::Connectivity) -> Value {
+fn netlist(project: &Project, c: &editor_core::connectivity::Connectivity) -> Value {
     let nets: Vec<Value> = c
         .netlist()
         .filter(|n| n.pins.len() > 1 || n.named)
@@ -628,8 +632,9 @@ fn netlist(c: &editor_core::connectivity::Connectivity) -> Value {
                 .members
                 .iter()
                 .map(|m| {
-                    let pins: Option<Vec<String>> = c.net(m).map(|n| n.pins.iter().map(|p| p.label()).collect());
-                    json!({ "name": m, "net": c.net(m).map(|_| m), "pins": pins.unwrap_or_default() })
+                    let net = c.member_net(project, b, m);
+                    let pins: Vec<String> = net.map(|n| n.pins.iter().map(|p| p.label()).collect()).unwrap_or_default();
+                    json!({ "name": m, "net": net.map(|n| n.name.as_str()), "pins": pins })
                 })
                 .collect();
             json!({

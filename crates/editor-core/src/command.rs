@@ -86,6 +86,9 @@ pub enum Command {
         name: String,
         #[serde(default)]
         kind: LabelKind,
+        /// Drawn for global and hierarchical labels.
+        #[serde(default)]
+        shape: LabelShape,
         #[serde(default)]
         rotation: Angle,
     },
@@ -267,12 +270,12 @@ impl Command {
                 let sheet = resolve_sheet(tx, sheet)?;
                 tx.insert(Object::Junction(Junction { id: Id::new(), sheet, pos })).map(drop)
             }
-            Command::AddLabel { sheet, pos, name, kind, rotation } => {
+            Command::AddLabel { sheet, pos, name, kind, shape, rotation } => {
                 if name.trim().is_empty() {
                     return Err(CommandError::Invalid("label name must not be empty".into()));
                 }
                 let sheet = resolve_sheet(tx, sheet)?;
-                let label = NetLabel { id: Id::new(), sheet, pos, name, kind, rotation };
+                let label = NetLabel { id: Id::new(), sheet, pos, name, kind, shape, rotation };
                 tx.insert(Object::Label(label)).map(drop)
             }
             Command::SetComponent { id, refdes, value, variant } => {

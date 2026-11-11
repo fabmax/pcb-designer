@@ -133,7 +133,7 @@ async fn agent_session() {
     let netlist = ok_json(call("get_netlist", Value::Null).await);
     let nets = netlist["nets"].as_array().unwrap();
     let net = |name: &str| nets.iter().find(|n| n["name"] == name).cloned();
-    let a = net("TEST_A").expect("labelled net");
+    let a = net("/TEST_A").expect("labelled net (local labels are named by the sheet path)");
     assert_eq!(a["pins"].as_array().unwrap().len(), 1);
     assert_eq!(a["pins"][0]["ref"], refdes.as_str());
     assert!(net("+5V").unwrap()["pins"].as_array().unwrap().iter().any(|p| p["ref"] == refdes.as_str()));
@@ -161,7 +161,7 @@ async fn agent_session() {
     let netlist = ok_json(call("get_netlist", Value::Null).await);
     let bus = &netlist["buses"][0];
     assert_eq!(bus["name"], "D[0..1]", "{netlist}");
-    assert_eq!(bus["members"][0]["net"], "D0");
+    assert_eq!(bus["members"][0]["net"], "/D0");
     assert_eq!(bus["members"][0]["pins"][0], format!("{refdes}.1"));
     assert_eq!(bus["members"][1]["net"], Value::Null);
     assert_eq!(netlist["problems"], json!([]), "{netlist}");

@@ -407,6 +407,27 @@ impl Text {
         // Text stays readable: it is moved and rotated but never mirrored.
         Text { pos: t.point(self.pos), rotation: self.rotation.rotated_by(t.rotation), ..self.clone() }
     }
+
+    /// The same text, never upside down or reading downwards: turned by 180° with its
+    /// alignment swapped when it would read right-to-left or top-to-bottom, so it covers
+    /// the same area (how KiCad draws rotated labels).
+    pub fn upright(self) -> Text {
+        let d = self.rotation.degrees();
+        if d <= 90.0 || d > 270.0 {
+            return self;
+        }
+        let halign = match self.halign {
+            HAlign::Left => HAlign::Right,
+            HAlign::Center => HAlign::Center,
+            HAlign::Right => HAlign::Left,
+        };
+        let valign = match self.valign {
+            VAlign::Bottom => VAlign::Top,
+            VAlign::Center => VAlign::Center,
+            VAlign::Top => VAlign::Bottom,
+        };
+        Text { rotation: self.rotation.rotated_by(Angle::DEG180), halign, valign, ..self }
+    }
 }
 
 #[cfg(test)]
@@ -417,6 +438,16 @@ mod tests {
     fn point_serializes_as_array() {
         assert_eq!(serde_json::to_string(&Point::new(1, -2)).unwrap(), "[1,-2]");
         assert_eq!(serde_json::from_str::<Point>("[3,4]").unwrap(), Point::new(3, 4));
+    }
+
+    #[test]
+    fn upright_text_turns_around() {
+        let t = Text::new("A", Point::ZERO, 1).aligned(HAlign::Left, VAlign::Bottom);
+        assert_eq!(t.clone().upright(), t);
+        let turned = Text { rotation: Angle::DEG180, ..t.clone() }.upright();
+        assert_eq!((turned.rotation, turned.halign, turned.valign), (Angle::ZERO, HAlign::Right, VAlign::Top));
+        let down = Text { rotation: Angle::DEG270, ..t }.upright();
+        assert_eq!(down.rotation, Angle::DEG90);
     }
 
     #[test]

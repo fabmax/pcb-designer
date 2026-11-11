@@ -1,6 +1,6 @@
 //! Schematic tool bar and tool settings (right panel).
 
-use model::EntryDir;
+use model::{EntryDir, LabelKind, LabelShape};
 use view::Document;
 use view::sch_tools::{POWER_NAMES, SchPlacer, SchTool};
 
@@ -35,7 +35,7 @@ pub fn toolbar(ui: &mut egui::Ui, canvas: egui::Rect, sch: &SchPlacer, keymap: &
             "Place a bus entry: a signal's wire leaves the bus here and connects by its label.",
             Action::SchBusEntry,
         ),
-        b(SchTool::Label, Icon::Label, "Name a net: labels with the same name are connected.", Action::SchLabel),
+        b(SchTool::Label, Icon::Label, "Name a net: local, global or hierarchical labels.", Action::SchLabel),
         b(SchTool::Power, Icon::Power, "Place a power port (GND, +3V3, ...): connects to its net.", Action::SchPower),
         b(SchTool::Junction, Icon::Junction, "Connect crossing wires with a junction dot.", Action::SchJunction),
     ];
@@ -108,6 +108,22 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 label(ui, "Name");
                 ui.add(egui::TextEdit::singleline(&mut s.label).desired_width(f32::INFINITY));
                 ui.end_row();
+                label(ui, "Kind");
+                ui.horizontal(|ui| {
+                    for kind in [LabelKind::Local, LabelKind::Global, LabelKind::Hierarchical] {
+                        ui.selectable_value(&mut s.label_kind, kind, kind.label());
+                    }
+                });
+                ui.end_row();
+                if s.label_kind.has_shape() {
+                    label(ui, "Shape");
+                    egui::ComboBox::from_id_salt("label_shape").selected_text(s.shape.label()).show_ui(ui, |ui| {
+                        for shape in LabelShape::ALL {
+                            ui.selectable_value(&mut s.shape, shape, shape.label());
+                        }
+                    });
+                    ui.end_row();
+                }
                 label(ui, "Rotation");
                 if let Some(a) = fields::rotation_combo(ui, "sch_rot", s.rotation, LABEL_SIDES) {
                     s.rotation = a;
@@ -117,8 +133,16 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
             ui.add_space(6.0);
             hint(
                 ui,
-                "Labels with the same name are connected. A trailing number counts up. On a bus, use a \
-                 bus name like D[0..7].",
+                match s.label_kind {
+                    LabelKind::Local | LabelKind::Power => {
+                        "Same-named labels on this sheet are connected; the net is named /NAME. A trailing \
+                         number counts up. On a bus, use a bus name like D[0..7]."
+                    }
+                    LabelKind::Global => "Same-named global labels are connected on every sheet.",
+                    LabelKind::Hierarchical => {
+                        "Connects to the same-named pin of this sheet's symbol on the parent sheet."
+                    }
+                },
             );
         }
         SchTool::Power => {
