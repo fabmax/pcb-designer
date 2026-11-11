@@ -18,7 +18,7 @@ use view::sch_tools::{SchPlacer, SchTool};
 use crate::name_prompt::NamePrompt;
 use view::project_libs::{self, MissingLibrary};
 use view::tools::Tool;
-use view::{Document, Interaction, KeyAction, LibraryDoc, ViewKind};
+use view::{Document, Interaction, KeyAction, LibraryDoc, ViewId, ViewKind};
 
 use crate::agent::{self, Agent, Job};
 use crate::canvas::{self, Canvas, CanvasResources};
@@ -80,44 +80,115 @@ pub struct Options {
     pub script: Option<String>,
 }
 
-/// The rename dialog's state (a library item from the Project panel).
+/// The name dialog's state: renaming a library item or a sheet, or naming a new sheet
+/// (all from the Project panel).
 struct Rename {
-    key: u64,
-    item: ObjectId,
+    what: Naming,
     text: String,
     focused: bool,
+}
+
+#[derive(Clone, Copy)]
+enum Naming {
+    /// A library item, by library key.
+    Item(u64, ObjectId),
+    Sheet(Id),
+    /// A new sheet below this one.
+    NewSheet(Id),
 }
 
 /// Content of a dock tab.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Tab {
-    View(ViewKind),
+    /// A schematic sheet or the board.
+    View(ViewId),
     /// Library editor, by [`LibraryEditor::key`].
     Library(u64),
 }
 
 /// One editor pane: camera + interaction state for a view of the document.
 pub(crate) struct Pane {
-    pub kind: ViewKind,
+    pub view: ViewId,
     pub canvas: Canvas,
     pub it: Interaction<ObjectId>,
 }
 
 impl Pane {
-    fn new(kind: ViewKind) -> Self {
-        let (id, grid) = match kind {
-            ViewKind::Schematic => (1, 1.27),
-            ViewKind::Board => (2, 0.5),
+    fn new(view: ViewId, canvas_id: u64) -> Self {
+        let grid = match view.kind() {
+            ViewKind::Schematic => 1.27,
+            ViewKind::Board => 0.5,
         };
-        let canvas = Canvas::new(id, view::style::background(grid as f32));
-        Pane { kind, canvas, it: Interaction::new(mm(grid)) }
+        let canvas = Canvas::new(canvas_id, view::style::background(grid as f32));
+        Pane { view, canvas, it: Interaction::new(mm(grid)) }
+    }
+}
+
+/// The panes of the board and of the schematic sheets (made when first needed). Sheet
+/// panes share their grid settings.
+pub(crate) struct Panes {
+    list: Vec<Pane>,
+    next_canvas: u64,
+}
+
+impl Panes {
+    /// Canvas ids of sheet panes (library canvases use small ones).
+    const FIRST_SHEET_CANVAS: u64 = 1 << 32;
+
+    fn new() -> Self {
+        Panes { list: vec![Pane::new(ViewId::Board, 2)], next_canvas: Self::FIRST_SHEET_CANVAS }
     }
 
-    fn title(&self) -> &'static str {
-        match self.kind {
-            ViewKind::Schematic => "Schematic",
-            ViewKind::Board => "PCB",
+    /// The pane of `view`, made if there is none yet.
+    pub fn get(&mut self, view: ViewId) -> &mut Pane {
+        let i = match self.list.iter().position(|p| p.view == view) {
+            Some(i) => i,
+            None => {
+                let mut pane = Pane::new(view, self.next_canvas);
+                self.next_canvas += 1;
+                if let Some(other) = self.list.iter().find(|p| p.view.kind() == view.kind()) {
+                    pane.it.grid = other.it.grid;
+                    pane.it.snap = other.it.snap;
+                    pane.canvas.background.grid = other.canvas.background.grid;
+                }
+                self.list.push(pane);
+                self.list.len() - 1
+            }
+        };
+        &mut self.list[i]
+    }
+
+    pub fn find(&self, view: ViewId) -> Option<&Pane> {
+        self.list.iter().find(|p| p.view == view)
+    }
+
+    /// The selection in `view`.
+    pub fn selection(&self, view: ViewId) -> Vec<ObjectId> {
+        self.find(view).map(|p| p.it.selection.clone()).unwrap_or_default()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Pane> {
+        self.list.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Pane> {
+        self.list.iter_mut()
+    }
+
+    /// Grid settings changed in one schematic pane apply to all.
+    fn share_grid(&mut self, from: ViewId) {
+        let Some(p) = self.find(from) else { return };
+        let (grid, snap, bg) = (p.it.grid, p.it.snap, p.canvas.background.grid);
+        for q in self.list.iter_mut().filter(|q| q.view.kind() == from.kind()) {
+            q.it.grid = grid;
+            q.it.snap = snap;
+            q.canvas.background.grid = bg;
         }
+    }
+
+    /// Drop the panes of sheets that no longer exist.
+    fn retain_sheets(&mut self, project: &Project) {
+        self.list.retain(|p| p.view.sheet().is_none_or(|s| project.schematic.sheets.contains(s)));
     }
 }
 
@@ -126,12 +197,14 @@ pub struct PcbApp {
     /// The project: its document, edited as the Project Library in its tab (key
     /// [`PROJECT_LIB`]) and as schematic and board in the panes.
     project: LibraryEditor,
-    panes: [Pane; 2],
+    panes: Panes,
     /// Project pane receiving keyboard shortcuts when no library has focus.
-    active: ViewKind,
+    active: ViewId,
+    /// The sheet shown last (where new sheets and placed parts go when the board is active).
+    last_sheet: Option<Id>,
     /// Library tab with focus (`None`: the project has focus).
     focus_lib: Option<u64>,
-    hovered: Option<ViewKind>,
+    hovered: Option<ViewId>,
     properties: Properties,
     /// Loaded libraries: the built-in one, the project's library files (see
     /// [`PcbApp::sync_libraries`]) and unsaved ones. Only some have a tab.
@@ -144,7 +217,9 @@ pub struct PcbApp {
     /// Tabs whose close button was clicked (closed after the tree is drawn).
     close_requests: Vec<Tab>,
     /// The tab group a closed view was in, to reopen it there.
-    view_groups: [Option<TileId>; 2],
+    view_groups: Vec<(ViewId, TileId)>,
+    /// A sheet symbol was double-clicked: open its sheet.
+    enter_sheet: Option<Id>,
     status: Option<(String, Instant)>,
     title: String,
     revision: u64,
@@ -172,7 +247,7 @@ pub struct PcbApp {
     /// Board creation tools.
     pcb: PcbPlacer,
     /// Inputs of the current cross-probe highlights (to skip unchanged frames).
-    probe_key: Option<(ViewKind, Vec<ObjectId>, u64, Option<String>)>,
+    probe_key: Option<(ViewId, Vec<ObjectId>, u64, Option<String>)>,
     script: Option<Script>,
     /// Commands picked in the native menu, run in the next `ui`.
     menu_cmds: Vec<Cmd>,
@@ -192,8 +267,6 @@ impl PcbApp {
         let keymap = opts.keymap.unwrap_or_else(|| settings.keymap());
         let rs = cc.wgpu_render_state.as_ref().expect("wgpu renderer");
         CanvasResources::install(rs);
-
-        let tree = if opts.side_by_side { side_by_side_tree() } else { default_tree() };
 
         let mut status = None;
         let doc = match opts.startup {
@@ -217,11 +290,14 @@ impl PcbApp {
                 doc
             }
         };
+        let root = doc.root();
+        let tree = if opts.side_by_side { side_by_side_tree(root) } else { default_tree(root) };
         let mut app = Self {
             tree,
             project: LibraryEditor::new(PROJECT_LIB, LibraryDoc { doc, path: None }),
-            panes: [Pane::new(ViewKind::Schematic), Pane::new(ViewKind::Board)],
-            active: ViewKind::Schematic,
+            panes: Panes::new(),
+            active: root,
+            last_sheet: root.sheet(),
             focus_lib: None,
             hovered: None,
             properties: Properties::default(),
@@ -230,7 +306,8 @@ impl PcbApp {
             synced_libraries: None,
             next_key: 0,
             close_requests: Vec::new(),
-            view_groups: [None; 2],
+            view_groups: Vec::new(),
+            enter_sheet: None,
             status,
             title: String::new(),
             revision: u64::MAX,
@@ -302,32 +379,53 @@ impl PcbApp {
         }
         // Development aid for screenshots: "all" or a reference designator.
         match opts.select.as_deref() {
-            Some("all") => {
-                app.panes[0].it.key(&mut app.project.lib.doc.target(ViewKind::Schematic), KeyAction::SelectAll)
-            }
+            Some("all") => app.panes.get(root).it.key(&mut app.project.lib.doc.target(root), KeyAction::SelectAll),
             Some(refdes) => {
                 let p = app.project.lib.doc.project();
-                let ids: Vec<ObjectId> = p
+                let symbols: Vec<&SymbolInstance> = p
                     .schematic
                     .component_by_refdes(refdes)
-                    .map(|c| p.schematic.symbols_of(c.id).map(|s| ObjectId::Symbol(s.id)).collect())
+                    .map(|c| p.schematic.symbols_of(c.id).collect())
                     .unwrap_or_default();
-                app.panes[0].it.set_selection(&mut app.project.lib.doc.target(ViewKind::Schematic), ids);
+                let view = symbols.first().map_or(root, |s| ViewId::Sheet(s.sheet));
+                let ids = symbols.iter().filter(|s| ViewId::Sheet(s.sheet) == view).map(|s| ObjectId::Symbol(s.id));
+                let ids = ids.collect();
+                app.show_view(view);
+                app.panes.get(view).it.set_selection(&mut app.project.lib.doc.target(view), ids);
             }
             None => {}
         }
         app
     }
 
-    fn pane(&mut self, kind: ViewKind) -> &mut Pane {
-        &mut self.panes[kind as usize]
+    /// The schematic sheet being worked on: the active view's, else the one shown last.
+    fn sheet_view(&self) -> ViewId {
+        let doc = &self.project.lib.doc;
+        match self.active {
+            ViewId::Sheet(_) => self.active,
+            ViewId::Board => match self.last_sheet {
+                Some(s) if doc.project().schematic.sheets.contains(s) => ViewId::Sheet(s),
+                _ => doc.root(),
+            },
+        }
+    }
+
+    /// Title of a view's tab: the sheet's name ("Schematic" for the root sheet), "PCB".
+    fn view_title(project: &Project, view: ViewId) -> String {
+        match view {
+            ViewId::Board => "PCB".into(),
+            ViewId::Sheet(s) => match project.schematic.sheets.get(s) {
+                Some(sheet) if !sheet.is_root() => sheet.name.clone(),
+                _ => "Schematic".into(),
+            },
+        }
     }
 
     /// After drawing a bus or a wire to a bus entry, ask for the missing name and add
     /// the label.
     fn name_prompt_ui(&mut self, ctx: &egui::Context) {
         if self.name_prompt.is_none() {
-            let grid = self.panes[ViewKind::Schematic as usize].it.grid;
+            let grid = self.panes.get(self.sheet_view()).it.grid;
             self.name_prompt = self.sch.take_prompt(&mut self.project.lib.doc, grid).map(NamePrompt::new);
         }
         let Some(dialog) = &mut self.name_prompt else { return };
@@ -380,18 +478,56 @@ impl PcbApp {
     // Project files
 
     fn replace_document(&mut self, doc: Document) {
+        let old_root = self.project.lib.doc.root();
         self.project = LibraryEditor::new(PROJECT_LIB, LibraryDoc { doc, path: None });
         self.sync_libraries();
-        for kind in [ViewKind::Schematic, ViewKind::Board] {
-            let pane = self.pane(kind);
+        // The new root sheet takes the old one's tab; tabs of other sheets close.
+        let root = self.project.lib.doc.root();
+        if let Some(tile) = self.tree.tiles.find_pane(&Tab::View(old_root)) {
+            self.tree.tiles.insert(tile, Tile::Pane(Tab::View(root)));
+        }
+        if self.active.sheet().is_some() {
+            self.active = root;
+        }
+        self.last_sheet = root.sheet();
+        self.panes.retain_sheets(self.project.lib.doc.project());
+        for pane in self.panes.iter_mut() {
             let snap = pane.it.snap;
             pane.it = Interaction::new(pane.it.grid);
             pane.it.snap = snap;
             pane.canvas.request_fit();
         }
+        self.close_missing_sheets();
         self.properties = Properties::default();
         self.sch.set_tool(SchTool::Select);
         self.pcb = PcbPlacer::default();
+    }
+
+    /// Close the tabs of sheets that no longer exist (deleted, undone, another project).
+    fn close_missing_sheets(&mut self) {
+        let project = self.project.lib.doc.project();
+        let gone: Vec<TileId> = self
+            .tree
+            .tiles
+            .iter()
+            .filter_map(|(&id, t)| match t {
+                Tile::Pane(Tab::View(ViewId::Sheet(s))) if !project.schematic.sheets.contains(*s) => Some(id),
+                _ => None,
+            })
+            .collect();
+        for tile in gone {
+            self.tree.remove_recursively(tile);
+        }
+        self.view_groups.retain(|(v, _)| v.sheet().is_none_or(|s| project.schematic.sheets.contains(s)));
+        self.panes.retain_sheets(project);
+        let missing = |v: ViewId| v.sheet().is_some_and(|s| !project.schematic.sheets.contains(s));
+        if self.hovered.is_some_and(missing) {
+            self.hovered = None;
+        }
+        if missing(self.active) {
+            self.active = self.project.lib.doc.root();
+        }
+        self.follow_visible_tabs();
     }
 
     /// Ask to save unsaved changes. Returns false if the user cancelled.
@@ -448,7 +584,7 @@ impl PcbApp {
         view::style::set_theme(t);
         theme::apply(ctx);
         theme::apply_to_window(ctx);
-        for pane in &mut self.panes {
+        for pane in self.panes.iter_mut() {
             pane.canvas.background = view::style::background(pane.canvas.background.grid);
         }
         self.project.lib.doc.restyle();
@@ -512,7 +648,7 @@ impl PcbApp {
         let tile = match self.tree.tiles.find_pane(&Tab::Library(key)) {
             Some(tile) => tile,
             None => {
-                let near = [Tab::View(ViewKind::Schematic), Tab::Library(PROJECT_LIB), Tab::View(ViewKind::Board)];
+                let near = [Tab::View(self.sheet_view()), Tab::Library(PROJECT_LIB), Tab::View(ViewId::Board)];
                 insert_tab(&mut self.tree, Tab::Library(key), None, &near)
             }
         };
@@ -963,51 +1099,50 @@ impl PcbApp {
     /// Schematic and PCB are open in different tab groups (visible at the same time).
     fn is_side_by_side(&self) -> bool {
         let parent = |k| self.tree.tiles.find_pane(&Tab::View(k)).and_then(|t| self.tree.tiles.parent_of(t));
-        match (parent(ViewKind::Schematic), parent(ViewKind::Board)) {
+        match (parent(self.sheet_view()), parent(ViewId::Board)) {
             (Some(a), Some(b)) => a != b,
             _ => false,
         }
     }
 
     /// Does the view have a tab (it may be behind another one)?
-    fn is_open(&self, kind: ViewKind) -> bool {
-        self.tree.tiles.find_pane(&Tab::View(kind)).is_some()
+    fn is_open(&self, view: ViewId) -> bool {
+        self.tree.tiles.find_pane(&Tab::View(view)).is_some()
     }
 
     /// Close a view's tab. Its camera and selection stay for when it is shown again; a
     /// tool in progress is cancelled.
-    fn close_view(&mut self, kind: ViewKind) {
-        let Some(tile) = self.tree.tiles.find_pane(&Tab::View(kind)) else { return };
-        self.view_groups[kind as usize] = self.tree.tiles.parent_of(tile);
+    fn close_view(&mut self, view: ViewId) {
+        let Some(tile) = self.tree.tiles.find_pane(&Tab::View(view)) else { return };
+        self.view_groups.retain(|(v, _)| *v != view);
+        if let Some(group) = self.tree.tiles.parent_of(tile) {
+            self.view_groups.push((view, group));
+        }
         self.tree.remove_recursively(tile);
-        match kind {
+        match view.kind() {
             ViewKind::Schematic => self.set_sch_tool(SchTool::Select),
             ViewKind::Board => self.set_pcb_tool(PcbTool::Select),
         }
-        let pane = &mut self.panes[kind as usize];
+        let pane = self.panes.get(view);
         pane.it.reset();
-        pane.it.refresh(&mut self.project.lib.doc.target(kind));
-        if self.hovered == Some(kind) {
+        pane.it.refresh(&mut self.project.lib.doc.target(view));
+        if self.hovered == Some(view) {
             self.hovered = None;
         }
         self.follow_visible_tabs();
     }
 
-    /// Rearrange: everything as tabs of one area, or schematic (and libraries) left and
-    /// the PCB right.
+    /// Rearrange: everything as tabs of one area, or schematic (sheets and libraries)
+    /// left and the PCB right.
     fn set_layout(&mut self, side_by_side: bool) {
-        let libs: Vec<Tab> = std::iter::once(PROJECT_LIB)
-            .chain(self.libraries.iter().map(|l| l.key))
-            .map(Tab::Library)
-            .filter(|t| self.tree.tiles.find_pane(t).is_some())
-            .collect();
-        let mut tree = if side_by_side { side_by_side_tree() } else { default_tree() };
-        let group = tree
-            .tiles
-            .find_pane(&Tab::View(ViewKind::Schematic))
-            .and_then(|t| tree.tiles.parent_of(t))
-            .expect("schematic tab");
-        for tab in libs {
+        let root = self.project.lib.doc.root();
+        let sheets = self.project.lib.doc.sheet_views().map(|v| Tab::View(v.id)).filter(|t| *t != Tab::View(root));
+        let libs = std::iter::once(PROJECT_LIB).chain(self.libraries.iter().map(|l| l.key)).map(Tab::Library);
+        let others: Vec<Tab> = sheets.chain(libs).filter(|t| self.tree.tiles.find_pane(t).is_some()).collect();
+        let mut tree = if side_by_side { side_by_side_tree(root) } else { default_tree(root) };
+        let group =
+            tree.tiles.find_pane(&Tab::View(root)).and_then(|t| tree.tiles.parent_of(t)).expect("schematic tab");
+        for tab in others {
             let tile = tree.tiles.insert_pane(tab);
             if let Some(Tile::Container(c)) = tree.tiles.get_mut(group) {
                 c.add_child(tile);
@@ -1015,65 +1150,69 @@ impl PcbApp {
         }
         self.tree = tree;
         // Tile ids are sequential: the old tree's groups must not be looked up in the new one.
-        self.view_groups = [None; 2];
+        self.view_groups.clear();
         self.show_view(self.active);
-        for pane in &mut self.panes {
+        for pane in self.panes.iter_mut() {
             pane.canvas.request_fit();
         }
     }
 
     /// Bring a view's tab to the front and give it keyboard focus, opening it if it was
-    /// closed: in the tab group it was in, else next to the other view or the libraries.
-    fn show_view(&mut self, kind: ViewKind) {
-        self.active = kind;
+    /// closed: in the tab group it was in, else next to the schematic, the libraries or
+    /// the board.
+    fn show_view(&mut self, view: ViewId) {
+        let sheet = self.sheet_view();
+        self.active = view;
         self.focus_lib = None;
-        let tile = match self.tree.tiles.find_pane(&Tab::View(kind)) {
+        if let Some(s) = view.sheet() {
+            self.last_sheet = Some(s);
+        }
+        let tile = match self.tree.tiles.find_pane(&Tab::View(view)) {
             Some(tile) => tile,
             None => {
-                let other = match kind {
-                    ViewKind::Schematic => ViewKind::Board,
-                    ViewKind::Board => ViewKind::Schematic,
+                let root = self.project.lib.doc.root();
+                let near = match view {
+                    ViewId::Board => vec![Tab::View(sheet), Tab::View(root), Tab::Library(PROJECT_LIB)],
+                    _ => vec![Tab::View(sheet), Tab::View(root), Tab::Library(PROJECT_LIB), Tab::View(ViewId::Board)],
                 };
-                let near = [Tab::View(other), Tab::Library(PROJECT_LIB)];
-                let tile = insert_tab(&mut self.tree, Tab::View(kind), self.view_groups[kind as usize], &near);
-                self.panes[kind as usize].canvas.request_fit();
+                let group = self.view_groups.iter().find(|(v, _)| *v == view).map(|(_, g)| *g);
+                let tile = insert_tab(&mut self.tree, Tab::View(view), group, &near);
+                self.panes.get(view).canvas.request_fit();
                 tile
             }
         };
         self.tree.make_active(|id, _| id == tile);
     }
 
-    /// Give the schematic tab keyboard focus and bring it to the front.
+    /// Give the schematic tab (of the sheet worked on) keyboard focus and bring it to the
+    /// front.
     fn focus_schematic(&mut self) {
-        self.show_view(ViewKind::Schematic);
+        self.show_view(self.sheet_view());
     }
 
     fn set_sch_tool(&mut self, tool: SchTool) {
-        let pane = &mut self.panes[ViewKind::Schematic as usize];
+        let view = self.sheet_view();
+        let pane = self.panes.get(view);
         if tool != SchTool::Select {
             pane.it.reset();
-            pane.it.refresh(&mut self.project.lib.doc.target(ViewKind::Schematic));
+            pane.it.refresh(&mut self.project.lib.doc.target(view));
         }
         self.sch.set_tool(tool);
     }
 
     /// Cross-probing: the active view's selection highlights the matching objects in the
-    /// other view, and nets on the board. The net being routed is highlighted too. With
-    /// nothing selected in the active view, the other view's selection probes (select in
-    /// the schematic, switch to the board tab: the footprints are highlighted).
+    /// views of the other kind (all sheets for the board), and nets on the board. The net
+    /// being routed is highlighted too. With nothing selected in the active view, the
+    /// other's selection probes (select in the schematic, switch to the board tab: the
+    /// footprints are highlighted); for the board that is the sheet shown last.
     fn update_highlights(&mut self) {
-        let other_kind = match self.active {
-            ViewKind::Schematic => ViewKind::Board,
-            ViewKind::Board => ViewKind::Schematic,
+        let (here, there) = match self.active {
+            ViewId::Board => (ViewId::Board, self.sheet_view()),
+            sheet => (sheet, ViewId::Board),
         };
-        let from = if self.panes[self.active as usize].it.selection.is_empty()
-            && !self.panes[other_kind as usize].it.selection.is_empty()
-        {
-            other_kind
-        } else {
-            self.active
-        };
-        let selection = self.panes[from as usize].it.selection.clone();
+        let from =
+            if self.panes.selection(here).is_empty() && !self.panes.selection(there).is_empty() { there } else { here };
+        let selection = self.panes.selection(from);
         let routing = self.pcb.routing_net().or(self.pcb.zone_net()).map(str::to_string);
         let key = Some((from, selection.clone(), self.project.lib.doc.revision, routing.clone()));
         if key == self.probe_key {
@@ -1081,22 +1220,19 @@ impl PcbApp {
         }
         self.probe_key = key;
         let doc = &mut self.project.lib.doc;
-        let probe = view::probe::cross_probe(doc.project(), doc.connectivity(), doc.copper(), from, &selection);
-        let other = match from {
-            ViewKind::Schematic => ViewKind::Board,
-            ViewKind::Board => ViewKind::Schematic,
-        };
-        let (project, view) = doc.project_and_view(other);
-        view.set_probe(project, &probe.objects);
-        let (project, view) = doc.project_and_view(from);
-        view.set_probe(project, &[]);
+        let probe = view::probe::cross_probe(doc.project(), doc.connectivity(), doc.copper(), from.kind(), &selection);
+        let (project, views) = doc.project_and_views();
+        for view in views {
+            let objects: &[ObjectId] = if view.kind == from.kind() { &[] } else { &probe.objects };
+            view.set_probe(project, objects);
+        }
         let nets = routing.map_or(probe.nets, |n| vec![n]);
         doc.highlight_nets(&nets);
     }
 
     /// Where keyboard shortcuts go.
     fn context(&self) -> Context {
-        match (self.focus_lib, self.active) {
+        match (self.focus_lib, self.active.kind()) {
             (Some(_), _) => Context::Library,
             (None, ViewKind::Schematic) => Context::Schematic,
             (None, ViewKind::Board) => Context::Board,
@@ -1137,10 +1273,10 @@ impl PcbApp {
     }
 
     fn set_pcb_tool(&mut self, tool: PcbTool) {
-        let pane = &mut self.panes[ViewKind::Board as usize];
+        let pane = self.panes.get(ViewId::Board);
         if tool != PcbTool::Select {
             pane.it.reset();
-            pane.it.refresh(&mut self.project.lib.doc.target(ViewKind::Board));
+            pane.it.refresh(&mut self.project.lib.doc.target(ViewId::Board));
         }
         self.pcb.set_tool(tool);
     }
@@ -1208,7 +1344,7 @@ impl PcbApp {
             Action::Undo => return self.undo(),
             Action::Redo => return self.redo(),
             _ if !view_keys => return,
-            Action::FitView => return self.pane(self.active).canvas.request_fit(),
+            Action::FitView => return self.panes.get(self.active).canvas.request_fit(),
             Action::SelectAll => KeyAction::SelectAll,
             Action::Rotate => KeyAction::Rotate,
             Action::Mirror => KeyAction::Mirror,
@@ -1240,9 +1376,41 @@ impl PcbApp {
             | Action::PanelBoardSetup
             | Action::PanelOverview => return,
         };
-        let kind = self.active;
-        let pane = &mut self.panes[kind as usize];
-        pane.it.key(&mut self.project.lib.doc.target(kind), key_action);
+        let view = self.active;
+        if key_action == KeyAction::Delete && !self.confirm_sheet_delete(&self.panes.selection(view)) {
+            return;
+        }
+        let pane = self.panes.get(view);
+        pane.it.key(&mut self.project.lib.doc.target(view), key_action);
+    }
+
+    /// Ask before deleting sheets that have contents (they go along). True: go ahead.
+    fn confirm_sheet_delete(&self, ids: &[ObjectId]) -> bool {
+        let s = &self.project.lib.doc.project().schematic;
+        let full: Vec<&str> = ids
+            .iter()
+            .filter_map(|&id| if let ObjectId::Sheet(sh) = id { s.sheets.get(sh) } else { None })
+            .filter(|sh| !s.objects_on(sh.id).is_empty())
+            .map(|sh| sh.name.as_str())
+            .collect();
+        if full.is_empty() {
+            return true;
+        }
+        let what = match &full[..] {
+            [one] => format!("Sheet \"{one}\" is not empty."),
+            many => format!(
+                "Sheets {} are not empty.",
+                many.iter().map(|n| format!("\"{n}\"")).collect::<Vec<_>>().join(", ")
+            ),
+        };
+        let answer = rfd::MessageDialog::new()
+            .set_title("Delete sheet")
+            .set_description(format!(
+                "{what} Deleting removes everything on it and its sub-sheets (undo brings it back)."
+            ))
+            .set_buttons(rfd::MessageButtons::OkCancelCustom("Delete".into(), "Cancel".into()))
+            .show();
+        matches!(answer, rfd::MessageDialogResult::Custom(ref b) if b == "Delete")
     }
 
     /// Handle an action for a focused library. Returns false for project-level actions.
@@ -1567,11 +1735,13 @@ impl PcbApp {
                 Some(project_panel::PartDetail { text, warn, update, dim: !used(id), tip })
             }),
         );
-        let project = TreeNode::new(NodeId::Project, p.name.clone(), project_info).with_children(vec![
-            TreeNode::new(NodeId::Schematic, "Schematic", Info::icon(Icon::Schematic)),
-            TreeNode::new(NodeId::Board, "PCB", Info::icon(Icon::Board)),
-            project_lib,
-        ]);
+        let schematic = p.schematic.root_sheet().map(|root| sheet_node(p, root));
+        let project = TreeNode::new(NodeId::Project, p.name.clone(), project_info).with_children(
+            vec![schematic, Some(TreeNode::new(NodeId::Board, "PCB", Info::icon(Icon::Board))), Some(project_lib)]
+                .into_iter()
+                .flatten()
+                .collect(),
+        );
 
         let listed = &p.libraries;
         let library = |l: &LibraryEditor, label: String| {
@@ -1651,14 +1821,14 @@ impl PcbApp {
             }
             None if !self.is_open(self.active) => None,
             None => Some(match self.active {
-                ViewKind::Schematic => NodeId::Schematic,
-                ViewKind::Board => NodeId::Board,
+                ViewId::Sheet(s) => NodeId::Sheet(s),
+                ViewId::Board => NodeId::Board,
             }),
         }
     }
 
     fn project_panel_ui(&mut self, ui: &mut egui::Ui, roots: &[TreeNode]) {
-        self.project_tree.expand_defaults();
+        self.project_tree.expand_defaults(self.project.lib.doc.root().sheet());
         self.project_tree.follow(roots, self.focus_node());
         if let Some(act) = self.project_tree.ui(ui, roots) {
             self.tree_act(act);
@@ -1669,7 +1839,27 @@ impl PcbApp {
     fn tree_act(&mut self, act: project_panel::Act) {
         use project_panel::Act;
         match act {
-            Act::ShowView(kind) => self.show_view(kind),
+            Act::ShowView(view) => self.show_view(view),
+            Act::NewSheet(parent) => {
+                let parent = parent.or(self.sheet_view().sheet());
+                if let Some(parent) = parent {
+                    let text = self.new_sheet_name(parent);
+                    self.rename = Some(Rename { what: Naming::NewSheet(parent), text, focused: false });
+                }
+            }
+            Act::RenameSheet(sheet) => {
+                if let Some(sh) = self.project.lib.doc.project().schematic.sheets.get(sheet) {
+                    self.rename = Some(Rename { what: Naming::Sheet(sheet), text: sh.name.clone(), focused: false });
+                }
+            }
+            Act::DeleteSheet(sheet) => {
+                let ids = vec![ObjectId::Sheet(sheet)];
+                if self.confirm_sheet_delete(&ids)
+                    && let Err(e) = self.project.lib.doc.execute(Command::Delete { ids })
+                {
+                    self.set_status(e.to_string());
+                }
+            }
             Act::SaveProject => {
                 self.save(false);
             }
@@ -1735,7 +1925,7 @@ impl PcbApp {
                     _ => None,
                 });
                 if let Some(name) = name {
-                    self.rename = Some(Rename { key, item, text: name, focused: false });
+                    self.rename = Some(Rename { what: Naming::Item(key, item), text: name, focused: false });
                 }
             }
             Act::Delete(key, item) => {
@@ -1816,21 +2006,48 @@ impl PcbApp {
     }
 
     /// The rename dialog (from the Project panel).
+    /// "Sheet", "Sheet 2", …: the first name not taken below `parent`.
+    fn new_sheet_name(&self, parent: Id) -> String {
+        let s = &self.project.lib.doc.project().schematic;
+        (1..)
+            .map(|i| if i == 1 { "Sheet".to_string() } else { format!("Sheet {i}") })
+            .find(|n| s.sheet_name_issue(Some(parent), n, None).is_none())
+            .unwrap_or_default()
+    }
+
     fn rename_ui(&mut self, ctx: &egui::Context) {
         let Some(r) = &mut self.rename else { return };
+        let (title, button) = match r.what {
+            Naming::NewSheet(_) => ("New sheet", "Place"),
+            Naming::Sheet(_) => ("Rename sheet", "Rename"),
+            Naming::Item(..) => ("Rename", "Rename"),
+        };
+        // Sheet names are checked as they are typed.
+        let schematic = &self.project.lib.doc.project().schematic;
+        let issue = match r.what {
+            Naming::NewSheet(parent) => schematic.sheet_name_issue(Some(parent), &r.text, None),
+            Naming::Sheet(s) => {
+                schematic.sheet_name_issue(schematic.sheets.get(s).and_then(|s| s.parent), &r.text, Some(s))
+            }
+            Naming::Item(..) => None,
+        };
         let mut done = None;
-        let modal = theme::dialog(ctx, egui::Id::unique("rename_item"), "Rename", 320.0, |ui| {
+        let modal = theme::dialog(ctx, egui::Id::unique("rename_item"), title, 320.0, |ui| {
             let edit = ui.add(egui::TextEdit::singleline(&mut r.text).desired_width(f32::INFINITY));
             if !r.focused {
                 edit.request_focus();
                 r.focused = true;
             }
-            if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            if let Some(issue) = &issue {
+                ui.add_space(4.0);
+                ui.label(RichText::new(issue).color(theme::warn()).small());
+            }
+            if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && issue.is_none() {
                 done = Some(true);
             }
             ui.add_space(12.0);
             ui.horizontal(|ui| {
-                if ui.button("Rename").clicked() {
+                if ui.add_enabled(issue.is_none(), egui::Button::new(button)).clicked() {
                     done = Some(true);
                 }
                 if ui.button("Cancel").clicked() {
@@ -1842,15 +2059,33 @@ impl PcbApp {
             done = Some(false);
         }
         let Some(ok) = done else { return };
-        let Rename { key, item, text, .. } = self.rename.take().unwrap();
+        let Rename { what, text, .. } = self.rename.take().unwrap();
         if !ok {
             return;
         }
-        let Some(l) = self.lib(key) else { return };
-        let r = l.lib.rename(item, &text);
-        l.refresh();
-        if let Err(e) = r {
-            self.set_status(e);
+        match what {
+            Naming::Item(key, item) => {
+                let Some(l) = self.lib(key) else { return };
+                let r = l.lib.rename(item, &text);
+                l.refresh();
+                if let Err(e) = r {
+                    self.set_status(e);
+                }
+            }
+            Naming::Sheet(sheet) => {
+                let Some(mut sh) = self.project.lib.doc.project().schematic.sheets.get(sheet).cloned() else { return };
+                sh.name = text;
+                let objects = vec![Object::Sheet(sh)];
+                if let Err(e) = self.project.lib.doc.execute(Command::Update { objects }) {
+                    self.set_status(e.to_string());
+                }
+            }
+            Naming::NewSheet(parent) => {
+                // The symbol follows the cursor on the parent sheet; a click adds the sheet.
+                self.show_view(ViewId::Sheet(parent));
+                self.set_sch_tool(SchTool::Select);
+                self.sch.place_sheet(text);
+            }
         }
     }
 
@@ -1955,16 +2190,21 @@ impl PcbApp {
                 if let Some(l) = self.focused_lib() {
                     return l.properties_ui(ui);
                 }
-                let kind = self.active;
-                let selection =
-                    if self.is_open(kind) { self.panes[kind as usize].it.selection.clone() } else { Vec::new() };
+                let view = self.active;
+                let mut selection = if self.is_open(view) { self.panes.selection(view) } else { Vec::new() };
+                // Nothing selected on a sub-sheet: the sheet itself.
+                if let (true, Some(s)) = (selection.is_empty() && self.is_open(view), view.sheet())
+                    && self.project.lib.doc.project().schematic.sheets.get(s).is_some_and(|s| !s.is_root())
+                {
+                    selection = vec![ObjectId::Sheet(s)];
+                }
                 self.properties.ui(ui, &mut self.project.lib.doc, &selection, &mut message);
             }
             Panel::ToolSettings => {
                 if let Some(l) = self.focused_lib() {
                     return l.tool_settings_ui(ui);
                 }
-                match self.active {
+                match self.active.kind() {
                     ViewKind::Schematic if self.sch.is_placing() => {
                         sch_ui::settings(ui, &mut self.sch, &self.project.lib.doc)
                     }
@@ -1993,16 +2233,16 @@ impl PcbApp {
     /// Bring what a clicked message is about into view.
     fn show_message(&mut self, show: messages::Show) {
         match show {
-            messages::Show::Objects(kind, ids, pos) => {
-                self.show_view(kind);
-                let pane = &mut self.panes[kind as usize];
+            messages::Show::Objects(view, ids, pos) => {
+                self.show_view(view);
+                let pane = self.panes.get(view);
                 if !ids.is_empty() {
-                    pane.it.set_selection(&mut self.project.lib.doc.target(kind), ids);
+                    pane.it.set_selection(&mut self.project.lib.doc.target(view), ids);
                 }
                 if let Some(pos) = pos {
                     let cam = &mut pane.canvas.camera;
                     cam.center = [to_mm(pos.x), to_mm(pos.y)];
-                    if kind == ViewKind::Board {
+                    if view == ViewId::Board {
                         cam.zoom = cam.zoom.max(25.0);
                     }
                 }
@@ -2048,9 +2288,18 @@ impl PcbApp {
                 }),
                 None if !self.is_open(self.active) => None,
                 None => {
-                    let pane = &self.panes[self.hovered.unwrap_or(self.active) as usize];
-                    let sel = self.panes[self.active as usize].it.selection.len();
-                    Some((pane.title().to_string(), pane.canvas.cursor_world, (pane.it.grid, pane.it.snap), sel))
+                    let view = self.hovered.unwrap_or(self.active);
+                    let title = match view {
+                        ViewId::Board => "PCB".to_string(),
+                        ViewId::Sheet(s) => match self.project.lib.doc.project().schematic.sheet_path(s) {
+                            path if path.is_empty() => "Schematic".into(),
+                            path => format!("Schematic · {path}"),
+                        },
+                    };
+                    let sel = self.panes.selection(self.active).len();
+                    self.panes
+                        .find(view)
+                        .map(|pane| (title, pane.canvas.cursor_world, (pane.it.grid, pane.it.snap), sel))
                 }
             };
             let has_editor = editor.is_some();
@@ -2301,58 +2550,73 @@ struct TreeBehavior<'a> {
     /// Tab containers: drawn as rounded panels.
     tab_groups: Vec<TileId>,
     project: &'a mut LibraryEditor,
-    panes: &'a mut [Pane; 2],
+    panes: &'a mut Panes,
     libraries: &'a mut [LibraryEditor],
-    active: &'a mut ViewKind,
+    active: &'a mut ViewId,
     focus_lib: &'a mut Option<u64>,
-    hovered: &'a mut Option<ViewKind>,
+    hovered: &'a mut Option<ViewId>,
     close_requests: &'a mut Vec<Tab>,
+    /// A sheet symbol was double-clicked.
+    enter_sheet: &'a mut Option<Id>,
     sch: &'a mut SchPlacer,
     pcb: &'a mut PcbPlacer,
     status: &'a mut Option<(String, Instant)>,
     keymap: &'a Keymap,
 }
 
+/// Make `sheet` the one the schematic tools work on, clearing their preview on the sheet
+/// they worked on before.
+fn switch_sheet(sch: &mut SchPlacer, doc: &mut Document, sheet: Id) {
+    if let Some(old) = sch.set_sheet(sheet) {
+        let (project, view) = doc.project_and_view(ViewId::Sheet(old));
+        view.set_preview(project, &[]);
+    }
+}
+
 impl TreeBehavior<'_> {
-    fn view_ui(&mut self, ui: &mut egui::Ui, kind: ViewKind) {
+    fn view_ui(&mut self, ui: &mut egui::Ui, view: ViewId) {
+        let kind = view.kind();
+        let doc = &mut self.project.lib.doc;
         // The canvas fills the tab; the tool bars float over it.
         let rect = ui.max_rect();
-        let pane = &mut self.panes[kind as usize];
-        let scene = &mut self.project.lib.doc.view_mut(kind).scene;
+        let pane = self.panes.get(view);
+        let scene = &mut doc.view_mut(view).scene;
         let canvas = &mut pane.canvas;
         let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
-        if kind == ViewKind::Schematic
+        if let Some(sheet) = view.sheet()
             && let Some(tool) = sch_ui::toolbar(ui, rect, self.sch, self.keymap)
         {
-            let pane = &mut self.panes[kind as usize];
+            let pane = self.panes.get(view);
             if tool != SchTool::Select {
                 pane.it.reset();
-                pane.it.refresh(&mut self.project.lib.doc.target(kind));
+                pane.it.refresh(&mut doc.target(view));
             }
+            switch_sheet(self.sch, doc, sheet);
             self.sch.set_tool(tool);
-            *self.active = kind;
+            *self.active = view;
             *self.focus_lib = None;
         }
         if kind == ViewKind::Board
-            && let Some(tool) = pcb_ui::toolbar(ui, rect, self.pcb, &self.project.lib.doc, self.keymap)
+            && let Some(tool) = pcb_ui::toolbar(ui, rect, self.pcb, doc, self.keymap)
         {
-            let pane = &mut self.panes[kind as usize];
+            let pane = self.panes.get(view);
             if tool != PcbTool::Select {
                 pane.it.reset();
-                pane.it.refresh(&mut self.project.lib.doc.target(kind));
+                pane.it.refresh(&mut doc.target(view));
             }
             self.pcb.set_tool(tool);
-            *self.active = kind;
+            *self.active = view;
             *self.focus_lib = None;
         }
-        let pane = &mut self.panes[kind as usize];
-        let entries = self.project.lib.doc.view(kind).layer_menu();
-        let scene = &mut self.project.lib.doc.view_mut(kind).scene;
+        let pane = self.panes.get(view);
+        let entries = doc.view(view).layer_menu();
+        let scene = &mut doc.view_mut(view).scene;
         let grid_kind = if kind == ViewKind::Schematic { GridKind::Schematic } else { GridKind::Board };
+        let (grid, snap) = (pane.it.grid, pane.it.snap);
         let fit = toolbar::view_buttons(
             ui,
             rect,
-            egui::Id::unique(("view_buttons", kind as u8)),
+            egui::Id::unique(("view_buttons", view)),
             self.keymap,
             |ui| toolbar::layer_menu(ui, scene, &entries),
             |ui| toolbar::grid_menu(ui, &mut pane.it.grid, &mut pane.it.snap, &mut pane.canvas.background, grid_kind),
@@ -2360,25 +2624,40 @@ impl TreeBehavior<'_> {
         if fit {
             pane.canvas.request_fit();
         }
+        if (pane.it.grid, pane.it.snap) != (grid, snap) {
+            self.panes.share_grid(view);
+        }
+        let pane = self.panes.get(view);
         if response.hovered() {
-            *self.hovered = Some(kind);
+            *self.hovered = Some(view);
         }
         if response.hovered() && ui.input(|i| i.pointer.any_pressed()) {
-            *self.active = kind;
+            *self.active = view;
             *self.focus_lib = None;
         }
-        if kind == ViewKind::Schematic && self.sch.is_placing() {
-            let world = response.hover_pos().map(|p| {
-                let [x, y] = pane.canvas.screen_to_world(p);
-                pane.it.snap(Point::mm(x, y))
-            });
-            self.sch.hover(&mut self.project.lib.doc, world);
-            if let Some(p) = world
-                && response.hovered()
-                && ui.input(|i| i.pointer.primary_pressed())
-                && let Err(e) = self.sch.click(&mut self.project.lib.doc, p)
-            {
-                *self.status = Some((e, Instant::now()));
+        // The schematic tools work on the sheet the pointer is in.
+        let sheet = view.sheet();
+        if let Some(s) = sheet
+            && self.sch.is_placing()
+            && response.hovered()
+        {
+            switch_sheet(self.sch, doc, s);
+        }
+        let tools_here = sheet.is_some() && self.sch.sheet == sheet;
+        if sheet.is_some() && self.sch.is_placing() {
+            if tools_here {
+                let world = response.hover_pos().map(|p| {
+                    let [x, y] = pane.canvas.screen_to_world(p);
+                    pane.it.snap(Point::mm(x, y))
+                });
+                self.sch.hover(doc, world);
+                if let Some(p) = world
+                    && response.hovered()
+                    && ui.input(|i| i.pointer.primary_pressed())
+                    && let Err(e) = self.sch.click(doc, p)
+                {
+                    *self.status = Some((e, Instant::now()));
+                }
             }
             if response.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
@@ -2390,11 +2669,11 @@ impl TreeBehavior<'_> {
                 (raw, pane.it.snap(raw))
             });
             let tol = (8.0 / pane.canvas.camera.zoom * 1e6) as Coord;
-            self.pcb.hover(&mut self.project.lib.doc, world, tol);
+            self.pcb.hover(doc, world, tol);
             if world.is_some()
                 && response.hovered()
                 && ui.input(|i| i.pointer.primary_pressed())
-                && let Err(e) = self.pcb.click(&mut self.project.lib.doc)
+                && let Err(e) = self.pcb.click(doc)
             {
                 *self.status = Some((e, Instant::now()));
             }
@@ -2404,7 +2683,13 @@ impl TreeBehavior<'_> {
         } else {
             let engaged = !pane.it.is_idle();
             if let Some(input) = canvas::pointer_input(ui, &response, &pane.canvas, engaged, pane.it.hover.is_some()) {
-                pane.it.pointer(&mut self.project.lib.doc.target(kind), &input);
+                pane.it.pointer(&mut doc.target(view), &input);
+            }
+            // Double-clicking a sheet symbol opens the sheet.
+            if response.double_clicked()
+                && let Some(ObjectId::Sheet(s)) = pane.it.hover
+            {
+                *self.enter_sheet = Some(s);
             }
             if pane.it.is_dragging() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -2415,16 +2700,14 @@ impl TreeBehavior<'_> {
                 canvas::draw_box(ui, &pane.canvas, response.rect, r, crossing);
             }
         }
-        if kind == ViewKind::Schematic
-            && let Some(ghosts) = self.sch.take_preview()
-        {
-            let (project, view) = self.project.lib.doc.project_and_view(kind);
-            view.set_preview(project, &ghosts);
+        if tools_here && let Some(ghosts) = self.sch.take_preview() {
+            let (project, v) = doc.project_and_view(view);
+            v.set_preview(project, &ghosts);
         }
         if kind == ViewKind::Board
-            && let Some(ghosts) = self.pcb.take_preview(&self.project.lib.doc)
+            && let Some(ghosts) = self.pcb.take_preview(doc)
         {
-            self.project.lib.doc.board.set_board_preview(&ghosts);
+            doc.board.set_board_preview(&ghosts);
         }
         if !pane.it.is_idle() {
             ui.ctx().request_repaint();
@@ -2442,7 +2725,7 @@ impl TreeBehavior<'_> {
 impl Behavior<Tab> for TreeBehavior<'_> {
     fn tab_title_for_pane(&mut self, tab: &Tab) -> WidgetText {
         match tab {
-            Tab::View(kind) => self.panes[*kind as usize].title().into(),
+            Tab::View(view) => PcbApp::view_title(self.project.lib.doc.project(), *view).into(),
             Tab::Library(key) => {
                 let l = if *key == PROJECT_LIB {
                     Some(&*self.project)
@@ -2456,7 +2739,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
 
     fn pane_ui(&mut self, ui: &mut egui::Ui, _tile_id: TileId, tab: &mut Tab) -> UiResponse {
         match *tab {
-            Tab::View(kind) => self.view_ui(ui, kind),
+            Tab::View(view) => self.view_ui(ui, view),
             Tab::Library(key) => {
                 let l = if key == PROJECT_LIB {
                     Some(&mut *self.project)
@@ -2477,8 +2760,8 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         if response.clicked() || response.drag_started() {
             match Self::tab_of(tiles, tile_id) {
                 Some(Tab::Library(key)) => *self.focus_lib = Some(key),
-                Some(Tab::View(kind)) => {
-                    *self.active = kind;
+                Some(Tab::View(view)) => {
+                    *self.active = view;
                     *self.focus_lib = None;
                 }
                 None => {}
@@ -2550,8 +2833,8 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         let close = 14.0;
         // An icon in the colour of what the tab shows: schematic wires, copper, libraries.
         let icon = match Self::tab_of(tiles, tile_id) {
-            Some(Tab::View(ViewKind::Schematic)) => (Icon::Schematic, view::style::pal().sch_wire),
-            Some(Tab::View(ViewKind::Board)) => (Icon::Board, view::style::pal().top_copper),
+            Some(Tab::View(ViewId::Sheet(_))) => (Icon::Schematic, view::style::pal().sch_wire),
+            Some(Tab::View(ViewId::Board)) => (Icon::Board, view::style::pal().top_copper),
             _ => (Icon::Library, view::style::pal().sch_label),
         };
         let icon_size = 15.0;
@@ -2624,12 +2907,13 @@ impl eframe::App for PcbApp {
                 crate::native_menu::Picked::Cmd(cmd) => self.menu_cmds.push(cmd),
             }
         }
+        let sheet = self.sheet_view();
         if let Some(script) = &mut self.script {
             let panes = &self.panes;
-            raw.events.extend(script.events(|board, w| {
-                let kind = if board { ViewKind::Board } else { ViewKind::Schematic };
-                panes[kind as usize].canvas.world_to_screen(w)
-            }));
+            let view = if script.view() == ViewKind::Board { ViewId::Board } else { sheet };
+            raw.events.extend(
+                script.events(|_, w| panes.find(view).map(|p| p.canvas.world_to_screen(w)).unwrap_or_default()),
+            );
         }
     }
 
@@ -2683,6 +2967,7 @@ impl eframe::App for PcbApp {
                 focus_lib: &mut self.focus_lib,
                 hovered: &mut self.hovered,
                 close_requests: &mut self.close_requests,
+                enter_sheet: &mut self.enter_sheet,
                 sch: &mut self.sch,
                 pcb: &mut self.pcb,
                 status: &mut self.status,
@@ -2693,7 +2978,7 @@ impl eframe::App for PcbApp {
                 ui.centered_and_justified(|ui| {
                     ui.colored_label(
                         theme::text_dim(),
-                        format!("Double-click the schematic or the PCB in the Project panel ({shortcut}) to open it"),
+                        format!("Double-click a sheet or the PCB in the Project panel ({shortcut}) to open it"),
                     );
                 });
             } else {
@@ -2707,13 +2992,20 @@ impl eframe::App for PcbApp {
             self.save_settings();
         }
         if let Some(kind) = self.script.as_mut().and_then(Script::take_switch) {
-            self.show_view(kind);
+            let view = if kind == ViewKind::Board { ViewId::Board } else { self.project.lib.doc.root() };
+            self.show_view(view);
+        }
+        if let Some(sheet) = self.enter_sheet.take() {
+            self.show_view(ViewId::Sheet(sheet));
+        }
+        if let ViewId::Sheet(s) = self.active {
+            self.last_sheet = Some(s);
         }
 
         for tab in std::mem::take(&mut self.close_requests) {
             match tab {
                 Tab::Library(key) => self.close_library(key),
-                Tab::View(kind) => self.close_view(kind),
+                Tab::View(view) => self.close_view(view),
             }
         }
         if let Some(m) = self.libraries.iter_mut().find_map(|l| l.message.take()) {
@@ -2757,8 +3049,9 @@ impl eframe::App for PcbApp {
         // Model changed (any source): drop stale selections, refresh highlights.
         if self.project.lib.doc.revision != self.revision {
             self.revision = self.project.lib.doc.revision;
-            for pane in &mut self.panes {
-                pane.it.refresh(&mut self.project.lib.doc.target(pane.kind));
+            self.close_missing_sheets();
+            for pane in self.panes.iter_mut() {
+                pane.it.refresh(&mut self.project.lib.doc.target(pane.view));
             }
         }
         self.update_dock(&ctx);
@@ -2773,6 +3066,28 @@ impl eframe::App for PcbApp {
         self.update_title(&ctx);
         self.screenshot_tick(&ctx);
     }
+}
+
+/// A sheet's node in the Project panel, with its sub-sheets (by name) below it.
+fn sheet_node(p: &Project, id: Id) -> TreeNode {
+    use project_panel::Info;
+    let s = &p.schematic;
+    let root = s.sheets.get(id).is_none_or(|sh| sh.is_root());
+    let mut components: Vec<Id> = s.symbols.iter().filter(|y| y.sheet == id).map(|y| y.component).collect();
+    components.sort();
+    components.dedup();
+    let info = Info {
+        detail: if components.is_empty() { String::new() } else { project_panel::count(components.len(), "component") },
+        tip: if root { "The root sheet".into() } else { s.display_path(id) },
+        editable: !root,
+        ..Info::icon(Icon::Schematic)
+    };
+    let mut children: Vec<&model::Sheet> = s.children(id).collect();
+    children.sort_by(|a, b| a.name.cmp(&b.name));
+    let label =
+        if root { "Schematic".to_string() } else { s.sheets.get(id).map_or(String::new(), |sh| sh.name.clone()) };
+    TreeNode::new(NodeId::Sheet(id), label, info)
+        .with_children(children.into_iter().map(|c| sheet_node(p, c.id)).collect())
 }
 
 /// The demo project, with a demo library file (written to the temp folder) in its
@@ -2824,10 +3139,11 @@ fn insert_tab(tree: &mut Tree<Tab>, tab: Tab, group: Option<TileId>, near: &[Tab
     tile
 }
 
-fn default_tree() -> Tree<Tab> {
+/// The root sheet and the PCB as tabs of one group.
+fn default_tree(root: ViewId) -> Tree<Tab> {
     let mut tiles = Tiles::default();
-    let sch = tiles.insert_pane(Tab::View(ViewKind::Schematic));
-    let pcb = tiles.insert_pane(Tab::View(ViewKind::Board));
+    let sch = tiles.insert_pane(Tab::View(root));
+    let pcb = tiles.insert_pane(Tab::View(ViewId::Board));
     let root = tiles.insert_tab_tile(vec![sch, pcb]);
     let mut tree = Tree::new(egui::Id::unique("main_tree"), root, tiles);
     tree.make_active(|id, _| id == sch);
@@ -2835,10 +3151,10 @@ fn default_tree() -> Tree<Tab> {
 }
 
 /// Schematic left, PCB right (each in its own tab group).
-fn side_by_side_tree() -> Tree<Tab> {
+fn side_by_side_tree(root: ViewId) -> Tree<Tab> {
     let mut tiles = Tiles::default();
-    let sch = tiles.insert_pane(Tab::View(ViewKind::Schematic));
-    let pcb = tiles.insert_pane(Tab::View(ViewKind::Board));
+    let sch = tiles.insert_pane(Tab::View(root));
+    let pcb = tiles.insert_pane(Tab::View(ViewId::Board));
     let left = tiles.insert_tab_tile(vec![sch]);
     let right = tiles.insert_tab_tile(vec![pcb]);
     let root = tiles.insert_horizontal_tile(vec![left, right]);
@@ -2849,20 +3165,22 @@ fn side_by_side_tree() -> Tree<Tab> {
 mod tests {
     use super::*;
 
+    const ROOT: ViewId = ViewId::Sheet(Id::from_u128(1));
+
     fn visible(tree: &Tree<Tab>) -> Vec<Tab> {
         tree.active_tiles().into_iter().filter_map(|t| tree.tiles.get_pane(&t).copied()).collect()
     }
 
     #[test]
     fn default_layout_is_tabs_with_the_schematic_in_front() {
-        let mut tree = default_tree();
+        let mut tree = default_tree(ROOT);
         let root = tree.root.unwrap();
         assert!(matches!(tree.tiles.get(root), Some(Tile::Container(Container::Tabs(t))) if t.children.len() == 2));
-        assert_eq!(visible(&tree), vec![Tab::View(ViewKind::Schematic)]);
-        let pcb = tree.tiles.find_pane(&Tab::View(ViewKind::Board)).unwrap();
+        assert_eq!(visible(&tree), vec![Tab::View(ROOT)]);
+        let pcb = tree.tiles.find_pane(&Tab::View(ViewId::Board)).unwrap();
         tree.make_active(|id, _| id == pcb);
-        assert_eq!(visible(&tree), vec![Tab::View(ViewKind::Board)]);
-        assert_eq!(visible(&side_by_side_tree()).len(), 2, "both views visible side by side");
+        assert_eq!(visible(&tree), vec![Tab::View(ViewId::Board)]);
+        assert_eq!(visible(&side_by_side_tree(ROOT)).len(), 2, "both views visible side by side");
     }
 
     /// Close a tab as the app does, then let the tree tidy up as it does when drawn.
@@ -2880,22 +3198,22 @@ mod tests {
 
     #[test]
     fn closed_views_reopen_where_they_were() {
-        let (sch, pcb) = (Tab::View(ViewKind::Schematic), Tab::View(ViewKind::Board));
+        let (sch, pcb) = (Tab::View(ROOT), Tab::View(ViewId::Board));
 
         // Tabs: back into the same group.
-        let mut tree = default_tree();
+        let mut tree = default_tree(ROOT);
         let group = close(&mut tree, pcb);
         insert_tab(&mut tree, pcb, group, &[sch]);
         assert_eq!(group_of(&tree, pcb), group);
 
         // Side by side: the PCB's group went away with it, so it joins the schematic.
-        let mut tree = side_by_side_tree();
+        let mut tree = side_by_side_tree(ROOT);
         let group = close(&mut tree, pcb);
         insert_tab(&mut tree, pcb, group, &[sch]);
         assert_eq!(group_of(&tree, pcb), group_of(&tree, sch));
 
         // Everything closed: a new tab group becomes the root.
-        let mut tree = default_tree();
+        let mut tree = default_tree(ROOT);
         close(&mut tree, pcb);
         let group = close(&mut tree, sch);
         assert_eq!(tree.root, None);

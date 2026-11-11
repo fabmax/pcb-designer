@@ -1,10 +1,10 @@
 //! Render the demo board offscreen (no window needed), after running the design rule
 //! check: `cargo run -p mcp --example render_board -- out.png [width height] [--light]
-//! [--schematic]`. Development aid for screenshots.
+//! [--schematic | --sheet NAME]`. Development aid for screenshots.
 
 use mcp::Host;
 use mcp::headless::HeadlessHost;
-use view::{Document, ViewKind};
+use view::{Document, ViewId};
 
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -14,7 +14,11 @@ fn main() {
         on
     };
     let light = flag("--light");
-    let kind = if flag("--schematic") { ViewKind::Schematic } else { ViewKind::Board };
+    let schematic = flag("--schematic");
+    let sheet = args.iter().position(|a| a == "--sheet").map(|i| {
+        args.remove(i);
+        args.remove(i)
+    });
     if light {
         view::style::set_theme(view::style::Theme::Light);
     }
@@ -26,7 +30,13 @@ fn main() {
     for v in &report.violations {
         println!("{:?}: {}", v.kind, v.message);
     }
-    let png = host.render_view(kind, true, w, h).expect("render");
+    let project = host.doc.project();
+    let view = match sheet {
+        Some(s) => ViewId::Sheet(project.schematic.find_sheet(&s).expect("no such sheet")),
+        None if schematic => ViewId::root(project),
+        None => ViewId::Board,
+    };
+    let png = host.render_view(view, true, w, h).expect("render");
     std::fs::write(&out, png).expect("write");
     println!("wrote {out}");
 }

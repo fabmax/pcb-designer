@@ -25,7 +25,7 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use view::ViewKind;
 
-use crate::host::{Call, Reply, Request};
+use crate::host::{Call, Reply, Request, ViewSpec};
 use crate::library::LibraryRequest;
 
 pub type Waker = Arc<dyn Fn() + Send + Sync>;
@@ -54,6 +54,8 @@ Typical workflow:
    commands in one call form a single undo step and are applied all-or-nothing.
 4. screenshot the schematic or board to check the result visually.
 
+Sheets: the schematic is a tree of sheets (get_project lists their paths, e.g. /Power). Commands that add schematic objects take a sheet (id, name or path; default the root sheet). add_sheet adds a sub-sheet, placed on its parent as a sheet symbol; delete removes it with its contents; update renames or resizes it. screenshot, get_selection and set_selection take a sheet too. Reference designators are unique across all sheets.
+
 Schematic and board are linked: placing a part creates its footprint on the board automatically \
 (in a staging area right of the board outline), deleting the component removes it. Footprints \
 cannot be created or deleted directly, only moved/rotated/flipped. Schematic connectivity is \
@@ -73,12 +75,13 @@ pub enum ViewName {
     Board,
 }
 
-impl From<ViewName> for ViewKind {
-    fn from(v: ViewName) -> Self {
-        match v {
+impl ViewName {
+    fn spec(self, sheet: Option<String>) -> ViewSpec {
+        let kind = match self {
             ViewName::Schematic => ViewKind::Schematic,
             ViewName::Board => ViewKind::Board,
-        }
+        };
+        ViewSpec { kind, sheet }
     }
 }
 
@@ -180,18 +183,26 @@ pub struct ComponentParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExecuteParams {
-    /// Commands to run in order, as one undo step. If one fails, none is applied.
-    pub commands: Vec<Command>,
+    /// Commands to run in order, as one undo step. If one fails, none is applied. A
+    /// `sheet` or `parent` field takes a sheet id, name or path ("/Power/Regulator").
+    #[schemars(with = "Vec<Command>")]
+    pub commands: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ViewParams {
     pub view: ViewName,
+    /// Schematic sheet: id, name or path ("/Power/Regulator"). Default: the root sheet.
+    #[serde(default)]
+    pub sheet: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct SetSelectionParams {
     pub view: ViewName,
+    /// Schematic sheet: id, name or path. Default: the root sheet.
+    #[serde(default)]
+    pub sheet: Option<String>,
     /// Objects to select (replaces the selection; empty clears it).
     pub ids: Vec<ObjectId>,
 }
@@ -199,6 +210,9 @@ pub struct SetSelectionParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ScreenshotParams {
     pub target: ScreenshotTarget,
+    /// Schematic sheet: id, name or path ("/Power/Regulator"). Default: the root sheet.
+    #[serde(default)]
+    pub sheet: Option<String>,
     /// For views: true (default) shows everything, false shows what the user currently
     /// sees in that view.
     #[serde(default)]
@@ -463,19 +477,19 @@ impl PcbTools {
 
     #[tool(description = "Objects the user has selected in a view.")]
     async fn get_selection(&self, Parameters(p): Parameters<ViewParams>) -> Result<CallToolResult, ErrorData> {
-        self.call(Request::GetSelection { view: p.view.into() }).await
+        self.call(Request::GetSelection { view: p.view.spec(p.sheet) }).await
     }
 
     #[tool(description = "Select objects in a view (highlights them for the user).")]
     async fn set_selection(&self, Parameters(p): Parameters<SetSelectionParams>) -> Result<CallToolResult, ErrorData> {
-        self.call(Request::SetSelection { view: p.view.into(), ids: p.ids }).await
+        self.call(Request::SetSelection { view: p.view.spec(p.sheet), ids: p.ids }).await
     }
 
     #[tool(description = "PNG image of the schematic, the board, or the whole application window.")]
     async fn screenshot(&self, Parameters(p): Parameters<ScreenshotParams>) -> Result<CallToolResult, ErrorData> {
         let target = match p.target {
-            ScreenshotTarget::Schematic => Some(ViewKind::Schematic),
-            ScreenshotTarget::Board => Some(ViewKind::Board),
+            ScreenshotTarget::Schematic => Some(ViewName::Schematic.spec(p.sheet)),
+            ScreenshotTarget::Board => Some(ViewName::Board.spec(p.sheet)),
             ScreenshotTarget::Window => None,
         };
         let request = Request::Screenshot {

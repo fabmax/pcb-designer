@@ -6,10 +6,24 @@ use model::builtin::{self, PART_CAPACITOR, PART_HEADER_1X4, PART_LED, PART_RESIS
 use model::*;
 
 fn place(ed: &mut Editor, part: Id, x: f64, y: f64, rotation: Angle, refdes: &str, value: &str) -> Id {
+    place_on(ed, None, part, x, y, rotation, refdes, value)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn place_on(
+    ed: &mut Editor,
+    sheet: Option<Id>,
+    part: Id,
+    x: f64,
+    y: f64,
+    rotation: Angle,
+    refdes: &str,
+    value: &str,
+) -> Id {
     ed.execute(Command::PlacePart {
         part,
         variant: None,
-        sheet: None,
+        sheet,
         pos: Point::mm(x, y),
         rotation,
         mirror: false,
@@ -30,6 +44,7 @@ fn footprint_of(p: &Project, component: Id) -> Id {
 
 /// Wire stub from `pin` of `component` pointing away from the symbol, ending in a label.
 fn stub_label(ed: &mut Editor, component: Id, pin: &str, net: &str) {
+    let sheet = ed.project().schematic.symbols_of(component).next().map(|s| s.sheet);
     let p = ed.project();
     let sym = symbol_of(p, component);
     let center = p.schematic.symbols.get(sym).unwrap().pos;
@@ -41,11 +56,11 @@ fn stub_label(ed: &mut Editor, component: Id, pin: &str, net: &str) {
         Point::new(0, d.y.signum() * mm(2.54))
     };
     let end = at + step;
-    ed.execute(Command::AddWire { sheet: None, points: vec![at, end] }).unwrap();
+    ed.execute(Command::AddWire { sheet, points: vec![at, end] }).unwrap();
     let power = net == "GND" || net.starts_with('+') || net.starts_with("VCC");
     let kind = if power { LabelKind::Power } else { LabelKind::Local };
     ed.execute(Command::AddLabel {
-        sheet: None,
+        sheet,
         pos: end,
         name: net.into(),
         kind,
@@ -69,6 +84,7 @@ fn move_footprint(ed: &mut Editor, footprint: Id, to: Point, rotation: Angle) {
 }
 
 /// A small LED circuit with a board outline, placed footprints, tracks, a via and a zone.
+/// The LED and its resistor are on a sub-sheet, "Indicator".
 pub fn demo_project() -> Project {
     let mut ed = Editor::new(Project::new("Demo"));
     let parts = vec![PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4];
@@ -76,8 +92,12 @@ pub fn demo_project() -> Project {
 
     // Schematic.
     let j1 = place(&mut ed, PART_HEADER_1X4, 0.0, 0.0, Angle::ZERO, "J1", "Conn");
-    let r1 = place(&mut ed, PART_RESISTOR, 25.4, 7.62, Angle::ZERO, "R1", "330");
-    let d1 = place(&mut ed, PART_LED, 45.72, 7.62, Angle::ZERO, "D1", "red");
+    let changes = ed
+        .execute(Command::AddSheet { parent: None, name: "Indicator".into(), pos: Point::mm(25.4, 5.08), size: None })
+        .unwrap();
+    let indicator = changes.changes.iter().find_map(|c| if let ObjectId::Sheet(s) = c.id { Some(s) } else { None });
+    let r1 = place_on(&mut ed, indicator, PART_RESISTOR, 25.4, 7.62, Angle::ZERO, "R1", "330");
+    let d1 = place_on(&mut ed, indicator, PART_LED, 45.72, 7.62, Angle::ZERO, "D1", "red");
     let c1 = place(&mut ed, PART_CAPACITOR, 25.4, -7.62, Angle::DEG90, "C1", "100n");
     let r2 = place(&mut ed, PART_RESISTOR, 45.72, -7.62, Angle::DEG90, "R2", "10k");
     // R1 pin 2 to the LED anode with a direct wire.
@@ -87,7 +107,7 @@ pub fn demo_project() -> Project {
         let d = pin_positions(p, symbol_of(p, d1)).into_iter().find(|x| x.1 == "A").unwrap().2;
         (r, d)
     };
-    ed.execute(Command::AddWire { sheet: None, points: vec![a, b] }).unwrap();
+    ed.execute(Command::AddWire { sheet: indicator, points: vec![a, b] }).unwrap();
     for (c, pin, net) in [
         (j1, "1", "+5V"),
         (j1, "2", "SIG"),
@@ -105,7 +125,7 @@ pub fn demo_project() -> Project {
     ed.execute(Command::Insert {
         objects: vec![Object::SchText(SchText {
             id: Id::new(),
-            sheet: ed.project().schematic.first_sheet().unwrap(),
+            sheet: ed.project().schematic.root_sheet().unwrap(),
             text: Text::new("LED DEMO", Point::mm(0.0, 17.78), mm(2.54)),
         })],
     })

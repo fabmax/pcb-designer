@@ -5,7 +5,7 @@ use editor_core::copper::{CopperItem, Flag};
 use editor_core::drc::ViolationKind;
 use egui::RichText;
 use model::*;
-use view::{Document, ViewKind};
+use view::{Document, ViewId};
 
 use crate::dock::problem_key;
 use crate::fields::hint;
@@ -16,7 +16,7 @@ use crate::units;
 /// What a clicked message wants shown.
 pub enum Show {
     /// Select objects in a view and centre on `pos`.
-    Objects(ViewKind, Vec<ObjectId>, Option<Point>),
+    Objects(ViewId, Vec<ObjectId>, Option<Point>),
     /// Open a part in a library tab.
     LibraryPart(u64, Id),
 }
@@ -85,7 +85,12 @@ fn schematic(ui: &mut egui::Ui, doc: &Document) -> Option<Show> {
     let mut show = None;
     for p in problems.iter().take(SHOWN) {
         if item(ui, &p.message) {
-            show = Some(Show::Objects(ViewKind::Schematic, p.objects.clone(), p.pos));
+            // The sheet of the first object that is drawn on one; only its objects are selected.
+            let s = &doc.project().schematic;
+            let sheet = p.objects.iter().find_map(|&o| s.sheet_of(o)).or(s.root_sheet());
+            let view = sheet.map_or(doc.root(), ViewId::Sheet);
+            let objects = p.objects.iter().copied().filter(|&o| s.sheet_of(o) == sheet).collect();
+            show = Some(Show::Objects(view, objects, p.pos));
         }
     }
     more(ui, problems.len());
@@ -104,7 +109,7 @@ fn board(ui: &mut egui::Ui, doc: &mut Document) -> Option<Show> {
     heading(ui, "Board", copper.shorts.len() + usize::from(!flagged.is_empty()));
     for (nets, at) in &copper.shorts {
         if item(ui, &format!("Short: {} at {}", nets.join(" ↔ "), units::fmt_point(*at))) {
-            show = Some(Show::Objects(ViewKind::Board, Vec::new(), Some(*at)));
+            show = Some(Show::Objects(ViewId::Board, Vec::new(), Some(*at)));
         }
     }
     if !flagged.is_empty() {
@@ -114,7 +119,7 @@ fn board(ui: &mut egui::Ui, doc: &mut Document) -> Option<Show> {
             format!("{} flagged track(s)/via(s)", flagged.len())
         };
         if item(ui, &text) {
-            show = Some(Show::Objects(ViewKind::Board, flagged.clone(), None));
+            show = Some(Show::Objects(ViewId::Board, flagged.clone(), None));
         }
         hint(ui, "Schematic changes never delete copper; it is flagged here instead.");
     }
@@ -163,7 +168,7 @@ fn board(ui: &mut egui::Ui, doc: &mut Document) -> Option<Show> {
             ui.label(RichText::new(format!("{} ({n})", v.kind.label())).color(theme::text_dim()));
         }
         if item(ui, &v.message) {
-            show = Some(Show::Objects(ViewKind::Board, v.objects.clone(), Some(v.pos)));
+            show = Some(Show::Objects(ViewId::Board, v.objects.clone(), Some(v.pos)));
         }
     }
     more(ui, report.violations.len());

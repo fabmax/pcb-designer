@@ -11,7 +11,8 @@ Milestones 0–10 are done: performance spike, model + undo, canvas editing, MCP
 editor, KiCad import, schematic editor, PCB editor, sync edge cases + cross-probing,
 zones + DRC, themes + settings + headless MCP. After them: buses, KiCad library
 download, tool window bars, MCP library tools, the project tree with an editable Project
-Library, and macOS chrome (system menu bar, title strip, app bundle, app icon).
+Library, macOS chrome (system menu bar, title strip, app bundle, app icon), label scopes
+and hierarchical sheets.
 
 ## Decisions
 
@@ -22,7 +23,7 @@ Library, and macOS chrome (system menu bar, title strip, app bundle, app icon).
 | Schematic → PCB | Always live, inside the same command transaction. PCB → schematic: never |
 | Copper | Tracks have no stored net; nets come from the pads they touch. Copper whose net no longer fits is flagged, never deleted |
 | Library parts | Copied into the project (Project Library). Each copy keeps `source` (library id, part id, content hash) for "update from library" |
-| Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported later: buses, label scopes (local / global / hierarchical / power) and net names as KiCad does. Hierarchical sheets in progress (see Later). Multi-unit parts work |
+| Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported later: buses, label scopes (local / global / hierarchical / power), net names and hierarchical sheets as KiCad does (sheet pins still to come, see Later). Multi-unit parts work |
 | Files | JSON, pretty, stable order, integer nm. A project is a folder (`<name>.pcbproj/`: `project.json`, `library.json`, `schematic.json`, `board.json`); a library is one `*.pcblib`. No migrations until production use (`model::io::MIGRATIONS` stays empty) |
 | MCP | In the app (Streamable HTTP on 127.0.0.1, opt-in) and headless over stdio. Every tool goes through editor-core commands |
 | Platforms | macOS first. macOS-only chrome (native menu, title strip) is `cfg`'d; Windows/Linux keep the egui menu bar and system title bar |
@@ -40,6 +41,12 @@ Library, and macOS chrome (system menu bar, title strip, app bundle, app icon).
 - Schematic: design-wide `Component`s (refdes, value, part, variant), units placed as
   `SymbolInstance`s; every graphic carries its sheet id. Buses: `BusWire`, `BusEntry
   {pos, dir}` (wire end = `pos + dir.offset()`, a fixed 2.54 mm diagonal).
+- Sheets (KiCad's model): one root sheet (no `parent`, named "Schematic") and sub-sheets
+  with a `parent`, each drawn once on its parent as a sheet symbol (`pos` = bottom left
+  corner, `size`). All in one `schematic.json`. Names are unique among siblings and
+  have no `/`; `sheet_path` is `/Power/Regulator` (empty for the root, as in net names),
+  `display_path` shows the root as `/`, `find_sheet` takes an id, a path or a unique
+  name. `sheet_of(id)` is where an object is drawn (a sheet's symbol: its parent).
 - Board: `FootprintInstance` stores only the placement; the footprint comes from the
   component's variant, so variant swaps need no board edit. Copper layers 0 (top)…63,
   technical layers from 100.
@@ -114,14 +121,19 @@ Library, and macOS chrome (system menu bar, title strip, app bundle, app icon).
 
 ## Views and editing (`view`)
 
-- `View` draws schematic or board into a `Scene` incrementally; overlays (selection,
-  hover, highlights, DRC markers) are separate items. An R*-tree does hit testing (thin
+- `View` draws one schematic sheet or the board into a `Scene` incrementally; overlays
+  (selection, hover, highlights, DRC markers) are separate items. A view is identified
+  by `ViewId` (`Sheet(id)` or `Board`); `draw_object` skips objects of other sheets, so
+  every path (apply, highlights, probes, previews) filters by sheet for free. Highlights
+  leave out the fill layer and cover bodies with a translucent rectangle instead. An R*-tree does hit testing (thin
   beats body, small body beats large) and box selection. `ItemView` does the same for a
   single symbol or footprint.
 - Library edits redraw only their users (`View::users_of`): symbols depend on symbol,
   part and the component's footprint (pad names); footprints on footprint and part.
   Edits that don't change drawing (name, prefix…) redraw nothing.
-- `Document` = editor + folder + both views. `LibraryDoc` wraps a document whose
+- `Document` = editor + folder + a view per sheet + the board view. `changed` adds or
+  drops sheet views when sheets come and go (commands, undo); `view(id)` of a missing
+  sheet returns an empty view. `LibraryDoc` wraps a document whose
   project holds only a library; the Project Library's `LibraryDoc` wraps the project
   document itself (one undo history).
 - `Interaction`: click/shift/cmd select, box (left→right inside, right→left crossing),
@@ -132,7 +144,9 @@ Library, and macOS chrome (system menu bar, title strip, app bundle, app icon).
   dogleg; rotate/mirror stretch.
 - Tools: `tools::Placer` (library: pin/pad, line, rect, circle, text; names
   auto-increment), `sch_tools` (wire, bus, bus entry, label, power, junction, place;
-  `/` flips the corner), `pcb_tools` (route 45°/90° with copper snapping, L changes
+  `/` flips the corner; `SchPlacer::sheet` is the sheet they work on, `set_sheet` ends a
+  wire begun elsewhere; the Sheet tool places a new sheet's symbol with one
+  `AddSheet`), `pcb_tools` (route 45°/90° with copper snapping, L changes
   layer + via, via, outline, zone). Bus naming prompts: `SchPlacer::take_prompt`
   returns a `SchPrompt` for unnamed buses and entry signals.
 - Labels are drawn KiCad style: local with a dot, global as an outline around the name,
@@ -140,7 +154,7 @@ Library, and macOS chrome (system menu bar, title strip, app bundle, app icon).
   pointed. Label text goes through `Text::upright` (turned 180° with swapped alignment
   instead of upside down or reading downwards).
 - `cross_probe` (pure): selection ↔ symbols/footprints, wires ↔ copper of their nets;
-  the routed net wins.
+  the routed net wins. Probes from the board go to every sheet view.
 - Themes: `style::Palette` (`DARK`, `LIGHT`), a global baked into scene instances;
   `Document::restyle` / `ItemView::restyle` rebuild everything with overlays.
 - `project_libs::sync` loads listed library files (failures become `MissingLibrary`),
@@ -174,18 +188,29 @@ Library, and macOS chrome (system menu bar, title strip, app bundle, app icon).
   are handled in `describe` and `respond` (`host.rs`). Library requests may answer later
   (`agent::Job`) because they can add tabs.
 - `execute` takes a batch of commands (one undo step, all-or-nothing) and advertises the
-  full command JSON schema. `edit_library` takes the file format with merges by id or
+  full command JSON schema. Commands arrive as JSON and are parsed one by one just
+  before they run (`run_commands`), so `sheet` / `parent` given by name or path can
+  name a sheet an earlier command of the batch added. `screenshot`, `get_selection`
+  and `set_selection` take a `sheet` (`ViewSpec::resolve`). `edit_library` takes the file format with merges by id or
   name, refuses edits that add new `Library::issues`, and reports pad coverage.
 - Tools are listed in README.md.
 
 ## App (`app`)
 
-- **Layout:** Schematic and PCB are tabs (View → Side by side splits them). Panels and
+- **Layout:** sheets and the PCB are tabs (View → Side by side splits them); a sheet's
+  tab is titled with its name, the root's "Schematic". Panels and
   tab groups are rounded with 6 pt gaps of window background. GPU canvases can't be
   clipped, so their corners are masked afterwards (`theme::round_corners`).
 - **Tabs:** every tab closes. A closed view keeps its pane (camera, selection);
   `show_view` / `insert_tab` reopen it in its remembered group (`view_groups`). Gotcha:
   `TileId`s are sequential, so `set_layout` clears `view_groups`.
+- **Panes** (`Panes`): one per view, made on first use, sheet panes share their grid.
+  `sheet_view()` is the sheet worked on (the active one, else the last shown); new
+  sheets, placed parts and `focus_schematic` go there. After a revision change,
+  `close_missing_sheets` closes tabs and drops panes of deleted sheets. Schematic tools
+  follow the pointer: hovering a sheet's canvas while placing switches
+  `SchPlacer::sheet` there (`switch_sheet` clears the old preview). Double-clicking a
+  sheet symbol opens its tab. Deleting a non-empty sheet asks first (`confirm_sheet_delete`).
 - **Floating tool bars** (`toolbar.rs`, vector icons in `icons.rs`) are drawn after the
   canvas and sense click-and-drag, so presses never reach the canvas. View buttons
   (layers, grid/units/snap, fit) sit at the bottom left.
@@ -193,8 +218,10 @@ Library, and macOS chrome (system menu bar, title strip, app bundle, app icon).
   opened automatically. Project (⌘1), Messages (⌘3, with an unseen-problems badge),
   Properties, Tool settings, Board setup, Overview. Saved in settings when no pointer
   button is down.
-- **Project tree** (`project_panel.rs`): project, Built-in Library (read-only), External
-  Libraries; menus and activation are pure functions returning `Act`s. Gotcha: egui
+- **Project tree** (`project_panel.rs`): project (the root sheet as "Schematic" with its
+  sub-sheets nested by name, PCB, Project Library), Built-in Library (read-only),
+  External Libraries; new sheets come from the + menu or a sheet's menu (name dialog,
+  then the symbol follows the cursor); menus and activation are pure functions returning `Act`s. Gotcha: egui
   drops focus on Esc before widgets run unless the focused widget's event filter claims
   Esc.
 - **Main menu** (`menu.rs`): described once as data, drawn by egui (`bar_ui`) or, on
@@ -248,15 +275,12 @@ Things decided to do later, by area. Remove an entry when it's done; add what a 
 defers.
 
 **Schematic**
-- Hierarchical sheets (decided 2026-11-11, KiCad's model): a root sheet and sub-sheets
-  with `parent`, each placed once as a sheet symbol on its parent (no reuse; reused
-  KiCad sheets get duplicated on import). One `schematic.json`; refdes stay design-wide.
-  Next changes: (2) sheets with `AddSheet` / `RemoveSheet` (with contents; root
-  protected), a tab per sheet, sub-sheets nested under the tree's Schematic node, new
-  sheet = name, then place its symbol (default 25.4 × 20 mm), double-click enters, MCP
-  `sheet` arguments by id, name or path, a demo "Indicator" sheet; (3) sheet pins
-  derived from the sub-sheet's hierarchical labels (inputs left, others right, by name)
-  that connect like component pins, with ERC.
+- Sheet pins (next): derived from the sub-sheet's hierarchical labels (inputs left,
+  others right, by name; the symbol grows to fit), connecting like component pins, with
+  ERC. Until then hierarchical labels join like local ones on their sheet. Reused KiCad
+  sheets get duplicated on import (no reuse here).
+- GPU scenes of closed sheet canvases stay allocated until the app quits
+  (`CanvasResources::scenes` is never pruned).
 - After sheets: re-parenting sheets, moving objects between sheets, hierarchical bus
   pins.
 - KiCad's "unfold bus".

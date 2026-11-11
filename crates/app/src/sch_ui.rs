@@ -61,6 +61,15 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
     let s = &mut sch.settings;
     match tool {
         SchTool::Select => {}
+        SchTool::Sheet => {
+            let name = sch.new_sheet.as_deref().unwrap_or_default();
+            hint(
+                ui,
+                &format!(
+                    "Click to place the symbol of sheet \"{name}\" (its top left corner). Its size can be changed in Properties."
+                ),
+            );
+        }
         SchTool::Wire => {
             grid(ui, "sch_tool", |ui| {
                 label(ui, "Corner");

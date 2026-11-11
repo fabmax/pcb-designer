@@ -8,15 +8,42 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::geom::{Angle, Point, Text, Transform};
+use crate::geom::{Angle, Point, Rect, Size, Text, Transform};
 use crate::id::Id;
 use crate::library::has_id;
+use crate::object::ObjectId;
 use crate::store::Store;
 
+/// A schematic sheet, as in KiCad: the root sheet, or a sub-sheet placed exactly once on
+/// its parent as a sheet symbol (a rectangle; its pins come from the sub-sheet's
+/// hierarchical labels). A sheet's path is the names from the root down: `/Power/Regulator`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Sheet {
     pub id: Id,
+    /// Unique among the sheets of one parent.
     pub name: String,
+    /// The sheet this one is placed on; `None` for the root sheet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<Id>,
+    /// The sheet symbol on the parent: its lower left corner and size. Unused for the root.
+    #[serde(default)]
+    pub pos: Point,
+    #[serde(default)]
+    pub size: Size,
+}
+
+impl Sheet {
+    /// Default size of a new sheet symbol (KiCad's is similar).
+    pub const SIZE: Size = Size { w: 25_400_000, h: 20_320_000 };
+
+    pub fn is_root(&self) -> bool {
+        self.parent.is_none()
+    }
+
+    /// The sheet symbol's rectangle on the parent sheet.
+    pub fn rect(&self) -> Rect {
+        Rect::from_points(self.pos, self.pos + Point::new(self.size.w, self.size.h))
+    }
 }
 
 /// A part used in the design. Its footprint on the board follows automatically.
@@ -270,25 +297,151 @@ pub struct Schematic {
 }
 
 impl Schematic {
-    /// A schematic with a single sheet.
+    /// A schematic with just the root sheet.
     pub fn new() -> Self {
         let mut s = Schematic::default();
-        s.sheets.insert(Sheet { id: Id::new(), name: "Sheet 1".into() });
+        s.sheets.insert(Sheet {
+            id: Id::new(),
+            name: "Schematic".into(),
+            parent: None,
+            pos: Point::ZERO,
+            size: Size::default(),
+        });
         s
     }
 
-    pub fn first_sheet(&self) -> Option<Id> {
-        self.sheets.ids().next()
+    /// The root sheet (the one without a parent).
+    pub fn root_sheet(&self) -> Option<Id> {
+        self.sheets.iter().find(|s| s.is_root()).map(|s| s.id)
+    }
+
+    /// The sheets placed on `sheet`, in insertion order.
+    pub fn children(&self, sheet: Id) -> impl Iterator<Item = &Sheet> {
+        self.sheets.iter().filter(move |s| s.parent == Some(sheet))
+    }
+
+    /// `sheet` and every sheet below it, parents before their children.
+    pub fn sheet_and_descendants(&self, sheet: Id) -> Vec<Id> {
+        let mut out = vec![sheet];
+        let mut i = 0;
+        while i < out.len() {
+            let parent = out[i];
+            out.extend(self.children(parent).map(|s| s.id));
+            i += 1;
+        }
+        out
     }
 
     /// The sheet's path in the hierarchy, as a prefix for net names: empty for the root,
     /// `/Power/Regulator` below it (names of the sheets from the root down).
     pub fn sheet_path(&self, sheet: Id) -> String {
-        // Sheets are flat until they get parents: the first is the root.
-        if self.first_sheet() == Some(sheet) {
-            return String::new();
+        let mut names = Vec::new();
+        let mut at = self.sheets.get(sheet);
+        while let Some(s) = at {
+            let Some(parent) = s.parent else { break };
+            names.push(s.name.as_str());
+            if names.len() > self.sheets.len() {
+                break; // a cycle (invalid project); don't hang
+            }
+            at = self.sheets.get(parent);
         }
-        self.sheets.get(sheet).map_or(String::new(), |s| format!("/{}", s.name))
+        names.iter().rev().map(|n| format!("/{n}")).collect()
+    }
+
+    /// What is wrong with naming a sheet below `parent` `name` (`sheet`: the sheet being
+    /// renamed, which may keep its name): names are not empty, have no surrounding spaces
+    /// and no `/`, and are unique among their siblings.
+    pub fn sheet_name_issue(&self, parent: Option<Id>, name: &str, sheet: Option<Id>) -> Option<String> {
+        if name.trim().is_empty() || name.trim() != name || name.contains('/') {
+            return Some(format!("sheet name \"{name}\": not empty, no surrounding spaces, no /"));
+        }
+        self.sheets
+            .iter()
+            .any(|o| Some(o.id) != sheet && o.parent == parent && o.name == name)
+            .then(|| format!("there is a sheet named {name} there already"))
+    }
+
+    /// The sheet's path for display: `/` for the root, else [`sheet_path`](Self::sheet_path).
+    pub fn display_path(&self, sheet: Id) -> String {
+        let path = self.sheet_path(sheet);
+        if path.is_empty() { "/".into() } else { path }
+    }
+
+    /// A sheet by id, path (`/Power/Regulator`, `/` for the root) or name (if unique).
+    pub fn find_sheet(&self, spec: &str) -> Option<Id> {
+        let spec = spec.trim();
+        if let Ok(id) = spec.parse::<Id>()
+            && self.sheets.contains(id)
+        {
+            return Some(id);
+        }
+        if spec.starts_with('/') {
+            let wanted = spec.trim_end_matches('/');
+            return self.sheets.iter().find(|s| self.sheet_path(s.id) == wanted).map(|s| s.id);
+        }
+        let mut named = self.sheets.iter().filter(|s| s.name == spec);
+        match (named.next(), named.next()) {
+            (Some(s), None) => Some(s.id),
+            _ => None,
+        }
+    }
+
+    /// The sheet an object is drawn on: its `sheet`, or for a sheet (its symbol) the
+    /// parent. `None` for components and for the root sheet.
+    pub fn sheet_of(&self, id: ObjectId) -> Option<Id> {
+        match id {
+            ObjectId::Sheet(s) => self.sheets.get(s).and_then(|s| s.parent),
+            ObjectId::Symbol(o) => self.symbols.get(o).map(|o| o.sheet),
+            ObjectId::Wire(o) => self.wires.get(o).map(|o| o.sheet),
+            ObjectId::BusWire(o) => self.bus_wires.get(o).map(|o| o.sheet),
+            ObjectId::BusEntry(o) => self.bus_entries.get(o).map(|o| o.sheet),
+            ObjectId::Junction(o) => self.junctions.get(o).map(|o| o.sheet),
+            ObjectId::Label(o) => self.labels.get(o).map(|o| o.sheet),
+            ObjectId::SchText(o) => self.texts.get(o).map(|o| o.sheet),
+            _ => None,
+        }
+    }
+
+    /// Everything drawn on `sheet` (sheet symbols included).
+    pub fn objects_on(&self, sheet: Id) -> Vec<ObjectId> {
+        let on = |s: Id| s == sheet;
+        self.children(sheet)
+            .map(|s| ObjectId::Sheet(s.id))
+            .chain(self.symbols.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::Symbol(o.id)))
+            .chain(self.wires.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::Wire(o.id)))
+            .chain(self.bus_wires.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::BusWire(o.id)))
+            .chain(self.bus_entries.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::BusEntry(o.id)))
+            .chain(self.junctions.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::Junction(o.id)))
+            .chain(self.labels.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::Label(o.id)))
+            .chain(self.texts.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::SchText(o.id)))
+            .collect()
+    }
+
+    /// Problems with the sheet tree: exactly one root, existing parents, no cycles,
+    /// non-empty names unique among siblings.
+    pub fn sheet_issues(&self) -> Vec<String> {
+        let mut issues = Vec::new();
+        let roots = self.sheets.iter().filter(|s| s.is_root()).count();
+        if roots != 1 {
+            issues.push(format!("{roots} root sheets (exactly one expected)"));
+        }
+        for s in self.sheets.iter() {
+            if s.name.trim().is_empty() {
+                issues.push(format!("sheet {:?}: empty name", s.id));
+            }
+            if let Some(p) = s.parent {
+                if !self.sheets.contains(p) {
+                    issues.push(format!("sheet {}: missing parent", s.name));
+                } else if !self.sheet_and_descendants(self.root_sheet().unwrap_or(p)).contains(&s.id) {
+                    issues.push(format!("sheet {}: not below the root (cycle)", s.name));
+                }
+            }
+            if self.sheets.iter().any(|o| o.id != s.id && o.parent == s.parent && o.name == s.name) {
+                issues.push(format!("sheet name {} is used twice on one sheet", s.name));
+            }
+        }
+        issues.dedup();
+        issues
     }
 
     pub fn component_by_refdes(&self, refdes: &str) -> Option<&Component> {

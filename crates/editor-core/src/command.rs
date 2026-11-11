@@ -22,6 +22,16 @@ pub enum Command {
         library: Library,
         parts: Vec<Id>,
     },
+    /// Add a sheet below `parent` (default: the root sheet), placed there as a sheet
+    /// symbol with its lower left corner at `pos` (default size 25.4 × 20.32 mm).
+    AddSheet {
+        #[serde(default)]
+        parent: Option<Id>,
+        name: String,
+        pos: Point,
+        #[serde(default)]
+        size: Option<Size>,
+    },
     /// Place a part from the project library: creates a component and its symbol. The
     /// footprint appears on the board automatically.
     PlacePart {
@@ -195,6 +205,7 @@ impl Command {
             Command::AddBusEntry { .. } => "Add bus entry".into(),
             Command::AddJunction { .. } => "Add junction".into(),
             Command::AddLabel { name, .. } => format!("Add label {name}"),
+            Command::AddSheet { name, .. } => format!("Add sheet {name}"),
             Command::SetComponent { .. } => "Edit component".into(),
             Command::AddTrack { .. } => "Add track".into(),
             Command::AddVia { .. } => "Add via".into(),
@@ -217,6 +228,12 @@ impl Command {
         match self {
             Command::ImportParts { library, parts } => import_parts(tx, &library, &parts),
             Command::UpdateParts { library, parts } => update_parts(tx, &library, &parts),
+            Command::AddSheet { parent, name, pos, size } => {
+                let parent = resolve_sheet(tx, parent)?;
+                let sheet = Sheet { id: Id::new(), name, parent: Some(parent), pos, size: size.unwrap_or(Sheet::SIZE) };
+                check_references(tx.project(), &Object::Sheet(sheet.clone()))?;
+                tx.insert(Object::Sheet(sheet)).map(drop)
+            }
             Command::PlacePart { part, variant, sheet, pos, rotation, mirror, refdes, value } => {
                 place_part(tx, part, variant, sheet, pos, rotation, mirror, refdes, value)
             }
@@ -427,7 +444,7 @@ fn resolve_sheet(tx: &Transaction, sheet: Option<Id>) -> Result<Id, CommandError
     match sheet {
         Some(s) if sch.sheets.contains(s) => Ok(s),
         Some(s) => Err(CommandError::NotFound(ObjectId::Sheet(s))),
-        None => sch.first_sheet().ok_or_else(|| CommandError::Invalid("schematic has no sheet".into())),
+        None => sch.root_sheet().ok_or_else(|| CommandError::Invalid("schematic has no sheet".into())),
     }
 }
 
@@ -701,6 +718,16 @@ fn transform_objects(tx: &mut Transaction, ids: &[ObjectId], t: Transform, edit:
                     e.dir = EntryDir::of_offset(end - e.pos);
                 }
                 Object::Junction(j) => j.pos = t.point(j.pos),
+                Object::Sheet(sh) => {
+                    if sh.is_root() {
+                        return Err(CommandError::Invalid("the root sheet has no symbol to move".into()));
+                    }
+                    // The symbol stays an axis-aligned rectangle: rotated or mirrored corners.
+                    let r = sh.rect();
+                    let r = Rect::from_points(t.point(r.min), t.point(r.max));
+                    sh.pos = r.min;
+                    sh.size = Size { w: r.max.x - r.min.x, h: r.max.y - r.min.y };
+                }
                 Object::Label(l) => {
                     l.pos = t.point(l.pos);
                     l.rotation = t.angle(l.rotation);
@@ -775,21 +802,21 @@ fn delete(tx: &mut Transaction, ids: &[ObjectId]) -> Result<(), CommandError> {
                 ));
             }
             ObjectId::Sheet(s) => {
+                // A sheet goes with everything on it and its sub-sheets (KiCad does the same).
                 let sch = &tx.project().schematic;
-                if sch.sheets.len() == 1 {
-                    return Err(CommandError::Forbidden("the last sheet cannot be deleted".into()));
+                if sch.sheets.get(s).is_some_and(|x| x.is_root()) {
+                    return Err(CommandError::Forbidden("the root sheet cannot be deleted".into()));
                 }
-                let used = sch.symbols.iter().any(|o| o.sheet == s)
-                    || sch.wires.iter().any(|o| o.sheet == s)
-                    || sch.bus_wires.iter().any(|o| o.sheet == s)
-                    || sch.bus_entries.iter().any(|o| o.sheet == s)
-                    || sch.labels.iter().any(|o| o.sheet == s)
-                    || sch.junctions.iter().any(|o| o.sheet == s)
-                    || sch.texts.iter().any(|o| o.sheet == s);
-                if used {
-                    return Err(CommandError::Forbidden("only empty sheets can be deleted".into()));
+                let sheets = sch.sheet_and_descendants(s);
+                let contents: Vec<ObjectId> = sheets
+                    .iter()
+                    .flat_map(|&sh| sch.objects_on(sh))
+                    .filter(|o| !matches!(o, ObjectId::Sheet(_)))
+                    .collect();
+                delete(tx, &contents)?;
+                for &sh in sheets.iter().rev() {
+                    tx.remove(ObjectId::Sheet(sh))?;
                 }
-                tx.remove(id)?;
             }
             ObjectId::Component(c) => delete_component(tx, c)?,
             ObjectId::Symbol(s) => {
@@ -840,6 +867,7 @@ fn check_references(p: &Project, o: &Object) -> Result<(), CommandError> {
     let missing = |id: ObjectId| Err(CommandError::NotFound(id));
     let sheet_ok = |s: Id| p.schematic.sheets.contains(s);
     match o {
+        Object::Sheet(s) => check_sheet(p, s),
         Object::Component(c) => match p.library.parts.get(c.part) {
             None => missing(ObjectId::LibPart(c.part)),
             Some(part) if part.variant(c.variant).is_none() => {
@@ -903,6 +931,31 @@ fn check_references(p: &Project, o: &Object) -> Result<(), CommandError> {
         }
         _ => Ok(()),
     }
+}
+
+/// A new or changed sheet: a trimmed name without `/`, unique among its siblings; an
+/// existing parent that doesn't change; one root sheet; a symbol with a size.
+fn check_sheet(p: &Project, s: &Sheet) -> Result<(), CommandError> {
+    let sch = &p.schematic;
+    if let Some(issue) = sch.sheet_name_issue(s.parent, &s.name, Some(s.id)) {
+        return Err(CommandError::Invalid(issue));
+    }
+    match (sch.sheets.get(s.id), s.parent) {
+        (Some(current), _) if current.parent != s.parent => {
+            return Err(CommandError::Forbidden("a sheet stays on its parent sheet".into()));
+        }
+        (None, None) if sch.root_sheet().is_some() => {
+            return Err(CommandError::Invalid("the schematic has a root sheet already".into()));
+        }
+        (_, Some(parent)) if !sch.sheets.contains(parent) => {
+            return Err(CommandError::NotFound(ObjectId::Sheet(parent)));
+        }
+        _ => {}
+    }
+    if s.parent.is_some() && (s.size.w <= 0 || s.size.h <= 0) {
+        return Err(CommandError::Invalid("a sheet symbol needs a width and a height".into()));
+    }
+    Ok(())
 }
 
 fn set_copper_layers(tx: &mut Transaction, count: u16) -> Result<(), CommandError> {

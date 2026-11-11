@@ -34,8 +34,11 @@ open project, so only turn it on when you need it.
 Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `search_kicad`, `import_kicad`, `download_kicad_libraries`, `list_objects`, `get_objects`, `get_component`,
 `get_netlist` (nets, buses and their members, schematic problems), `get_routing`,
-`run_drc`, `execute` (any editor command, as one undo step), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (schematic, board
-or the whole window) and `save_project`. Agent edits go through the same commands as the
+`run_drc`, `execute` (any editor command, as one undo step), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
+or the whole window) and `save_project`. Sheets are added, renamed and deleted with
+`execute` (`add_sheet`, `update`, `delete`); `get_project` lists their paths, and wherever
+a sheet is asked for (`sheet`, `parent`), an id, a name or a path like `/Power/Regulator`
+works. Agent edits go through the same commands as the
 GUI, so they can be undone with ⌘Z, and the status bar shows what the agent just did.
 
 Library tools let an agent make parts nobody has, e.g. from a datasheet: `list_libraries`,
@@ -51,8 +54,8 @@ to it go through `execute` like any project change.
 
 The Project panel (⌘1) shows a tree, IntelliJ style:
 
-- **The project:** Schematic and PCB (double-click to show them; their tabs can be closed
-  like any other, and the tree opens them again) and the **Project
+- **The project:** the Schematic with its sheets, the PCB (double-click to show them;
+  their tabs can be closed like any other, and the tree opens them again) and the **Project
   Library**, the project's own copies of the parts the design uses. It is editable like
   any library, in its own tab: edits are project changes, so they share the project's
   undo history and update the schematic and board right away. Each part shows its state:
@@ -66,6 +69,15 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
   copy as…" makes an editable library of your own from it.
 - **External Libraries:** the project's library files (`.pcblib`).
 
+**Sheets** work as in KiCad: the Schematic node is the root sheet, with its sub-sheets
+nested below it. "New sheet…" (+ button, or "New sub-sheet…" on a sheet) asks for a
+name; then the new sheet's symbol follows the cursor on its parent sheet until you click.
+Double-click a sheet symbol (or the sheet in the tree) to open the sheet in its own tab.
+Rename or delete sheets with right-click; deleting takes everything on the sheet and its
+sub-sheets along (after asking). Reference designators are unique across all sheets.
+Local labels connect on their sheet only (nets are named `/Sheet/NAME`), global and power
+labels everywhere.
+
 Libraries expand to Parts, Symbols and Footprints. Double-click (or Enter) opens an item
 in its library tab. Right-click for more: place a part, copy it to the Project Library
 (where it can be changed for this design only),
@@ -75,8 +87,9 @@ create, duplicate, rename or delete items, and save, reveal or remove libraries.
   deletes an item.
 - **Search:** type, or click the search button, to filter the tree. ↑/↓ step through the
   matches and Esc ends the search.
-- **+ button** (also on right-click of External Libraries and in the File menu): New
-  library… (asks for its file right away), Add library…, Import from KiCad….
+- **+ button:** New sheet…, New library… (asks for its file right away), Add library…,
+  Import from KiCad… (the library entries are also on right-click of External Libraries
+  and in the File menu).
 
 The project lists its library files in `project.json`, relative to the project folder,
 and they load with the project. A file that can't be read shows as missing, with Locate…

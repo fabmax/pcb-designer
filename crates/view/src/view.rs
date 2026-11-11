@@ -20,13 +20,42 @@ pub enum ViewKind {
     Board,
 }
 
+/// One view of a project: a schematic sheet, or the board.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ViewId {
+    Sheet(Id),
+    Board,
+}
+
+impl ViewId {
+    pub fn kind(self) -> ViewKind {
+        match self {
+            ViewId::Sheet(_) => ViewKind::Schematic,
+            ViewId::Board => ViewKind::Board,
+        }
+    }
+
+    pub fn sheet(self) -> Option<Id> {
+        match self {
+            ViewId::Sheet(s) => Some(s),
+            ViewId::Board => None,
+        }
+    }
+
+    /// The view of the root sheet.
+    pub fn root(project: &Project) -> ViewId {
+        ViewId::Sheet(project.schematic.root_sheet().unwrap_or(Id::from_u128(0)))
+    }
+}
+
 impl ViewKind {
     /// Does this view show objects of `kind`?
     pub fn shows(self, kind: ObjectKind) -> bool {
         match self {
             ViewKind::Schematic => matches!(
                 kind,
-                ObjectKind::Symbol
+                ObjectKind::Sheet
+                    | ObjectKind::Symbol
                     | ObjectKind::Wire
                     | ObjectKind::BusWire
                     | ObjectKind::BusEntry
@@ -89,6 +118,7 @@ enum Layers {
 }
 
 pub struct View {
+    pub id: ViewId,
     pub kind: ViewKind,
     pub scene: Scene,
     pub index: SpatialIndex,
@@ -128,9 +158,11 @@ fn overlay_item(id: ObjectId, hover: bool) -> u64 {
 }
 
 impl View {
-    pub fn new(kind: ViewKind, project: &Project) -> Self {
+    pub fn new(id: ViewId, project: &Project) -> Self {
+        let kind = id.kind();
         let (scene, layers, hover_layer, selection_layer) = Self::create_scene(kind, project);
         let mut v = View {
+            id,
             kind,
             scene,
             index: SpatialIndex::default(),
@@ -280,10 +312,12 @@ impl View {
     fn draw_all(&mut self, project: &Project) {
         let ids: Vec<ObjectId> = match self.kind {
             ViewKind::Schematic => {
+                // `draw_object` skips what is on other sheets.
                 let s = &project.schematic;
-                s.symbols
+                s.sheets
                     .ids()
-                    .map(ObjectId::Symbol)
+                    .map(ObjectId::Sheet)
+                    .chain(s.symbols.ids().map(ObjectId::Symbol))
                     .chain(s.wires.ids().map(ObjectId::Wire))
                     .chain(s.bus_wires.ids().map(ObjectId::BusWire))
                     .chain(s.bus_entries.ids().map(ObjectId::BusEntry))
@@ -380,6 +414,7 @@ impl View {
                 .schematic
                 .symbols
                 .iter()
+                .filter(|s| Some(s.sheet) == self.id.sheet())
                 .filter(|s| {
                     let Some(c) = components.get(s.component) else { return false };
                     library.contains(&ObjectId::LibPart(c.part))
@@ -431,10 +466,11 @@ impl View {
     pub fn set_connectivity(&mut self, c: &editor_core::connectivity::Connectivity) {
         let Layers::Sch(l) = &self.layers else { return };
         let mut out = Vec::with_capacity(c.dots.len() + c.unconnected.len());
-        for &(_, p) in &c.dots {
+        for &(_, p) in c.dots.iter().filter(|d| Some(d.0) == self.id.sheet()) {
             out.push((l.wires, Instance::circle(mmf(p), JUNCTION_RADIUS, pal().sch_junction)));
         }
-        for &(_, _, p) in &c.unconnected {
+        // Pins of the symbols drawn here.
+        for &(_, _, p) in c.unconnected.iter().filter(|u| self.index.bounds(ObjectId::Symbol(u.0)).is_some()) {
             out.push((l.pins, Instance::circle_outline(mmf(p), 0.4, 0.12, pal().sch_pin)));
         }
         self.scene.set_item(CONNECTIVITY_ITEM, out);
@@ -458,6 +494,16 @@ impl View {
                     p.push(l.wires, Instance::circle_outline(mmf(*pos), 0.6, 0.12, pal().hover.with_alpha(0xc0)))
                 }
                 SchGhost::Label(lab) => draw_label(lab, l, &mut p),
+                SchGhost::Sheet { rect, name } => {
+                    let sheet = Sheet {
+                        id: Id::from_u128(0),
+                        name: name.clone(),
+                        parent: None,
+                        pos: rect.min,
+                        size: Size { w: rect.width(), h: rect.height() },
+                    };
+                    draw_sheet_symbol(&sheet, l, &mut p);
+                }
                 SchGhost::Symbol { part, component, unit, transform } => {
                     let Some(part) = project.library.parts.get(*part) else { continue };
                     let Some(sym) = part.units.get(*unit as usize).and_then(|u| project.library.symbols.get(u.symbol))
@@ -611,6 +657,15 @@ impl View {
         &self.probed
     }
 
+    /// The layer of symbol and sheet fills: left out of highlights (which cover the
+    /// body with a translucent rectangle instead).
+    fn fill_layer(&self) -> Option<RLayer> {
+        match &self.layers {
+            Layers::Sch(l) => Some(l.body_fill),
+            _ => None,
+        }
+    }
+
     /// Highlight objects selected in the other view (cross-probing; empty clears).
     pub fn set_probe(&mut self, project: &Project, ids: &[ObjectId]) {
         self.probed = ids.to_vec();
@@ -625,11 +680,12 @@ impl View {
             if !self.draw_object(project, id, &mut p) {
                 continue;
             }
-            out.extend(p.out.into_iter().map(|(_, mut inst)| {
+            let fill = self.fill_layer();
+            out.extend(p.out.into_iter().filter(|(l, _)| Some(*l) != fill).map(|(_, mut inst)| {
                 inst.color = pal().probe;
                 (layer, inst)
             }));
-            if matches!(id, ObjectId::Symbol(_) | ObjectId::Footprint(_))
+            if matches!(id, ObjectId::Symbol(_) | ObjectId::Footprint(_) | ObjectId::Sheet(_))
                 && let Some(b) = p.bounds
             {
                 let size = [(b.width() as f64 * 1e-6) as f32, (b.height() as f64 * 1e-6) as f32];
@@ -674,15 +730,17 @@ impl View {
         }
         let (layer, color) =
             if hover { (self.hover_layer, pal().hover) } else { (self.selection_layer, pal().selection) };
+        let fill = self.fill_layer();
         let mut out: Vec<(RLayer, Instance)> = p
             .out
             .into_iter()
+            .filter(|(l, _)| Some(*l) != fill)
             .map(|(_, mut inst)| {
                 inst.color = color;
                 (layer, inst)
             })
             .collect();
-        if matches!(id, ObjectId::Symbol(_) | ObjectId::Footprint(_))
+        if matches!(id, ObjectId::Symbol(_) | ObjectId::Footprint(_) | ObjectId::Sheet(_))
             && let Some(b) = p.bounds
         {
             let fill = if hover { pal().hover.with_alpha(0x18) } else { pal().selection_fill };
@@ -756,7 +814,13 @@ impl View {
     // Drawing
 
     fn draw_object(&self, project: &Project, id: ObjectId, p: &mut Painter) -> bool {
+        if self.kind == ViewKind::Schematic && project.schematic.sheet_of(id) != self.id.sheet() {
+            return false; // on another sheet (or not a schematic object)
+        }
         match (&self.layers, id) {
+            (Layers::Sch(l), ObjectId::Sheet(i)) => {
+                project.schematic.sheets.get(i).map(|s| draw_sheet_symbol(s, l, p)).is_some()
+            }
             (Layers::Sch(l), ObjectId::Symbol(i)) => {
                 project.schematic.symbols.get(i).map(|s| draw_symbol(project, s, l, p)).is_some()
             }
@@ -942,6 +1006,16 @@ fn draw_symbol_graphics(
         }
         p.text(l.text, &text, pal().sch_text, &|s| substitute(s, refdes, value), false);
     }
+}
+
+/// A sheet symbol: a filled rectangle with the sheet's name above its top left corner.
+fn draw_sheet_symbol(sheet: &Sheet, l: &SchLayers, p: &mut Painter) {
+    let r = sheet.rect();
+    let shape = Shape::Rect { a: r.min, b: r.max, width: 254_000, fill: true };
+    p.shape(l.body, &shape, pal().sch_sheet, Some((l.body_fill, pal().sch_sheet_fill)));
+    p.grow(r);
+    let name = Text::new(sheet.name.clone(), Point::new(r.min.x, r.max.y + 500_000), 1_270_000);
+    p.text(l.body, &name, pal().sch_sheet, &|s| s.to_string(), true);
 }
 
 /// Half the height of a global or hierarchical label's outline, in mm.

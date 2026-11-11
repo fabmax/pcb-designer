@@ -16,7 +16,7 @@ use render::{Camera, Scene};
 use serde_json::{Value, json};
 use tokio::sync::oneshot;
 use view::interaction::new_group;
-use view::{Document, ViewKind};
+use view::{Document, ViewId, ViewKind};
 
 use crate::library::LibraryRequest;
 
@@ -51,21 +51,22 @@ pub enum Request {
     Drc {
         limit: usize,
     },
+    /// Commands as JSON: `sheet` and `parent` may name a sheet (see [`resolve_sheets`]).
     Execute {
-        commands: Vec<Command>,
+        commands: Vec<Value>,
     },
     Undo,
     Redo,
     GetSelection {
-        view: ViewKind,
+        view: ViewSpec,
     },
     SetSelection {
-        view: ViewKind,
+        view: ViewSpec,
         ids: Vec<ObjectId>,
     },
     /// Render a view (`target = Some(view)`) or capture the whole window (`None`).
     Screenshot {
-        target: Option<ViewKind>,
+        target: Option<ViewSpec>,
         fit: bool,
         width: u32,
         height: u32,
@@ -87,6 +88,47 @@ pub enum Request {
     },
     /// Create, open, read, edit, save or render libraries.
     Library(LibraryRequest),
+}
+
+/// A view as an agent names it: the board, or a schematic sheet by id, name or path
+/// (`None`: the root sheet).
+#[derive(Clone, Debug)]
+pub struct ViewSpec {
+    pub kind: ViewKind,
+    pub sheet: Option<String>,
+}
+
+impl ViewSpec {
+    pub fn resolve(&self, project: &Project) -> Result<ViewId, String> {
+        match (self.kind, &self.sheet) {
+            (ViewKind::Board, None) => Ok(ViewId::Board),
+            (ViewKind::Board, Some(_)) => Err("the board has no sheets".into()),
+            (ViewKind::Schematic, None) => Ok(ViewId::root(project)),
+            (ViewKind::Schematic, Some(s)) => find_sheet(project, s).map(ViewId::Sheet),
+        }
+    }
+}
+
+fn find_sheet(project: &Project, spec: &str) -> Result<Id, String> {
+    project.schematic.find_sheet(spec).ok_or_else(|| {
+        let paths: Vec<String> = project.schematic.sheets.ids().map(|s| project.schematic.display_path(s)).collect();
+        format!("no sheet {spec:?} (sheets: {})", paths.join(", "))
+    })
+}
+
+/// Parse a command, with sheets in `sheet` and `parent` fields given by id, name or path.
+pub fn resolve_sheets(project: &Project, mut command: Value) -> Result<Command, String> {
+    if let Some(obj) = command.as_object_mut() {
+        for key in ["sheet", "parent"] {
+            if let Some(Value::String(spec)) = obj.get(key)
+                && spec.parse::<Id>().is_err()
+            {
+                let id = find_sheet(project, spec)?;
+                obj.insert(key.into(), json!(id));
+            }
+        }
+    }
+    serde_json::from_value(command).map_err(|e| e.to_string())
 }
 
 /// A KiCad import requested by an agent.
@@ -117,14 +159,17 @@ impl Request {
             Request::Routing => "read routing state".into(),
             Request::Drc { .. } => "run the design rule check".into(),
             Request::Execute { commands } => match &commands[..] {
-                [one] => one.label(),
+                [one] => one.get("command").and_then(Value::as_str).unwrap_or("command").replace('_', " "),
                 many => format!("{} commands", many.len()),
             },
             Request::Undo => "undo".into(),
             Request::Redo => "redo".into(),
             Request::GetSelection { .. } => "read selection".into(),
             Request::SetSelection { ids, .. } => format!("select {} object(s)", ids.len()),
-            Request::Screenshot { target: Some(v), .. } => format!("screenshot {v:?}"),
+            Request::Screenshot { target: Some(v), .. } => match &v.sheet {
+                Some(s) => format!("screenshot sheet {s}"),
+                None => format!("screenshot {:?}", v.kind),
+            },
             Request::Screenshot { target: None, .. } => "screenshot window".into(),
             Request::Save { .. } => "save".into(),
             Request::KicadSearch { query, .. } => format!("search KiCad for {query:?}"),
@@ -170,10 +215,10 @@ pub trait Host {
     fn document(&mut self) -> &mut Document;
     /// Open libraries that `import_parts` / `list_library_parts` / `update_parts` use.
     fn libraries(&self) -> Vec<&Library>;
-    fn selection(&self, view: ViewKind) -> Vec<ObjectId>;
-    fn set_selection(&mut self, view: ViewKind, ids: Vec<ObjectId>);
+    fn selection(&self, view: ViewId) -> Vec<ObjectId>;
+    fn set_selection(&mut self, view: ViewId, ids: Vec<ObjectId>);
     /// PNG of a view: everything (`fit`) or what the user currently sees.
-    fn render_view(&mut self, view: ViewKind, fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String>;
+    fn render_view(&mut self, view: ViewId, fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String>;
     /// Capture the application window. Hosts without a window refuse.
     fn window_screenshot(&mut self, reply: Responder) {
         let _ = reply.send(Err("this host has no window; screenshot a view instead".into()));
@@ -374,7 +419,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
         Request::KicadImport(_) | Request::KicadDownload { .. } | Request::Library(_) => {
             unreachable!("answered by the host")
         }
-        Request::Execute { commands } => execute(host.document(), commands)?,
+        Request::Execute { commands } => execute_json(host.document(), commands)?,
         Request::Undo => {
             let doc = host.document();
             let label = doc.editor().history().undo_label().map(str::to_string).ok_or("nothing to undo")?;
@@ -388,22 +433,32 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             json!({ "redone": label, "changes": summarize(&changes) })
         }
         Request::GetSelection { view } => {
+            let view = view.resolve(host.document().project())?;
             let ids = host.selection(view);
             let p = host.document().project();
             json!(ids.iter().filter_map(|&id| p.get(id)).collect::<Vec<_>>())
         }
         Request::SetSelection { view, ids } => {
             let p = host.document().project();
+            let view = view.resolve(p)?;
             if let Some(missing) = ids.iter().find(|&&id| !p.contains(id)) {
                 return Err(format!("no such object: {}", serde_json::to_string(missing).unwrap_or_default()));
             }
-            if let Some(wrong) = ids.iter().find(|id| !view.shows(id.kind())) {
-                return Err(format!("{:?} objects are not shown in the {view:?} view", wrong.kind()));
+            if let Some(wrong) = ids.iter().find(|id| !view.kind().shows(id.kind())) {
+                return Err(format!("{:?} objects are not shown in the {:?} view", wrong.kind(), view.kind()));
+            }
+            if let Some(sheet) = view.sheet()
+                && let Some(&other) = ids.iter().find(|&&id| p.schematic.sheet_of(id) != Some(sheet))
+            {
+                let on = p.schematic.sheet_of(other).map(|s| p.schematic.display_path(s)).unwrap_or_default();
+                let other = serde_json::to_string(&other).unwrap_or_default();
+                return Err(format!("{other} is on sheet {on}, not {}", p.schematic.display_path(sheet)));
             }
             host.set_selection(view, ids);
             json!({ "selected": host.selection(view).len() })
         }
         Request::Screenshot { target: Some(view), fit, width, height } => {
+            let view = view.resolve(host.document().project())?;
             let (w, h) = (width.clamp(64, 4096), height.clamp(64, 4096));
             return host.render_view(view, fit, w, h).map(Reply::Png);
         }
@@ -424,6 +479,17 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
 
 /// Run commands as one undo step. If any fails, the earlier ones are undone.
 fn execute(doc: &mut Document, commands: Vec<Command>) -> Result<Value, String> {
+    run_commands(doc, commands.into_iter().map(Ok).collect())
+}
+
+/// [`execute`] for an agent's commands: each is parsed just before it runs, so it can name
+/// a sheet an earlier one added.
+fn execute_json(doc: &mut Document, commands: Vec<Value>) -> Result<Value, String> {
+    run_commands(doc, commands.into_iter().map(Err).collect())
+}
+
+/// Commands, parsed (`Ok`) or still JSON (`Err`).
+fn run_commands(doc: &mut Document, commands: Vec<Result<Command, Value>>) -> Result<Value, String> {
     if commands.is_empty() {
         return Err("no commands given".into());
     }
@@ -432,8 +498,11 @@ fn execute(doc: &mut Document, commands: Vec<Command>) -> Result<Value, String> 
     let mut labels = Vec::new();
     let n = commands.len();
     for (i, cmd) in commands.into_iter().enumerate() {
-        labels.push(cmd.label());
-        match doc.execute_grouped(cmd, Some(group)) {
+        let result = cmd.or_else(|json| resolve_sheets(doc.project(), json)).and_then(|cmd| {
+            labels.push(cmd.label());
+            doc.execute_grouped(cmd, Some(group)).map_err(|e| e.to_string())
+        });
+        match result {
             Ok(changes) => all = all.then(changes),
             Err(e) => {
                 doc.close_group();
@@ -490,7 +559,11 @@ fn project_summary(doc: &Document) -> Value {
         "units": "Coordinates and sizes are integers in nanometers (1 mm = 1000000, 1 mil = 25400). \
                   Angles are degrees, counter-clockwise. Y points up in both views.",
         "counts": counts,
-        "sheets": p.schematic.sheets.iter().map(|s| json!({ "id": s.id, "name": s.name })).collect::<Vec<_>>(),
+        "sheets": p.schematic.sheets.iter().map(|s| json!({
+            "id": s.id,
+            "path": p.schematic.display_path(s.id),
+            "symbols": p.schematic.symbols.iter().filter(|y| y.sheet == s.id).count(),
+        })).collect::<Vec<_>>(),
         "components": components,
         "board": {
             "layers": p.board.layers.iter().map(|l| json!({ "id": l.id, "name": l.name, "function": l.function })).collect::<Vec<_>>(),
