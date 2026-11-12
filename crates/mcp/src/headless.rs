@@ -94,10 +94,11 @@ impl HeadlessHost {
         let target = self.library_named(job.library.as_deref().unwrap_or("KiCad import"));
         let (added, replaced) =
             target.upsert(imported.symbols.clone(), imported.footprints.clone(), imported.parts.clone())?;
-        let (library, name) = (target.library().clone(), target.name().to_string());
+        let name = target.name().to_string();
         let parts: Vec<model::Id> = imported.parts.iter().map(|p| p.id).collect();
         if !parts.is_empty() {
-            self.doc.execute(Command::ImportParts { library, parts }).map_err(|e| e.to_string())?;
+            let command = Command::import_parts(target.library(), &parts).map_err(|e| e.to_string())?;
+            self.doc.execute(command).map_err(|e| e.to_string())?;
         }
         let mut reply = kicad_import_reply(&name, added, replaced, &imported, &req);
         reply["in_project"] = Value::Bool(!imported.parts.is_empty());

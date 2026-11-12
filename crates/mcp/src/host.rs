@@ -353,7 +353,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
         }
         Request::ImportParts { parts } => {
             let mut commands: Vec<Command> = Vec::new();
-            let libraries: Vec<Library> = host.libraries().into_iter().cloned().collect();
+            let libraries = host.libraries();
             let mut by_lib: Vec<(usize, Vec<Id>)> = Vec::new();
             for p in parts {
                 let i = libraries
@@ -366,7 +366,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
                 }
             }
             for (i, parts) in by_lib {
-                commands.push(Command::ImportParts { library: libraries[i].clone(), parts });
+                commands.push(Command::import_parts(libraries[i], &parts).map_err(|e| e.to_string())?);
             }
             execute(host.document(), commands)?
         }
@@ -392,8 +392,8 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             }
             let commands = by_lib
                 .into_iter()
-                .map(|(i, parts)| Command::UpdateParts { library: libraries[i].clone(), parts })
-                .collect();
+                .map(|(i, parts)| Command::update_parts(&libraries[i], &parts).map_err(|e| e.to_string()))
+                .collect::<Result<_, _>>()?;
             execute(host.document(), commands)?
         }
         Request::ListObjects { kind, offset, limit } => list_objects(host.document().project(), kind, offset, limit),

@@ -15,10 +15,10 @@ fn files(p: &Project) -> [String; 3] {
 
 fn editor_with_parts() -> Editor {
     let mut ed = Editor::new(Project::new("test"));
-    ed.execute(Command::ImportParts {
-        library: builtin::builtin_library(),
-        parts: vec![PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4],
-    })
+    ed.execute(
+        Command::import_parts(&builtin::builtin_library(), &[PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4])
+            .unwrap(),
+    )
     .unwrap();
     ed
 }
@@ -47,8 +47,7 @@ fn import_records_source_and_is_idempotent() {
     assert_eq!(src.library, builtin::LIBRARY_ID);
     assert_eq!(src.content_hash, builtin::builtin_library().content_hash(PART_RESISTOR).unwrap());
     // Importing again changes nothing.
-    let again =
-        ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts: vec![PART_RESISTOR] }).unwrap();
+    let again = ed.execute(Command::import_parts(&builtin::builtin_library(), &[PART_RESISTOR]).unwrap()).unwrap();
     assert!(again.is_empty());
     assert_eq!(ed.project().validate(), Vec::<String>::new());
 }
@@ -468,7 +467,7 @@ fn update_cannot_move_a_symbol_to_another_component() {
 #[test]
 fn update_cannot_give_a_symbol_an_already_placed_unit() {
     let mut ed = Editor::new(Project::new("test"));
-    ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts: vec![PART_RESISTOR] }).unwrap();
+    ed.execute(Command::import_parts(&builtin::builtin_library(), &[PART_RESISTOR]).unwrap()).unwrap();
     // A two-unit variant of the resistor, so the component can have two symbols.
     let mut part = ed.project().library.parts.get(PART_RESISTOR).unwrap().clone();
     part.units.push(PartUnit { name: "B".into(), symbol: part.units[0].symbol });
@@ -489,4 +488,28 @@ fn update_cannot_give_a_symbol_an_already_placed_unit() {
     b.unit = 0;
     let result = ed.execute(Command::Update { objects: vec![Object::Symbol(b)] });
     assert!(matches!(result, Err(CommandError::Invalid(_))), "{result:?}");
+}
+
+#[test]
+fn import_rejects_bundles_that_dont_match_their_part() {
+    let lib = builtin::builtin_library();
+    let mut ed = Editor::new(Project::new("test"));
+    let [good] = lib.bundles(&[PART_RESISTOR]).unwrap().try_into().unwrap();
+    let led = lib.bundles(&[PART_LED]).unwrap().remove(0);
+
+    let mut missing = good.clone();
+    missing.symbols.clear();
+    let mut extra = good.clone();
+    extra.footprints.push(led.footprints[0].clone());
+    let mut twice = good.clone();
+    twice.symbols.push(twice.symbols[0].clone());
+    for bad in [missing, extra, twice] {
+        let result = ed.execute(Command::ImportParts { parts: vec![bad] });
+        assert!(matches!(result, Err(CommandError::Invalid(_))), "{result:?}");
+    }
+    assert!(ed.project().library.parts.is_empty());
+
+    ed.execute(Command::ImportParts { parts: vec![good] }).unwrap();
+    assert_eq!(ed.project().validate(), Vec::<String>::new());
+    assert!(matches!(Command::import_parts(&lib, &[Id::new()]), Err(CommandError::NotFound(_))));
 }

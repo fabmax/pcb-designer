@@ -13,10 +13,10 @@ struct Sch {
 impl Sch {
     fn new() -> Self {
         let mut ed = Editor::new(Project::new("test"));
-        ed.execute(Command::ImportParts {
-            library: builtin::builtin_library(),
-            parts: vec![PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_OPAMP],
-        })
+        ed.execute(
+            Command::import_parts(&builtin::builtin_library(), &[PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_OPAMP])
+                .unwrap(),
+        )
         .unwrap();
         Sch { ed }
     }
@@ -381,7 +381,7 @@ fn units_of_a_dual_opamp_are_separate_symbols() {
     assert!(lib.validate().is_empty(), "{:?}", lib.validate());
 
     let mut s = Sch::new();
-    s.ed.execute(Command::ImportParts { library: lib, parts: vec![dual_id] }).unwrap();
+    s.ed.execute(Command::import_parts(&lib, &[dual_id]).unwrap()).unwrap();
     let a = s.place(dual_id, 0.0, 0.0, 0.0);
     let component = s.ed.project().schematic.symbols.get(a).unwrap().component;
     let placed =

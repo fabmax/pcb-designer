@@ -1139,10 +1139,9 @@ impl PcbApp {
         }
         let mut updated = 0;
         for (lib, parts) in by_lib {
-            let library = self.libraries[lib].lib.library().clone();
-            let n = parts.len();
-            match self.doc_mut().execute(Command::UpdateParts { library, parts }) {
-                Ok(_) => updated += n,
+            let command = Command::update_parts(self.libraries[lib].lib.library(), &parts);
+            match command.and_then(|c| self.doc_mut().execute(c)) {
+                Ok(_) => updated += parts.len(),
                 Err(e) => return self.set_status(format!("Update failed: {e}")),
             }
         }
@@ -1187,8 +1186,8 @@ impl PcbApp {
             if !issues.is_empty() {
                 return self.set_status(format!("Library has problems: {}", issues[0]));
             }
-            let library = l.lib.library().clone();
-            if let Err(e) = self.doc_mut().execute(Command::ImportParts { library, parts: vec![part] }) {
+            let command = Command::import_parts(l.lib.library(), &[part]);
+            if let Err(e) = command.and_then(|c| self.doc_mut().execute(c)) {
                 return self.set_status(format!("Import failed: {e}"));
             }
         }
@@ -2216,8 +2215,8 @@ impl PcbApp {
                 if let Some(first) = issues.first() {
                     return self.set_status(format!("Library has problems: {first}"));
                 }
-                let library = l.lib.library().clone();
-                match self.doc_mut().execute(Command::ImportParts { library, parts: vec![part] }) {
+                let command = Command::import_parts(l.lib.library(), &[part]);
+                match command.and_then(|c| self.doc_mut().execute(c)) {
                     Ok(_) => self.set_status("Copied to the Project Library"),
                     Err(e) => self.set_status(format!("Copy failed: {e}")),
                 }

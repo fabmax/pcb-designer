@@ -11,17 +11,16 @@ use crate::transaction::{BoardSetup, Transaction};
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "command", rename_all = "snake_case")]
 pub enum Command {
-    /// Copy parts (with their symbols and footprints) from a library into the project.
+    /// Copy parts (each with exactly the symbols and footprints it references) into the
+    /// project. A part's `source` records the library it came from.
     ImportParts {
-        library: Library,
-        parts: Vec<Id>,
+        parts: Vec<PartBundle>,
     },
-    /// Replace the project's copies of parts (with their symbols and footprints) by the
-    /// current library versions. Components keep their footprint variant if it still
-    /// exists (matched by id, then by name), otherwise they get the first variant.
+    /// Replace the project's copies of parts (with their symbols and footprints) by these
+    /// library versions. Components keep their footprint variant if it still exists
+    /// (matched by id, then by name), otherwise they get the first variant.
     UpdateParts {
-        library: Library,
-        parts: Vec<Id>,
+        parts: Vec<PartBundle>,
     },
     /// Add a sheet below `parent` (default: the root sheet), placed there as a sheet
     /// symbol with its lower left corner at `pos` (default size 25.4 × 20.32 mm).
@@ -236,10 +235,22 @@ impl Command {
         }
     }
 
+    /// Import the parts `ids` of `library` ([`Command::ImportParts`]).
+    pub fn import_parts(library: &Library, ids: &[Id]) -> Result<Command, CommandError> {
+        let parts = library.bundles(ids).map_err(|id| CommandError::NotFound(ObjectId::LibPart(id)))?;
+        Ok(Command::ImportParts { parts })
+    }
+
+    /// Update the project's copies of the parts `ids` from `library` ([`Command::UpdateParts`]).
+    pub fn update_parts(library: &Library, ids: &[Id]) -> Result<Command, CommandError> {
+        let parts = library.bundles(ids).map_err(|id| CommandError::NotFound(ObjectId::LibPart(id)))?;
+        Ok(Command::UpdateParts { parts })
+    }
+
     pub(crate) fn apply(self, tx: &mut Transaction) -> Result<(), CommandError> {
         match self {
-            Command::ImportParts { library, parts } => import_parts(tx, &library, &parts),
-            Command::UpdateParts { library, parts } => update_parts(tx, &library, &parts),
+            Command::ImportParts { parts } => import_parts(tx, parts),
+            Command::UpdateParts { parts } => update_parts(tx, parts),
             Command::AddSheet { parent, name, pos, size } => {
                 let parent = resolve_sheet(tx, parent)?;
                 let sheet = Sheet { id: Id::new(), name, parent: Some(parent), pos, size: size.unwrap_or(Sheet::SIZE) };
@@ -610,11 +621,10 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
     Ok(())
 }
 
-fn import_parts(tx: &mut Transaction, library: &Library, parts: &[Id]) -> Result<(), CommandError> {
-    for &part_id in parts {
-        let (mut part, symbols, footprints) =
-            library.extract_part(part_id).ok_or(CommandError::NotFound(ObjectId::LibPart(part_id)))?;
-        part.source = source_of(library, part_id);
+fn import_parts(tx: &mut Transaction, parts: Vec<PartBundle>) -> Result<(), CommandError> {
+    for b in parts {
+        check_bundle(&b)?;
+        let PartBundle { part, symbols, footprints } = b;
         for s in symbols {
             insert_or_check(tx, Object::LibSymbol(s))?;
         }
@@ -626,19 +636,31 @@ fn import_parts(tx: &mut Transaction, library: &Library, parts: &[Id]) -> Result
     Ok(())
 }
 
-fn source_of(library: &Library, part_id: Id) -> Option<PartSource> {
-    library.id.map(|lib| PartSource {
-        library: lib,
-        library_name: library.name.clone(),
-        part: part_id,
-        content_hash: library.content_hash(part_id).unwrap_or_default(),
-    })
+/// A bundle holds exactly the symbols and footprints its part references, each once.
+fn check_bundle(b: &PartBundle) -> Result<(), CommandError> {
+    use std::collections::HashSet;
+    let wanted_symbols: HashSet<Id> = b.part.units.iter().map(|u| u.symbol).collect();
+    let wanted_footprints: HashSet<Id> = b.part.variants.iter().map(|v| v.footprint).collect();
+    let symbols: HashSet<Id> = b.symbols.iter().map(|s| s.id).collect();
+    let footprints: HashSet<Id> = b.footprints.iter().map(|f| f.id).collect();
+    if symbols != wanted_symbols
+        || footprints != wanted_footprints
+        || symbols.len() != b.symbols.len()
+        || footprints.len() != b.footprints.len()
+    {
+        return Err(CommandError::Invalid(format!(
+            "part {:?}: a bundle must hold exactly the symbols and footprints the part references",
+            b.part.name
+        )));
+    }
+    Ok(())
 }
 
-fn update_parts(tx: &mut Transaction, library: &Library, parts: &[Id]) -> Result<(), CommandError> {
-    for &part_id in parts {
-        let (mut part, symbols, footprints) =
-            library.extract_part(part_id).ok_or(CommandError::NotFound(ObjectId::LibPart(part_id)))?;
+fn update_parts(tx: &mut Transaction, parts: Vec<PartBundle>) -> Result<(), CommandError> {
+    for b in parts {
+        check_bundle(&b)?;
+        let PartBundle { part, symbols, footprints } = b;
+        let part_id = part.id;
         let old = tx
             .project()
             .library
@@ -646,7 +668,6 @@ fn update_parts(tx: &mut Transaction, library: &Library, parts: &[Id]) -> Result
             .get(part_id)
             .cloned()
             .ok_or(CommandError::NotFound(ObjectId::LibPart(part_id)))?;
-        part.source = source_of(library, part_id);
 
         // Placed units must still exist.
         let components: Vec<Component> =

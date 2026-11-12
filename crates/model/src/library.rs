@@ -269,6 +269,15 @@ pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     }
 }
 
+/// A library part with the symbols and footprints it references: what importing or
+/// updating a part copies into a project ([`Library::bundles`]).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct PartBundle {
+    pub part: Part,
+    pub symbols: Vec<Symbol>,
+    pub footprints: Vec<Footprint>,
+}
+
 /// A collection of symbols, footprints and parts. Used both for library files and for the
 /// copies embedded in a project.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -311,6 +320,24 @@ impl Library {
             }
         }
         Some((p, symbols, footprints))
+    }
+
+    /// The parts `ids` with what they reference, ready to copy into a project: each part's
+    /// `source` names this library (none if the library has no id). Errors with the
+    /// first id that isn't a part here (or references something missing).
+    pub fn bundles(&self, ids: &[Id]) -> Result<Vec<PartBundle>, Id> {
+        ids.iter()
+            .map(|&id| {
+                let (mut part, symbols, footprints) = self.extract_part(id).ok_or(id)?;
+                part.source = self.id.map(|library| PartSource {
+                    library,
+                    library_name: self.name.clone(),
+                    part: id,
+                    content_hash: self.content_hash(id).unwrap_or_default(),
+                });
+                Ok(PartBundle { part, symbols, footprints })
+            })
+            .collect()
     }
 
     /// Stable hash of a part's content (part, symbols, footprints; excluding provenance).

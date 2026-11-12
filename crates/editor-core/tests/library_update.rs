@@ -22,7 +22,7 @@ fn place(ed: &mut Editor, part: Id, x: f64) -> Id {
 fn update_parts_from_changed_library() {
     let mut lib = builtin::builtin_library();
     let mut ed = Editor::new(Project::new("t"));
-    ed.execute(Command::ImportParts { library: lib.clone(), parts: vec![PART_RESISTOR, PART_LED] }).unwrap();
+    ed.execute(Command::import_parts(&lib, &[PART_RESISTOR, PART_LED]).unwrap()).unwrap();
     let r1 = place(&mut ed, PART_RESISTOR, 0.0);
     let original = ed.project().clone();
     assert!(part_statuses(ed.project(), &[&lib]).iter().all(|s| s.state == PartState::UpToDate));
@@ -52,7 +52,7 @@ fn update_parts_from_changed_library() {
     assert_eq!(r.state, PartState::LibraryChanged);
     assert_eq!(statuses.iter().find(|s| s.part == PART_LED).unwrap().state, PartState::UpToDate);
 
-    ed.execute(Command::UpdateParts { library: lib.clone(), parts: vec![PART_RESISTOR] }).unwrap();
+    ed.execute(Command::update_parts(&lib, &[PART_RESISTOR]).unwrap()).unwrap();
     let p = ed.project();
     assert_eq!(p.validate(), Vec::<String>::new());
     assert!(part_statuses(p, &[&lib]).iter().all(|s| s.state == PartState::UpToDate));
@@ -72,10 +72,10 @@ fn update_parts_from_changed_library() {
 fn update_refuses_to_drop_placed_units() {
     let mut lib = builtin::builtin_library();
     let mut ed = Editor::new(Project::new("t"));
-    ed.execute(Command::ImportParts { library: lib.clone(), parts: vec![PART_RESISTOR] }).unwrap();
+    ed.execute(Command::import_parts(&lib, &[PART_RESISTOR]).unwrap()).unwrap();
     place(&mut ed, PART_RESISTOR, 0.0);
     lib.parts.get_mut(PART_RESISTOR).unwrap().units.clear();
-    let err = ed.execute(Command::UpdateParts { library: lib, parts: vec![PART_RESISTOR] }).unwrap_err();
+    let err = ed.execute(Command::update_parts(&lib, &[PART_RESISTOR]).unwrap()).unwrap_err();
     assert!(err.to_string().contains("unit"), "{err}");
 }
 
@@ -83,7 +83,7 @@ fn update_refuses_to_drop_placed_units() {
 fn local_edits_are_told_apart_from_library_changes() {
     let mut lib = builtin::builtin_library();
     let mut ed = Editor::new(Project::new("t"));
-    ed.execute(Command::ImportParts { library: lib.clone(), parts: vec![PART_RESISTOR, PART_LED] }).unwrap();
+    ed.execute(Command::import_parts(&lib, &[PART_RESISTOR, PART_LED]).unwrap()).unwrap();
     let state = |ed: &Editor, lib: &Library, part| {
         part_statuses(ed.project(), &[lib]).into_iter().find(|s| s.part == part).unwrap().state
     };
@@ -102,7 +102,7 @@ fn local_edits_are_told_apart_from_library_changes() {
     assert_eq!(state(&ed, &lib, PART_LED), PartState::LibraryChanged);
 
     // Updating takes the library's version (and drops the local edit).
-    ed.execute(Command::UpdateParts { library: lib.clone(), parts: vec![PART_RESISTOR] }).unwrap();
+    ed.execute(Command::update_parts(&lib, &[PART_RESISTOR]).unwrap()).unwrap();
     assert_eq!(state(&ed, &lib, PART_RESISTOR), PartState::UpToDate);
 }
 
@@ -110,7 +110,7 @@ fn local_edits_are_told_apart_from_library_changes() {
 fn project_part_edits_keep_what_components_use() {
     let lib = builtin::builtin_library();
     let mut ed = Editor::new(Project::new("t"));
-    ed.execute(Command::ImportParts { library: lib, parts: vec![PART_RESISTOR, PART_LED] }).unwrap();
+    ed.execute(Command::import_parts(&lib, &[PART_RESISTOR, PART_LED]).unwrap()).unwrap();
     let r1 = place(&mut ed, PART_RESISTOR, 0.0);
     let used = ed.project().schematic.components.get(r1).unwrap().variant;
 
@@ -139,7 +139,7 @@ fn unused_library_objects_can_be_removed_in_one_step() {
     use editor_core::query::unused_library_objects;
     let lib = builtin::builtin_library();
     let mut ed = Editor::new(Project::new("t"));
-    ed.execute(Command::ImportParts { library: lib, parts: vec![PART_RESISTOR, PART_LED] }).unwrap();
+    ed.execute(Command::import_parts(&lib, &[PART_RESISTOR, PART_LED]).unwrap()).unwrap();
     place(&mut ed, PART_RESISTOR, 0.0);
     let unused = unused_library_objects(ed.project());
     assert_eq!(unused[0], ObjectId::LibPart(PART_LED));
@@ -155,7 +155,7 @@ fn unused_library_objects_can_be_removed_in_one_step() {
 fn only_connecting_library_edits_affect_connectivity() {
     let lib = builtin::builtin_library();
     let mut ed = Editor::new(Project::new("t"));
-    ed.execute(Command::ImportParts { library: lib, parts: vec![PART_RESISTOR] }).unwrap();
+    ed.execute(Command::import_parts(&lib, &[PART_RESISTOR]).unwrap()).unwrap();
     let affects = |ed: &mut Editor, o: Object| {
         let changes = ed.execute(Command::Update { objects: vec![o] }).unwrap();
         changes.changes.iter().any(|c| c.affects_connectivity())

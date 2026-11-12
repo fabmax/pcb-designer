@@ -74,6 +74,10 @@ and hierarchical sheets.
   `Change::affects_connectivity`: schematic changes always; library edits only when
   pins, pads, units or variants change.
 - `Document::read_only` (Built-in Library) makes every command fail with a reason.
+- `ImportParts` / `UpdateParts` carry `PartBundle`s (part plus exactly the symbols and
+  footprints it references, checked by `check_bundle`), built by `Library::bundles`,
+  which also sets the part's `source`. Use `Command::import_parts(&lib, ids)` rather
+  than cloning a library into the command.
 - `UpdateParts` replaces project parts by the library version (variant kept by id, then
   name). It refuses when placed units would disappear; `check_part_still_fits` guards
   `Update` of a used `LibPart` the same way.

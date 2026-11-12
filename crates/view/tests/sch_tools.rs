@@ -9,7 +9,7 @@ use view::sch_tools::{SchGhost, SchPlacer, SchPrompt, SchTool};
 
 fn doc_with(parts: Vec<Id>, library: Library) -> Document {
     let mut doc = Document::new(Project::new("T"));
-    doc.execute(Command::ImportParts { library, parts }).unwrap();
+    doc.execute(Command::import_parts(&library, &parts).unwrap()).unwrap();
     doc
 }
 
