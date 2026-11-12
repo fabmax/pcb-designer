@@ -234,33 +234,39 @@ impl Part {
 has_id!(Pin, Symbol, Pad, Footprint, Part);
 
 /// Compare names so that embedded numbers sort by value ("2" < "10", "A2" < "A10").
+/// Other text compares case-insensitively; ties fall back to a byte comparison.
+/// Doesn't allocate, so it's fine as a sort comparator.
 pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
-    fn chunks(s: &str) -> Vec<(bool, &str)> {
-        let mut out = Vec::new();
-        let mut start = 0;
-        let bytes = s.as_bytes();
-        for i in 1..=bytes.len() {
-            if i == bytes.len() || bytes[i].is_ascii_digit() != bytes[start].is_ascii_digit() {
-                out.push((bytes[start].is_ascii_digit(), &s[start..i]));
-                start = i;
-            }
-        }
-        out
+    use std::cmp::Ordering;
+    /// Runs of digits and of other characters, flagged `true` for digits.
+    fn chunks(s: &str) -> impl Iterator<Item = (bool, &str)> {
+        let mut rest = s;
+        std::iter::from_fn(move || {
+            let digit = rest.as_bytes().first()?.is_ascii_digit();
+            let end = rest.bytes().position(|c| c.is_ascii_digit() != digit).unwrap_or(rest.len());
+            let (chunk, tail) = rest.split_at(end);
+            rest = tail;
+            Some((digit, chunk))
+        })
     }
-    let (ca, cb) = (chunks(a), chunks(b));
-    for (x, y) in ca.iter().zip(&cb) {
-        let o = match (x, y) {
-            ((true, x), (true, y)) => {
+    let (mut ca, mut cb) = (chunks(a), chunks(b));
+    loop {
+        let o = match (ca.next(), cb.next()) {
+            (None, None) => return a.cmp(b),
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some((true, x)), Some((true, y))) => {
                 let (x, y) = (x.trim_start_matches('0'), y.trim_start_matches('0'));
                 x.len().cmp(&y.len()).then_with(|| x.cmp(y))
             }
-            ((_, x), (_, y)) => x.to_lowercase().cmp(&y.to_lowercase()),
+            (Some((_, x)), Some((_, y))) => {
+                x.chars().flat_map(char::to_lowercase).cmp(y.chars().flat_map(char::to_lowercase))
+            }
         };
         if o.is_ne() {
             return o;
         }
     }
-    ca.len().cmp(&cb.len()).then_with(|| a.cmp(b))
 }
 
 /// A collection of symbols, footprints and parts. Used both for library files and for the
@@ -312,14 +318,7 @@ impl Library {
     pub fn content_hash(&self, part: Id) -> Option<String> {
         let (mut p, symbols, footprints) = self.extract_part(part)?;
         p.source = None;
-        let json = serde_json::to_string(&(p, symbols, footprints)).ok()?;
-        // FNV-1a, 64 bit: stable across platforms and Rust versions.
-        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-        for b in json.bytes() {
-            h ^= b as u64;
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        Some(format!("{h:016x}"))
+        crate::Fnv1a::of_json(&(p, symbols, footprints)).ok()
     }
 
     /// Connect pads to pins with the same number (or name, for pins without a number),
@@ -392,5 +391,17 @@ impl Library {
             }
         }
         issues
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::natural_cmp;
+
+    #[test]
+    fn natural_order() {
+        let mut v = ["R10", "r2", "R2", "+5V", "5V", "A", "R02", "R1a", "R1", "", "GND", "10", "9"];
+        v.sort_by(|a, b| natural_cmp(a, b));
+        assert_eq!(v, ["", "+5V", "5V", "9", "10", "A", "GND", "R1", "R1a", "R02", "R2", "r2", "R10"]);
     }
 }

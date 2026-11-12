@@ -9,6 +9,7 @@ use model::*;
 use rustc_hash::FxHashMap as HashMap;
 
 use crate::connectivity::Connectivity;
+use crate::union_find::UnionFind;
 
 /// A piece of copper.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -655,32 +656,7 @@ fn polygon_polygon(p: &[Point], q: &[Point]) -> bool {
 }
 
 // ---------------------------------------------------------------------------------------
-// Union-find, broad phase, minimum spanning tree
-
-struct UnionFind {
-    parent: Vec<usize>,
-}
-
-impl UnionFind {
-    fn new(n: usize) -> Self {
-        UnionFind { parent: (0..n).collect() }
-    }
-
-    fn find(&mut self, mut i: usize) -> usize {
-        while self.parent[i] != i {
-            self.parent[i] = self.parent[self.parent[i]];
-            i = self.parent[i];
-        }
-        i
-    }
-
-    fn union(&mut self, a: usize, b: usize) {
-        let (ra, rb) = (self.find(a), self.find(b));
-        if ra != rb {
-            self.parent[ra] = rb;
-        }
-    }
-}
+// Broad phase, minimum spanning tree
 
 /// Uniform grid over item bounds for finding candidate pairs.
 pub(crate) struct Grid {

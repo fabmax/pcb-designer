@@ -62,14 +62,7 @@ pub struct Manifest {
 /// Stable hash of everything the export depends on (board, schematic nets, library
 /// footprints and texts), to tell whether an export is outdated.
 pub fn design_hash(project: &Project) -> String {
-    let json = serde_json::to_string(&(&project.board, &project.schematic, &project.library)).unwrap_or_default();
-    // FNV-1a, 64 bit, as `Library::content_hash`.
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in json.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    format!("{h:016x}")
+    model::Fnv1a::of_json(&(&project.board, &project.schematic, &project.library)).unwrap_or_default()
 }
 
 /// File name stem: the project name with only file-name-safe characters.

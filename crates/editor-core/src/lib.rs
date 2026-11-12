@@ -17,6 +17,7 @@ pub mod query;
 mod rubber_band;
 mod sync;
 pub mod transaction;
+mod union_find;
 pub mod zones;
 
 pub use command::Command;
