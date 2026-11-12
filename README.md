@@ -28,6 +28,15 @@ holes); double-clicking a single file shows only that one, the layers button tog
 them, and hovering names the file, aperture and its function. Open the PCB tab side by
 side to compare. Agents can look too: `screenshot` with target `gerber`.
 
+## Measuring
+
+The layout editors (PCB, the part editor's footprint, the Gerber tab) have a Measure
+tool (ruler button, **M**): click a start point, the ruler follows the pointer with its
+length, ΔX, ΔY and angle in the current unit, a second click pins it, the next click
+starts a new one. Ends snap to pad and via centres, track ends and corners (in the
+Gerber tab: flash centres and line ends), else to the grid; hold Alt for a free point.
+Esc clears the measurement, a second Esc returns to Select.
+
 On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.app`
 (`--install` copies it to /Applications). Run from the bundle, the app is named
 "PCB Designer" in the menu bar and Dock; run with `cargo run`, macOS uses the binary's

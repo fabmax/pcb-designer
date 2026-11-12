@@ -40,8 +40,9 @@ pub fn toolbar(
         b(PcbTool::Outline, Icon::Outline, "Draw the board outline.", Action::PcbOutline),
         b(PcbTool::Zone, Icon::Zone, "Draw a copper zone, filled around other nets.", Action::PcbZone),
     ];
+    let measure = [b(PcbTool::Measure, Icon::Measure, "Measure distances between two points.", Action::ToolMeasure)];
     let id = egui::Id::unique("pcb_toolbar");
-    let (chosen, right) = toolbar::strip(ui, canvas, id, &[&select, &copper, &board], pcb.tool(), keymap);
+    let (chosen, right) = toolbar::strip(ui, canvas, id, &[&select, &copper, &board, &measure], pcb.tool(), keymap);
     toolbar::header(ui, canvas, right, id.with("header"), |ui| {
         layer_combo(ui, "pcb_layer", &mut pcb.settings.layer, doc)
             .on_hover_text(format!("Active copper layer ({})", keymap.menu_text(ui.ctx(), Action::PcbNextLayer)));
@@ -132,6 +133,12 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
             hint(ui, "Through vias connect all copper layers. Sizes come from the design rules.");
         }
         PcbTool::Outline => hint(ui, "Click two corners. The outline is a graphic on the Board Outline layer."),
+        PcbTool::Measure => hint(
+            ui,
+            "Click a start point, then an end point. Ends snap to pad and via centres, track ends and \
+             outline corners, else to the grid; hold Alt for a free point. The next click starts a new \
+             measurement, Esc clears it.",
+        ),
         PcbTool::Zone => {
             grid(ui, "pcb_tool", |ui| {
                 label(ui, "Layer");

@@ -249,6 +249,15 @@ fn viewer_loads_an_export() {
     gv.show_only(Some(&gv.files.iter().find(|f| f.label == "Top Copper").unwrap().name.clone()));
     let text = gv.describe([at.x as f64 * 1e-6, at.y as f64 * 1e-6]).unwrap();
     assert!(text.contains("F_Cu") && text.contains("SMDPad"), "{text}");
+    // The measure tool snaps to the pad's flash centre and to track ends.
+    let near = at + model::Point::new(model::mm(0.05), 0);
+    assert!(gv.snap_points(near, model::mm(0.2)).contains(&at));
     gv.show_only(None);
     assert!(gv.describe([-1000.0, -1000.0]).is_none());
+    let track = p.board.tracks.iter().next().unwrap();
+    let ends = gv.snap_points(track.a, model::mm(0.01));
+    assert!(ends.contains(&track.a), "{ends:?}");
+    // Hidden files give none.
+    gv.show_only(Some("nothing"));
+    assert!(gv.snap_points(at, model::mm(0.2)).is_empty());
 }

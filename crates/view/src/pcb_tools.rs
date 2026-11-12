@@ -1,5 +1,5 @@
 //! Board creation tools: route tracks (45° or 90°), place vias, draw the board outline
-//! and copper zones.
+//! and copper zones, measure.
 //! Independent of the GUI toolkit.
 
 use editor_core::Command;
@@ -7,6 +7,7 @@ use editor_core::copper::CopperItem;
 use model::*;
 
 use crate::document::Document;
+use crate::measure::{Measure, board_points};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PcbTool {
@@ -15,10 +16,12 @@ pub enum PcbTool {
     Via,
     Outline,
     Zone,
+    Measure,
 }
 
 impl PcbTool {
-    pub const ALL: &[PcbTool] = &[PcbTool::Select, PcbTool::Route, PcbTool::Via, PcbTool::Outline, PcbTool::Zone];
+    pub const ALL: &[PcbTool] =
+        &[PcbTool::Select, PcbTool::Route, PcbTool::Via, PcbTool::Outline, PcbTool::Zone, PcbTool::Measure];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -27,6 +30,7 @@ impl PcbTool {
             PcbTool::Via => "Via",
             PcbTool::Outline => "Outline",
             PcbTool::Zone => "Zone",
+            PcbTool::Measure => "Measure",
         }
     }
 
@@ -39,6 +43,7 @@ impl PcbTool {
             PcbTool::Via => "Click to place a via · Esc done",
             PcbTool::Outline => "Click two corners of the board outline · Esc done",
             PcbTool::Zone => "Click the zone's corners · click the first or last corner again to close · Esc cancels",
+            PcbTool::Measure => crate::measure::HINT,
         }
     }
 }
@@ -113,6 +118,9 @@ pub struct PcbPlacer {
     /// The cursor is on copper of the active layer.
     on_copper: bool,
     shown: Vec<PcbGhost>,
+    pub measure: Measure,
+    /// Snap nowhere (Alt held): set by the app before [`PcbPlacer::hover`].
+    pub free: bool,
 }
 
 impl Default for PcbPlacer {
@@ -126,6 +134,8 @@ impl Default for PcbPlacer {
             cursor: None,
             on_copper: false,
             shown: Vec::new(),
+            measure: Measure::default(),
+            free: false,
         }
     }
 }
@@ -193,6 +203,7 @@ impl PcbPlacer {
         self.net = None;
         self.corners.clear();
         self.on_copper = false;
+        self.measure.clear();
     }
 
     pub fn toggle_posture(&mut self) {
@@ -202,6 +213,9 @@ impl PcbPlacer {
     /// Escape: end the track being routed, or leave the tool. Returns true if the tool
     /// was left.
     pub fn escape(&mut self) -> bool {
+        if self.tool == PcbTool::Measure && self.measure.escape() {
+            return false;
+        }
         if self.start.take().is_some() | !std::mem::take(&mut self.corners).is_empty() {
             self.net = None;
             return false;
@@ -242,6 +256,7 @@ impl PcbPlacer {
     pub fn hover(&mut self, doc: &mut Document, p: Option<(Point, Point)>, tol: Coord) {
         let Some((raw, snapped)) = p else {
             self.cursor = None;
+            self.measure.hover(None, false);
             return;
         };
         match self.tool {
@@ -249,6 +264,11 @@ impl PcbPlacer {
                 let (q, item) = snap_to_copper(doc, raw, snapped, self.settings.layer, tol);
                 self.cursor = Some(q);
                 self.on_copper = item.is_some();
+            }
+            PcbTool::Measure => {
+                let (q, on) = crate::measure::snap(raw, snapped, board_points(doc.project()), tol, self.free);
+                self.cursor = Some(q);
+                self.measure.hover(Some(q), on);
             }
             _ => self.cursor = Some(snapped),
         }
@@ -260,6 +280,10 @@ impl PcbPlacer {
         let Some(p) = self.cursor else { return Ok(false) };
         match self.tool {
             PcbTool::Select => Ok(false),
+            PcbTool::Measure => {
+                self.measure.click(p);
+                Ok(false)
+            }
             PcbTool::Route => {
                 let layer = self.settings.layer;
                 let Some(start) = self.start else {
@@ -349,7 +373,7 @@ impl PcbPlacer {
         let s = &self.settings;
         let mut g = Vec::new();
         match self.tool {
-            PcbTool::Select => {}
+            PcbTool::Select | PcbTool::Measure => {}
             PcbTool::Route => {
                 if let Some(start) = self.start {
                     let width = self.width(doc);

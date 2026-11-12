@@ -20,6 +20,7 @@ pub enum Icon {
     Via,
     Outline,
     Zone,
+    Measure,
     Pin,
     Pad,
     Line,
@@ -158,6 +159,17 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             // A pad with its clearance in the fill.
             ring(p(0.42, 0.5), 0.17, Stroke::new(w * 1.6, Color32::from_black_alpha(90)));
             dot(p(0.42, 0.5), 0.1);
+        }
+        Icon::Measure => {
+            // A ruler, diagonal, with ticks.
+            let (a, b) = (p(0.14, 0.86), p(0.86, 0.14));
+            let n = vec2(std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2) * (0.17 * s);
+            poly(vec![a, b, b + n, a + n], color.gamma_multiply(0.25), line);
+            for (i, t) in [0.2f32, 0.35, 0.5, 0.65, 0.8].into_iter().enumerate() {
+                let q = a + (b - a) * t;
+                let len = if i % 2 == 0 { 0.6 } else { 0.35 };
+                seg(q, q + n * len, Stroke::new(w * 0.8, color));
+            }
         }
         Icon::Pin => {
             seg(p(0.12, 0.2), p(0.12, 0.8), thick);

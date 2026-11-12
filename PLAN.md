@@ -202,8 +202,16 @@ and hierarchical sheets.
   `/` flips the corner; `SchPlacer::sheet` is the sheet they work on, `set_sheet` ends a
   wire begun elsewhere; the Sheet tool places a new sheet's symbol with one
   `AddSheet`), `pcb_tools` (route 45°/90° with copper snapping, L changes
-  layer + via, via, outline, zone). Bus naming prompts: `SchPlacer::take_prompt`
+  layer + via, via, outline, zone, measure). Bus naming prompts: `SchPlacer::take_prompt`
   returns a `SchPrompt` for unnamed buses and entry signals.
+- `measure`: the measure tool's state (`Measure`: click, live end, click pins, next
+  click starts anew, Esc clears) and snapping (`snap`: nearest object point within the
+  pixel tolerance, else the grid point; Alt free). Object points: `board_points` (pad and
+  via centres, track ends, board graphic vertices), `footprint_points`,
+  `GerberView::snap_points` (flash centres, stroke ends, via the R-tree). One
+  measurement per editor, kept in `PcbPlacer` / `Placer` / `GerberPane`, cleared by
+  `set_tool`; not saved, no commands. The app draws it (`canvas::draw_measure`).
+  Gotcha: `board_points` scans the whole board per hover.
 - Labels are drawn KiCad style: local with a dot, global as an outline around the name,
   hierarchical as a small arrow before it; `LabelShape::points` says which ends are
   pointed. Label text goes through `Text::upright` (turned 180° with swapped alignment
@@ -298,7 +306,10 @@ and hierarchical sheets.
   Unbundled (`cargo run`) macOS shows the app as `pcb-designer`; `setProcessName` and an
   embedded `__info_plist` don't change that.
 - **Keymap** (`keymap.rs`): actions are global or per context (library, schematic,
-  board); contexts may share keys. `works_while_typing` for window-level actions.
+  board); contexts may share keys. `ToolMeasure` (M) and `ToolSelect` are global. The
+  Gerber tab has no context of its own: `focus_gerber` (set by clicking or opening it,
+  cleared by any other canvas or library tab) routes M, Select, Esc and fit to it
+  (`gerber_action`) and blocks the other view keys. `works_while_typing` for window-level actions.
 - **Settings** (`settings.rs`, `PCB_DESIGNER_CONFIG` overrides the folder): theme, unit,
   recent projects, changed key bindings, dock.
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
@@ -345,11 +356,14 @@ defers.
 - KiCad project import (the bus model already maps one to one).
 
 **Board**
-- Gerber reader and read-only viewer with the Outputs tree node (Gerber 3). Afterwards: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel
-  file extensions, a measure tool in the viewer, `%TO` object attributes (nets, pads),
+- Fabrication outputs: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel
+  file extensions, `%TO` object attributes (nets, pads),
   silkscreen clipped at mask openings, mirrored bottom text in the editor; in the viewer:
   the mask area from the outline's contour (bounding box today), true clear polarity,
   G74 arcs, LM, thermal primitives, slots in drill files.
+- Measure tool: edge-to-edge (clearance) measuring, copying the readout (waits for a
+  clipboard design), snapping to a pad's centre from anywhere inside it, an index for
+  `board_points` on huge boards.
 - Per-pad mask and paste overrides; mask/paste openings in the footprint editor.
 - Clearance checking while routing; push-and-shove; dragging tracks that stay connected.
 - Blind and buried vias in the UI.

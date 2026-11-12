@@ -216,6 +216,19 @@ impl GerberView {
         }
     }
 
+    /// Snap points of the visible files within `tol` of `p` (flash centres and stroke
+    /// ends), for the measure tool.
+    pub fn snap_points(&self, p: Point, tol: Coord) -> Vec<Point> {
+        let t = tol as f64 * 1e-6;
+        let c = mm(p);
+        let area = AABB::from_corners([c[0] - t, c[1] - t], [c[0] + t, c[1] + t]);
+        self.index
+            .locate_in_envelope_intersecting(area)
+            .filter(|h| self.scene.layer(self.files[h.file].render_layer).visible)
+            .flat_map(|h| self.files[h.file].image.objects[h.object].snap_points())
+            .collect()
+    }
+
     /// What lies under `p` on the topmost visible file: file, aperture and its function.
     pub fn describe(&self, p: [f64; 2]) -> Option<String> {
         let q = Point::mm(p[0], p[1]);

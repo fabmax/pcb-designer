@@ -207,6 +207,8 @@ pub struct PcbApp {
     last_sheet: Option<Id>,
     /// Library tab with focus (`None`: the project has focus).
     focus_lib: Option<u64>,
+    /// The Gerber tab has focus (it takes the measure keys; other view keys do nothing).
+    focus_gerber: bool,
     hovered: Option<ViewId>,
     properties: Properties,
     /// Loaded libraries: the built-in one, the project's library files (see
@@ -311,6 +313,7 @@ impl PcbApp {
             active: root,
             last_sheet: root.sheet(),
             focus_lib: None,
+            focus_gerber: false,
             hovered: None,
             properties: Properties::default(),
             libraries: Vec::new(),
@@ -353,7 +356,12 @@ impl PcbApp {
             title_bar: title_bar::TitleBar::default(),
         };
         match opts.script.as_deref().map(Script::parse) {
-            Some(Ok(s)) => app.script = Some(s),
+            Some(Ok(mut s)) => {
+                if !opts.show.is_empty() {
+                    s.keep_tab();
+                }
+                app.script = Some(s);
+            }
             Some(Err(e)) => eprintln!("script: {e}"),
             None => {}
         }
@@ -693,6 +701,8 @@ impl PcbApp {
             None => insert_tab(&mut self.tree, Tab::Gerber, None, &[Tab::View(ViewId::Board)]),
         };
         self.tree.make_active(|id, _| id == tile);
+        self.focus_gerber = true;
+        self.focus_lib = None;
     }
 
     /// Delete the export folder and its zip, after asking.
@@ -749,6 +759,7 @@ impl PcbApp {
         if focus {
             self.tree.make_active(|id, _| id == tile);
             self.focus_lib = Some(key);
+            self.focus_gerber = false;
         }
     }
 
@@ -1382,6 +1393,7 @@ impl PcbApp {
             Action::PcbVia => PcbTool::Via,
             Action::PcbOutline => PcbTool::Outline,
             Action::PcbZone => PcbTool::Zone,
+            Action::ToolMeasure => PcbTool::Measure,
             Action::ToolSelect => PcbTool::Select,
             Action::Posture => {
                 self.pcb.toggle_posture();
@@ -1403,6 +1415,18 @@ impl PcbApp {
         true
     }
 
+    /// Keys of the Gerber tab: its tools and fitting. Returns true if handled.
+    fn gerber_action(&mut self, action: Action) -> bool {
+        match action {
+            Action::ToolMeasure => self.gerber.set_measuring(true),
+            Action::ToolSelect => self.gerber.set_measuring(false),
+            Action::Cancel => self.gerber.escape(),
+            Action::FitView => self.gerber.canvas.request_fit(),
+            _ => return false,
+        }
+        true
+    }
+
     fn run_action(&mut self, action: Action) {
         if let Some(panel) = Panel::of_action(action) {
             return self.settings.dock.toggle(panel);
@@ -1412,8 +1436,13 @@ impl PcbApp {
         {
             return;
         }
-        // A closed view takes no keys (only the project-level actions below).
-        let view_keys = self.focus_lib.is_some() || self.is_open(self.active);
+        let gerber = self.focus_gerber && self.tree.tiles.find_pane(&Tab::Gerber).is_some();
+        if gerber && self.gerber_action(action) {
+            return;
+        }
+        // A closed view takes no keys (only the project-level actions below), nor does
+        // one without focus while the Gerber tab has it.
+        let view_keys = !gerber && (self.focus_lib.is_some() || self.is_open(self.active));
         if view_keys && self.context() == Context::Schematic && self.sch_action(action) {
             return;
         }
@@ -1452,6 +1481,7 @@ impl PcbApp {
             | Action::ToolRect
             | Action::ToolCircle
             | Action::ToolText
+            | Action::ToolMeasure
             | Action::SchWire
             | Action::SchBus
             | Action::SchBusEntry
@@ -1537,6 +1567,7 @@ impl PcbApp {
             Action::ToolRect => tool_msg(l, Tool::Rect),
             Action::ToolCircle => tool_msg(l, Tool::Circle),
             Action::ToolText => tool_msg(l, Tool::Text),
+            Action::ToolMeasure => tool_msg(l, Tool::Measure),
             Action::New | Action::Open | Action::Save | Action::SaveAs | Action::Settings | Action::ExportGerber => {
                 None
             }
@@ -2659,6 +2690,7 @@ struct TreeBehavior<'a> {
     libraries: &'a mut [LibraryEditor],
     active: &'a mut ViewId,
     focus_lib: &'a mut Option<u64>,
+    focus_gerber: &'a mut bool,
     hovered: &'a mut Option<ViewId>,
     close_requests: &'a mut Vec<Tab>,
     /// A sheet symbol was double-clicked.
@@ -2703,6 +2735,7 @@ impl TreeBehavior<'_> {
             self.sch.set_tool(tool);
             *self.active = view;
             *self.focus_lib = None;
+            *self.focus_gerber = false;
         }
         if kind == ViewKind::Board
             && let Some(tool) = pcb_ui::toolbar(ui, rect, self.pcb, doc, self.keymap)
@@ -2715,6 +2748,7 @@ impl TreeBehavior<'_> {
             self.pcb.set_tool(tool);
             *self.active = view;
             *self.focus_lib = None;
+            *self.focus_gerber = false;
         }
         let pane = self.panes.get(view);
         let entries = doc.view(view).layer_menu();
@@ -2742,6 +2776,7 @@ impl TreeBehavior<'_> {
         if response.hovered() && ui.input(|i| i.pointer.any_pressed()) {
             *self.active = view;
             *self.focus_lib = None;
+            *self.focus_gerber = false;
         }
         // The schematic tools work on the sheet the pointer is in.
         let sheet = view.sheet();
@@ -2777,6 +2812,7 @@ impl TreeBehavior<'_> {
                 (raw, pane.it.snap(raw))
             });
             let tol = (8.0 / pane.canvas.camera.zoom * 1e6) as Coord;
+            self.pcb.free = ui.input(|i| i.modifiers.alt);
             self.pcb.hover(doc, world, tol);
             if world.is_some()
                 && response.hovered()
@@ -2811,6 +2847,9 @@ impl TreeBehavior<'_> {
         if tools_here && let Some(ghosts) = self.sch.take_preview() {
             let (project, v) = doc.project_and_view(view);
             v.set_preview(project, &ghosts);
+        }
+        if kind == ViewKind::Board && self.pcb.tool() == PcbTool::Measure {
+            canvas::draw_measure(ui, &pane.canvas, response.rect, &self.pcb.measure);
         }
         if kind == ViewKind::Board
             && let Some(ghosts) = self.pcb.take_preview(doc)
@@ -2859,6 +2898,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                     && l.center_ui(ui, self.keymap)
                 {
                     *self.focus_lib = Some(key);
+                    *self.focus_gerber = false;
                 }
             }
             Tab::Gerber => {
@@ -2873,12 +2913,20 @@ impl Behavior<Tab> for TreeBehavior<'_> {
     fn on_tab_button(&mut self, tiles: &mut Tiles<Tab>, tile_id: TileId, response: egui::Response) -> egui::Response {
         if response.clicked() || response.drag_started() {
             match Self::tab_of(tiles, tile_id) {
-                Some(Tab::Library(key)) => *self.focus_lib = Some(key),
+                Some(Tab::Library(key)) => {
+                    *self.focus_lib = Some(key);
+                    *self.focus_gerber = false;
+                }
                 Some(Tab::View(view)) => {
                     *self.active = view;
                     *self.focus_lib = None;
+                    *self.focus_gerber = false;
                 }
-                Some(Tab::Gerber) | None => {}
+                Some(Tab::Gerber) => {
+                    *self.focus_lib = None;
+                    *self.focus_gerber = true;
+                }
+                None => {}
             }
         }
         response
@@ -3053,8 +3101,13 @@ impl eframe::App for PcbApp {
         }
         self.window_focused = focused;
         self.outputs_outdated = self.outputs.outdated(&self.project.lib.doc, self.busy());
-        if let Some(GerberAct::Reexport) = self.gerber_act.take() {
-            self.export_gerber();
+        match self.gerber_act.take() {
+            Some(GerberAct::Reexport) => self.export_gerber(),
+            Some(GerberAct::Focus) => {
+                self.focus_gerber = true;
+                self.focus_lib = None;
+            }
+            None => {}
         }
 
         let gap = theme::GAP;
@@ -3091,6 +3144,7 @@ impl eframe::App for PcbApp {
                 libraries: &mut self.libraries,
                 active: &mut self.active,
                 focus_lib: &mut self.focus_lib,
+                focus_gerber: &mut self.focus_gerber,
                 hovered: &mut self.hovered,
                 close_requests: &mut self.close_requests,
                 enter_sheet: &mut self.enter_sheet,
