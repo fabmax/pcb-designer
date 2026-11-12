@@ -1432,6 +1432,12 @@ impl PcbApp {
 
     /// Cut, copy, paste and duplicate in the focused library item or the active view.
     fn clipboard_action(&mut self, action: Action) {
+        if action == Action::Copy
+            && let Some(r) = self.measure_reading()
+        {
+            self.copy_out = Some(r.text(units::fmt));
+            return self.set_status("Copied the measurement");
+        }
         if self.focus_gerber && self.tree.tiles.find_pane(&Tab::Gerber).is_some() {
             return;
         }
@@ -1445,6 +1451,19 @@ impl PcbApp {
         if let Ok(Some(m)) | Err(m) = result {
             self.set_status(m);
         }
+    }
+
+    /// The measurement of the Measure tool in the focused editor, if it shows one.
+    fn measure_reading(&mut self) -> Option<view::measure::Reading> {
+        if self.focus_gerber && self.tree.tiles.find_pane(&Tab::Gerber).is_some() {
+            return self.gerber.measure.reading().filter(|_| self.gerber.measuring);
+        }
+        if let Some(key) = self.focus_lib {
+            let l = self.lib(key)?;
+            return l.placer.measure.reading().filter(|_| l.placer.tool == Tool::Measure);
+        }
+        let board = self.active == ViewId::Board && self.pcb.tool() == PcbTool::Measure;
+        self.pcb.measure.reading().filter(|_| board)
     }
 
     /// The clip on the system clipboard.
