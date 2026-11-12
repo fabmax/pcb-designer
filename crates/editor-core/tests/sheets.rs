@@ -54,7 +54,7 @@ fn sheets_form_a_tree_with_unique_names() {
 #[test]
 fn deleting_a_sheet_takes_its_contents_along() {
     let mut ed = Editor::new(Project::new("t"));
-    ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts: vec![PART_RESISTOR] }).unwrap();
+    ed.execute(Command::import_parts(&builtin::builtin_library(), &[PART_RESISTOR]).unwrap()).unwrap();
     let power = add_sheet(&mut ed, None, "Power", 0.0).unwrap();
     let reg = add_sheet(&mut ed, Some(power), "Regulator", 0.0).unwrap();
     let place = |ed: &mut Editor, sheet: Id| {

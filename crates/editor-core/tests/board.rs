@@ -15,7 +15,7 @@ impl B {
     fn new() -> Self {
         let mut ed = Editor::new(Project::new("test"));
         let parts = vec![PART_RESISTOR, PART_LED, PART_HEADER_1X4];
-        ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts }).unwrap();
+        ed.execute(Command::import_parts(&builtin::builtin_library(), &parts).unwrap()).unwrap();
         B { ed }
     }
 

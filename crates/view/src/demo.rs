@@ -88,7 +88,7 @@ fn move_footprint(ed: &mut Editor, footprint: Id, to: Point, rotation: Angle) {
 pub fn demo_project() -> Project {
     let mut ed = Editor::new(Project::new("Demo"));
     let parts = vec![PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4];
-    ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts }).unwrap();
+    ed.execute(Command::import_parts(&builtin::builtin_library(), &parts).unwrap()).unwrap();
 
     // Schematic.
     let j1 = place(&mut ed, PART_HEADER_1X4, 0.0, 0.0, Angle::ZERO, "J1", "Conn");
@@ -198,7 +198,7 @@ pub fn demo_project() -> Project {
 pub fn stress_project(n: usize) -> Project {
     let mut ed = Editor::new(Project::new(format!("Stress {n}")));
     let parts = vec![PART_RESISTOR, PART_CAPACITOR];
-    ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts }).unwrap();
+    ed.execute(Command::import_parts(&builtin::builtin_library(), &parts).unwrap()).unwrap();
     let cols = (n as f64).sqrt().ceil().max(1.0) as usize;
     let board_w = cols as f64 * 4.0;
     ed.execute(Command::Insert {

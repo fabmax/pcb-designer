@@ -77,7 +77,7 @@ fn build_part_from_scratch_then_update_project() {
 
     // Use it in a project.
     let mut project = Document::new(Project::new("p"));
-    project.execute(Command::ImportParts { library: lib.library().clone(), parts: vec![part_id] }).unwrap();
+    project.execute(Command::import_parts(lib.library(), &[part_id]).unwrap()).unwrap();
     project
         .execute(Command::PlacePart {
             part: part_id,
@@ -110,7 +110,7 @@ fn build_part_from_scratch_then_update_project() {
     // The project notices and takes the update.
     let status = &part_statuses(project.project(), &[lib.library()])[0];
     assert_eq!(status.state, PartState::LibraryChanged);
-    project.execute(Command::UpdateParts { library: lib.library().clone(), parts: vec![part_id] }).unwrap();
+    project.execute(Command::update_parts(lib.library(), &[part_id]).unwrap()).unwrap();
     let embedded = project.project().library.footprints.get(fp_id).unwrap();
     assert_eq!(embedded.pads.get(pad3.id).unwrap().pos, Point::mm(1.0, 2.0));
     assert_eq!(part_statuses(project.project(), &[lib.library()])[0].state, PartState::UpToDate);
