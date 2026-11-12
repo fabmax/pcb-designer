@@ -28,6 +28,7 @@ use crate::dock::{Dock, Panel, Side, Unseen};
 use crate::icons::{self, Icon};
 use crate::keymap::{Action, Context, Keymap, Shortcut};
 use crate::kicad_import::{ImportAction, KicadImport};
+use crate::libraries::Libraries;
 use crate::library::{LibraryEditor, Open, PROJECT_LIB};
 use crate::menu::{self, Cmd, Menu, MenuState};
 use crate::messages;
@@ -197,6 +198,16 @@ impl Panes {
     }
 }
 
+/// Work the tab tree asks for while it is drawn (when it can't borrow all of
+/// `PcbApp`), done right after.
+enum Deferred {
+    /// A tab's close button was clicked.
+    Close(Tab),
+    /// A sheet symbol was double-clicked: open its sheet.
+    EnterSheet(Id),
+    Gerber(GerberAct),
+}
+
 /// Which editor takes keyboard shortcuts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Focus {
@@ -235,20 +246,9 @@ pub struct PcbApp {
     carry_clip: Option<(ViewId, Clip)>,
     hovered: Option<ViewId>,
     properties: Properties,
-    /// Loaded libraries: the built-in one, the project's library files (see
-    /// [`PcbApp::sync_libraries`]) and unsaved ones. Only some have a tab.
-    libraries: Vec<LibraryEditor>,
-    /// The project's library files that could not be loaded.
-    missing_libraries: Vec<MissingLibrary>,
-    /// The project's library list `libraries` was last synced with (`None`: sync again).
-    synced_libraries: Option<Vec<PathBuf>>,
-    next_key: u64,
-    /// Tabs whose close button was clicked (closed after the tree is drawn).
-    close_requests: Vec<Tab>,
+    libraries: Libraries,
     /// The tab group a closed view was in, to reopen it there.
     view_groups: Vec<(ViewId, TileId)>,
-    /// A sheet symbol was double-clicked: open its sheet.
-    enter_sheet: Option<Id>,
     status: Option<(String, Instant)>,
     title: String,
     revision: u64,
@@ -288,7 +288,8 @@ pub struct PcbApp {
     /// The export is older than the design (as of this frame).
     outputs_outdated: bool,
     gerber: GerberPane,
-    gerber_act: Option<GerberAct>,
+    /// What the tab tree asked for while it was drawn.
+    deferred: Vec<Deferred>,
     #[cfg(target_os = "macos")]
     native_menu: crate::native_menu::NativeMenu,
     #[cfg(target_os = "macos")]
@@ -337,24 +338,19 @@ impl PcbApp {
             active: root,
             last_sheet: root.sheet(),
             focus: Focus::Project,
+            deferred: Vec::new(),
             paste_text: None,
             copy_out: None,
             carry_clip: None,
             hovered: None,
             properties: Properties::default(),
-            libraries: Vec::new(),
-            missing_libraries: Vec::new(),
-            synced_libraries: None,
-            next_key: 0,
-            close_requests: Vec::new(),
+            libraries: Libraries::default(),
             outputs: Outputs::default(),
             outputs_scanned: None,
             window_focused: true,
             outputs_outdated: false,
             gerber: GerberPane::default(),
-            gerber_act: None,
             view_groups: Vec::new(),
-            enter_sheet: None,
             status,
             title: String::new(),
             revision: u64::MAX,
@@ -457,7 +453,7 @@ impl PcbApp {
 
     /// The schematic sheet being worked on: the active view's, else the one shown last.
     fn sheet_view(&self) -> ViewId {
-        let doc = &self.project.lib.doc;
+        let doc = &self.doc();
         match self.active {
             ViewId::Sheet(_) => self.active,
             ViewId::Board => match self.last_sheet {
@@ -491,7 +487,7 @@ impl PcbApp {
         self.name_prompt = None;
         match command {
             Some(Ok(cmd)) => {
-                if let Err(e) = self.project.lib.doc.execute(cmd) {
+                if let Err(e) = self.doc_mut().execute(cmd) {
                     self.set_status(e.to_string());
                 }
             }
@@ -511,11 +507,20 @@ impl PcbApp {
     }
 
     /// A library editor by key, including the Project Library's.
+    /// The project document (also edited as the Project Library in its tab).
+    fn doc(&self) -> &Document {
+        &self.project.lib.doc
+    }
+
+    fn doc_mut(&mut self) -> &mut Document {
+        &mut self.project.lib.doc
+    }
+
     fn lib(&mut self, key: u64) -> Option<&mut LibraryEditor> {
         if key == PROJECT_LIB {
             return Some(&mut self.project);
         }
-        self.libraries.iter_mut().find(|l| l.key == key)
+        self.libraries.by_key_mut(key)
     }
 
     /// The Gerber tab is open and has focus.
@@ -527,7 +532,7 @@ impl PcbApp {
     fn focused_lib_ref(&self) -> Option<&LibraryEditor> {
         match self.focus.library()? {
             PROJECT_LIB => Some(&self.project),
-            k => self.libraries.iter().find(|l| l.key == k),
+            k => self.libraries.by_key(k),
         }
     }
 
@@ -540,11 +545,11 @@ impl PcbApp {
     // Project files
 
     fn replace_document(&mut self, doc: Document) {
-        let old_root = self.project.lib.doc.root();
+        let old_root = self.doc().root();
         self.project = LibraryEditor::new(PROJECT_LIB, LibraryDoc { doc, path: None });
         self.sync_libraries();
         // The new root sheet takes the old one's tab; tabs of other sheets close.
-        let root = self.project.lib.doc.root();
+        let root = self.doc().root();
         if let Some(tile) = self.tree.tiles.find_pane(&Tab::View(old_root)) {
             self.tree.tiles.insert(tile, Tile::Pane(Tab::View(root)));
         }
@@ -587,17 +592,17 @@ impl PcbApp {
             self.hovered = None;
         }
         if missing(self.active) {
-            self.active = self.project.lib.doc.root();
+            self.active = self.doc().root();
         }
         self.follow_visible_tabs();
     }
 
     /// Ask to save unsaved changes. Returns false if the user cancelled.
     fn confirm_discard(&mut self) -> bool {
-        if !self.project.lib.doc.is_modified() {
+        if !self.doc().is_modified() {
             return true;
         }
-        match ask_save(&format!("Save changes to \"{}\"?", self.project.lib.doc.project().name)) {
+        match ask_save(&format!("Save changes to \"{}\"?", self.doc().project().name)) {
             rfd::MessageDialogResult::Yes => self.save(false),
             rfd::MessageDialogResult::No => true,
             _ => false,
@@ -649,8 +654,8 @@ impl PcbApp {
         for pane in self.panes.iter_mut() {
             pane.canvas.background = view::style::background(pane.canvas.background.grid);
         }
-        self.project.lib.doc.restyle();
-        for l in &mut self.libraries {
+        self.doc_mut().restyle();
+        for l in self.libraries.iter_mut() {
             l.canvas.background = view::style::background(l.canvas.background.grid);
             l.lib.doc.restyle();
             l.view.restyle();
@@ -665,17 +670,17 @@ impl PcbApp {
 
     /// Save (or Save As when `choose` or the document has no folder yet).
     fn save(&mut self, choose: bool) -> bool {
-        let path = match (&self.project.lib.doc.path, choose) {
+        let path = match (&self.doc().path, choose) {
             (Some(p), false) => p.clone(),
             _ => {
-                let name = format!("{}.pcbproj", self.project.lib.doc.project().name);
+                let name = format!("{}.pcbproj", self.doc().project().name);
                 match rfd::FileDialog::new().set_title("Save project folder").set_file_name(name).save_file() {
                     Some(p) => p,
                     None => return false,
                 }
             }
         };
-        match self.project.lib.doc.save_as(&path) {
+        match self.doc_mut().save_as(&path) {
             Ok(()) => {
                 self.set_status(format!("Saved {}", path.display()));
                 self.remember_project(&path);
@@ -691,10 +696,10 @@ impl PcbApp {
     /// Export the Gerber and drill files into the project folder (saving a new project
     /// first). Design rule violations are reported in Messages but don't stop it.
     fn export_gerber(&mut self) {
-        if self.project.lib.doc.path.is_none() && !self.save(false) {
+        if self.doc().path.is_none() && !self.save(false) {
             return;
         }
-        match self.project.lib.doc.export_gerber() {
+        match self.doc_mut().export_gerber() {
             Ok(export) => {
                 self.refresh_outputs();
                 let files = export.manifest.files.len();
@@ -712,7 +717,7 @@ impl PcbApp {
 
     /// Scan the export folder again, and reload the Gerber tab if it is open.
     fn refresh_outputs(&mut self) {
-        let dir = self.project.lib.doc.path.clone();
+        let dir = self.doc().path.clone();
         self.outputs.scan(dir.as_deref());
         self.outputs_scanned = Some(dir);
         if self.tree.tiles.find_pane(&Tab::Gerber).is_some()
@@ -764,10 +769,7 @@ impl PcbApp {
 
     /// Keep a library loaded, without a tab. Returns its key.
     fn load_library(&mut self, lib: LibraryDoc) -> u64 {
-        let key = self.next_key;
-        self.next_key += 1;
-        self.libraries.push(LibraryEditor::new(key, lib));
-        key
+        self.libraries.add(lib)
     }
 
     /// Load a library and show it in a tab (next to the schematic), optionally focused.
@@ -808,33 +810,20 @@ impl PcbApp {
     /// Unload a library and close its tab (unsaved changes are lost).
     fn unload_library(&mut self, key: u64) {
         self.close_library_tab(key);
-        self.libraries.retain(|l| l.key != key);
+        self.libraries.remove(key);
     }
 
     /// Bring the loaded libraries in line with the project's library files (opening a
     /// project, adding or removing a library, undo and redo of those).
     fn sync_libraries(&mut self) {
-        if self.synced_libraries.as_ref() == Some(&self.project.lib.doc.project().libraries) {
-            return;
-        }
-        let wanted = self.project.lib.doc.project().libraries.clone();
-        let mut next = self.next_key;
-        let dropped = project_libs::sync(&wanted, &mut self.libraries, &mut self.missing_libraries, |doc| {
-            next += 1;
-            LibraryEditor::new(next - 1, doc)
-        });
-        self.next_key = next;
-        for l in dropped {
+        for l in self.libraries.sync(&self.project.lib.doc.project().libraries) {
             self.close_library_tab(l.key);
         }
-        self.synced_libraries = Some(wanted);
     }
 
     /// Whether the project lists the library's file.
     fn is_listed(&self, lib: &LibraryDoc) -> bool {
-        lib.path
-            .as_deref()
-            .is_some_and(|p| self.project.lib.doc.project().libraries.contains(&project_libs::absolute(p)))
+        lib.path.as_deref().is_some_and(|p| self.doc().project().libraries.contains(&project_libs::absolute(p)))
     }
 
     /// Add a library (saved to a file) to the project and show it in a focused tab.
@@ -858,10 +847,10 @@ impl PcbApp {
     fn add_library_file(&mut self, path: &std::path::Path, focus: bool) {
         if let Some(l) = self.libraries.iter().find(|l| l.lib.path.as_deref().is_some_and(|p| same_file(p, path))) {
             let key = l.key;
-            if !self.is_listed(&self.libraries.iter().find(|l| l.key == key).unwrap().lib) {
+            if !self.is_listed(&self.libraries.by_key(key).unwrap().lib) {
                 // Dropped from the project while it had unsaved changes: add it again.
                 let command = Command::AddLibrary { path: project_libs::absolute(path) };
-                if let Err(e) = self.project.lib.doc.execute(command) {
+                if let Err(e) = self.doc_mut().execute(command) {
                     return self.set_status(e.to_string());
                 }
             }
@@ -883,7 +872,7 @@ impl PcbApp {
     /// A file dialog for library files, starting in the project folder.
     fn library_dialog(&self, title: &str) -> rfd::FileDialog {
         let dialog = rfd::FileDialog::new().set_title(title).add_filter("PCB library", &["pcblib"]);
-        match &self.project.lib.doc.path {
+        match &self.doc().path {
             Some(dir) => dialog.set_directory(dir),
             None => dialog,
         }
@@ -914,7 +903,7 @@ impl PcbApp {
         if key == PROJECT_LIB {
             return self.save(choose);
         }
-        let Some(l) = self.libraries.iter().find(|l| l.key == key) else { return false };
+        let Some(l) = self.libraries.by_key(key) else { return false };
         if l.is_builtin() {
             return self.save_builtin_copy(key);
         }
@@ -936,13 +925,12 @@ impl PcbApp {
         }
         self.set_status(format!("Saved library {}", path.display()));
         // The project follows the file (a new file, or a library that wasn't in it yet).
-        if let Some(command) =
-            project_libs::after_save(&self.project.lib.doc.project().libraries, old.as_deref(), &path)
-            && let Err(e) = self.project.lib.doc.execute(command)
+        if let Some(command) = project_libs::after_save(&self.doc().project().libraries, old.as_deref(), &path)
+            && let Err(e) = self.doc_mut().execute(command)
         {
             self.set_status(e.to_string());
         }
-        self.synced_libraries = None;
+        self.libraries.resync();
         true
     }
 
@@ -988,11 +976,11 @@ impl PcbApp {
             return;
         }
         self.close_library_tab(key);
-        let Some(l) = self.libraries.iter().find(|l| l.key == key) else { return };
+        let Some(l) = self.libraries.by_key(key) else { return };
         let (builtin, listed, discarded) = (l.is_builtin(), self.is_listed(&l.lib), l.lib.is_modified());
         if !builtin && (discarded || !listed) {
-            self.libraries.retain(|l| l.key != key);
-            self.synced_libraries = None;
+            self.libraries.remove(key);
+            self.libraries.resync();
         }
     }
 
@@ -1001,11 +989,11 @@ impl PcbApp {
         if !self.confirm_discard_library(key) {
             return;
         }
-        let Some(l) = self.libraries.iter().find(|l| l.key == key) else { return };
+        let Some(l) = self.libraries.by_key(key) else { return };
         let path = l.lib.path.as_deref().map(project_libs::absolute);
         let name = l.lib.name().to_string();
-        if let Some(path) = path.filter(|p| self.project.lib.doc.project().libraries.contains(p))
-            && let Err(e) = self.project.lib.doc.execute(Command::RemoveLibrary { path })
+        if let Some(path) = path.filter(|p| self.doc().project().libraries.contains(p))
+            && let Err(e) = self.doc_mut().execute(Command::RemoveLibrary { path })
         {
             return self.set_status(e.to_string());
         }
@@ -1015,7 +1003,7 @@ impl PcbApp {
 
     /// Remove a library file that could not be loaded from the project.
     fn remove_missing_library(&mut self, path: PathBuf) {
-        if let Err(e) = self.project.lib.doc.execute(Command::RemoveLibrary { path }) {
+        if let Err(e) = self.doc_mut().execute(Command::RemoveLibrary { path }) {
             self.set_status(e.to_string());
         }
     }
@@ -1029,13 +1017,12 @@ impl PcbApp {
             Ok(lib) => lib,
             Err(e) => return self.set_status(format!("Could not open library: {e}")),
         };
-        let others: Vec<PathBuf> =
-            self.project.lib.doc.project().libraries.iter().filter(|p| **p != from).cloned().collect();
+        let others: Vec<PathBuf> = self.doc().project().libraries.iter().filter(|p| **p != from).cloned().collect();
         let loaded: Vec<&LibraryDoc> = self.libraries.iter().map(|l| &l.lib).collect();
         if let Err(e) = project_libs::check_new(&others, &loaded, &lib) {
             return self.set_status(e);
         }
-        match self.project.lib.doc.execute(Command::RelinkLibrary { from, to }) {
+        match self.doc_mut().execute(Command::RelinkLibrary { from, to }) {
             Ok(_) => {
                 self.load_library(lib);
                 self.sync_libraries();
@@ -1154,7 +1141,7 @@ impl PcbApp {
         for (lib, parts) in by_lib {
             let library = self.libraries[lib].lib.library().clone();
             let n = parts.len();
-            match self.project.lib.doc.execute(Command::UpdateParts { library, parts }) {
+            match self.doc_mut().execute(Command::UpdateParts { library, parts }) {
                 Ok(_) => updated += n,
                 Err(e) => return self.set_status(format!("Update failed: {e}")),
             }
@@ -1169,9 +1156,9 @@ impl PcbApp {
         if self.busy() {
             return;
         }
-        match self.project.lib.doc.editor().history().undo_label().map(str::to_string) {
+        match self.doc().editor().history().undo_label().map(str::to_string) {
             Some(label) => {
-                self.project.lib.doc.undo();
+                self.doc_mut().undo();
                 self.set_status(format!("Undo: {label}"));
             }
             None => self.set_status("Nothing to undo"),
@@ -1182,9 +1169,9 @@ impl PcbApp {
         if self.busy() {
             return;
         }
-        match self.project.lib.doc.editor().history().redo_label().map(str::to_string) {
+        match self.doc().editor().history().redo_label().map(str::to_string) {
             Some(label) => {
-                self.project.lib.doc.redo();
+                self.doc_mut().redo();
                 self.set_status(format!("Redo: {label}"));
             }
             None => self.set_status("Nothing to redo"),
@@ -1194,14 +1181,14 @@ impl PcbApp {
     /// Start placing a part in the schematic (it follows the cursor until clicked),
     /// importing it from library `lib_key` if the project doesn't have it yet.
     fn place_part(&mut self, lib_key: Option<u64>, part: Id) {
-        if !self.project.lib.doc.project().library.parts.contains(part) {
-            let Some(l) = lib_key.and_then(|k| self.libraries.iter().find(|l| l.key == k)) else { return };
+        if !self.doc().project().library.parts.contains(part) {
+            let Some(l) = lib_key.and_then(|k| self.libraries.by_key(k)) else { return };
             let issues = l.lib.library().validate();
             if !issues.is_empty() {
                 return self.set_status(format!("Library has problems: {}", issues[0]));
             }
             let library = l.lib.library().clone();
-            if let Err(e) = self.project.lib.doc.execute(Command::ImportParts { library, parts: vec![part] }) {
+            if let Err(e) = self.doc_mut().execute(Command::ImportParts { library, parts: vec![part] }) {
                 return self.set_status(format!("Import failed: {e}"));
             }
         }
@@ -1274,8 +1261,8 @@ impl PcbApp {
     /// Rearrange: everything as tabs of one area, or schematic (sheets and libraries)
     /// left and the PCB right.
     fn set_layout(&mut self, side_by_side: bool) {
-        let root = self.project.lib.doc.root();
-        let sheets = self.project.lib.doc.sheet_views().map(|v| Tab::View(v.id)).filter(|t| *t != Tab::View(root));
+        let root = self.doc().root();
+        let sheets = self.doc().sheet_views().map(|v| Tab::View(v.id)).filter(|t| *t != Tab::View(root));
         let libs = std::iter::once(PROJECT_LIB).chain(self.libraries.iter().map(|l| l.key)).map(Tab::Library);
         let others: Vec<Tab> = sheets.chain(libs).filter(|t| self.tree.tiles.find_pane(t).is_some()).collect();
         let mut tree = if side_by_side { side_by_side_tree(root) } else { default_tree(root) };
@@ -1309,7 +1296,7 @@ impl PcbApp {
         let tile = match self.tree.tiles.find_pane(&Tab::View(view)) {
             Some(tile) => tile,
             None => {
-                let root = self.project.lib.doc.root();
+                let root = self.doc().root();
                 let near = match view {
                     ViewId::Board => vec![Tab::View(sheet), Tab::View(root), Tab::Library(PROJECT_LIB)],
                     _ => vec![Tab::View(sheet), Tab::View(root), Tab::Library(PROJECT_LIB), Tab::View(ViewId::Board)],
@@ -1353,12 +1340,12 @@ impl PcbApp {
             if self.panes.selection(here).is_empty() && !self.panes.selection(there).is_empty() { there } else { here };
         let selection = self.panes.selection(from);
         let routing = self.pcb.routing_net().or(self.pcb.zone_net()).map(str::to_string);
-        let key = Some((from, selection.clone(), self.project.lib.doc.revision, routing.clone()));
+        let key = Some((from, selection.clone(), self.doc().revision, routing.clone()));
         if key == self.probe_key {
             return;
         }
         self.probe_key = key;
-        let doc = &mut self.project.lib.doc;
+        let doc = self.doc_mut();
         let probe = view::probe::cross_probe(doc.project(), doc.connectivity(), doc.copper(), from.kind(), &selection);
         let (project, views) = doc.project_and_views();
         for view in views {
@@ -1525,7 +1512,7 @@ impl PcbApp {
         let selection = it.selection.clone();
         let mut snapper = Interaction::<ObjectId>::new(grid);
         snapper.snap = snap;
-        let (clip, note) = view::clipboard::copy(self.project.lib.doc.project(), &selection, |p| snapper.snap(p))?;
+        let (clip, note) = view::clipboard::copy(self.doc().project(), &selection, |p| snapper.snap(p))?;
         if action == Action::Duplicate {
             self.paste_into_view(clip)?;
             return Ok(note);
@@ -1659,7 +1646,7 @@ impl PcbApp {
 
     /// Ask before deleting sheets that have contents (they go along). True: go ahead.
     fn confirm_sheet_delete(&self, ids: &[ObjectId]) -> bool {
-        let s = &self.project.lib.doc.project().schematic;
+        let s = &self.doc().project().schematic;
         let full: Vec<&str> = ids
             .iter()
             .filter_map(|&id| if let ObjectId::Sheet(sh) = id { s.sheets.get(sh) } else { None })
@@ -1763,7 +1750,7 @@ impl PcbApp {
                 let chrome = title_bar::chrome(frame).unwrap_or(title_bar::Chrome::DEFAULT);
                 let fullscreen = ui.ctx().input(|i| i.viewport().fullscreen.unwrap_or(false));
                 if !fullscreen && chrome.height > 0.0 {
-                    let edited = self.project.lib.doc.is_modified();
+                    let edited = self.doc().is_modified();
                     title_bar::set_document_edited(frame, edited);
                     let name = self.project_name();
                     self.title_bar.show(ui, frame, chrome, &name, edited);
@@ -1781,12 +1768,12 @@ impl PcbApp {
     }
 
     fn menus(&self, native: bool) -> Vec<Menu> {
-        let h = match self.focus.library().and_then(|k| self.libraries.iter().find(|l| l.key == k)) {
+        let h = match self.focus.library().and_then(|k| self.libraries.by_key(k)) {
             Some(l) => l.lib.doc.editor().history(),
-            None => self.project.lib.doc.editor().history(),
+            None => self.doc().editor().history(),
         };
         let exe = std::env::current_exe().map_or("pcb-designer".into(), |p| p.display().to_string());
-        let project = self.project.lib.doc.path.as_ref().map_or(String::new(), |p| format!(" \"{}\"", p.display()));
+        let project = self.doc().path.as_ref().map_or(String::new(), |p| format!(" \"{}\"", p.display()));
         menu::menus(&MenuState {
             native,
             keymap: &self.keymap,
@@ -1836,7 +1823,7 @@ impl PcbApp {
                 }
             }
             Cmd::Drc => {
-                let n = self.project.lib.doc.run_drc().violations.len();
+                let n = self.doc_mut().run_drc().violations.len();
                 self.set_status(match n {
                     0 => "DRC: no violations".to_string(),
                     n => format!("DRC: {n} violation(s), listed in the board properties"),
@@ -1970,15 +1957,15 @@ impl PcbApp {
     /// The Project panel's tree, built from the project and the loaded libraries.
     fn tree_nodes(&self) -> Vec<TreeNode> {
         use project_panel::Info;
-        let p = self.project.lib.doc.project();
+        let p = self.doc().project();
         let refs: Vec<&Library> = self.libraries.iter().map(|l| l.lib.library()).collect();
         let statuses = part_statuses(p, &refs);
         let changed = statuses.iter().filter(|s| s.state == PartState::LibraryChanged).count();
 
         let project_info = Info {
             strong: true,
-            detail: self.project.lib.doc.path.as_deref().map_or("not saved".into(), project_panel::short_path),
-            path: self.project.lib.doc.path.clone(),
+            detail: self.doc().path.as_deref().map_or("not saved".into(), project_panel::short_path),
+            path: self.doc().path.clone(),
             ..Info::icon(Icon::Project)
         };
         let used = |part: Id| p.schematic.components.iter().any(|c| c.part == part);
@@ -2061,7 +2048,7 @@ impl PcbApp {
                 .find(|l| l.lib.path.as_deref().is_some_and(|p| project_libs::absolute(p) == *path));
             if let Some(l) = loaded {
                 external.push(library(l, l.lib.name().to_string()));
-            } else if let Some(m) = self.missing_libraries.iter().find(|m| m.path == *path) {
+            } else if let Some(m) = self.libraries.missing.iter().find(|m| m.path == *path) {
                 let name = m.path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
                 let info = Info {
                     detail: "missing".into(),
@@ -2074,7 +2061,7 @@ impl PcbApp {
                 external.push(TreeNode::new(NodeId::Missing(project_panel::path_hash(&m.path)), name, info));
             }
         }
-        for l in &self.libraries {
+        for l in self.libraries.iter() {
             let is_listed = l.lib.path.as_deref().is_some_and(|p| listed.contains(&project_libs::absolute(p)));
             if !l.is_builtin() && !is_listed {
                 external.push(library(l, l.lib.name().to_string()));
@@ -2110,7 +2097,7 @@ impl PcbApp {
     }
 
     fn project_panel_ui(&mut self, ui: &mut egui::Ui, roots: &[TreeNode]) {
-        self.project_tree.expand_defaults(self.project.lib.doc.root().sheet());
+        self.project_tree.expand_defaults(self.doc().root().sheet());
         self.project_tree.follow(roots, self.focus_node());
         if let Some(act) = self.project_tree.ui(ui, roots) {
             self.tree_act(act);
@@ -2130,14 +2117,14 @@ impl PcbApp {
                 }
             }
             Act::RenameSheet(sheet) => {
-                if let Some(sh) = self.project.lib.doc.project().schematic.sheets.get(sheet) {
+                if let Some(sh) = self.doc().project().schematic.sheets.get(sheet) {
                     self.rename = Some(Rename { what: Naming::Sheet(sheet), text: sh.name.clone(), focused: false });
                 }
             }
             Act::DeleteSheet(sheet) => {
                 let ids = vec![ObjectId::Sheet(sheet)];
                 if self.confirm_sheet_delete(&ids)
-                    && let Err(e) = self.project.lib.doc.execute(Command::Delete { ids })
+                    && let Err(e) = self.doc_mut().execute(Command::Delete { ids })
                 {
                     self.set_status(e.to_string());
                 }
@@ -2224,20 +2211,20 @@ impl PcbApp {
             Act::Place(Owner::Project, part) => self.place_part(None, part),
             Act::Place(Owner::Lib(key), part) => self.place_part(Some(key), part),
             Act::CopyToProject(key, part) => {
-                let Some(l) = self.libraries.iter().find(|l| l.key == key) else { return };
+                let Some(l) = self.libraries.by_key(key) else { return };
                 let issues = l.lib.library().validate();
                 if let Some(first) = issues.first() {
                     return self.set_status(format!("Library has problems: {first}"));
                 }
                 let library = l.lib.library().clone();
-                match self.project.lib.doc.execute(Command::ImportParts { library, parts: vec![part] }) {
+                match self.doc_mut().execute(Command::ImportParts { library, parts: vec![part] }) {
                     Ok(_) => self.set_status("Copied to the Project Library"),
                     Err(e) => self.set_status(format!("Copy failed: {e}")),
                 }
             }
             Act::Update(part) => {
                 let refs: Vec<&Library> = self.libraries.iter().map(|l| l.lib.library()).collect();
-                let statuses = part_statuses(self.project.lib.doc.project(), &refs);
+                let statuses = part_statuses(self.doc().project(), &refs);
                 // All: the parts only the library changed. One part: also one edited here,
                 // after asking.
                 let wanted = |s: &editor_core::query::PartStatus| match part {
@@ -2262,9 +2249,9 @@ impl PcbApp {
                 self.update_parts(&parts);
             }
             Act::RemoveUnused => {
-                let ids = editor_core::query::unused_library_objects(self.project.lib.doc.project());
+                let ids = editor_core::query::unused_library_objects(self.doc().project());
                 let n = ids.iter().filter(|id| matches!(id, ObjectId::LibPart(_))).count();
-                match self.project.lib.doc.execute(Command::Delete { ids }) {
+                match self.doc_mut().execute(Command::Delete { ids }) {
                     Ok(_) => self.set_status(format!(
                         "Removed {} from the Project Library",
                         project_panel::count(n, "unused part")
@@ -2293,7 +2280,7 @@ impl PcbApp {
     /// The rename dialog (from the Project panel).
     /// "Sheet", "Sheet 2", …: the first name not taken below `parent`.
     fn new_sheet_name(&self, parent: Id) -> String {
-        let s = &self.project.lib.doc.project().schematic;
+        let s = &self.doc().project().schematic;
         (1..)
             .map(|i| if i == 1 { "Sheet".to_string() } else { format!("Sheet {i}") })
             .find(|n| s.sheet_name_issue(Some(parent), n, None).is_none())
@@ -2358,10 +2345,10 @@ impl PcbApp {
                 }
             }
             Naming::Sheet(sheet) => {
-                let Some(mut sh) = self.project.lib.doc.project().schematic.sheets.get(sheet).cloned() else { return };
+                let Some(mut sh) = self.doc().project().schematic.sheets.get(sheet).cloned() else { return };
                 sh.name = text;
                 let objects = vec![Object::Sheet(sh)];
-                if let Err(e) = self.project.lib.doc.execute(Command::Update { objects }) {
+                if let Err(e) = self.doc_mut().execute(Command::Update { objects }) {
                     self.set_status(e.to_string());
                 }
             }
@@ -2479,7 +2466,7 @@ impl PcbApp {
                 let mut selection = if self.is_open(view) { self.panes.selection(view) } else { Vec::new() };
                 // Nothing selected on a sub-sheet: the sheet itself.
                 if let (true, Some(s)) = (selection.is_empty() && self.is_open(view), view.sheet())
-                    && self.project.lib.doc.project().schematic.sheets.get(s).is_some_and(|s| !s.is_root())
+                    && self.doc().project().schematic.sheets.get(s).is_some_and(|s| !s.is_root())
                 {
                     selection = vec![ObjectId::Sheet(s)];
                 }
@@ -2499,10 +2486,10 @@ impl PcbApp {
                     _ => crate::fields::hint(ui, "The select tool has no settings. Pick a tool from the tool bar."),
                 }
             }
-            Panel::BoardSetup => pcb_ui::board_setup(ui, &mut self.project.lib.doc, &mut message),
+            Panel::BoardSetup => pcb_ui::board_setup(ui, self.doc_mut(), &mut message),
             Panel::Overview => match self.focused_lib() {
                 Some(l) => l.overview_ui(ui),
-                None => crate::properties::project_summary(ui, &self.project.lib.doc),
+                None => crate::properties::project_summary(ui, self.doc()),
             },
             Panel::Messages => {
                 if let Some(show) = messages::ui(ui, &mut self.project.lib.doc, &mut self.libraries) {
@@ -2576,7 +2563,7 @@ impl PcbApp {
                     let view = self.hovered.unwrap_or(self.active);
                     let title = match view {
                         ViewId::Board => "PCB".to_string(),
-                        ViewId::Sheet(s) => match self.project.lib.doc.project().schematic.sheet_path(s) {
+                        ViewId::Sheet(s) => match self.doc().project().schematic.sheet_path(s) {
                             path if path.is_empty() => "Schematic".into(),
                             path => format!("Schematic · {path}"),
                         },
@@ -2645,15 +2632,15 @@ impl PcbApp {
 
     /// The project's folder name, or its name while unsaved.
     fn project_name(&self) -> String {
-        match &self.project.lib.doc.path {
+        match &self.doc().path {
             Some(p) => p.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned()),
-            None => self.project.lib.doc.project().name.clone(),
+            None => self.doc().project().name.clone(),
         }
     }
 
     fn update_title(&mut self, ctx: &egui::Context) {
         let name = self.project_name();
-        let title = format!("{}{} — PCB Designer", name, if self.project.lib.doc.is_modified() { " •" } else { "" });
+        let title = format!("{}{} — PCB Designer", name, if self.doc().is_modified() { " •" } else { "" });
         if title != self.title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
             self.title = title;
@@ -2665,7 +2652,7 @@ impl PcbApp {
             return;
         }
         let modified_libs: Vec<u64> = self.libraries.iter().filter(|l| l.lib.is_modified()).map(|l| l.key).collect();
-        if !self.project.lib.doc.is_modified() && modified_libs.is_empty() {
+        if !self.doc().is_modified() && modified_libs.is_empty() {
             return;
         }
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -2821,7 +2808,7 @@ impl mcp::library::Libraries for AgentLibraries<'_> {
     }
 
     fn missing(&self) -> Vec<MissingLibrary> {
-        self.0.missing_libraries.clone()
+        self.0.libraries.missing.clone()
     }
 
     fn push(&mut self, lib: LibraryDoc) -> usize {
@@ -2862,16 +2849,13 @@ struct TreeBehavior<'a> {
     focus: &'a mut Focus,
     carry_clip: &'a mut Option<(ViewId, Clip)>,
     hovered: &'a mut Option<ViewId>,
-    close_requests: &'a mut Vec<Tab>,
-    /// A sheet symbol was double-clicked.
-    enter_sheet: &'a mut Option<Id>,
+    deferred: &'a mut Vec<Deferred>,
     sch: &'a mut SchPlacer,
     pcb: &'a mut PcbPlacer,
     status: &'a mut Option<(String, Instant)>,
     keymap: &'a Keymap,
     gerber: &'a mut GerberPane,
     gerber_outdated: bool,
-    gerber_act: &'a mut Option<GerberAct>,
 }
 
 /// Make `sheet` the one the schematic tools work on, clearing their preview on the sheet
@@ -3023,7 +3007,7 @@ impl TreeBehavior<'_> {
             if response.double_clicked()
                 && let Some(ObjectId::Sheet(s)) = pane.it.hover
             {
-                *self.enter_sheet = Some(s);
+                self.deferred.push(Deferred::EnterSheet(s));
             }
             if pane.it.is_dragging() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -3092,7 +3076,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
             }
             Tab::Gerber => {
                 if let Some(act) = outputs::gerber_ui(ui, self.gerber, self.gerber_outdated, self.keymap) {
-                    *self.gerber_act = Some(act);
+                    self.deferred.push(Deferred::Gerber(act));
                 }
             }
         }
@@ -3125,7 +3109,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
     fn on_tab_close(&mut self, tiles: &mut Tiles<Tab>, tile_id: TileId) -> bool {
         // Closed by the app (libraries after asking about unsaved changes).
         if let Some(tab) = Self::tab_of(tiles, tile_id) {
-            self.close_requests.push(tab);
+            self.deferred.push(Deferred::Close(tab));
         }
         false
     }
@@ -3288,18 +3272,11 @@ impl eframe::App for PcbApp {
         // The export folder: scanned when the project folder changes and when the window
         // gets focus back (files may have changed outside).
         let focused = ctx.input(|i| i.focused);
-        if self.outputs_scanned.as_ref() != Some(&self.project.lib.doc.path) || (focused && !self.window_focused) {
+        if self.outputs_scanned.as_ref() != Some(&self.doc().path) || (focused && !self.window_focused) {
             self.refresh_outputs();
         }
         self.window_focused = focused;
         self.outputs_outdated = self.outputs.outdated(&self.project.lib.doc, self.busy());
-        match self.gerber_act.take() {
-            Some(GerberAct::Reexport) => self.export_gerber(),
-            Some(GerberAct::Focus) => {
-                self.focus = Focus::Gerber;
-            }
-            None => {}
-        }
 
         let gap = theme::GAP;
         let bar = |m: egui::Margin| egui::Frame::NONE.fill(theme::window_bg()).inner_margin(m);
@@ -3337,15 +3314,13 @@ impl eframe::App for PcbApp {
                 focus: &mut self.focus,
                 carry_clip: &mut self.carry_clip,
                 hovered: &mut self.hovered,
-                close_requests: &mut self.close_requests,
-                enter_sheet: &mut self.enter_sheet,
+                deferred: &mut self.deferred,
                 sch: &mut self.sch,
                 pcb: &mut self.pcb,
                 status: &mut self.status,
                 keymap: &self.keymap,
                 gerber: &mut self.gerber,
                 gerber_outdated: self.outputs_outdated,
-                gerber_act: &mut self.gerber_act,
             };
             if self.tree.root.is_none() {
                 let shortcut = self.keymap.menu_text(ui.ctx(), Action::PanelProject);
@@ -3366,26 +3341,25 @@ impl eframe::App for PcbApp {
             self.save_settings();
         }
         if let Some(kind) = self.script.as_mut().and_then(Script::take_switch) {
-            let view = if kind == ViewKind::Board { ViewId::Board } else { self.project.lib.doc.root() };
+            let view = if kind == ViewKind::Board { ViewId::Board } else { self.doc().root() };
             self.show_view(view);
         }
-        if let Some(sheet) = self.enter_sheet.take() {
-            self.show_view(ViewId::Sheet(sheet));
-        }
-        if let ViewId::Sheet(s) = self.active {
-            self.last_sheet = Some(s);
-        }
-
-        for tab in std::mem::take(&mut self.close_requests) {
-            match tab {
-                Tab::Library(key) => self.close_library(key),
-                Tab::View(view) => self.close_view(view),
-                Tab::Gerber => {
+        for d in std::mem::take(&mut self.deferred) {
+            match d {
+                Deferred::EnterSheet(sheet) => self.show_view(ViewId::Sheet(sheet)),
+                Deferred::Close(Tab::Library(key)) => self.close_library(key),
+                Deferred::Close(Tab::View(view)) => self.close_view(view),
+                Deferred::Close(Tab::Gerber) => {
                     if let Some(tile) = self.tree.tiles.find_pane(&Tab::Gerber) {
                         self.tree.remove_recursively(tile);
                     }
                 }
+                Deferred::Gerber(GerberAct::Reexport) => self.export_gerber(),
+                Deferred::Gerber(GerberAct::Focus) => self.focus = Focus::Gerber,
             }
+        }
+        if let ViewId::Sheet(s) = self.active {
+            self.last_sheet = Some(s);
         }
         if let Some(m) = self.libraries.iter_mut().find_map(|l| l.message.take()) {
             self.set_status(m);
@@ -3426,8 +3400,8 @@ impl eframe::App for PcbApp {
         self.update_highlights();
 
         // Model changed (any source): drop stale selections, refresh highlights.
-        if self.project.lib.doc.revision != self.revision {
-            self.revision = self.project.lib.doc.revision;
+        if self.doc().revision != self.revision {
+            self.revision = self.doc().revision;
             self.close_missing_sheets();
             for pane in self.panes.iter_mut() {
                 pane.it.refresh(&mut self.project.lib.doc.target(pane.view));

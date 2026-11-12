@@ -286,6 +286,13 @@ and hierarchical sheets.
 
 ## App (`app`)
 
+- **`PcbApp` state:** the project document is `doc()` / `doc_mut()` (it lives in the
+  Project Library's `LibraryEditor`); sites that borrow other fields at the same time
+  use the field path `self.project.lib.doc`. Loaded libraries are `Libraries`
+  (`by_key`, `add`, `remove`, `sync` with the project's list, `resync` after a save).
+  The tab tree is drawn by `TreeBehavior`, which borrows fields one by one; what it
+  can't do itself goes into `deferred` (`Deferred`: close a tab, enter a sheet, Gerber
+  actions), handled right after the tree is drawn.
 - **Layout:** sheets and the PCB are tabs (View → Side by side splits them); a sheet's
   tab is titled with its name, the root's "Schematic". Panels and
   tab groups are rounded with 6 pt gaps of window background. GPU canvases can't be

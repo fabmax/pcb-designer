@@ -34,6 +34,7 @@ mod fields;
 mod icons;
 mod keymap;
 mod kicad_import;
+mod libraries;
 mod library;
 mod menu;
 mod messages;
