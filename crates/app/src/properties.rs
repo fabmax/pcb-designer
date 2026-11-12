@@ -355,17 +355,7 @@ impl Properties {
             }
             ui.end_row();
             label(ui, "Footprint");
-            let current = part.variant(c.variant).map_or("?".to_string(), |v| v.name.clone());
-            let mut variant = c.variant;
-            egui::ComboBox::from_id_salt("variant").selected_text(current).show_ui(ui, |ui| {
-                for v in &part.variants {
-                    ui.selectable_value(&mut variant, v.id, &v.name);
-                }
-            });
-            if variant != c.variant {
-                let cmd = Command::SetComponent { id: c.id, refdes: None, value: None, variant: Some(variant) };
-                self.run(cx, cmd, false);
-            }
+            self.variant_combo(ui, cx, &c, &part, false);
             ui.end_row();
             label(ui, "Position");
             if let Some(p) = self.point(ui, s.pos) {
@@ -390,15 +380,35 @@ impl Properties {
         pin_table(ui, cx.doc, Some(s.id), c.id);
     }
 
+    /// The component's footprint variant. `on_board`: only variants with a footprint (on
+    /// the board, a "no footprint" variant would delete the selected footprint).
+    fn variant_combo(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, c: &Component, part: &Part, on_board: bool) {
+        let current = part.variant(c.variant).map_or("?".to_string(), |v| v.name.clone());
+        let mut variant = c.variant;
+        egui::ComboBox::from_id_salt("variant").selected_text(current).show_ui(ui, |ui| {
+            for v in part.variants.iter().filter(|v| !on_board || v.footprint.is_some()) {
+                ui.selectable_value(&mut variant, v.id, &v.name);
+            }
+        });
+        if variant != c.variant {
+            let cmd = Command::SetComponent { id: c.id, refdes: None, value: None, variant: Some(variant) };
+            self.run(cx, cmd, false);
+        }
+    }
+
     fn footprint(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, mut f: FootprintInstance) {
         let project = cx.doc.project();
         let Some(c) = project.schematic.components.get(f.component).cloned() else { return };
+        let Some(part) = project.library.parts.get(c.part).cloned() else { return };
         let fp_name = project.library.footprint_of(c.part, c.variant).map_or("?".into(), |fp| fp.name.clone());
         heading(ui, &c.refdes, &fp_name);
-        ui.label(RichText::new("Reference, value and footprint are edited in the schematic.").color(theme::text_dim()));
+        ui.label(RichText::new("Reference and value are edited in the schematic.").color(theme::text_dim()));
         ui.add_space(4.0);
         grid(ui, |ui| {
             row(ui, "Value", c.value.clone());
+            label(ui, "Footprint");
+            self.variant_combo(ui, cx, &c, &part, true);
+            ui.end_row();
             label(ui, "Side");
             let mut side = f.side;
             egui::ComboBox::from_id_salt("side").selected_text(format!("{side:?}")).show_ui(ui, |ui| {

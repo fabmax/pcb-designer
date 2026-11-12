@@ -109,6 +109,8 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
   schematic and its netlist but have no footprint on the board. A part can offer it next
   to real footprints; switching a component to a variant with a footprint places it in
   the staging area beside the board.
+- **Footprint variants** can be switched in Properties both for a symbol in the schematic
+  and for a footprint on the board (the board lists only variants with a footprint).
 - **Built-in Library:** a few basic parts that ship with the app. It is read-only; "Save a
   copy as…" makes an editable library of your own from it.
 - **External Libraries:** the project's library files (`.pcblib`).

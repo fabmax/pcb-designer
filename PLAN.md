@@ -337,6 +337,9 @@ and hierarchical sheets.
   opened automatically. Project (⌘1), Messages (⌘3, with an unseen-problems badge),
   Properties, Tool settings, Board setup, Overview. Saved in settings when no pointer
   button is down.
+- **Properties** (`properties.rs`): a symbol and a footprint both have the component's
+  Footprint variant combo (`variant_combo`); on the board it leaves out "no footprint"
+  variants, which would delete the selected footprint.
 - **Project tree** (`project_panel.rs`): project (the root sheet as "Schematic" with its
   sub-sheets nested by name, PCB, Project Library, Outputs › Gerber), Built-in Library (read-only),
   External Libraries; new sheets come from the + menu or a sheet's menu (name dialog,
