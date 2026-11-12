@@ -129,7 +129,8 @@ pub struct KicadSymbolPick {
     /// "Library:Name" from search_kicad, e.g. "Amplifier_Operational:LM358".
     pub symbol: String,
     /// Footprints ("Library:Name"), one part variant each. Omit for the symbol's default
-    /// (or best matching) footprint; an empty list imports the symbol only.
+    /// (or best matching) footprint; an empty list makes a part without footprint
+    /// (kept off the board).
     #[serde(default)]
     pub footprints: Option<Vec<String>>,
 }
@@ -436,7 +437,8 @@ impl PcbTools {
         self.call(Request::GetObjects { ids: p.ids }).await
     }
 
-    #[tool(description = "Everything about one component: part, variant, symbol placement with \
+    #[tool(description = "Everything about one component: part, variant (null: no footprint, \
+        not on the board; set_component with \"variant\": null does that), symbol placement with \
         world positions of its pin ends (where wires connect), footprint placement with pad \
         positions, and the pin to pad mapping.")]
     async fn get_component(&self, Parameters(p): Parameters<ComponentParams>) -> Result<CallToolResult, ErrorData> {
@@ -599,7 +601,8 @@ impl PcbTools {
         fabrication, courtyard around everything, silkscreen clear of the pads.\n\
         - lib_part: name, description, prefix (default U), default_value (default the \
         name), properties, units [{\"symbol\": SYMBOL NAME}] (named A, B, …), variants \
-        [{\"footprint\": FOOTPRINT NAME, \"name\"?, \"connections\"?}] (one per package). \
+        [{\"footprint\": FOOTPRINT NAME, \"name\"?, \"connections\"?}] (one per package; [] \
+        for a part without footprint, e.g. a logo, that stays off the board). \
         Without connections, pads connect to pins with the same number (else name); or \
         \"in_order\"; or a list of {\"pad\": PAD NAME, \"pin\": PIN NUMBER or NAME, \"unit\"?}.\n\
         Coordinates and sizes in nm (1 mm = 1000000). Returns what changed and each variant's \

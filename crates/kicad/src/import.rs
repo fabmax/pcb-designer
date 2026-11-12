@@ -14,7 +14,7 @@ use crate::symbol::KiSymbol;
 #[derive(Clone, Debug, Default)]
 pub struct Request {
     /// `Lib:Name` of a symbol and the `Lib:Name`s of its footprints. Without footprints
-    /// only the symbol is imported (a part needs at least one footprint).
+    /// the part has no variant: its components stay off the board.
     pub symbols: Vec<(String, Vec<String>)>,
     pub footprints: Vec<String>,
 }
@@ -79,7 +79,11 @@ pub fn import(catalog: &mut Catalog, req: &Request) -> Imported {
                 out.symbols.push(u.clone());
             }
         }
-        if !variants.is_empty() {
+        if fps.is_empty() {
+            out.warnings.push(format!("{sym_name}: no footprint; its components aren't placed on the board"));
+        }
+        // A part unless all of its footprints failed to load (reported above).
+        if fps.is_empty() || !variants.is_empty() {
             out.parts.push(make_part(&sym, &variants));
         }
     }

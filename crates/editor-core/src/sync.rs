@@ -2,7 +2,9 @@
 //!
 //! The board only stores *placements* of components. Which footprint a placement shows
 //! is derived from the component's part variant, so changing the variant needs no board
-//! edit. This module only creates and removes placements.
+//! edit. This module only creates and removes placements: components with a variant get
+//! one, components without (no footprint) and deleted ones lose theirs. Copper at their
+//! pads stays.
 
 use model::*;
 
@@ -21,13 +23,14 @@ pub(crate) fn sync_board(tx: &mut Transaction) -> Result<(), CommandError> {
     }
     let mut new_components = Vec::new();
     for id in touched {
-        let exists = tx.project().schematic.components.contains(id);
+        // On the board: components with a footprint variant.
+        let on_board = tx.project().schematic.components.get(id).is_some_and(|c| c.variant.is_some());
         let placements: Vec<Id> =
             tx.project().board.footprints.iter().filter(|f| f.component == id).map(|f| f.id).collect();
-        if exists && placements.is_empty() && !new_components.contains(&id) {
+        if on_board && placements.is_empty() && !new_components.contains(&id) {
             new_components.push(id);
         }
-        if !exists {
+        if !on_board {
             for f in placements {
                 tx.remove(ObjectId::Footprint(f))?;
             }

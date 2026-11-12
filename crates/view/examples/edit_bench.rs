@@ -126,7 +126,7 @@ fn main() {
     // project command that redraws the parts using it (here: every capacitor).
     let cap = doc.project().library.parts.get(model::builtin::PART_CAPACITOR).unwrap().clone();
     let mut sym = doc.project().library.symbols.get(cap.units[0].symbol).unwrap().clone();
-    let mut fp = doc.project().library.footprint_of(cap.id, cap.variants[0].id).unwrap().clone();
+    let mut fp = doc.project().library.footprint_of(cap.id, Some(cap.variants[0].id)).unwrap().clone();
     let users = doc.project().schematic.components.iter().filter(|c| c.part == cap.id).count();
     let pad = fp.pads.ids().next().unwrap();
     sym.graphics.push(Shape::Line { a: Point::ZERO, b: Point::mm(1.0, 0.0), width: mm(0.2) });

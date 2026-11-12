@@ -1,6 +1,7 @@
 //! The library tools on the headless host: a part from a "datasheet", start to finish.
 
 use mcp::headless::HeadlessHost;
+use mcp::host::Host;
 use mcp::library::LibraryRequest;
 use mcp::{Call, Reply, Request, handle};
 use model::Id;
@@ -310,4 +311,28 @@ fn the_builtin_library_is_read_only() {
     let items =
         lib(&mut host, LibraryRequest::Get { library: "Built-in".into(), items: vec!["OpAmp".into()] }).unwrap();
     assert!(!items["items"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn parts_and_components_without_footprint() {
+    let mut host = HeadlessHost::new(Document::new(view::demo::demo_project()));
+    lib(&mut host, LibraryRequest::Create { name: "Driver".into(), path: None }).unwrap();
+    edit(&mut host, driver(), &[]).unwrap();
+
+    // A new part needs its variants spelled out; an empty list means no footprint.
+    let logo = json!({ "type": "lib_part", "name": "Logo", "units": [{ "symbol": "DRV" }] });
+    let err = edit(&mut host, json!([logo]), &[]).unwrap_err();
+    assert!(err.contains("variants: []"), "{err}");
+    let mut logo = logo;
+    logo["variants"] = json!([]);
+    edit(&mut host, json!([logo]), &[]).unwrap();
+    assert_eq!(get(&mut host, "part:Logo")["variants"], json!([]));
+
+    // `"variant": null` takes a component off the board.
+    let r1 = host.document().project().schematic.component_by_refdes("R1").unwrap().id;
+    let command = json!({ "command": "set_component", "id": r1, "variant": null });
+    ask(&mut host, Request::Execute { commands: vec![command] }).unwrap();
+    assert!(host.document().project().board.footprint_of(r1).is_none());
+    let Reply::Json(c) = ask(&mut host, Request::Component { refdes: "R1".into() }).unwrap() else { panic!() };
+    assert_eq!(c["variant"], Value::Null, "{c}");
 }

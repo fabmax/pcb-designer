@@ -745,12 +745,15 @@ fn part(work: &Library, mut map: Map<String, Value>) -> Result<Part, String> {
     let mut part: Part = parse(m, &what)?;
     part.variants = match variants_given {
         Some(Value::Array(vs)) => vs.iter().map(|v| variant(work, &part, old, v, &what)).collect::<Result<_, _>>()?,
+        None if old.is_none() => {
+            return Err(format!(
+                "{what} needs a footprint: variants: [{{\"footprint\": \"FOOTPRINT NAME\"}}] \
+                 (or variants: [] for a part that isn't on the board)"
+            ));
+        }
         None => base.variants.clone(),
         Some(_) => return Err(format!("{what}: variants is a list like [{{\"footprint\": \"NAME\"}}]")),
     };
-    if part.variants.is_empty() {
-        return Err(format!("{what} needs a footprint: variants: [{{\"footprint\": \"FOOTPRINT NAME\"}}]"));
-    }
     Ok(part)
 }
 

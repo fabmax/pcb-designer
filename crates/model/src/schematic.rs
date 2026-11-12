@@ -92,8 +92,9 @@ pub struct Component {
     pub id: Id,
     /// Part in the project's embedded library.
     pub part: Id,
-    /// Footprint variant of the part.
-    pub variant: Id,
+    /// Footprint variant of the part; `None`: not on the board (no footprint).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<Id>,
     pub refdes: String,
     #[serde(default)]
     pub value: String,
