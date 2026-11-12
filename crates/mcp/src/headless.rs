@@ -115,7 +115,11 @@ pub fn background(view: ViewKind) -> Background {
 }
 
 impl Host for HeadlessHost {
-    fn document(&mut self) -> &mut Document {
+    fn document(&self) -> &Document {
+        &self.doc
+    }
+
+    fn document_mut(&mut self) -> &mut Document {
         &mut self.doc
     }
 

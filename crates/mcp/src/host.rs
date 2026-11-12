@@ -222,7 +222,8 @@ pub struct Call {
 
 /// What [`handle`] needs from the application.
 pub trait Host {
-    fn document(&mut self) -> &mut Document;
+    fn document(&self) -> &Document;
+    fn document_mut(&mut self) -> &mut Document;
     /// Open libraries that `import_parts` / `list_library_parts` / `update_parts` use.
     fn libraries(&self) -> Vec<&Library>;
     fn selection(&self, view: ViewId) -> Vec<ObjectId>;
@@ -341,9 +342,8 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
     let json = match request {
         Request::Project => project_summary(host.document()),
         Request::LibraryParts => {
-            let libraries: Vec<Value> = host.libraries().into_iter().map(library_parts).collect();
-            let libs = host.libraries().into_iter().cloned().collect::<Vec<_>>();
-            let refs: Vec<&Library> = libs.iter().collect();
+            let refs = host.libraries();
+            let libraries: Vec<Value> = refs.iter().copied().map(library_parts).collect();
             let statuses = part_statuses(host.document().project(), &refs);
             let project_parts: Vec<Value> = statuses
                 .iter()
@@ -368,12 +368,11 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             for (i, parts) in by_lib {
                 commands.push(Command::import_parts(libraries[i], &parts).map_err(|e| e.to_string())?);
             }
-            execute(host.document(), commands)?
+            execute(host.document_mut(), commands)?
         }
         Request::UpdateParts { parts } => {
-            let libraries: Vec<Library> = host.libraries().into_iter().cloned().collect();
-            let refs: Vec<&Library> = libraries.iter().collect();
-            let statuses = part_statuses(host.document().project(), &refs);
+            let libraries = host.libraries();
+            let statuses = part_statuses(host.document().project(), &libraries);
             let mut by_lib: Vec<(usize, Vec<Id>)> = Vec::new();
             for s in statuses {
                 let wanted =
@@ -392,9 +391,9 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             }
             let commands = by_lib
                 .into_iter()
-                .map(|(i, parts)| Command::update_parts(&libraries[i], &parts).map_err(|e| e.to_string()))
+                .map(|(i, parts)| Command::update_parts(libraries[i], &parts).map_err(|e| e.to_string()))
                 .collect::<Result<_, _>>()?;
-            execute(host.document(), commands)?
+            execute(host.document_mut(), commands)?
         }
         Request::ListObjects { kind, offset, limit } => list_objects(host.document().project(), kind, offset, limit),
         Request::GetObjects { ids } => {
@@ -403,17 +402,17 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
         }
         Request::Component { refdes } => component(host.document().project(), &refdes)?,
         Request::Netlist => {
-            let doc = host.document();
+            let doc = host.document_mut();
             doc.update_connectivity(false);
             netlist(doc.project(), doc.connectivity())
         }
         Request::Routing => {
-            let doc = host.document();
+            let doc = host.document_mut();
             doc.update_connectivity(false);
             routing(doc.project(), doc.copper())
         }
         Request::Drc { limit } => {
-            let report = host.document().run_drc();
+            let report = host.document_mut().run_drc();
             let v = &report.violations;
             let mut by_kind: std::collections::BTreeMap<&str, usize> = Default::default();
             for x in v {
@@ -428,7 +427,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             })
         }
         Request::ExportGerber => {
-            let export = host.document().export_gerber().map_err(|e| e.to_string())?;
+            let export = host.document_mut().export_gerber().map_err(|e| e.to_string())?;
             let mut by_kind: std::collections::BTreeMap<&str, usize> = Default::default();
             for x in &export.warnings {
                 *by_kind.entry(x.kind.label()).or_default() += 1;
@@ -445,15 +444,15 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
         Request::KicadImport(_) | Request::KicadDownload { .. } | Request::Library(_) => {
             unreachable!("answered by the host")
         }
-        Request::Execute { commands } => execute_json(host.document(), commands)?,
+        Request::Execute { commands } => execute_json(host.document_mut(), commands)?,
         Request::Undo => {
-            let doc = host.document();
+            let doc = host.document_mut();
             let label = doc.editor().history().undo_label().map(str::to_string).ok_or("nothing to undo")?;
             let changes = doc.undo().unwrap_or_default();
             json!({ "undone": label, "changes": summarize(&changes) })
         }
         Request::Redo => {
-            let doc = host.document();
+            let doc = host.document_mut();
             let label = doc.editor().history().redo_label().map(str::to_string).ok_or("nothing to redo")?;
             let changes = doc.redo().unwrap_or_default();
             json!({ "redone": label, "changes": summarize(&changes) })
@@ -511,7 +510,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             return host.render_scene(&gv.scene, w, h).map(Reply::Png);
         }
         Request::Save { path } => {
-            let doc = host.document();
+            let doc = host.document_mut();
             match path {
                 Some(p) => doc.save_as(&p),
                 None if doc.path.is_some() => doc.save(),

@@ -20,6 +20,9 @@ pub enum ViolationKind {
     Courtyard,
     TrackWidth,
     Drill,
+    /// A zone's net name matches no net on the board (renamed, or its pads are gone),
+    /// so it connects nothing.
+    ZoneNet,
     Unconnected,
     Unrouted,
 }
@@ -33,6 +36,7 @@ impl ViolationKind {
             ViolationKind::Courtyard => "Courtyard overlap",
             ViolationKind::TrackWidth => "Track width",
             ViolationKind::Drill => "Drill",
+            ViolationKind::ZoneNet => "Zone net",
             ViolationKind::Unconnected => "Unconnected copper",
             ViolationKind::Unrouted => "Unrouted",
         }
@@ -210,6 +214,16 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
             });
         }
     });
+
+    // Zones bind to a net by name; a renamed net leaves them on none.
+    for z in board.zones.iter().filter(|z| copper.net_index(&z.net).is_none()) {
+        out.push(Violation {
+            kind: ViolationKind::ZoneNet,
+            message: format!("Zone net {:?} has no pads on the board", z.net),
+            pos: z.outline.first().copied().unwrap_or_default(),
+            objects: vec![ObjectId::Zone(z.id)],
+        });
+    }
 
     // Sizes.
     for t in board.tracks.iter().filter(|t| t.width < rules.min_track_width) {

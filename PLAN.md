@@ -71,6 +71,10 @@ and hierarchical sheets.
   re-insertions keep their event order, because undo re-inserts removed objects at
   their stored index: an object updated, then removed, becomes one removal where the
   removal happened; one removed and inserted again stays two changes (it is appended).
+  `then` takes `self` (history grouping takes the top entry's set, no copy per drag
+  frame; `coalesce` still walks the whole list). If undo or redo finds a change's
+  object missing (history and project diverged, a bug), it logs and skips that change
+  instead of panicking.
   `Change::affects_connectivity`: schematic changes always; library edits only when
   pins, pads, units or variants change.
 - `Document::read_only` (Built-in Library) makes every command fail with a reason.
@@ -135,7 +139,11 @@ and hierarchical sheets.
   `RegionIndex` grids fill edges (without it, touch tests on 80k vertices took 0.7 s).
 - **DRC** (`drc::run`, pure, most severe first): shorts, clearance (pads within one
   footprint and fills skipped), board edge, courtyard overlaps (bounding boxes), track
-  width and drill minimums, unconnected copper, unrouted.
+  width and drill minimums, zone net, unconnected copper, unrouted.
+- Gotcha: a `Zone` binds to its net by *name* (`Zone.net`, sheet-qualified for local
+  labels: `/MID`), unlike everything else, whose nets come from pads. Renaming a label
+  or removing the net's last pad leaves the zone on no net (as in KiCad); DRC reports it
+  as `ZoneNet`.
 - **Mask and paste** (`fab`) are derived from pads, never stored: every pad opens the
   mask on its side (holes on both sides) grown by `DesignRules::mask_expansion`; SMD
   pads get paste grown by `paste_margin` (negative shrinks, as in KiCad). Vias stay
@@ -277,7 +285,9 @@ and hierarchical sheets.
 - rmcp Streamable HTTP on its own tokio thread, loopback only, browser Origins refused.
   Calls go over a channel to the app, run between frames (not mid-drag), and wake it
   with `request_repaint`; 60 s timeout. Headless: `--mcp-stdio` with a `HeadlessHost`.
-- The `Host` trait is implemented by the app and the headless host. `Request` variants
+- The `Host` trait is implemented by the app and the headless host. `document()` is
+  read-only and `document_mut()` mutable, so requests can read the document while
+  holding `libraries()` references (no library clones). `Request` variants
   are handled in `describe` and `respond` (`host.rs`). Library requests may answer later
   (`agent::Job`) because they can add tabs.
 - `execute` takes a batch of commands (one undo step, all-or-nothing) and advertises the

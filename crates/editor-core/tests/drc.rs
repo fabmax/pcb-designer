@@ -119,3 +119,42 @@ fn shorts_are_violations() {
     assert_eq!(s.len(), 1, "{v:?}");
     assert_eq!(s[0].objects.len(), 3, "the three track segments");
 }
+
+#[test]
+fn zone_on_a_renamed_net_is_flagged() {
+    let (mut ed, [f1, f2]) = board();
+    let (a, b) = (pad(&ed, f1, "2"), pad(&ed, f2, "1"));
+    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![a, b], width: None }).unwrap();
+    // Name the R1–R2 net with a label on its wire, then pour a zone on it.
+    let wire = ed.project().schematic.wires.iter().next().unwrap().clone();
+    let changes = ed
+        .execute(Command::AddLabel {
+            sheet: None,
+            pos: wire.a,
+            name: "MID".into(),
+            kind: LabelKind::default(),
+            shape: LabelShape::default(),
+            rotation: Angle::ZERO,
+        })
+        .unwrap();
+    let label = changes.ids().find_map(|id| if let ObjectId::Label(l) = id { Some(l) } else { None }).unwrap();
+    let zone = Zone {
+        id: Id::new(),
+        layer: LayerId::BOTTOM_COPPER,
+        net: "/MID".into(), // local labels are qualified by their sheet path
+        outline: vec![Point::mm(1.0, 1.0), Point::mm(29.0, 1.0), Point::mm(29.0, 19.0), Point::mm(1.0, 19.0)],
+        priority: 0,
+        clearance: None,
+    };
+    ed.execute(Command::Insert { objects: vec![Object::Zone(zone.clone())] }).unwrap();
+    assert!(!kinds(&check(&ed)).contains(&K::ZoneNet));
+
+    let mut l = ed.project().schematic.labels.get(label).unwrap().clone();
+    l.name = "MIDDLE".into();
+    ed.execute(Command::Update { objects: vec![Object::Label(l)] }).unwrap();
+    let v = check(&ed);
+    let z: Vec<_> = v.iter().filter(|v| v.kind == K::ZoneNet).collect();
+    assert_eq!(z.len(), 1, "{v:?}");
+    assert_eq!(z[0].objects, vec![ObjectId::Zone(zone.id)]);
+    assert!(z[0].message.contains("MID"));
+}

@@ -40,7 +40,7 @@ impl History {
             && top.group == group
             && self.saved_at != Some(top.serial)
         {
-            top.changes = top.changes.then(changes);
+            top.changes = std::mem::take(&mut top.changes).then(changes);
             return;
         }
         self.redo.clear();
