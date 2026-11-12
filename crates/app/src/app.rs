@@ -197,20 +197,35 @@ impl Panes {
     }
 }
 
+/// Which editor takes keyboard shortcuts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Focus {
+    /// The project pane [`PcbApp::active`].
+    Project,
+    /// A library tab (the Project Library's too).
+    Library(u64),
+    /// The Gerber tab: it takes the measure keys; other view keys do nothing.
+    Gerber,
+}
+
+impl Focus {
+    fn library(self) -> Option<u64> {
+        if let Focus::Library(key) = self { Some(key) } else { None }
+    }
+}
+
 pub struct PcbApp {
     tree: Tree<Tab>,
     /// The project: its document, edited as the Project Library in its tab (key
     /// [`PROJECT_LIB`]) and as schematic and board in the panes.
     project: LibraryEditor,
     panes: Panes,
-    /// Project pane receiving keyboard shortcuts when no library has focus.
+    /// The project pane worked on: it takes keyboard shortcuts while `focus` is
+    /// [`Focus::Project`], and stays the target of project actions while it isn't.
     active: ViewId,
+    focus: Focus,
     /// The sheet shown last (where new sheets and placed parts go when the board is active).
     last_sheet: Option<Id>,
-    /// Library tab with focus (`None`: the project has focus).
-    focus_lib: Option<u64>,
-    /// The Gerber tab has focus (it takes the measure keys; other view keys do nothing).
-    focus_gerber: bool,
     /// Text a keyboard paste brought this frame.
     paste_text: Option<String>,
     /// Clip text to put on the system clipboard at the end of the frame.
@@ -321,8 +336,7 @@ impl PcbApp {
             panes: Panes::new(),
             active: root,
             last_sheet: root.sheet(),
-            focus_lib: None,
-            focus_gerber: false,
+            focus: Focus::Project,
             paste_text: None,
             copy_out: None,
             carry_clip: None,
@@ -504,16 +518,21 @@ impl PcbApp {
         self.libraries.iter_mut().find(|l| l.key == key)
     }
 
+    /// The Gerber tab is open and has focus.
+    fn gerber_focused(&self) -> bool {
+        self.focus == Focus::Gerber && self.tree.tiles.find_pane(&Tab::Gerber).is_some()
+    }
+
     /// The focused library editor (the Project Library's too).
     fn focused_lib_ref(&self) -> Option<&LibraryEditor> {
-        match self.focus_lib? {
+        match self.focus.library()? {
             PROJECT_LIB => Some(&self.project),
             k => self.libraries.iter().find(|l| l.key == k),
         }
     }
 
     fn focused_lib(&mut self) -> Option<&mut LibraryEditor> {
-        let key = self.focus_lib?;
+        let key = self.focus.library()?;
         self.lib(key)
     }
 
@@ -713,8 +732,7 @@ impl PcbApp {
             None => insert_tab(&mut self.tree, Tab::Gerber, None, &[Tab::View(ViewId::Board)]),
         };
         self.tree.make_active(|id, _| id == tile);
-        self.focus_gerber = true;
-        self.focus_lib = None;
+        self.focus = Focus::Gerber;
     }
 
     /// Delete the export folder and its zip, after asking.
@@ -770,8 +788,7 @@ impl PcbApp {
         };
         if focus {
             self.tree.make_active(|id, _| id == tile);
-            self.focus_lib = Some(key);
-            self.focus_gerber = false;
+            self.focus = Focus::Library(key);
         }
     }
 
@@ -783,8 +800,8 @@ impl PcbApp {
         if let Some(tile) = self.tree.tiles.find_pane(&Tab::Library(key)) {
             self.tree.remove_recursively(tile);
         }
-        if self.focus_lib == Some(key) {
-            self.focus_lib = None;
+        if self.focus.library() == Some(key) {
+            self.focus = Focus::Project;
         }
     }
 
@@ -855,7 +872,7 @@ impl PcbApp {
                 if let Some(key) = self.add_to_project(lib)
                     && !focus
                 {
-                    self.focus_lib = None;
+                    self.focus = Focus::Project;
                     self.open_library_tab(key, false);
                 }
             }
@@ -1198,17 +1215,22 @@ impl PcbApp {
     fn follow_visible_tabs(&mut self) {
         let visible: Vec<Tab> =
             self.tree.active_tiles().into_iter().filter_map(|t| self.tree.tiles.get_pane(&t).copied()).collect();
-        if let Some(key) = self.focus_lib
-            && !visible.contains(&Tab::Library(key))
-        {
-            self.focus_lib = None;
+        match self.focus {
+            Focus::Library(key) if !visible.contains(&Tab::Library(key)) => self.focus = Focus::Project,
+            Focus::Gerber if !visible.contains(&Tab::Gerber) => self.focus = Focus::Project,
+            _ => {}
         }
-        if self.focus_lib.is_none() && !visible.contains(&Tab::View(self.active)) {
+        if self.focus.library().is_none() && !visible.contains(&Tab::View(self.active)) {
             match visible.iter().find_map(|t| if let Tab::View(k) = t { Some(*k) } else { None }) {
                 Some(kind) => self.active = kind,
-                None => {
-                    self.focus_lib = visible.iter().find_map(|t| if let Tab::Library(k) = t { Some(*k) } else { None })
+                None if self.focus == Focus::Project => {
+                    if let Some(key) =
+                        visible.iter().find_map(|t| if let Tab::Library(k) = t { Some(*k) } else { None })
+                    {
+                        self.focus = Focus::Library(key);
+                    }
                 }
+                None => {}
             }
         }
     }
@@ -1280,7 +1302,7 @@ impl PcbApp {
     fn show_view(&mut self, view: ViewId) {
         let sheet = self.sheet_view();
         self.active = view;
-        self.focus_lib = None;
+        self.focus = Focus::Project;
         if let Some(s) = view.sheet() {
             self.last_sheet = Some(s);
         }
@@ -1349,7 +1371,7 @@ impl PcbApp {
 
     /// Where keyboard shortcuts go.
     fn context(&self) -> Context {
-        match (self.focus_lib, self.active.kind()) {
+        match (self.focus.library(), self.active.kind()) {
             (Some(_), _) => Context::Library,
             (None, ViewKind::Schematic) => Context::Schematic,
             (None, ViewKind::Board) => Context::Board,
@@ -1438,10 +1460,10 @@ impl PcbApp {
             self.copy_out = Some(r.text(units::fmt));
             return self.set_status("Copied the measurement");
         }
-        if self.focus_gerber && self.tree.tiles.find_pane(&Tab::Gerber).is_some() {
+        if self.gerber_focused() {
             return;
         }
-        let result = if let Some(key) = self.focus_lib {
+        let result = if let Some(key) = self.focus.library() {
             self.lib_clipboard(key, action)
         } else if self.is_open(self.active) {
             self.view_clipboard(action)
@@ -1455,10 +1477,10 @@ impl PcbApp {
 
     /// The measurement of the Measure tool in the focused editor, if it shows one.
     fn measure_reading(&mut self) -> Option<view::measure::Reading> {
-        if self.focus_gerber && self.tree.tiles.find_pane(&Tab::Gerber).is_some() {
+        if self.gerber_focused() {
             return self.gerber.measure.reading().filter(|_| self.gerber.measuring);
         }
-        if let Some(key) = self.focus_lib {
+        if let Some(key) = self.focus.library() {
             let l = self.lib(key)?;
             return l.placer.measure.reading().filter(|_| l.placer.tool == Tool::Measure);
         }
@@ -1533,7 +1555,7 @@ impl PcbApp {
         let pointer = self.panes.get(view).canvas.cursor_world.map(|[x, y]| Point::mm(x, y));
         paste_and_carry(&mut self.project.lib.doc, self.panes.get(view), view, clip, pointer)?;
         self.active = view;
-        self.focus_lib = None;
+        self.focus = Focus::Project;
         Ok(())
     }
 
@@ -1556,18 +1578,18 @@ impl PcbApp {
         if matches!(action, Action::Cut | Action::Copy | Action::Paste | Action::Duplicate) {
             return self.clipboard_action(action);
         }
-        if let Some(key) = self.focus_lib
+        if let Some(key) = self.focus.library()
             && self.lib_action(key, action)
         {
             return;
         }
-        let gerber = self.focus_gerber && self.tree.tiles.find_pane(&Tab::Gerber).is_some();
+        let gerber = self.gerber_focused();
         if gerber && self.gerber_action(action) {
             return;
         }
         // A closed view takes no keys (only the project-level actions below), nor does
         // one without focus while the Gerber tab has it.
-        let view_keys = !gerber && (self.focus_lib.is_some() || self.is_open(self.active));
+        let view_keys = !gerber && (self.focus.library().is_some() || self.is_open(self.active));
         if view_keys && self.context() == Context::Schematic && self.sch_action(action) {
             return;
         }
@@ -1759,7 +1781,7 @@ impl PcbApp {
     }
 
     fn menus(&self, native: bool) -> Vec<Menu> {
-        let h = match self.focus_lib.and_then(|k| self.libraries.iter().find(|l| l.key == k)) {
+        let h = match self.focus.library().and_then(|k| self.libraries.iter().find(|l| l.key == k)) {
             Some(l) => l.lib.doc.editor().history(),
             None => self.project.lib.doc.editor().history(),
         };
@@ -1768,7 +1790,7 @@ impl PcbApp {
         menu::menus(&MenuState {
             native,
             keymap: &self.keymap,
-            library_focus: self.focus_lib.is_some_and(|k| k != PROJECT_LIB),
+            library_focus: self.focus.library().is_some_and(|k| k != PROJECT_LIB),
             recent: &self.settings.recent,
             undo: h.undo_label().map(|l| format!("Undo {l}")),
             redo: h.redo_label().map(|l| format!("Redo {l}")),
@@ -2837,8 +2859,7 @@ struct TreeBehavior<'a> {
     panes: &'a mut Panes,
     libraries: &'a mut [LibraryEditor],
     active: &'a mut ViewId,
-    focus_lib: &'a mut Option<u64>,
-    focus_gerber: &'a mut bool,
+    focus: &'a mut Focus,
     carry_clip: &'a mut Option<(ViewId, Clip)>,
     hovered: &'a mut Option<ViewId>,
     close_requests: &'a mut Vec<Tab>,
@@ -2883,8 +2904,7 @@ impl TreeBehavior<'_> {
             switch_sheet(self.sch, doc, sheet);
             self.sch.set_tool(tool);
             *self.active = view;
-            *self.focus_lib = None;
-            *self.focus_gerber = false;
+            *self.focus = Focus::Project;
         }
         if kind == ViewKind::Board
             && let Some(tool) = pcb_ui::toolbar(ui, rect, self.pcb, doc, self.keymap)
@@ -2896,8 +2916,7 @@ impl TreeBehavior<'_> {
             }
             self.pcb.set_tool(tool);
             *self.active = view;
-            *self.focus_lib = None;
-            *self.focus_gerber = false;
+            *self.focus = Focus::Project;
         }
         let pane = self.panes.get(view);
         let entries = doc.view(view).layer_menu();
@@ -2924,8 +2943,7 @@ impl TreeBehavior<'_> {
         }
         if response.hovered() && ui.input(|i| i.pointer.any_pressed()) {
             *self.active = view;
-            *self.focus_lib = None;
-            *self.focus_gerber = false;
+            *self.focus = Focus::Project;
         }
         // The schematic tools work on the sheet the pointer is in.
         let sheet = view.sheet();
@@ -3069,8 +3087,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                 if let Some(l) = l
                     && l.center_ui(ui, self.keymap)
                 {
-                    *self.focus_lib = Some(key);
-                    *self.focus_gerber = false;
+                    *self.focus = Focus::Library(key);
                 }
             }
             Tab::Gerber => {
@@ -3086,17 +3103,14 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         if response.clicked() || response.drag_started() {
             match Self::tab_of(tiles, tile_id) {
                 Some(Tab::Library(key)) => {
-                    *self.focus_lib = Some(key);
-                    *self.focus_gerber = false;
+                    *self.focus = Focus::Library(key);
                 }
                 Some(Tab::View(view)) => {
                     *self.active = view;
-                    *self.focus_lib = None;
-                    *self.focus_gerber = false;
+                    *self.focus = Focus::Project;
                 }
                 Some(Tab::Gerber) => {
-                    *self.focus_lib = None;
-                    *self.focus_gerber = true;
+                    *self.focus = Focus::Gerber;
                 }
                 None => {}
             }
@@ -3282,8 +3296,7 @@ impl eframe::App for PcbApp {
         match self.gerber_act.take() {
             Some(GerberAct::Reexport) => self.export_gerber(),
             Some(GerberAct::Focus) => {
-                self.focus_gerber = true;
-                self.focus_lib = None;
+                self.focus = Focus::Gerber;
             }
             None => {}
         }
@@ -3321,8 +3334,7 @@ impl eframe::App for PcbApp {
                 panes: &mut self.panes,
                 libraries: &mut self.libraries,
                 active: &mut self.active,
-                focus_lib: &mut self.focus_lib,
-                focus_gerber: &mut self.focus_gerber,
+                focus: &mut self.focus,
                 carry_clip: &mut self.carry_clip,
                 hovered: &mut self.hovered,
                 close_requests: &mut self.close_requests,

@@ -340,9 +340,11 @@ and hierarchical sheets.
   pointer moves there. Scripts touch the real system clipboard.
 - **Keymap** (`keymap.rs`): actions are global or per context (library, schematic,
   board); contexts may share keys. `ToolMeasure` (M) and `ToolSelect` are global. The
-  Gerber tab has no context of its own: `focus_gerber` (set by clicking or opening it,
-  cleared by any other canvas or library tab) routes M, Select, Esc and fit to it
-  (`gerber_action`) and blocks the other view keys. `works_while_typing` for window-level actions.
+  Gerber tab has no context of its own: `Focus::Gerber` (set by clicking or opening it)
+  routes M, Select, Esc and fit to it (`gerber_action`) and blocks the other view keys.
+  `PcbApp::focus` (`Project`, `Library(key)`, `Gerber`) picks who takes keys; `active`
+  is the project pane and stays meaningful under any focus (paste target, sheet
+  worked on). `follow_visible_tabs` (every frame) drops focus from hidden tabs. `works_while_typing` for window-level actions.
 - **Settings** (`settings.rs`, `PCB_DESIGNER_CONFIG` overrides the folder): theme, unit,
   recent projects, changed key bindings, dock.
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
