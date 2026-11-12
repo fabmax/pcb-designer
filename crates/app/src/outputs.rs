@@ -5,13 +5,16 @@
 use std::path::{Path, PathBuf};
 
 use egui::{Align2, RichText};
+use model::{Coord, Point};
 use view::gerber::{self, Manifest, design_hash, gerber_dir, read_manifest};
+use view::measure::Measure;
 use view::{Document, GerberView};
 
 use crate::canvas::Canvas;
 use crate::icons::Icon;
-use crate::keymap::Keymap;
+use crate::keymap::{Action, Keymap};
 use crate::project_panel::{self, Info, NodeId, TreeNode};
+use crate::toolbar::ToolButton;
 use crate::{theme, toolbar};
 
 /// What the export folder holds, as last scanned.
@@ -122,6 +125,9 @@ pub struct GerberPane {
     pub error: Option<String>,
     pub grid: model::Coord,
     pub snap: bool,
+    /// The Measure tool is on (else Select: hover readouts only).
+    pub measuring: bool,
+    pub measure: Measure,
 }
 
 impl Default for GerberPane {
@@ -132,6 +138,8 @@ impl Default for GerberPane {
             error: None,
             grid: model::mm(0.5),
             snap: false,
+            measuring: false,
+            measure: Measure::default(),
         }
     }
 }
@@ -166,6 +174,26 @@ impl GerberPane {
         }
     }
 
+    pub fn set_measuring(&mut self, on: bool) {
+        self.measuring = on;
+        self.measure.clear();
+    }
+
+    /// Esc: clear the measurement, else go back to Select.
+    pub fn escape(&mut self) {
+        if !self.measure.escape() {
+            self.measuring = false;
+        }
+    }
+
+    fn snap_point(&self, raw: Point) -> Point {
+        if !self.snap || self.grid <= 0 {
+            return raw;
+        }
+        let g = self.grid;
+        Point::new((raw.x as f64 / g as f64).round() as Coord * g, (raw.y as f64 / g as f64).round() as Coord * g)
+    }
+
     pub fn restyle(&mut self) {
         self.canvas.background = view::style::background(self.canvas.background.grid);
         if let Some(v) = &mut self.view {
@@ -177,6 +205,8 @@ impl GerberPane {
 /// What the Gerber tab asks for.
 pub enum GerberAct {
     Reexport,
+    /// The tab was clicked: it takes the keys.
+    Focus,
 }
 
 /// The tab: the files on the canvas, view buttons, a banner when they are outdated or
@@ -212,12 +242,54 @@ pub fn gerber_ui(ui: &mut egui::Ui, pane: &mut GerberPane, outdated: bool, keyma
         if fit {
             pane.canvas.request_fit();
         }
-        if response.hovered()
+        let b = |measuring: bool, icon, name, about, action| ToolButton {
+            tool: measuring,
+            icon,
+            name,
+            about,
+            action: Some(action),
+        };
+        let select = [b(false, Icon::Select, "Select", "Point at objects to see what they are.", Action::ToolSelect)];
+        let measure = [b(true, Icon::Measure, "Measure", "Measure distances between two points.", Action::ToolMeasure)];
+        let id = egui::Id::unique("gerber_toolbar");
+        let (chosen, _) = toolbar::strip(ui, rect, id, &[&select, &measure], pane.measuring, keymap);
+        if let Some(on) = chosen {
+            pane.measuring = on;
+            pane.measure.clear();
+            act = Some(GerberAct::Focus);
+        }
+        if pane.measuring {
+            toolbar::hint(ui, rect, view::measure::HINT);
+            let tol = (8.0 / pane.canvas.camera.zoom * 1e6) as Coord;
+            let free = ui.input(|i| i.modifiers.alt);
+            let at = response.hover_pos().map(|p| {
+                let [x, y] = pane.canvas.screen_to_world(p);
+                let raw = Point::mm(x, y);
+                let grid = pane.snap_point(raw);
+                let points = pane.view.as_ref().map(|v| v.snap_points(raw, tol)).unwrap_or_default();
+                view::measure::snap(raw, grid, points, tol, free)
+            });
+            pane.measure.hover(at.map(|a| a.0), at.is_some_and(|a| a.1));
+            if let Some((p, _)) = at
+                && response.hovered()
+                && ui.input(|i| i.pointer.primary_pressed())
+            {
+                pane.measure.click(p);
+            }
+            crate::canvas::draw_measure(ui, &pane.canvas, response.rect, &pane.measure);
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            }
+        } else if response.hovered()
+            && let Some(v) = &pane.view
             && let Some(p) = pane.canvas.cursor_world
             && let Some(text) = v.describe(p)
         {
             response.clone().on_hover_text_at_pointer(text);
         }
+    }
+    if act.is_none() && response.hovered() && ui.input(|i| i.pointer.any_pressed()) {
+        act = Some(GerberAct::Focus);
     }
 
     // Banner: outdated export, unreadable files.

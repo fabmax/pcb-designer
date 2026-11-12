@@ -100,6 +100,11 @@ impl Script {
         Ok(Script { steps, wait: 0, board: false, switched: true })
     }
 
+    /// Leave the tab in front as it is at the start (`--show` opened one).
+    pub fn keep_tab(&mut self) {
+        self.switched = false;
+    }
+
     pub fn is_done(&self) -> bool {
         self.steps.is_empty() && self.wait == 0
     }

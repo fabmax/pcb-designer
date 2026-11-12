@@ -333,8 +333,16 @@ impl LibraryEditor {
             b(Tool::Circle, Icon::Circle, "Draw circles.", Action::ToolCircle),
             b(Tool::Text, Icon::Text, "Place text.", Action::ToolText),
         ];
+        let measure: &[ToolButton<Tool>] = match item {
+            Item::Symbol(_) => &[],
+            Item::Footprint(_) => {
+                &[b(Tool::Measure, Icon::Measure, "Measure distances between two points.", Action::ToolMeasure)]
+            }
+        };
         let id = egui::Id::unique(("item_toolbar", self.key));
-        let (chosen, _) = toolbar::strip(ui, rect, id, &[&select, &connect, &draw], self.placer.tool, keymap);
+        let groups: Vec<&[ToolButton<Tool>]> =
+            [&select[..], &connect[..], &draw[..], measure].into_iter().filter(|g| !g.is_empty()).collect();
+        let (chosen, _) = toolbar::strip(ui, rect, id, &groups, self.placer.tool, keymap);
         if let Some(tool) = chosen {
             self.set_tool(tool);
         }
@@ -361,6 +369,7 @@ impl LibraryEditor {
             Tool::Line => "Click points · click the last point again or Esc to finish",
             Tool::Rect => "Click two corners",
             Tool::Circle => "Click center, then a point on the circle",
+            Tool::Measure => view::measure::HINT,
             _ => "Click to place · R rotate · Esc done",
         };
         toolbar::hint(ui, rect, tip);
@@ -373,7 +382,31 @@ impl LibraryEditor {
         let canvas = &mut self.canvas;
         let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
         self.item_toolbar(ui, rect, item, keymap);
-        if self.placer.is_placing() {
+        if self.placer.tool == Tool::Measure {
+            let fp = match item {
+                Item::Footprint(f) => self.lib.doc.project().library.footprints.get(f),
+                Item::Symbol(_) => None,
+            };
+            let tol = (8.0 / self.canvas.camera.zoom * 1e6) as model::Coord;
+            let free = ui.input(|i| i.modifiers.alt);
+            let at = response.hover_pos().map(|p| {
+                let [x, y] = self.canvas.screen_to_world(p);
+                let raw = Point::mm(x, y);
+                let points = fp.into_iter().flat_map(view::measure::footprint_points);
+                view::measure::snap(raw, self.it.snap(raw), points, tol, free)
+            });
+            self.placer.measure.hover(at.map(|a| a.0), at.is_some_and(|a| a.1));
+            if let Some((p, _)) = at
+                && response.hovered()
+                && ui.input(|i| i.pointer.primary_pressed())
+            {
+                self.placer.measure.click(p);
+            }
+            canvas::draw_measure(ui, &self.canvas, response.rect, &self.placer.measure);
+            if response.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            }
+        } else if self.placer.is_placing() {
             let world = response.hover_pos().map(|p| {
                 let [x, y] = self.canvas.screen_to_world(p);
                 self.it.snap(Point::mm(x, y))
@@ -636,7 +669,7 @@ impl LibraryEditor {
                     ui.end_row();
                 }
             }
-            Tool::Select => {}
+            Tool::Select | Tool::Measure => {}
         });
         ui.add_space(6.0);
         hint(ui, "R rotates · Esc returns to Select");

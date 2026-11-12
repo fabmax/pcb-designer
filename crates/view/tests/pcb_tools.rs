@@ -159,3 +159,31 @@ fn draw_a_zone_that_connects_its_net() {
     assert_eq!(copper.unrouted(), 1, "the zone connects J1.1 and R1.1: {:?}", copper.ratsnest);
     assert!(copper.shorts.is_empty());
 }
+
+#[test]
+fn measure_between_pads_snaps_and_leaves_the_board_unchanged() {
+    let mut doc = Document::new(Project::new("T"));
+    let parts = vec![PART_RESISTOR];
+    doc.execute(Command::ImportParts { library: builtin::builtin_library(), parts }).unwrap();
+    let r = doc.project().library.parts.iter().next().unwrap().id;
+    let (_, f) = place(&mut doc, r, 0.0, Point::mm(10.0, 10.0));
+    let (a, b) = (pad(&doc, f, "1"), pad(&doc, f, "2"));
+    let revision = doc.revision;
+    let mut t = PcbPlacer::default();
+    t.set_tool(PcbTool::Measure);
+    assert!(!click_near(&mut t, &mut doc, a));
+    assert_eq!(t.measure.target, Some(a), "snapped to the pad centre");
+    assert!(!click_near(&mut t, &mut doc, b));
+    assert!(t.measure.is_pinned());
+    assert_eq!(t.measure.segment(), Some((a, b)));
+    assert_eq!(t.measure.reading().unwrap().length, (b - a).length());
+    // Alt: the raw pointer position.
+    t.free = true;
+    t.hover(&mut doc, Some((a + Point::new(70_000, 0), a)), mm(0.3));
+    assert_eq!(t.measure.target, None);
+    // Esc clears, a second Esc leaves the tool; the board never changed.
+    assert!(!t.escape());
+    assert_eq!(t.measure.segment(), None);
+    assert!(t.escape());
+    assert_eq!(doc.revision, revision);
+}

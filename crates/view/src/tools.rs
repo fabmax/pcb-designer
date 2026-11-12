@@ -15,6 +15,8 @@ pub enum Tool {
     Rect,
     Circle,
     Text,
+    /// Footprints only.
+    Measure,
 }
 
 impl Tool {
@@ -27,6 +29,7 @@ impl Tool {
             Tool::Rect => "Rectangle",
             Tool::Circle => "Circle",
             Tool::Text => "Text",
+            Tool::Measure => "Measure",
         }
     }
 
@@ -34,7 +37,9 @@ impl Tool {
     pub fn for_item(item: Item) -> &'static [Tool] {
         match item {
             Item::Symbol(_) => &[Tool::Select, Tool::Pin, Tool::Line, Tool::Rect, Tool::Circle, Tool::Text],
-            Item::Footprint(_) => &[Tool::Select, Tool::Pad, Tool::Line, Tool::Rect, Tool::Circle, Tool::Text],
+            Item::Footprint(_) => {
+                &[Tool::Select, Tool::Pad, Tool::Line, Tool::Rect, Tool::Circle, Tool::Text, Tool::Measure]
+            }
         }
     }
 }
@@ -101,11 +106,18 @@ pub struct Placer {
     /// Points clicked so far (line chains, rectangle corner, circle center).
     points: Vec<Point>,
     cursor: Option<Point>,
+    pub measure: crate::measure::Measure,
 }
 
 impl Default for Placer {
     fn default() -> Self {
-        Placer { tool: Tool::Select, settings: Settings::default(), points: Vec::new(), cursor: None }
+        Placer {
+            tool: Tool::Select,
+            settings: Settings::default(),
+            points: Vec::new(),
+            cursor: None,
+            measure: Default::default(),
+        }
     }
 }
 
@@ -123,6 +135,7 @@ impl Placer {
     pub fn set_tool(&mut self, tool: Tool, content: Option<&Content>) {
         self.tool = tool;
         self.points.clear();
+        self.measure.clear();
         if let Some(c) = content
             && matches!(tool, Tool::Pin | Tool::Pad)
         {
@@ -137,6 +150,9 @@ impl Placer {
 
     /// Escape: abort the current shape, or leave the tool. Returns true if the tool was left.
     pub fn escape(&mut self) -> bool {
+        if self.tool == Tool::Measure && self.measure.escape() {
+            return false;
+        }
         if self.points.is_empty() {
             self.tool = Tool::Select;
             true
@@ -159,6 +175,10 @@ impl Placer {
         let width = self.width(item);
         let created = match self.tool {
             Tool::Select => None,
+            Tool::Measure => {
+                self.measure.click(p);
+                None
+            }
             Tool::Pin | Tool::Pad | Tool::Text => {
                 let ghost = self.ghost_at(item, p).expect("single-click tools have a ghost");
                 Some(add(doc, item, ghost, s.layer)?)
@@ -246,7 +266,7 @@ impl Placer {
                 let &a = self.points.first()?;
                 Ghost::Shape(self.shape(*self.points.last().unwrap_or(&a), p, self.width(item)))
             }
-            Tool::Select => return None,
+            Tool::Select | Tool::Measure => return None,
         })
     }
 

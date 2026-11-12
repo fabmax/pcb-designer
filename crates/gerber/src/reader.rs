@@ -159,6 +159,25 @@ pub struct Object {
     /// The aperture used (`None` for regions).
     pub dcode: Option<u32>,
     pub prims: Vec<Prim>,
+    /// Where a flash (or a drill hole) sits.
+    pub flash: Option<Point>,
+}
+
+impl Object {
+    /// Points worth measuring from: a flash's centre, a stroke's ends.
+    pub fn snap_points(&self) -> Vec<Point> {
+        if let Some(p) = self.flash {
+            return vec![p];
+        }
+        let ends = |p: &Prim| match p {
+            Prim::Line { a, b, .. } => Some((*a, *b)),
+            _ => None,
+        };
+        match (self.dcode, self.prims.first().and_then(ends), self.prims.last().and_then(ends)) {
+            (Some(_), Some((a, _)), Some((_, b))) => vec![a, b],
+            _ => Vec::new(),
+        }
+    }
 }
 
 /// An aperture as defined in the file (for hover readouts).
@@ -631,7 +650,7 @@ fn word(st: &mut State, img: &mut Image, w: &str) -> Result<bool, String> {
                 if let Some(contours) = st.region.take() {
                     let prims: Vec<Prim> = contours.into_iter().filter(|c| c.len() >= 3).map(Prim::Polygon).collect();
                     if !prims.is_empty() {
-                        img.objects.push(Object { dark: st.dark, dcode: None, prims });
+                        img.objects.push(Object { dark: st.dark, dcode: None, prims, flash: None });
                     }
                 }
             }
@@ -705,7 +724,7 @@ fn word(st: &mut State, img: &mut Image, w: &str) -> Result<bool, String> {
                 };
                 let width = st.len(width * st.scaling);
                 let prims = points.windows(2).map(|p| Prim::Line { a: st.nm(p[0]), b: st.nm(p[1]), width }).collect();
-                img.objects.push(Object { dark: st.dark, dcode: Some(code), prims });
+                img.objects.push(Object { dark: st.dark, dcode: Some(code), prims, flash: None });
             }
         }
         Some(3) => {
@@ -713,7 +732,7 @@ fn word(st: &mut State, img: &mut Image, w: &str) -> Result<bool, String> {
             let template = st.templates.get(&code).ok_or(format!("undefined aperture D{code}"))?.clone();
             let local = aperture_prims(&template, &mut img.warnings);
             let prims = local.into_iter().map(|p| place(st, p, target)).collect();
-            img.objects.push(Object { dark: st.dark, dcode: Some(code), prims });
+            img.objects.push(Object { dark: st.dark, dcode: Some(code), prims, flash: Some(st.nm(target)) });
         }
         None => {}
         Some(d) => return Err(format!("unknown operation D{d:02}")),
@@ -839,6 +858,7 @@ pub fn parse_excellon(text: &str) -> Result<Image, ParseError> {
                     dark: true,
                     dcode: Some(tool),
                     prims: vec![Prim::Circle { center, diameter: (d * scale).round() as Coord }],
+                    flash: Some(center),
                 });
             }
             _ => {}

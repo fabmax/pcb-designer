@@ -106,15 +106,16 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
 - More flags:
   - `--side-by-side`
   - `--select R1`
-  - `--show footprint:0805` (opens a library item; `--show gerber` opens the Gerber tab
-    of a project with an export)
+  - `--show footprint:SOIC-8` (opens an item of the last library, with `--demo` the demo
+    parts; `--show gerber` opens the Gerber tab of a saved project with an export)
   - `--panel messages` (repeatable; shows a panel for this run only, see `dock.rs`)
   - `--script "board; ui-click X,Y; ui-move X,Y; key W; click X,Y; wait N"`, plus
     `ui-double-click X,Y`, `ui-right-click X,Y` and `type TEXT`. Put a `wait 30` before a
     double-click: egui counts clicks less than 0.3 s apart as one triple-click.
-  - World coordinates are in mm; `ui-*` steps take screen points.
-  - A script brings the schematic tab to the front at its start and on `board` /
-    `schematic` steps; clicks may switch tabs afterwards.
+  - World coordinates are in mm (schematic and board only); `ui-*` steps take screen
+    points (use them in library and Gerber tabs).
+  - A script brings the schematic tab to the front at its start (unless `--show` opened
+    a tab) and on `board` / `schematic` steps; clicks may switch tabs afterwards.
   - `ui-click` on menus is unreliable.
 - Without a window: `cargo run -p mcp --example render_board -- out.png [w h] [--light]
   [--schematic] [--show-layer "Top Solder Mask"]`.

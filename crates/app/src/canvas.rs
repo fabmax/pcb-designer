@@ -242,3 +242,48 @@ pub fn draw_box(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, r: model::Rect
         painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Inside);
     }
 }
+
+/// The measure tool's overlay: the snap target ring, the ruler with crosses at its ends
+/// and a label with length, ΔX, ΔY and angle in the current unit.
+pub fn draw_measure(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, m: &view::measure::Measure) {
+    use egui::{FontId, Stroke, vec2};
+    let painter = ui.painter_at(clip);
+    let accent = crate::theme::accent();
+    let screen = |p: model::Point| canvas.world_to_screen([p.x as f64 * 1e-6, p.y as f64 * 1e-6]);
+    if let Some(t) = m.target {
+        painter.circle_stroke(screen(t), 6.0, Stroke::new(1.5, accent));
+    }
+    let (Some((a, b)), Some(r)) = (m.segment(), m.reading()) else { return };
+    let (sa, sb) = (screen(a), screen(b));
+    let stroke = Stroke::new(2.0, accent);
+    painter.line_segment([sa, sb], stroke);
+    for c in [sa, sb] {
+        painter.line_segment([c - vec2(5.0, 5.0), c + vec2(5.0, 5.0)], stroke);
+        painter.line_segment([c - vec2(5.0, -5.0), c + vec2(5.0, -5.0)], stroke);
+    }
+    let text = format!(
+        "{}\nΔX {}   ΔY {}   {:.1}°",
+        crate::units::fmt(r.length.round() as model::Coord),
+        crate::units::fmt(r.dx),
+        crate::units::fmt(r.dy),
+        r.angle
+    );
+    let font = FontId::proportional(12.0);
+    let galley = painter.layout_no_wrap(text, font, ui.visuals().text_color());
+    // Beside the end, away from the ruler.
+    let away = if sb.x >= sa.x { 14.0 } else { -14.0 - galley.size().x };
+    let mut pos = sb + vec2(away, 10.0);
+    // Kept inside the canvas.
+    let size = galley.size();
+    let inner = clip.shrink(8.0);
+    if pos.x + size.x > inner.right() {
+        pos.x = sb.x - 14.0 - size.x;
+    }
+    if pos.y + size.y > inner.bottom() {
+        pos.y = sb.y - 10.0 - size.y;
+    }
+    pos = pos.max(inner.min);
+    let bg = egui::Rect::from_min_size(pos, galley.size()).expand(5.0);
+    painter.rect(bg, 4.0, crate::theme::panel(), Stroke::new(1.0, accent), egui::StrokeKind::Inside);
+    painter.galley(pos, galley, ui.visuals().text_color());
+}
