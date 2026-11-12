@@ -47,7 +47,8 @@ tool (ruler button, **M**): click a start point, the ruler follows the pointer w
 length, ΔX, ΔY and angle in the current unit, a second click pins it, the next click
 starts a new one. Ends snap to pad and via centres, track ends and corners (in the
 Gerber tab: flash centres and line ends), else to the grid; hold Alt for a free point.
-Esc clears the measurement, a second Esc returns to Select.
+⌘C (Ctrl+C) copies the reading as text. Esc clears the measurement, a second Esc
+returns to Select.
 
 On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.app`
 (`--install` copies it to /Applications). Run from the bundle, the app is named

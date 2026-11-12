@@ -217,7 +217,8 @@ and hierarchical sheets.
   via centres, track ends, board graphic vertices), `footprint_points`,
   `GerberView::snap_points` (flash centres, stroke ends, via the R-tree). One
   measurement per editor, kept in `PcbPlacer` / `Placer` / `GerberPane`, cleared by
-  `set_tool`; not saved, no commands. The app draws it (`canvas::draw_measure`).
+  `set_tool`; not saved, no commands. ⌘C copies `Reading::text` when the focused
+  editor's Measure tool shows one (`App::measure_reading`), before object copy. The app draws it (`canvas::draw_measure`).
   Gotcha: `board_points` scans the whole board per hover.
 - `clipboard`: copy (anchor = snapped reference point of the first copyable object) and
   paste into a view, checking the clip's domain. A paste is carried:
@@ -382,8 +383,7 @@ defers.
   G74 arcs, LM, thermal primitives, slots in drill files.
 - Clipboard: copying sheet symbols (a deep copy of the sub-sheet), carrying a paste
   between the schematic and the board.
-- Measure tool: edge-to-edge (clearance) measuring, copying the readout (waits for a
-  clipboard design), snapping to a pad's centre from anywhere inside it, an index for
+- Measure tool: edge-to-edge (clearance) measuring, snapping to a pad's centre from anywhere inside it, an index for
   `board_points` on huge boards.
 - Per-pad mask and paste overrides; mask/paste openings in the footprint editor.
 - Clearance checking while routing; push-and-shove; dragging tracks that stay connected.

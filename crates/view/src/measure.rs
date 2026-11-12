@@ -7,7 +7,11 @@ use editor_core::query::footprint_of_instance;
 use model::*;
 
 /// The usage hint of the tool.
-pub const HINT: &str = "Click two points to measure · ends snap to pads and corners (Alt: free) · Esc clears";
+pub const HINT: &str = if cfg!(target_os = "macos") {
+    "Click two points to measure · ends snap to pads and corners (Alt: free) · ⌘C copies · Esc clears"
+} else {
+    "Click two points to measure · ends snap to pads and corners (Alt: free) · Ctrl+C copies · Esc clears"
+};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Measure {
@@ -28,6 +32,14 @@ pub struct Reading {
     pub dy: Coord,
     /// Counterclockwise from +X, in degrees (-180, 180].
     pub angle: f64,
+}
+
+impl Reading {
+    /// As text, lengths through `fmt` (the current unit):
+    /// `12.700 mm (ΔX 12.700 mm, ΔY 0.000 mm, 0.0°)`.
+    pub fn text(&self, fmt: impl Fn(Coord) -> String) -> String {
+        format!("{} (ΔX {}, ΔY {}, {:.1}°)", fmt(self.length.round() as Coord), fmt(self.dx), fmt(self.dy), self.angle)
+    }
 }
 
 impl Measure {
@@ -165,6 +177,15 @@ mod tests {
         assert_eq!(m.reading().unwrap().length, 0.0);
         assert!(m.escape());
         assert!(!m.escape(), "nothing left: the tool is left");
+    }
+
+    #[test]
+    fn reading_as_text() {
+        let mut m = Measure::default();
+        m.click(Point::ZERO);
+        m.click(Point::mm(3.0, 4.0));
+        let text = m.reading().unwrap().text(|c| format!("{:.3} mm", c as f64 * 1e-6));
+        assert_eq!(text, "5.000 mm (ΔX 3.000 mm, ΔY 4.000 mm, 53.1°)");
     }
 
     #[test]
