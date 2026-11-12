@@ -26,8 +26,8 @@ Each change (a milestone or a refinement) runs through these steps:
    **Later**, and remove what you finished from it.
 6. Commit with a message like `M9: copper zones …` or `GUI: floating icon tool bars …`.
    End it with the attribution trailer.
-7. `git checkout main && git merge --no-ff <branch>`, with a `Merge …` message. Don't
-   push: the user tries changes out first, and pushes main to `origin` (private GitHub
+7. `git rebase main` on the branch, then `git checkout main && git merge --ff-only
+   <branch>` (linear history, no merge commits). Don't push: the user tries changes out first, and pushes main to `origin` (private GitHub
    repo `fabmax/pcb-designer`) or asks for it. Then carry on with the next milestone
    without asking.
 
