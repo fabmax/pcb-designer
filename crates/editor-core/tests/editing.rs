@@ -248,62 +248,67 @@ impl Rng {
     }
 }
 
+const PARTS: [Id; 4] = [PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4];
+
+/// A random command for the project's current contents (for the sequence tests).
+fn random_command(rng: &mut Rng, p: &Project) -> Command {
+    let symbols: Vec<Id> = p.schematic.symbols.ids().collect();
+    let wires: Vec<Id> = p.schematic.wires.ids().collect();
+    let footprints: Vec<Id> = p.board.footprints.ids().collect();
+    let pt = |rng: &mut Rng| Point::mm(rng.next(100) as f64 * 1.27, rng.next(100) as f64 * 1.27);
+    match rng.next(7) {
+        0 | 1 => Command::PlacePart {
+            part: PARTS[rng.next(4)],
+            variant: None,
+            sheet: None,
+            pos: pt(rng),
+            rotation: Angle::deg(90.0 * rng.next(4) as f64),
+            mirror: rng.next(2) == 1,
+            refdes: None,
+            value: None,
+        },
+        2 => Command::AddWire { sheet: None, points: vec![pt(rng), pt(rng), pt(rng)] },
+        3 if !symbols.is_empty() => Command::Move {
+            ids: vec![ObjectId::Symbol(symbols[rng.next(symbols.len())])],
+            delta: pt(rng),
+            keep_connected: true,
+        },
+        4 if !symbols.is_empty() || !wires.is_empty() => {
+            let mut ids = Vec::new();
+            if !symbols.is_empty() {
+                ids.push(ObjectId::Symbol(symbols[rng.next(symbols.len())]));
+            }
+            if !wires.is_empty() {
+                ids.push(ObjectId::Wire(wires[rng.next(wires.len())]));
+            }
+            Command::Delete { ids }
+        }
+        5 if !footprints.is_empty() => Command::Rotate {
+            ids: vec![ObjectId::Footprint(footprints[rng.next(footprints.len())])],
+            center: pt(rng),
+            angle: Angle::DEG90,
+            keep_connected: false,
+        },
+        _ => Command::AddLabel {
+            sheet: None,
+            pos: pt(rng),
+            name: "GND".into(),
+            kind: LabelKind::Power,
+            shape: LabelShape::default(),
+            rotation: Angle::ZERO,
+        },
+    }
+}
+
 #[test]
 fn random_command_sequences_undo_and_redo_exactly() {
     for seed in 1..=5u64 {
         let mut ed = editor_with_parts();
         let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
         let start = files(ed.project());
-        let parts = [PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4];
         let mut applied = 0;
         for _ in 0..200 {
-            let p = ed.project();
-            let symbols: Vec<Id> = p.schematic.symbols.ids().collect();
-            let wires: Vec<Id> = p.schematic.wires.ids().collect();
-            let footprints: Vec<Id> = p.board.footprints.ids().collect();
-            let pt = |rng: &mut Rng| Point::mm(rng.next(100) as f64 * 1.27, rng.next(100) as f64 * 1.27);
-            let cmd = match rng.next(7) {
-                0 | 1 => Command::PlacePart {
-                    part: parts[rng.next(4)],
-                    variant: None,
-                    sheet: None,
-                    pos: pt(&mut rng),
-                    rotation: Angle::deg(90.0 * rng.next(4) as f64),
-                    mirror: rng.next(2) == 1,
-                    refdes: None,
-                    value: None,
-                },
-                2 => Command::AddWire { sheet: None, points: vec![pt(&mut rng), pt(&mut rng), pt(&mut rng)] },
-                3 if !symbols.is_empty() => Command::Move {
-                    ids: vec![ObjectId::Symbol(symbols[rng.next(symbols.len())])],
-                    delta: pt(&mut rng),
-                    keep_connected: true,
-                },
-                4 if !symbols.is_empty() || !wires.is_empty() => {
-                    let mut ids = Vec::new();
-                    if !symbols.is_empty() {
-                        ids.push(ObjectId::Symbol(symbols[rng.next(symbols.len())]));
-                    }
-                    if !wires.is_empty() {
-                        ids.push(ObjectId::Wire(wires[rng.next(wires.len())]));
-                    }
-                    Command::Delete { ids }
-                }
-                5 if !footprints.is_empty() => Command::Rotate {
-                    ids: vec![ObjectId::Footprint(footprints[rng.next(footprints.len())])],
-                    center: pt(&mut rng),
-                    angle: Angle::DEG90,
-                    keep_connected: false,
-                },
-                _ => Command::AddLabel {
-                    sheet: None,
-                    pos: pt(&mut rng),
-                    name: "GND".into(),
-                    kind: LabelKind::Power,
-                    shape: LabelShape::default(),
-                    rotation: Angle::ZERO,
-                },
-            };
+            let cmd = random_command(&mut rng, ed.project());
             if ed.execute(cmd).is_ok() {
                 applied += 1;
             }
@@ -361,4 +366,88 @@ fn grouped_moves_form_one_undo_step() {
     ed.undo();
     assert_eq!(files(ed.project()), before);
     assert_eq!(ed.history().undo_label(), Some("Place part"));
+}
+
+/// Wires W0..Wn-1 in stored order; returns their ids.
+fn add_wires(ed: &mut Editor, n: usize) -> Vec<Id> {
+    (0..n)
+        .map(|i| {
+            let x = i as f64 * 10.0;
+            ed.execute(Command::AddWire { sheet: None, points: vec![Point::mm(x, 0.0), Point::mm(x, 5.0)] }).unwrap();
+            ed.project().schematic.wires.ids().last().unwrap()
+        })
+        .collect()
+}
+
+#[test]
+fn grouped_update_then_delete_restores_order_on_undo() {
+    // One undo step (a drag, an agent batch) updates A, deletes B, which is stored after
+    // A, then deletes A. Undo re-inserts by index, so the two removals must stay in
+    // order; merging A's changes into its first one would put B back one slot late.
+    let mut ed = editor_with_parts();
+    let wires = add_wires(&mut ed, 7);
+    let before = files(ed.project());
+    let (a, b) = (wires[2], wires[5]);
+    let mv = Command::Move { ids: vec![ObjectId::Wire(a)], delta: Point::mm(1.0, 0.0), keep_connected: false };
+    ed.execute_grouped(mv, Some(7)).unwrap();
+    ed.execute_grouped(Command::Delete { ids: vec![ObjectId::Wire(b)] }, Some(7)).unwrap();
+    ed.execute_grouped(Command::Delete { ids: vec![ObjectId::Wire(a)] }, Some(7)).unwrap();
+    ed.close_group();
+    assert_eq!(ed.project().schematic.wires.len(), 5);
+    let after = files(ed.project());
+    ed.undo();
+    assert_eq!(files(ed.project()), before, "undo restores the stored order");
+    assert_eq!(ed.history().undo_label(), Some("Add wire"));
+    ed.redo();
+    assert_eq!(files(ed.project()), after);
+}
+
+#[test]
+fn grouped_delete_then_reinsert_restores_order_on_undo() {
+    // Deleting an object and inserting it again in one undo step appends it: not a no-op.
+    // Undo puts it back where it was, redo at the end again.
+    let mut ed = editor_with_parts();
+    let wires = add_wires(&mut ed, 4);
+    let before = files(ed.project());
+    let w = ed.project().schematic.wires.get(wires[1]).unwrap().clone();
+    ed.execute_grouped(Command::Delete { ids: vec![ObjectId::Wire(w.id)] }, Some(8)).unwrap();
+    ed.execute_grouped(Command::Insert { objects: vec![Object::Wire(w.clone())] }, Some(8)).unwrap();
+    ed.close_group();
+    assert_eq!(ed.project().schematic.wires.ids().last(), Some(w.id), "re-inserted at the end");
+    let after = files(ed.project());
+    assert_ne!(after, before);
+    ed.undo();
+    assert_eq!(files(ed.project()), before);
+    ed.redo();
+    assert_eq!(files(ed.project()), after);
+}
+
+#[test]
+fn random_grouped_command_sequences_undo_and_redo_exactly() {
+    // Several commands per undo step, as drags and agent batches produce: their change
+    // sets are merged into one, which must still replay exactly in both directions.
+    for seed in 1..=5u64 {
+        let mut ed = editor_with_parts();
+        let mut rng = Rng(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        let start = files(ed.project());
+        let mut applied = 0;
+        for group in 1..=40u64 {
+            for _ in 0..1 + rng.next(5) {
+                let cmd = random_command(&mut rng, ed.project());
+                if ed.execute_grouped(cmd, Some(group)).is_ok() {
+                    applied += 1;
+                }
+            }
+            ed.close_group();
+        }
+        assert!(applied > 60, "seed {seed}: only {applied} commands applied");
+        assert_eq!(ed.project().validate(), Vec::<String>::new(), "seed {seed}");
+        let end = files(ed.project());
+        while ed.undo().is_some() {}
+        // Undo everything except the initial import.
+        ed.redo();
+        assert_eq!(files(ed.project()), start, "seed {seed}: undo all");
+        while ed.redo().is_some() {}
+        assert_eq!(files(ed.project()), end, "seed {seed}: redo all");
+    }
 }

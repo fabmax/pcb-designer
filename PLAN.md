@@ -61,7 +61,12 @@ and hierarchical sheets.
   back. Schematic → board sync runs in the same transaction, so one undo reverts both.
   Tests check byte-identical files after undo all / redo all.
 - The `ChangeSet` drives incremental updates. Board setup and the library list ride
-  along as before/after (`setup`, `libraries`); views ignore them.
+  along as before/after (`setup`, `libraries`); views ignore them. Gotcha:
+  `ChangeSet::coalesce` (also behind `then`, which merges grouped commands into one undo
+  step) folds only updates into an earlier change of the same object. Removals and
+  re-insertions keep their event order, because undo re-inserts removed objects at
+  their stored index: an object updated, then removed, becomes one removal where the
+  removal happened; one removed and inserted again stays two changes (it is appended).
   `Change::affects_connectivity`: schematic changes always; library edits only when
   pins, pads, units or variants change.
 - `Document::read_only` (Built-in Library) makes every command fail with a reason.
