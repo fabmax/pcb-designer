@@ -89,8 +89,8 @@ impl ChangeSet {
     }
 
     /// `self` followed by `next`, as one change set.
-    pub fn then(&self, next: ChangeSet) -> ChangeSet {
-        let mut all = self.changes.clone();
+    pub fn then(self, next: ChangeSet) -> ChangeSet {
+        let mut all = self.changes;
         all.extend(next.changes);
         ChangeSet::coalesce(all, chain(&self.setup, next.setup), chain(&self.libraries, next.libraries))
     }
@@ -156,23 +156,31 @@ fn chain<T: Clone>(first: &Option<(T, T)>, next: Option<(T, T)>) -> Option<(T, T
     }
 }
 
+/// The history and the project disagree: a change's object is gone. Undo and redo skip
+/// such a change rather than abort halfway (a bug, but the rest stays usable).
+fn diverged(what: &str, id: ObjectId) {
+    log::error!("{what}: {id:?} is missing from the project; change skipped");
+}
+
 /// Undo `set`: apply its changes backwards. Returns the effective changes (for consumers).
 pub(crate) fn apply_reverse(project: &mut Project, set: &ChangeSet) -> ChangeSet {
     let mut done = Vec::with_capacity(set.changes.len());
     for c in set.changes.iter().rev() {
         match (&c.before, &c.after) {
-            (None, Some(_)) => {
-                let taken = project.take(c.id).expect("undo: inserted object exists");
-                done.push(Change { id: c.id, before: Some(taken), after: None });
-            }
+            (None, Some(_)) => match project.take(c.id) {
+                Some(taken) => done.push(Change { id: c.id, before: Some(taken), after: None }),
+                None => diverged("undo of an insertion", c.id),
+            },
             (Some((index, old)), None) => {
                 project.put(old.clone(), Some(*index));
                 done.push(Change { id: c.id, before: None, after: Some(old.clone()) });
             }
-            (Some((_, old)), Some(_)) => {
-                let (index, current) = project.replace(old.clone()).expect("undo: updated object exists");
-                done.push(Change { id: c.id, before: Some((index, current)), after: Some(old.clone()) });
-            }
+            (Some((_, old)), Some(_)) => match project.replace(old.clone()) {
+                Some((index, current)) => {
+                    done.push(Change { id: c.id, before: Some((index, current)), after: Some(old.clone()) })
+                }
+                None => diverged("undo of an update", c.id),
+            },
             (None, None) => {}
         }
     }
@@ -197,14 +205,16 @@ pub(crate) fn apply_forward(project: &mut Project, set: &ChangeSet) -> ChangeSet
                 project.put(new.clone(), None);
                 done.push(c.clone());
             }
-            (Some(_), None) => {
-                let taken = project.take(c.id).expect("redo: removed object exists");
-                done.push(Change { id: c.id, before: Some(taken), after: None });
-            }
-            (Some(_), Some(new)) => {
-                let (index, current) = project.replace(new.clone()).expect("redo: updated object exists");
-                done.push(Change { id: c.id, before: Some((index, current)), after: Some(new.clone()) });
-            }
+            (Some(_), None) => match project.take(c.id) {
+                Some(taken) => done.push(Change { id: c.id, before: Some(taken), after: None }),
+                None => diverged("redo of a removal", c.id),
+            },
+            (Some(_), Some(new)) => match project.replace(new.clone()) {
+                Some((index, current)) => {
+                    done.push(Change { id: c.id, before: Some((index, current)), after: Some(new.clone()) })
+                }
+                None => diverged("redo of an update", c.id),
+            },
             (None, None) => {}
         }
     }
@@ -310,5 +320,43 @@ impl<'p> Transaction<'p> {
         let setup = self.setup_before.map(|b| (b, BoardSetup::of(self.project)));
         let libraries = self.libraries_before.map(|b| (b, self.project.libraries.clone()));
         ChangeSet::coalesce(self.changes, setup, libraries)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use model::*;
+
+    /// A history that no longer matches the project: undo and redo skip the changes whose
+    /// objects are gone and apply the rest.
+    #[test]
+    fn diverged_changes_are_skipped() {
+        let mut project = Project::new("test");
+        let sheet = Id::new();
+        let junction = |x| Junction { id: Id::new(), sheet, pos: Point::mm(x, 0.0) };
+        let (a, b) = (junction(0.0), junction(1.0));
+        project.put(Object::Junction(a.clone()), None);
+        project.put(Object::Junction(b.clone()), None);
+        let moved = Junction { pos: Point::mm(5.0, 0.0), ..a.clone() };
+        let set = ChangeSet {
+            changes: vec![
+                Change {
+                    id: ObjectId::Junction(a.id),
+                    before: Some((0, Object::Junction(a.clone()))),
+                    after: Some(Object::Junction(moved)),
+                },
+                Change { id: ObjectId::Junction(b.id), before: None, after: Some(Object::Junction(b.clone())) },
+            ],
+            ..Default::default()
+        };
+        // `a` vanished behind the history's back.
+        project.take(ObjectId::Junction(a.id));
+        let done = apply_reverse(&mut project, &set);
+        assert_eq!(done.changes.len(), 1, "only b's insertion was undone");
+        assert!(project.schematic.junctions.is_empty());
+        let done = apply_forward(&mut project, &set);
+        assert_eq!(done.changes.len(), 1, "a's update is skipped, b is inserted again");
+        assert_eq!(project.schematic.junctions.len(), 1);
     }
 }

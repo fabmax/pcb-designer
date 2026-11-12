@@ -102,7 +102,11 @@ struct AppHost<'a> {
 }
 
 impl Host for AppHost<'_> {
-    fn document(&mut self) -> &mut Document {
+    fn document(&self) -> &Document {
+        self.doc
+    }
+
+    fn document_mut(&mut self) -> &mut Document {
         self.doc
     }
 
