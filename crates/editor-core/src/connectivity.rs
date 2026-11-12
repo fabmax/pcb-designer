@@ -22,6 +22,7 @@ use rustc_hash::FxHashMap as HashMap;
 use model::*;
 
 use crate::query::symbol_of_instance;
+use crate::union_find::UnionFind;
 
 /// A pin in a net.
 #[derive(Clone, Debug, PartialEq)]
@@ -108,26 +109,6 @@ pub struct Connectivity {
     pub unconnected: Vec<(Id, Id, Point)>,
     /// Nets with conflicting names, misused buses and similar problems.
     pub problems: Vec<Problem>,
-}
-
-struct UnionFind(Vec<u32>);
-
-impl UnionFind {
-    fn find(&mut self, mut x: usize) -> usize {
-        while self.0[x] as usize != x {
-            let p = self.0[x] as usize;
-            self.0[x] = self.0[p];
-            x = p;
-        }
-        x
-    }
-
-    fn union(&mut self, a: usize, b: usize) {
-        let (a, b) = (self.find(a), self.find(b));
-        if a != b {
-            self.0[a.max(b)] = a.min(b) as u32;
-        }
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -262,7 +243,7 @@ impl Connectivity {
         }
         nodes.extend((0..sheet_pins.len()).map(Node::SheetPin));
         let index: HashMap<Node, usize> = nodes.iter().enumerate().map(|(i, &n)| (n, i)).collect();
-        let mut uf = UnionFind((0..nodes.len() as u32).collect());
+        let mut uf = UnionFind::new(nodes.len());
 
         // ---- Points: what touches where
         #[derive(Default)]
@@ -412,7 +393,9 @@ impl Connectivity {
         let mut nets: Vec<Net> = Vec::new();
         for (_, mut net) in groups {
             if net.pins.len() > 1 {
-                net.pins.sort_by_cached_key(|p| (natural_key(&p.refdes), natural_key(&pin_key(p))));
+                net.pins.sort_by(|a, b| {
+                    natural_cmp(&a.refdes, &b.refdes).then_with(|| natural_cmp(pin_key(a), pin_key(b)))
+                });
             }
             if net.pins.len() == 1
                 && net.wires.is_empty()
@@ -468,7 +451,11 @@ impl Connectivity {
             nets.push(net);
         }
         // Named nets and nets with pins first (by name), dangling wires last.
-        nets.sort_by_cached_key(|n| (n.name.is_empty(), natural_key(&n.name), n.wires.first().copied()));
+        nets.sort_by(|a, b| {
+            (a.name.is_empty().cmp(&b.name.is_empty()))
+                .then_with(|| natural_cmp(&a.name, &b.name))
+                .then_with(|| a.wires.first().cmp(&b.wires.first()))
+        });
         unconnected.sort_by_key(|&(s, p, _)| (s, p));
 
         let mut net_of = HashMap::default();
@@ -516,7 +503,7 @@ impl Connectivity {
         }
         let wires: Vec<&BusWire> = s.bus_wires.iter().collect();
         let grid = SegmentGrid::new(wires.iter().map(|w| (w.sheet, w.a, w.b)));
-        let mut uf = UnionFind((0..wires.len() as u32).collect());
+        let mut uf = UnionFind::new(wires.len());
 
         // Touching ends, T-joints and junctions join bus wires.
         let mut ends: HashMap<(Id, Point), u32> = HashMap::default();
@@ -591,7 +578,11 @@ impl Connectivity {
         for bus in &mut buses {
             bus.name = bus.labels.first().and_then(|&l| s.labels.get(l)).map_or(String::new(), |l| l.name.clone());
         }
-        buses.sort_by_cached_key(|b| (b.name.is_empty(), natural_key(&b.name), b.wires.first().copied()));
+        buses.sort_by(|a, b| {
+            (a.name.is_empty().cmp(&b.name.is_empty()))
+                .then_with(|| natural_cmp(&a.name, &b.name))
+                .then_with(|| a.wires.first().cmp(&b.wires.first()))
+        });
         for (i, bus) in buses.iter().enumerate() {
             let ids = bus
                 .wires
@@ -723,23 +714,6 @@ impl Connectivity {
     }
 }
 
-/// Sort key ordering embedded numbers by value ("R2" < "R10"), case-insensitive.
-fn natural_key(s: &str) -> Vec<(u8, u64, String)> {
-    let mut out = Vec::new();
-    let mut rest = s;
-    while let Some(c) = rest.chars().next() {
-        let digit = c.is_ascii_digit();
-        let end = rest.find(|ch: char| ch.is_ascii_digit() != digit).unwrap_or(rest.len());
-        let (chunk, tail) = rest.split_at(end);
-        out.push(match chunk.parse::<u64>() {
-            Ok(n) if digit => (0, n, String::new()),
-            _ => (1, 0, chunk.to_lowercase()),
-        });
-        rest = tail;
-    }
-    out
-}
-
-fn pin_key(p: &NetPin) -> String {
-    p.pads.first().cloned().unwrap_or_else(|| p.pin_number.clone())
+fn pin_key(p: &NetPin) -> &str {
+    p.pads.first().unwrap_or(&p.pin_number)
 }

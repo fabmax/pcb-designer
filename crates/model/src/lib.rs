@@ -11,6 +11,7 @@
 pub mod board;
 pub mod builtin;
 pub mod geom;
+pub mod hash;
 pub mod id;
 pub mod io;
 pub mod library;
@@ -22,6 +23,7 @@ pub mod units;
 
 pub use board::*;
 pub use geom::*;
+pub use hash::Fnv1a;
 pub use id::Id;
 pub use library::*;
 pub use object::{Object, ObjectId, ObjectKind};

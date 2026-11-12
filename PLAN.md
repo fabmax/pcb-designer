@@ -53,6 +53,10 @@ and hierarchical sheets.
 - `Project::libraries`: external library paths, absolute in memory, stored relative to
   the project folder with `/` (`io::stored_path`, `io::normalize` is lexical).
 - Object JSON uses a `"type"` tag (`"kind"` clashed with labels' own `kind` field).
+- Shared helpers: `natural_cmp` (numbers by value, then case-insensitive, then bytes;
+  allocation-free, used for every name sort including netlists) and `Fnv1a` (stored
+  hashes: `content_hash`, `design_hash`; `of_json` hashes while serializing).
+  `kicad::kid` is a different, two-lane hash; changing it changes imported ids.
 
 ## Commands, undo and sync (`editor-core`)
 

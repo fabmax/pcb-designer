@@ -231,8 +231,8 @@ pub fn background(grid: f32) -> Background {
     Background { color: p.background, grid_color: p.grid, axis_color: p.axis, grid, ..Default::default() }
 }
 
-/// Junction dot radius (mm).
-pub const JUNCTION_RADIUS: f32 = 0.45;
+/// Junction dot radius.
+pub const JUNCTION_RADIUS: Coord = 450_000;
 
 /// Schematic wire width.
 pub const WIRE_WIDTH: Coord = 152_400;

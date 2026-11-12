@@ -476,7 +476,7 @@ impl View {
         let Layers::Sch(l) = &self.layers else { return };
         let mut out = Vec::with_capacity(c.dots.len() + c.unconnected.len());
         for &(_, p) in c.dots.iter().filter(|d| Some(d.0) == self.id.sheet()) {
-            out.push((l.wires, Instance::circle(mmf(p), JUNCTION_RADIUS, pal().sch_junction)));
+            out.push((l.wires, Instance::circle(mmf(p), to_mm(JUNCTION_RADIUS) as f32, pal().sch_junction)));
         }
         // Pins of the symbols drawn here.
         for &(_, _, p) in c.unconnected.iter().filter(|u| self.index.bounds(ObjectId::Symbol(u.0)).is_some()) {
@@ -498,7 +498,7 @@ impl View {
                 SchGhost::Wire(a, b) => p.line(l.wires, *a, *b, WIRE_WIDTH, pal().sch_wire),
                 SchGhost::Bus(a, b) => p.line(l.wires, *a, *b, BUS_WIDTH, pal().sch_bus),
                 SchGhost::Entry(pos, dir) => p.line(l.wires, *pos, *pos + dir.offset(), BUS_WIDTH, pal().sch_bus),
-                SchGhost::Junction(pos) => p.circle(l.wires, *pos, 450_000, pal().sch_junction),
+                SchGhost::Junction(pos) => p.circle(l.wires, *pos, JUNCTION_RADIUS, pal().sch_junction),
                 SchGhost::Target(pos) => {
                     p.push(l.wires, Instance::circle_outline(mmf(*pos), 0.6, 0.12, pal().hover.with_alpha(0xc0)))
                 }
@@ -776,7 +776,9 @@ impl View {
             }
             .map(|(a, b, width)| seg_dist(p, a, b) - width as f64 / 2.0)
             .or_else(|| match id {
-                ObjectId::Junction(j) => project.schematic.junctions.get(j).map(|j| dist(p, j.pos) - 450_000.0),
+                ObjectId::Junction(j) => {
+                    project.schematic.junctions.get(j).map(|j| dist(p, j.pos) - JUNCTION_RADIUS as f64)
+                }
                 ObjectId::Via(v) => project.board.vias.get(v).map(|v| dist(p, v.pos) - v.diameter as f64 / 2.0),
                 ObjectId::BoardGraphic(g) => match project.board.graphics.get(g).map(|g| &g.shape) {
                     Some(Shape::Line { a, b, width }) => Some(seg_dist(p, *a, *b) - *width as f64 / 2.0),
@@ -852,7 +854,7 @@ impl View {
                 .schematic
                 .junctions
                 .get(i)
-                .map(|j| p.circle(l.wires, j.pos, 450_000, pal().sch_junction))
+                .map(|j| p.circle(l.wires, j.pos, JUNCTION_RADIUS, pal().sch_junction))
                 .is_some(),
             (Layers::Sch(l), ObjectId::Label(i)) => {
                 project.schematic.labels.get(i).map(|lab| draw_label(lab, l, p)).is_some()
