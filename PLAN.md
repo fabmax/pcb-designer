@@ -73,6 +73,10 @@ and hierarchical sheets.
 - `UpdateParts` replaces project parts by the library version (variant kept by id, then
   name). It refuses when placed units would disappear; `check_part_still_fits` guards
   `Update` of a used `LibPart` the same way.
+- `Update` validates references and keeps ownership fixed: a footprint's or symbol's
+  `component` can't change, and a symbol can't take a unit its component already has
+  placed (checked against the project before the update, so two symbols can't swap
+  units in one `Update`).
 - Part states (`query::part_statuses`): the stored `source.content_hash` is compared
   with the library's hash and with the copy's own → up to date, library changed,
   modified locally, both changed, library missing, removed from library, local.
