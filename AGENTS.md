@@ -26,9 +26,10 @@ Each change (a milestone or a refinement) runs through these steps:
    **Later**, and remove what you finished from it.
 6. Commit with a message like `M9: copper zones …` or `GUI: floating icon tool bars …`.
    End it with the attribution trailer.
-7. `git checkout main && git merge --no-ff <branch>`, with a `Merge …` message. Then
-   `git push` main to `origin` (private GitHub repo `fabmax/pcb-designer`). Then carry
-   on with the next milestone without asking.
+7. `git checkout main && git merge --no-ff <branch>`, with a `Merge …` message. Don't
+   push: the user tries changes out first, and pushes main to `origin` (private GitHub
+   repo `fabmax/pcb-designer`) or asks for it. Then carry on with the next milestone
+   without asking.
 
 Breaking changes are fine: the project is far from production. Rename or remove freely
 (file formats, settings, keymaps, MCP tools), and update tests and docs to match.
