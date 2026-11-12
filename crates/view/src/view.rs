@@ -522,7 +522,7 @@ impl View {
                     let c = component.and_then(|c| project.schematic.components.get(c));
                     let refdes = c.map_or(format!("{}?", part.prefix), |c| c.refdes.clone());
                     let value = c.map_or(part.default_value.as_str(), |c| c.value.as_str());
-                    let variant = c.map_or(part.variants.first(), |c| part.variant(c.variant));
+                    let variant = c.map_or(part.variants.first(), |c| c.variant.and_then(|v| part.variant(v)));
                     let footprint = variant.and_then(|v| project.library.footprints.get(v.footprint));
                     draw_symbol_graphics(sym, *unit, transform, &refdes, value, variant.zip(footprint), l, &mut p);
                 }
@@ -941,7 +941,8 @@ fn draw_symbol(project: &Project, inst: &SymbolInstance, l: &SchLayers, p: &mut 
     let component = project.schematic.components.get(inst.component);
     let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
     // Pad names per pin for the component's variant.
-    let variant = component.and_then(|c| project.library.parts.get(c.part).and_then(|part| part.variant(c.variant)));
+    let variant =
+        component.and_then(|c| project.library.parts.get(c.part).zip(c.variant).and_then(|(part, v)| part.variant(v)));
     let footprint = component.and_then(|c| project.library.footprint_of(c.part, c.variant));
     let pads = variant.zip(footprint);
     draw_symbol_graphics(sym, inst.unit, &inst.transform(), refdes, value, pads, l, p);

@@ -47,14 +47,13 @@ impl Project {
         for c in sch.components.iter() {
             match self.library.parts.get(c.part) {
                 None => issues.push(format!("component {}: missing part", c.refdes)),
-                Some(p) if p.variant(c.variant).is_none() => {
-                    issues.push(format!("component {}: missing variant", c.refdes))
-                }
+                Some(p) if !p.has_variant(c.variant) => issues.push(format!("component {}: missing variant", c.refdes)),
                 _ => {}
             }
-            match footprints_per_component.get(&c.id) {
-                None => issues.push(format!("component {}: no footprint on board", c.refdes)),
-                Some(n) if *n > 1 => issues.push(format!("component {}: {n} footprints on board", c.refdes)),
+            match (footprints_per_component.get(&c.id), c.variant) {
+                (None, Some(_)) => issues.push(format!("component {}: no footprint on board", c.refdes)),
+                (Some(_), None) => issues.push(format!("component {}: on board without a footprint variant", c.refdes)),
+                (Some(n), _) if *n > 1 => issues.push(format!("component {}: {n} footprints on board", c.refdes)),
                 _ => {}
             }
         }

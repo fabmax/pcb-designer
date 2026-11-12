@@ -37,7 +37,10 @@ and hierarchical sheets.
   re-inserting at the old index restores the order exactly (undo).
 - Library: `Symbol` (named pins, `Pin::number`, `key()` = number or name), `Footprint`
   (pads by number), `Part` = units (one symbol each) + variants (footprint + pad → `(unit,
-  pin)` map; several pads may share a pin).
+  pin)` map; several pads may share a pin). A part may have no variants.
+- `Component::variant` is `Option`: `None` means no footprint, off the board (power
+  flags, logos, KiCad's "exclude from board"). `Part::has_variant(Option<Id>)` is the
+  validity check; `Library::footprint_of` takes the `Option`.
 - Schematic: design-wide `Component`s (refdes, value, part, variant), units placed as
   `SymbolInstance`s; every graphic carries its sheet id. Buses: `BusWire`, `BusEntry
   {pos, dir}` (wire end = `pos + dir.offset()`, a fixed 2.54 mm diagonal).
@@ -78,6 +81,13 @@ and hierarchical sheets.
   `Change::affects_connectivity`: schematic changes always; library edits only when
   pins, pads, units or variants change.
 - `Document::read_only` (Built-in Library) makes every command fail with a reason.
+- Sync (`sync.rs`) keys on the component's variant, not on old/new values: a component
+  with a variant and no placement gets one in the staging area, one without a variant
+  (or deleted) loses it; copper at its pads stays. `SetComponent.variant` is
+  `Option<Option<Id>>` (absent: unchanged, `null`: no footprint; the `some` deserializer).
+  `PlacePart` defaults to the first variant, or none. `UpdateParts` falls back to no
+  footprint when no variant is left; an in-project part edit (`check_part_still_fits`)
+  still refuses to drop a variant in use.
 - `ImportParts` / `UpdateParts` carry `PartBundle`s (part plus exactly the symbols and
   footprints it references, checked by `check_bundle`), built by `Library::bundles`,
   which also sets the part's `source`. Use `Command::import_parts(&lib, ids)` rather
@@ -268,7 +278,8 @@ and hierarchical sheets.
 
 - Imports `.kicad_sym`, `.kicad_symdir` (KiCad 10) and `.pretty` (KiCad 6–10). Units
   from sub-symbols, `extends` merged, power symbols skipped, footprints y-flipped and
-  front layers only. Deterministic ids (FNV of library, name, element), so re-imports
+  front layers only. A symbol requested without footprints becomes a part without
+  variants (with a warning); one whose footprints all fail to load makes no part. Deterministic ids (FNV of library, name, element), so re-imports
   update in place.
 - The catalog indexes names only (~0.1 s) and parses lazily. Footprint suggestion: the
   default footprint, else the best `ki_fp_filters` match.
@@ -409,7 +420,13 @@ defers.
 - Wire posture that flips automatically with the cursor.
 - Dragging wire segments themselves.
 - Editing text on the canvas.
-- KiCad project import (the bus model already maps one to one).
+- KiCad project import (File → "Import KiCad project…", from a `.kicad_pro`; KiCad
+  6–10; parts from the project's embedded `lib_symbols` and board footprints; KiCad
+  UUIDs kept as ids; opens as an unsaved project; best effort with an import report).
+  Model prerequisites first, in order: component-less footprints (mounting holes, logos);
+  hidden power pins and power symbols; no-connect flags; footprint fidelity (back-side
+  layers, slots, per-instance reference/value text); zones (holes, keepouts, connection
+  mode); arc tracks. `in_bom` / `dnp` become component properties until a BOM exists.
 
 **Board**
 - Fabrication outputs: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel

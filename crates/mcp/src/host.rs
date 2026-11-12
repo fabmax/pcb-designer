@@ -143,7 +143,8 @@ pub fn resolve_sheets(project: &Project, mut command: Value) -> Result<Command, 
 #[derive(Clone, Debug, Default)]
 pub struct KicadImport {
     /// `Lib:Name` of each symbol, with the footprints to make a part with (`None`: the
-    /// symbol's default or best matching footprint; empty: symbol only).
+    /// symbol's default or best matching footprint; empty: a part without footprint, kept
+    /// off the board).
     pub symbols: Vec<(String, Option<Vec<String>>)>,
     /// Lone footprints (`Lib:Name`).
     pub footprints: Vec<String>,
@@ -713,7 +714,7 @@ fn component(p: &Project, refdes: &str) -> Result<Value, String> {
     Ok(json!({
         "component": c,
         "part": part.map(|p| json!({ "name": p.name, "description": p.description })),
-        "variant": part.and_then(|p| p.variant(c.variant)).map(|v| v.name.clone()),
+        "variant": part.zip(c.variant).and_then(|(p, v)| p.variant(v)).map(|v| v.name.clone()),
         "symbols": symbols,
         "footprint": footprint,
         "pin_pads": pin_pads,

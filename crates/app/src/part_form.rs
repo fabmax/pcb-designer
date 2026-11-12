@@ -143,7 +143,6 @@ impl PartForm {
         hint(ui, "Each variant is a footprint with its own pin-pad mapping (e.g. 0603 / 0805).");
         let options = pin_options(lib_ref, &part);
         let mut remove_variant = None;
-        let nv = part.variants.len();
         for (vi, variant) in part.variants.iter_mut().enumerate() {
             ui.add_space(6.0);
             egui::Frame::group(ui.style()).fill(theme::panel_dark()).inner_margin(egui::Margin::same(10)).show(
@@ -161,7 +160,7 @@ impl PartForm {
                         if ui.button("Edit footprint").clicked() {
                             open = Some(Open::Item(Item::Footprint(variant.footprint)));
                         }
-                        if ui.add_enabled(nv > 1, egui::Button::new("Remove")).clicked() {
+                        if ui.button("Remove").clicked() {
                             remove_variant = Some(vi);
                         }
                     });
@@ -171,6 +170,10 @@ impl PartForm {
         }
         if let Some(i) = remove_variant {
             part.variants.remove(i);
+        }
+        if part.variants.is_empty() {
+            ui.add_space(4.0);
+            hint(ui, "No variants: components of this part aren't placed on the board.");
         }
         if ui.add_enabled(!footprints.is_empty(), egui::Button::new("Add variant")).clicked() {
             let fp = part.variants.last().map_or(footprints[0].0, |v| v.footprint);

@@ -18,7 +18,8 @@ pub enum Command {
     },
     /// Replace the project's copies of parts (with their symbols and footprints) by these
     /// library versions. Components keep their footprint variant if it still exists
-    /// (matched by id, then by name), otherwise they get the first variant.
+    /// (matched by id, then by name), otherwise they get the first variant, or no
+    /// footprint (leaving the board) when the part has none left.
     UpdateParts {
         parts: Vec<PartBundle>,
     },
@@ -33,7 +34,8 @@ pub enum Command {
         size: Option<Size>,
     },
     /// Place a part from the project library: creates a component and its symbol. The
-    /// footprint appears on the board automatically.
+    /// footprint (by default the part's first variant; none for parts without variants)
+    /// appears on the board automatically.
     PlacePart {
         part: Id,
         #[serde(default)]
@@ -108,8 +110,11 @@ pub enum Command {
         refdes: Option<String>,
         #[serde(default)]
         value: Option<String>,
-        #[serde(default)]
-        variant: Option<Id>,
+        /// Absent: unchanged. `null`: no footprint (the component leaves the board). An
+        /// id: that variant of the part.
+        #[serde(default, deserialize_with = "some")]
+        #[schemars(with = "Option<Id>")]
+        variant: Option<Option<Id>>,
     },
     /// Polyline of track segments.
     AddTrack {
@@ -321,8 +326,7 @@ impl Command {
             Command::SetComponent { id, refdes, value, variant } => {
                 if let Some(v) = variant {
                     let c = tx.project().schematic.components.get(id);
-                    let ok =
-                        c.and_then(|c| tx.project().library.parts.get(c.part)).is_some_and(|p| p.variant(v).is_some());
+                    let ok = c.and_then(|c| tx.project().library.parts.get(c.part)).is_some_and(|p| p.has_variant(v));
                     if !ok {
                         return Err(CommandError::Invalid("variant does not belong to the part".into()));
                     }
@@ -475,6 +479,12 @@ impl Command {
     }
 }
 
+/// For `Option<Option<T>>` fields with `#[serde(default)]`: a present `null` becomes
+/// `Some(None)`, telling it apart from an absent field (`None`).
+fn some<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<Option<T>>, D::Error> {
+    Option::<T>::deserialize(d).map(Some)
+}
+
 fn resolve_sheet(tx: &Transaction, sheet: Option<Id>) -> Result<Id, CommandError> {
     let sch = &tx.project().schematic;
     match sheet {
@@ -521,8 +531,8 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
                             .parts
                             .get(c.part)
                             .ok_or(CommandError::NotFound(ObjectId::LibPart(c.part)))?;
-                        if part.variant(c.variant).is_none() {
-                            c.variant = part.variants.first().map(|v| v.id).unwrap_or(c.variant);
+                        if !part.has_variant(c.variant) {
+                            c.variant = part.variants.first().map(|v| v.id);
                         }
                         if c.refdes.is_empty() || tx.project().schematic.component_by_refdes(&c.refdes).is_some() {
                             c.refdes = next_refdes(tx.project(), &part.prefix.clone());
@@ -692,17 +702,16 @@ fn update_parts(tx: &mut Transaction, parts: Vec<PartBundle>) -> Result<(), Comm
         let new_variants = part.variants.clone();
         tx.replace(Object::LibPart(part))?;
 
-        // Keep components on a valid variant.
+        // Keep components on a valid variant: same id, else same name, else the first; no
+        // footprint when the part has none left.
         for c in components {
-            if new_variants.iter().any(|v| v.id == c.variant) {
+            let Some(current) = c.variant else { continue };
+            if new_variants.iter().any(|v| v.id == current) {
                 continue;
             }
-            let old_name = old.variant(c.variant).map(|v| v.name.as_str());
-            let Some(v) = new_variants.iter().find(|v| Some(v.name.as_str()) == old_name).or(new_variants.first())
-            else {
-                return Err(CommandError::Invalid(format!("library part {:?} has no footprint variant", old.name)));
-            };
-            let variant = v.id;
+            let old_name = old.variant(current).map(|v| v.name.as_str());
+            let variant =
+                new_variants.iter().find(|v| Some(v.name.as_str()) == old_name).or(new_variants.first()).map(|v| v.id);
             tx.update(ObjectId::Component(c.id), |o| {
                 let Object::Component(c) = o else { unreachable!() };
                 c.variant = variant;
@@ -774,9 +783,9 @@ fn place_part(
     let sheet = resolve_sheet(tx, sheet)?;
     let part = tx.project().library.parts.get(part_id).ok_or(CommandError::NotFound(ObjectId::LibPart(part_id)))?;
     let variant = match variant {
-        Some(v) if part.variant(v).is_some() => v,
+        Some(v) if part.variant(v).is_some() => Some(v),
         Some(_) => return Err(CommandError::Invalid("variant does not belong to the part".into())),
-        None => part.variants.first().ok_or_else(|| CommandError::Invalid("part has no variant".into()))?.id,
+        None => part.variants.first().map(|v| v.id),
     };
     let refdes = match refdes {
         Some(r) => {
@@ -1053,7 +1062,7 @@ fn check_references(p: &Project, o: &Object) -> Result<(), CommandError> {
         Object::Sheet(s) => check_sheet(p, s),
         Object::Component(c) => match p.library.parts.get(c.part) {
             None => missing(ObjectId::LibPart(c.part)),
-            Some(part) if part.variant(c.variant).is_none() => {
+            Some(part) if !part.has_variant(c.variant) => {
                 Err(CommandError::Invalid("component variant does not belong to its part".into()))
             }
             _ => Ok(()),
@@ -1202,7 +1211,7 @@ fn not_listed(path: &std::path::Path) -> CommandError {
 /// placed unit.
 fn check_part_still_fits(project: &Project, part: &Part) -> Result<(), CommandError> {
     for c in project.schematic.components.iter().filter(|c| c.part == part.id) {
-        if part.variant(c.variant).is_none() {
+        if !part.has_variant(c.variant) {
             return Err(CommandError::Forbidden(format!(
                 "{} uses this footprint variant; give it another variant first",
                 c.refdes

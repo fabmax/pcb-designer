@@ -34,7 +34,7 @@ struct Pick {
     description: String,
     units: usize,
     pins: usize,
-    /// Chosen footprint (`None`: import the symbol only).
+    /// Chosen footprint (`None`: a part without footprint, kept off the board).
     footprint: Option<String>,
     /// Footprints offered in the picker: the default, then filter matches.
     candidates: Vec<String>,
@@ -618,7 +618,7 @@ impl KicadImport {
                         ui.horizontal(|ui| {
                             ui.label("Footprint");
                             let mut options: Vec<(Option<String>, String)> =
-                                vec![(None, "— symbol only —".to_string())];
+                                vec![(None, "— none (not on board) —".to_string())];
                             options.extend(p.candidates.iter().map(|c| (Some(c.clone()), c.clone())));
                             if let Some(f) = fields::combo(ui, ("kicad_fp", i), &p.footprint, &options) {
                                 p.footprint = f;

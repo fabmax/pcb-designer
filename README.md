@@ -104,6 +104,10 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
   "Remove unused parts" (right-click the Project Library) deletes them with the symbols
   and footprints only they needed. A part, unit or variant in use can't be removed, and
   neither can a symbol or footprint a used part needs.
+- **Parts without a footprint** (power flags, logos): a part may have no footprint
+  variants, and a component's Footprint can be set to "None (not on board)" in Properties.
+  Either way the component stays in the schematic and its netlist but has no footprint on
+  the board; choosing a footprint again places it in the staging area beside the board.
 - **Built-in Library:** a few basic parts that ship with the app. It is read-only; "Save a
   copy as…" makes an editable library of your own from it.
 - **External Libraries:** the project's library files (`.pcblib`).
@@ -154,8 +158,8 @@ rendered offscreen.
 
 ## KiCad libraries
 
-**File → Import from KiCad** imports symbols (as parts, with a footprint) and footprints
-from KiCad's libraries. It uses an installed KiCad's libraries, or downloads KiCad's
+**File → Import from KiCad** imports symbols (as parts, with a footprint, or with none for
+parts that stay off the board, like logos) and footprints from KiCad's libraries. It uses an installed KiCad's libraries, or downloads KiCad's
 official symbol and footprint libraries (about 24 MB, 450 MB on disk, no 3D models) into
 the configuration folder, e.g. `~/Library/Application Support/pcb-designer/kicad/10.0.8/`
 on macOS. The window offers the download when no libraries are found, and "Check for

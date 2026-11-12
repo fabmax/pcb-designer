@@ -47,7 +47,7 @@ pub fn pin_pad_names(project: &Project, component: Id) -> Vec<(String, Vec<Strin
     let Some(part) = project.library.parts.get(c.part) else {
         return Vec::new();
     };
-    let Some(variant) = part.variant(c.variant) else {
+    let Some(variant) = c.variant.and_then(|v| part.variant(v)) else {
         return Vec::new();
     };
     let Some(fp) = project.library.footprints.get(variant.footprint) else {
