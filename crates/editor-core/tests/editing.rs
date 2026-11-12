@@ -451,3 +451,42 @@ fn random_grouped_command_sequences_undo_and_redo_exactly() {
         assert_eq!(files(ed.project()), end, "seed {seed}: redo all");
     }
 }
+
+#[test]
+fn update_cannot_move_a_symbol_to_another_component() {
+    let mut ed = editor_with_parts();
+    let r1 = place(&mut ed, PART_RESISTOR, 0.0, 0.0);
+    let r2 = place(&mut ed, PART_RESISTOR, 10.16, 0.0);
+    let before = files(ed.project());
+    let mut sym = ed.project().schematic.symbols_of(r1).next().unwrap().clone();
+    sym.component = r2;
+    let result = ed.execute(Command::Update { objects: vec![Object::Symbol(sym)] });
+    assert!(matches!(result, Err(CommandError::Forbidden(_))), "{result:?}");
+    assert_eq!(files(ed.project()), before);
+}
+
+#[test]
+fn update_cannot_give_a_symbol_an_already_placed_unit() {
+    let mut ed = Editor::new(Project::new("test"));
+    ed.execute(Command::ImportParts { library: builtin::builtin_library(), parts: vec![PART_RESISTOR] }).unwrap();
+    // A two-unit variant of the resistor, so the component can have two symbols.
+    let mut part = ed.project().library.parts.get(PART_RESISTOR).unwrap().clone();
+    part.units.push(PartUnit { name: "B".into(), symbol: part.units[0].symbol });
+    ed.execute(Command::Update { objects: vec![Object::LibPart(part)] }).unwrap();
+    let r1 = place(&mut ed, PART_RESISTOR, 0.0, 0.0);
+    ed.execute(Command::PlaceUnit {
+        component: r1,
+        unit: 1,
+        sheet: None,
+        pos: Point::mm(10.16, 0.0),
+        rotation: Angle::ZERO,
+        mirror: false,
+    })
+    .unwrap();
+    let mut b = ed.project().schematic.symbols_of(r1).find(|s| s.unit == 1).unwrap().clone();
+    b.pos = Point::mm(20.32, 0.0);
+    ed.execute(Command::Update { objects: vec![Object::Symbol(b.clone())] }).unwrap();
+    b.unit = 0;
+    let result = ed.execute(Command::Update { objects: vec![Object::Symbol(b)] });
+    assert!(matches!(result, Err(CommandError::Invalid(_))), "{result:?}");
+}

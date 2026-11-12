@@ -419,6 +419,15 @@ impl Command {
                             return Err(CommandError::Forbidden("a footprint's component cannot change".into()));
                         }
                     }
+                    if let Object::Symbol(s) = &o {
+                        let sch = &tx.project().schematic;
+                        if sch.symbols.get(s.id).is_some_and(|c| c.component != s.component) {
+                            return Err(CommandError::Forbidden("a symbol's component cannot change".into()));
+                        }
+                        if sch.symbols_of(s.component).any(|other| other.id != s.id && other.unit == s.unit) {
+                            return Err(CommandError::Invalid(format!("unit {} is already placed", s.unit)));
+                        }
+                    }
                     tx.replace(o)?;
                 }
                 Ok(())
