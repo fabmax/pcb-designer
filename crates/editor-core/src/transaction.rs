@@ -95,24 +95,49 @@ impl ChangeSet {
         ChangeSet::coalesce(all, chain(&self.setup, next.setup), chain(&self.libraries, next.libraries))
     }
 
-    /// Merge several changes of the same object into one (first `before`, last `after`),
-    /// keeping first-occurrence order, and drop changes without net effect.
+    /// Merge the changes of each object into as few as possible and drop changes without
+    /// net effect, so that the result still replays like the original ([`apply_reverse`]
+    /// re-inserts removed objects at their stored index, so removals and insertions must
+    /// keep their order). Only updates fold into an earlier change of the same object. An
+    /// object updated and then removed becomes one removal where the removal happened, of
+    /// the object as it was before, at the index it had when removed. One removed and
+    /// inserted again keeps both changes: it is appended, not back at its old index.
     fn coalesce(
         changes: Vec<Change>,
         setup: Option<(BoardSetup, BoardSetup)>,
         libraries: Option<(Vec<PathBuf>, Vec<PathBuf>)>,
     ) -> ChangeSet {
-        let mut out: Vec<Change> = Vec::with_capacity(changes.len());
+        let mut out: Vec<Option<Change>> = Vec::with_capacity(changes.len());
+        // Each object's latest change in `out`.
         let mut pos: std::collections::HashMap<ObjectId, usize> = Default::default();
         for c in changes {
-            match pos.get(&c.id) {
-                Some(&i) => out[i].after = c.after,
-                None => {
-                    pos.insert(c.id, out.len());
-                    out.push(c);
-                }
+            let Some(&i) = pos.get(&c.id) else {
+                pos.insert(c.id, out.len());
+                out.push(Some(c));
+                continue;
+            };
+            let prev = out[i].take().expect("`pos` points at live changes");
+            let removal = c.after.is_none();
+            if !removal && c.before.is_some() && prev.after.is_some() {
+                // An update of an object the earlier change left in place.
+                out[i] = Some(Change { after: c.after, ..prev });
+            } else if removal && prev.before.is_none() {
+                // Inserted and removed again: no net effect.
+                pos.remove(&c.id);
+            } else if removal && prev.after.is_some() {
+                // Updated and then removed.
+                let index = c.before.map(|(i, _)| i).expect("a removal records the index");
+                let original = prev.before.map(|(_, o)| (index, o));
+                pos.insert(c.id, out.len());
+                out.push(Some(Change { id: c.id, before: original, after: None }));
+            } else {
+                // Removed and inserted again.
+                out[i] = Some(prev);
+                pos.insert(c.id, out.len());
+                out.push(Some(c));
             }
         }
+        let mut out: Vec<Change> = out.into_iter().flatten().collect();
         out.retain(|c| match (&c.before, &c.after) {
             (None, None) => false,
             (Some((_, b)), Some(a)) => b != a,
