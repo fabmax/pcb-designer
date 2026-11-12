@@ -150,7 +150,7 @@ impl LibraryDoc {
             variants: vec![PartVariant {
                 id: Id::new(),
                 name: fp_name.unwrap_or_else(|| "Default".into()),
-                footprint,
+                footprint: Some(footprint),
                 connections: self.library().map_by_name(&units, footprint),
             }],
             units,

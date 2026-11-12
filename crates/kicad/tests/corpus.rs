@@ -135,7 +135,7 @@ fn all_symbols_convert_into_valid_parts() {
     let mut pinless = Vec::new();
     for p in imported.parts {
         let v = &p.variants[0];
-        let fp = lib.footprints.get(v.footprint).unwrap();
+        let fp = lib.footprints.get(v.footprint.unwrap()).unwrap();
         let mut missing = Vec::new();
         for (u, unit) in p.units.iter().enumerate() {
             for pin in lib.symbols.get(unit.symbol).unwrap().pins.iter() {
@@ -167,7 +167,7 @@ fn all_symbols_convert_into_valid_parts() {
     assert_eq!(r.variants[0].name, "R_0603_1608Metric");
     let lm = lib.parts.iter().find(|p| p.properties["KiCad symbol"] == "Amplifier_Operational:LM2904").unwrap();
     assert_eq!(lm.units.len(), 3, "two op-amps and the power unit");
-    let fp = lib.footprints.get(lm.variants[0].footprint).unwrap();
+    let fp = lib.footprints.get(lm.variants[0].footprint.unwrap()).unwrap();
     assert_eq!(lm.variants[0].connections.len(), fp.pads.len(), "{}", fp.name);
     let pins: usize = lm.units.iter().map(|u| lib.symbols.get(u.symbol).unwrap().pins.len()).sum();
     assert_eq!(pins, 8);

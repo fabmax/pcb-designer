@@ -69,7 +69,7 @@ fn board_view_stays_consistent_through_schematic_edits() {
     let r1 = component(&doc, "R1");
     let r2 = component(&doc, "R2");
     let v0805 = doc.project().library.parts.get(builtin::PART_RESISTOR).unwrap().variants[1].id;
-    doc.execute(Command::SetComponent { id: r1, refdes: Some("R7".into()), value: None, variant: Some(Some(v0805)) })
+    doc.execute(Command::SetComponent { id: r1, refdes: Some("R7".into()), value: None, variant: Some(v0805) })
         .unwrap();
     let s2 = doc.project().schematic.symbols_of(r2).next().unwrap().id;
     doc.execute(Command::Delete { ids: vec![ObjectId::Symbol(s2)] }).unwrap();

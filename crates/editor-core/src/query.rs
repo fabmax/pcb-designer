@@ -47,10 +47,10 @@ pub fn pin_pad_names(project: &Project, component: Id) -> Vec<(String, Vec<Strin
     let Some(part) = project.library.parts.get(c.part) else {
         return Vec::new();
     };
-    let Some(variant) = c.variant.and_then(|v| part.variant(v)) else {
+    let Some(variant) = part.variant(c.variant) else {
         return Vec::new();
     };
-    let Some(fp) = project.library.footprints.get(variant.footprint) else {
+    let Some(fp) = variant.footprint.and_then(|f| project.library.footprints.get(f)) else {
         return Vec::new();
     };
     let mut out = Vec::new();
@@ -116,7 +116,7 @@ pub fn unused_library_objects(project: &Project) -> Vec<ObjectId> {
     out.extend(
         lib.footprints
             .iter()
-            .filter(|f| !kept.iter().any(|p| p.variants.iter().any(|v| v.footprint == f.id)))
+            .filter(|f| !kept.iter().any(|p| p.variants.iter().any(|v| v.footprint == Some(f.id))))
             .map(|f| ObjectId::LibFootprint(f.id)),
     );
     out

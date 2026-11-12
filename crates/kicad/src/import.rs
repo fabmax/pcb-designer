@@ -14,7 +14,7 @@ use crate::symbol::KiSymbol;
 #[derive(Clone, Debug, Default)]
 pub struct Request {
     /// `Lib:Name` of a symbol and the `Lib:Name`s of its footprints. Without footprints
-    /// the part has no variant: its components stay off the board.
+    /// the part gets a "no footprint" variant: its components stay off the board.
     pub symbols: Vec<(String, Vec<String>)>,
     pub footprints: Vec<String>,
 }
@@ -96,19 +96,23 @@ pub fn import(catalog: &mut Catalog, req: &Request) -> Imported {
     out
 }
 
-/// A part from a converted symbol and its footprints.
+/// A part from a converted symbol and its footprints; without footprints, a part with a
+/// "no footprint" variant.
 pub fn make_part(sym: &KiSymbol, footprints: &[KiFootprint]) -> Part {
     let units: Vec<PartUnit> =
         sym.units.iter().zip(&sym.unit_names).map(|(s, n)| PartUnit { name: n.clone(), symbol: s.id }).collect();
-    let variants = footprints
+    let mut variants = footprints
         .iter()
         .map(|fp| PartVariant {
             id: kid(&["kicad-variant", &sym.lib, &sym.name, &fp.full_name()]),
             name: fp.footprint.name.clone(),
-            footprint: fp.footprint.id,
+            footprint: Some(fp.footprint.id),
             connections: connect(sym, &fp.footprint),
         })
-        .collect();
+        .collect::<Vec<_>>();
+    if variants.is_empty() {
+        variants.push(PartVariant::no_footprint(kid(&["kicad-variant", &sym.lib, &sym.name, ""])));
+    }
     let mut properties = BTreeMap::new();
     properties.insert("KiCad symbol".to_string(), sym.full_name());
     if !sym.datasheet.is_empty() {

@@ -1,9 +1,8 @@
 //! Library content: symbols, footprints and parts.
 //!
-//! A [`Part`] combines one symbol per unit with footprint variants (none for parts that
-//! aren't on the board, like power flags or logos). Each variant maps footprint pads to
-//! symbol pins, so symbol and footprint can be designed independently and connected
-//! afterwards. A pin may map to several pads (e.g. GND), a pad
+//! A [`Part`] combines one symbol per unit with one or more footprint variants. Each variant
+//! (except a "no footprint" one, for parts off the board) maps footprint pads to symbol pins, so symbol and footprint can be designed
+//! independently and connected afterwards. A pin may map to several pads (e.g. GND), a pad
 //! to at most one pin. Pads without a pin are not connected.
 
 use std::collections::BTreeMap;
@@ -194,8 +193,21 @@ pub struct PadConnection {
 pub struct PartVariant {
     pub id: Id,
     pub name: String,
-    pub footprint: Id,
+    /// `None`: a "no footprint" variant; its components aren't on the board (power flags,
+    /// logos, KiCad's "exclude from board"). It has no connections.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub footprint: Option<Id>,
     pub connections: Vec<PadConnection>,
+}
+
+impl PartVariant {
+    /// Default name of a "no footprint" variant.
+    pub const NO_FOOTPRINT: &str = "No footprint";
+
+    /// A "no footprint" variant: its components aren't on the board.
+    pub fn no_footprint(id: Id) -> PartVariant {
+        PartVariant { id, name: Self::NO_FOOTPRINT.into(), footprint: None, connections: Vec::new() }
+    }
 }
 
 /// Where an embedded part came from; used by "update from library".
@@ -229,12 +241,6 @@ pub struct Part {
 impl Part {
     pub fn variant(&self, id: Id) -> Option<&PartVariant> {
         self.variants.iter().find(|v| v.id == id)
-    }
-
-    /// Whether a component of this part may use `variant`: one of its variants, or `None`
-    /// (no footprint).
-    pub fn has_variant(&self, variant: Option<Id>) -> bool {
-        variant.is_none_or(|v| self.variant(v).is_some())
     }
 }
 
@@ -305,10 +311,10 @@ impl Library {
         Library { id: Some(Id::new()), name: name.into(), ..Default::default() }
     }
 
-    /// Footprint of a part variant (none without a variant).
-    pub fn footprint_of(&self, part: Id, variant: Option<Id>) -> Option<&Footprint> {
-        let v = self.parts.get(part)?.variant(variant?)?;
-        self.footprints.get(v.footprint)
+    /// Footprint of a part variant (none for a "no footprint" variant).
+    pub fn footprint_of(&self, part: Id, variant: Id) -> Option<&Footprint> {
+        let v = self.parts.get(part)?.variant(variant)?;
+        self.footprints.get(v.footprint?)
     }
 
     /// A part together with the symbols and footprints it references.
@@ -321,9 +327,9 @@ impl Library {
             }
         }
         let mut footprints: Vec<Footprint> = Vec::new();
-        for v in &p.variants {
-            if !footprints.iter().any(|f| f.id == v.footprint) {
-                footprints.push(self.footprints.get(v.footprint)?.clone());
+        for fp in p.variants.iter().filter_map(|v| v.footprint) {
+            if !footprints.iter().any(|f| f.id == fp) {
+                footprints.push(self.footprints.get(fp)?.clone());
             }
         }
         Some((p, symbols, footprints))
@@ -397,8 +403,20 @@ impl Library {
                     issues.push((part.id, format!("part {:?}: unit {i} references missing symbol", part.name)));
                 }
             }
+            if part.variants.is_empty() {
+                issues.push((part.id, format!("part {:?} has no variant", part.name)));
+            }
             for v in &part.variants {
-                let Some(fp) = self.footprints.get(v.footprint) else {
+                let Some(id) = v.footprint else {
+                    if !v.connections.is_empty() {
+                        issues.push((
+                            part.id,
+                            format!("part {:?} variant {:?}: pads without footprint", part.name, v.name),
+                        ));
+                    }
+                    continue;
+                };
+                let Some(fp) = self.footprints.get(id) else {
                     issues.push((part.id, format!("part {:?} variant {:?}: missing footprint", part.name, v.name)));
                     continue;
                 };

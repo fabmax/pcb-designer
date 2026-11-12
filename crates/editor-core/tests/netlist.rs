@@ -357,7 +357,14 @@ fn units_of_a_dual_opamp_are_separate_symbols() {
     let sym = single.units[0].symbol;
     let pin = |name: &str| lib.symbols.get(sym).unwrap().pins.iter().find(|p| p.name == name).unwrap().id;
     let pad = |name: &str| {
-        lib.footprints.get(single.variants[0].footprint).unwrap().pads.iter().find(|p| p.name == name).unwrap().id
+        lib.footprints
+            .get(single.variants[0].footprint.unwrap())
+            .unwrap()
+            .pads
+            .iter()
+            .find(|p| p.name == name)
+            .unwrap()
+            .id
     };
     // Dual op amp in SOIC-8: A = 3/2/1, B = 5/6/7, power 8/4 on unit A.
     let mut dual = single.clone();

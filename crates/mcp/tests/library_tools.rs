@@ -1,7 +1,6 @@
 //! The library tools on the headless host: a part from a "datasheet", start to finish.
 
 use mcp::headless::HeadlessHost;
-use mcp::host::Host;
 use mcp::library::LibraryRequest;
 use mcp::{Call, Reply, Request, handle};
 use model::Id;
@@ -314,25 +313,20 @@ fn the_builtin_library_is_read_only() {
 }
 
 #[test]
-fn parts_and_components_without_footprint() {
+fn no_footprint_variants() {
     let mut host = HeadlessHost::new(Document::new(view::demo::demo_project()));
     lib(&mut host, LibraryRequest::Create { name: "Driver".into(), path: None }).unwrap();
     edit(&mut host, driver(), &[]).unwrap();
 
-    // A new part needs its variants spelled out; an empty list means no footprint.
-    let logo = json!({ "type": "lib_part", "name": "Logo", "units": [{ "symbol": "DRV" }] });
-    let err = edit(&mut host, json!([logo]), &[]).unwrap_err();
-    assert!(err.contains("variants: []"), "{err}");
-    let mut logo = logo;
-    logo["variants"] = json!([]);
-    edit(&mut host, json!([logo]), &[]).unwrap();
-    assert_eq!(get(&mut host, "part:Logo")["variants"], json!([]));
-
-    // `"variant": null` takes a component off the board.
-    let r1 = host.document().project().schematic.component_by_refdes("R1").unwrap().id;
-    let command = json!({ "command": "set_component", "id": r1, "variant": null });
-    ask(&mut host, Request::Execute { commands: vec![command] }).unwrap();
-    assert!(host.document().project().board.footprint_of(r1).is_none());
-    let Reply::Json(c) = ask(&mut host, Request::Component { refdes: "R1".into() }).unwrap() else { panic!() };
-    assert_eq!(c["variant"], Value::Null, "{c}");
+    // A variant without footprint keeps components off the board; it has no connections.
+    let logo = |variants: Value| json!([{ "type": "lib_part", "name": "Logo", "units": [{ "symbol": "DRV" }], "variants": variants }]);
+    let err = edit(&mut host, logo(json!([])), &[]).unwrap_err();
+    assert!(err.contains("No footprint"), "{err}");
+    let err = edit(&mut host, logo(json!([{ "connections": "in_order" }])), &[]).unwrap_err();
+    assert!(err.contains("no connections"), "{err}");
+    let reply = edit(&mut host, logo(json!([{}])), &[]).unwrap();
+    assert_eq!(reply["parts"][0]["variants"][0], json!({ "name": "No footprint", "footprint": null }), "{reply}");
+    let part = get(&mut host, "part:Logo");
+    assert_eq!(part["variants"][0]["name"], "No footprint");
+    assert!(part["variants"][0].get("footprint").is_none(), "{part}");
 }

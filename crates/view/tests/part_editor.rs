@@ -31,7 +31,7 @@ fn build_part_from_scratch_then_update_project() {
     let mut lib = LibraryDoc::new(Library::new("Mine"));
     let part_id = lib.new_part("Buffer", None, None).unwrap();
     let part = lib.library().parts.get(part_id).unwrap().clone();
-    let (sym_id, fp_id) = (part.units[0].symbol, part.variants[0].footprint);
+    let (sym_id, fp_id) = (part.units[0].symbol, part.variants[0].footprint.unwrap());
     assert!(part.variants[0].connections.is_empty());
     lib.doc.mark_saved();
 
@@ -194,7 +194,7 @@ fn natural_order_mapping() {
     let mut lib = LibraryDoc::new(Library::new("L"));
     let p = lib.new_part("X", None, None).unwrap();
     let part = lib.library().parts.get(p).unwrap().clone();
-    let (sym, fp) = (part.units[0].symbol, part.variants[0].footprint);
+    let (sym, fp) = (part.units[0].symbol, part.variants[0].footprint.unwrap());
     let mut view = ItemView::new();
     let mut placer = Placer::default();
     view.show(Some(Item::Symbol(sym)));

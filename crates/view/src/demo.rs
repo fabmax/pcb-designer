@@ -277,9 +277,9 @@ pub fn demo_library() -> Library {
                 lib.symbols.insert(starter.symbols.get(u.symbol).unwrap().clone());
             }
         }
-        for v in &part.variants {
-            if !lib.footprints.contains(v.footprint) {
-                lib.footprints.insert(starter.footprints.get(v.footprint).unwrap().clone());
+        for f in part.variants.iter().filter_map(|v| v.footprint) {
+            if !lib.footprints.contains(f) {
+                lib.footprints.insert(starter.footprints.get(f).unwrap().clone());
             }
         }
         lib.parts.insert(part.clone());

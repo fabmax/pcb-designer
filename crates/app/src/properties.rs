@@ -355,16 +355,11 @@ impl Properties {
             }
             ui.end_row();
             label(ui, "Footprint");
-            const NONE: &str = "None (not on board)";
-            let current = match c.variant {
-                None => NONE.to_string(),
-                Some(v) => part.variant(v).map_or("?".to_string(), |v| v.name.clone()),
-            };
+            let current = part.variant(c.variant).map_or("?".to_string(), |v| v.name.clone());
             let mut variant = c.variant;
             egui::ComboBox::from_id_salt("variant").selected_text(current).show_ui(ui, |ui| {
-                ui.selectable_value(&mut variant, None, NONE);
                 for v in &part.variants {
-                    ui.selectable_value(&mut variant, Some(v.id), &v.name);
+                    ui.selectable_value(&mut variant, v.id, &v.name);
                 }
             });
             if variant != c.variant {

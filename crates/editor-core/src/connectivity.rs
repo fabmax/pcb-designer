@@ -186,8 +186,8 @@ impl Connectivity {
             let Some(sym) = symbol_of_instance(project, inst) else { continue };
             let Some(c) = s.components.get(inst.component) else { continue };
             let part = lib.parts.get(c.part);
-            let variant = part.zip(c.variant).and_then(|(p, v)| p.variant(v));
-            let fp = variant.and_then(|v| lib.footprints.get(v.footprint));
+            let variant = part.and_then(|p| p.variant(c.variant));
+            let fp = variant.and_then(|v| lib.footprints.get(v.footprint?));
             let t = inst.transform();
             for pin in sym.pins.iter() {
                 let mut pads: Vec<String> = match (variant, fp) {

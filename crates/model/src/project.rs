@@ -45,15 +45,27 @@ impl Project {
             *footprints_per_component.entry(f.component).or_default() += 1;
         }
         for c in sch.components.iter() {
-            match self.library.parts.get(c.part) {
-                None => issues.push(format!("component {}: missing part", c.refdes)),
-                Some(p) if !p.has_variant(c.variant) => issues.push(format!("component {}: missing variant", c.refdes)),
-                _ => {}
-            }
-            match (footprints_per_component.get(&c.id), c.variant) {
-                (None, Some(_)) => issues.push(format!("component {}: no footprint on board", c.refdes)),
-                (Some(_), None) => issues.push(format!("component {}: on board without a footprint variant", c.refdes)),
-                (Some(n), _) if *n > 1 => issues.push(format!("component {}: {n} footprints on board", c.refdes)),
+            let variant = match self.library.parts.get(c.part) {
+                None => {
+                    issues.push(format!("component {}: missing part", c.refdes));
+                    None
+                }
+                Some(p) => {
+                    let v = p.variant(c.variant);
+                    if v.is_none() {
+                        issues.push(format!("component {}: missing variant", c.refdes));
+                    }
+                    v
+                }
+            };
+            // On the board exactly when the variant has a footprint.
+            let on_board = variant.is_none_or(|v| v.footprint.is_some());
+            match footprints_per_component.get(&c.id) {
+                None if on_board => issues.push(format!("component {}: no footprint on board", c.refdes)),
+                Some(_) if !on_board => {
+                    issues.push(format!("component {}: on the board with a no-footprint variant", c.refdes))
+                }
+                Some(n) if *n > 1 => issues.push(format!("component {}: {n} footprints on board", c.refdes)),
                 _ => {}
             }
         }

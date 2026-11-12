@@ -573,7 +573,7 @@ impl LibraryEditor {
             .iter()
             .filter(|p| match item {
                 Item::Symbol(s) => p.units.iter().any(|u| u.symbol == s),
-                Item::Footprint(f) => p.variants.iter().any(|v| v.footprint == f),
+                Item::Footprint(f) => p.variants.iter().any(|v| v.footprint == Some(f)),
             })
             .map(|p| p.name.clone())
             .collect();
@@ -1050,7 +1050,7 @@ mod tests {
     fn deleting_the_shown_part_closes_it() {
         let mut ed = LibraryEditor::new(0, LibraryDoc::new(builtin::builtin_library()));
         let led = ed.lib.library().parts.get(builtin::PART_LED).unwrap().clone();
-        let fp = Open::Item(Item::Footprint(led.variants[0].footprint));
+        let fp = Open::Item(Item::Footprint(led.variants[0].footprint.unwrap()));
         ed.show(Open::Part(led.id));
         ed.show(fp); // "Edit footprint"
         assert_eq!(ed.open, fp);

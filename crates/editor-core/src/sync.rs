@@ -1,10 +1,13 @@
 //! Schematic → board sync, run inside every command's transaction so undo reverts both.
 //!
 //! The board only stores *placements* of components. Which footprint a placement shows
-//! is derived from the component's part variant, so changing the variant needs no board
-//! edit. This module only creates and removes placements: components with a variant get
-//! one, components without (no footprint) and deleted ones lose theirs. Copper at their
-//! pads stays.
+//! is derived from the component's part variant, so changing between variants with a
+//! footprint needs no board edit. This module only creates and removes placements: a
+//! component is on the board exactly when its variant has a footprint. Changed
+//! components and components of changed parts are checked; copper at removed
+//! placements stays.
+
+use std::collections::{HashMap, HashSet};
 
 use model::*;
 
@@ -16,25 +19,43 @@ const STAGING_GAP: Coord = 10 * MM;
 const STAGING_PITCH: Coord = 5 * MM;
 
 pub(crate) fn sync_board(tx: &mut Transaction) -> Result<(), CommandError> {
-    let touched: Vec<Id> =
-        tx.changes().iter().filter_map(|c| if let ObjectId::Component(id) = c.id { Some(id) } else { None }).collect();
+    let mut touched: Vec<Id> = Vec::new();
+    let mut parts: HashSet<Id> = HashSet::new();
+    for c in tx.changes() {
+        match c.id {
+            ObjectId::Component(id) => touched.push(id),
+            ObjectId::LibPart(id) => drop(parts.insert(id)),
+            _ => {}
+        }
+    }
+    let p = tx.project();
+    if !parts.is_empty() {
+        touched.extend(p.schematic.components.iter().filter(|c| parts.contains(&c.part)).map(|c| c.id));
+    }
     if touched.is_empty() {
         return Ok(());
     }
+    let mut placements: HashMap<Id, Vec<Id>> = HashMap::new();
+    for f in p.board.footprints.iter() {
+        placements.entry(f.component).or_default().push(f.id);
+    }
     let mut new_components = Vec::new();
+    let mut removed = Vec::new();
+    let mut seen = HashSet::new();
     for id in touched {
-        // On the board: components with a footprint variant.
-        let on_board = tx.project().schematic.components.get(id).is_some_and(|c| c.variant.is_some());
-        let placements: Vec<Id> =
-            tx.project().board.footprints.iter().filter(|f| f.component == id).map(|f| f.id).collect();
-        if on_board && placements.is_empty() && !new_components.contains(&id) {
-            new_components.push(id);
+        if !seen.insert(id) {
+            continue;
         }
-        if !on_board {
-            for f in placements {
-                tx.remove(ObjectId::Footprint(f))?;
-            }
+        let variant = p.schematic.components.get(id).and_then(|c| p.library.parts.get(c.part)?.variant(c.variant));
+        let on_board = variant.is_some_and(|v| v.footprint.is_some());
+        match placements.remove(&id) {
+            None if on_board => new_components.push(id),
+            Some(fs) if !on_board => removed.extend(fs),
+            _ => {}
         }
+    }
+    for f in removed {
+        tx.remove(ObjectId::Footprint(f))?;
     }
     if new_components.is_empty() {
         return Ok(());

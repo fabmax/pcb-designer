@@ -140,9 +140,24 @@ impl PartForm {
         // ---- Variants
         ui.add_space(12.0);
         ui.label(RichText::new("Footprint variants").strong());
-        hint(ui, "Each variant is a footprint with its own pin-pad mapping (e.g. 0603 / 0805).");
+        hint(
+            ui,
+            "Each variant is a footprint with its own pin-pad mapping (e.g. 0603 / 0805). \
+             A variant without footprint keeps its components off the board.",
+        );
+        // Footprint choices of a variant: none, or one of the library's.
+        let fp_options: Vec<(Option<Id>, String)> = std::iter::once((None, "None (not on board)".to_string()))
+            .chain(footprints.iter().map(|(id, n)| (Some(*id), n.clone())))
+            .collect();
+        // A variant named after its footprint (or "No footprint") follows a footprint change.
+        let auto_name = |fp: Option<Id>| {
+            fp.map_or(PartVariant::NO_FOOTPRINT.to_string(), |f| {
+                lib_ref.footprints.get(f).map_or("Variant".into(), |f| f.name.clone())
+            })
+        };
         let options = pin_options(lib_ref, &part);
         let mut remove_variant = None;
+        let nv = part.variants.len();
         for (vi, variant) in part.variants.iter_mut().enumerate() {
             ui.add_space(6.0);
             egui::Frame::group(ui.style()).fill(theme::panel_dark()).inner_margin(egui::Margin::same(10)).show(
@@ -153,14 +168,19 @@ impl PartForm {
                         if let Some(v) = self.fields.text_sized(ui, ("var_name", variant.id), &variant.name, 160.0) {
                             variant.name = v;
                         }
-                        if let Some(f) = fields::combo(ui, ("var_fp", variant.id), &variant.footprint, &footprints) {
+                        if let Some(f) = fields::combo(ui, ("var_fp", variant.id), &variant.footprint, &fp_options) {
+                            if variant.name == auto_name(variant.footprint) {
+                                variant.name = auto_name(f);
+                            }
                             variant.footprint = f;
-                            variant.connections = lib_ref.map_by_name(&part.units, f);
+                            variant.connections = f.map_or(Vec::new(), |f| lib_ref.map_by_name(&part.units, f));
                         }
-                        if ui.button("Edit footprint").clicked() {
-                            open = Some(Open::Item(Item::Footprint(variant.footprint)));
+                        if ui.add_enabled(variant.footprint.is_some(), egui::Button::new("Edit footprint")).clicked()
+                            && let Some(f) = variant.footprint
+                        {
+                            open = Some(Open::Item(Item::Footprint(f)));
                         }
-                        if ui.button("Remove").clicked() {
+                        if ui.add_enabled(nv > 1, egui::Button::new("Remove")).clicked() {
                             remove_variant = Some(vi);
                         }
                     });
@@ -171,18 +191,14 @@ impl PartForm {
         if let Some(i) = remove_variant {
             part.variants.remove(i);
         }
-        if part.variants.is_empty() {
-            ui.add_space(4.0);
-            hint(ui, "No variants: components of this part aren't placed on the board.");
-        }
-        if ui.add_enabled(!footprints.is_empty(), egui::Button::new("Add variant")).clicked() {
-            let fp = part.variants.last().map_or(footprints[0].0, |v| v.footprint);
-            let name = lib_ref.footprints.get(fp).map_or("Variant".into(), |f| f.name.clone());
+        if ui.button("Add variant").clicked() {
+            // The last variant's footprint, else the library's first; none without footprints.
+            let fp = part.variants.iter().rev().find_map(|v| v.footprint).or(footprints.first().map(|f| f.0));
             part.variants.push(PartVariant {
                 id: Id::new(),
-                name,
+                name: auto_name(fp),
                 footprint: fp,
-                connections: lib_ref.map_by_name(&part.units, fp),
+                connections: fp.map_or(Vec::new(), |f| lib_ref.map_by_name(&part.units, f)),
             });
         }
 
@@ -250,7 +266,11 @@ fn mapping_ui(
     variant: &mut PartVariant,
     options: &[(Option<(u32, Id)>, String)],
 ) {
-    let Some(fp) = lib.footprints.get(variant.footprint) else {
+    let Some(id) = variant.footprint else {
+        hint(ui, "No footprint: components with this variant aren't placed on the board.");
+        return;
+    };
+    let Some(fp) = lib.footprints.get(id) else {
         ui.label(RichText::new("Footprint missing").color(theme::warn()));
         return;
     };
@@ -265,10 +285,10 @@ fn mapping_ui(
                 .on_hover_text("Pad \"1\" to pin number 1 (or a pin named \"1\"), pad \"GND\" to pin \"GND\"")
                 .clicked()
             {
-                variant.connections = lib.map_by_name(units, variant.footprint);
+                variant.connections = lib.map_by_name(units, id);
             }
             if ui.button("Map in order").on_hover_text("Pins in drawing order to pads 1, 2, 3, …").clicked() {
-                variant.connections = lib.map_in_order(units, variant.footprint);
+                variant.connections = lib.map_in_order(units, id);
             }
             if ui.button("Clear").clicked() {
                 variant.connections.clear();

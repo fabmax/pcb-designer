@@ -150,13 +150,13 @@ pub fn builtin_library() -> Library {
             PartVariant {
                 id: bid(0x120),
                 name: "0603".into(),
-                footprint: fp0603.id,
+                footprint: Some(fp0603.id),
                 connections: connections([bid(0x1001), bid(0x1002)], r_pins),
             },
             PartVariant {
                 id: bid(0x121),
                 name: "0805".into(),
-                footprint: fp0805.id,
+                footprint: Some(fp0805.id),
                 connections: connections([bid(0x1101), bid(0x1102)], r_pins),
             },
         ],
@@ -184,7 +184,7 @@ pub fn builtin_library() -> Library {
         variants: vec![PartVariant {
             id: bid(0x220),
             name: "0603".into(),
-            footprint: fp0603.id,
+            footprint: Some(fp0603.id),
             connections: connections([bid(0x1001), bid(0x1002)], c_pins),
         }],
         properties: Default::default(),
@@ -210,7 +210,7 @@ pub fn builtin_library() -> Library {
         variants: vec![PartVariant {
             id: bid(0x320),
             name: "0603".into(),
-            footprint: led0603.id,
+            footprint: Some(led0603.id),
             connections: connections([bid(0x1202), bid(0x1201)], [anode, cathode]),
         }],
         properties: Default::default(),
@@ -273,7 +273,7 @@ pub fn builtin_library() -> Library {
         variants: vec![PartVariant {
             id: bid(0x420),
             name: "PinHeader 2.54mm".into(),
-            footprint: header_fp.id,
+            footprint: Some(header_fp.id),
             connections: hdr_pads
                 .iter()
                 .zip(&hdr_pins)
@@ -389,7 +389,7 @@ fn add_diode(lib: &mut Library) {
     let variant = PartVariant {
         id: bid(0x520),
         name: "SOD-123".into(),
-        footprint: bid(0x1400),
+        footprint: Some(bid(0x1400)),
         connections: vec![
             PadConnection { pad: p1, unit: 0, pin: cathode },
             PadConnection { pad: p2, unit: 0, pin: anode },
@@ -442,7 +442,7 @@ fn add_npn(lib: &mut Library) {
     let variant = PartVariant {
         id: bid(0x620),
         name: "SOT-23".into(),
-        footprint: bid(0x1500),
+        footprint: Some(bid(0x1500)),
         connections: vec![
             PadConnection { pad: pads[0], unit: 0, pin: b },
             PadConnection { pad: pads[1], unit: 0, pin: e },
@@ -507,7 +507,7 @@ fn add_opamp(lib: &mut Library) {
     let variant = PartVariant {
         id: bid(0x720),
         name: "SOIC-8".into(),
-        footprint: bid(0x1600),
+        footprint: Some(bid(0x1600)),
         connections: map
             .iter()
             .map(|&(pad, pin)| PadConnection { pad: pad_ids[pad], unit: 0, pin: ids[pin] })
@@ -542,7 +542,7 @@ mod tests {
         let lib = builtin_library();
         let led = lib.parts.get(PART_LED).unwrap();
         let v = &led.variants[0];
-        let fp = lib.footprints.get(v.footprint).unwrap();
+        let fp = lib.footprints.get(v.footprint.unwrap()).unwrap();
         let sym = lib.symbols.get(led.units[0].symbol).unwrap();
         let k = sym.pins.iter().find(|p| p.name == "K").unwrap();
         let conn = v.connections.iter().find(|c| c.pin == k.id).unwrap();
@@ -554,7 +554,7 @@ mod tests {
         let lib = builtin_library();
         let part = lib.parts.get(PART_OPAMP).unwrap();
         let sym = lib.symbols.get(part.units[0].symbol).unwrap();
-        let fp = lib.footprints.get(part.variants[0].footprint).unwrap();
+        let fp = lib.footprints.get(part.variants[0].footprint.unwrap()).unwrap();
         let pad_of = |pin: &str| {
             let pin = sym.pins.iter().find(|p| p.name == pin).unwrap().id;
             let c = part.variants[0].connections.iter().find(|c| c.pin == pin).unwrap();

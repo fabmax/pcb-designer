@@ -32,7 +32,7 @@ fn update_parts_from_changed_library() {
     // and a brand-new symbol.
     let part = lib.parts.get(PART_RESISTOR).unwrap().clone();
     let v0805 = part.variants.iter().find(|v| v.name == "0805").unwrap().clone();
-    let fp = lib.footprints.get_mut(v0805.footprint).unwrap();
+    let fp = lib.footprints.get_mut(v0805.footprint.unwrap()).unwrap();
     let pad_ids: Vec<Id> = fp.pads.ids().collect();
     for id in &pad_ids {
         fp.pads.get_mut(*id).unwrap().size = Size::mm(1.5, 1.6);
@@ -57,7 +57,7 @@ fn update_parts_from_changed_library() {
     assert_eq!(p.validate(), Vec::<String>::new());
     assert!(part_statuses(p, &[&lib]).iter().all(|s| s.state == PartState::UpToDate));
     let c = p.schematic.components.get(r1).unwrap();
-    assert_eq!(c.variant, Some(v0805.id), "component moved to the remaining variant");
+    assert_eq!(c.variant, v0805.id, "component moved to the remaining variant");
     let fp = p.library.footprint_of(c.part, c.variant).unwrap();
     assert!(fp.pads.iter().all(|pad| pad.size == Size::mm(1.5, 1.6)));
     assert!(p.library.symbols.contains(new_symbol));
@@ -112,7 +112,7 @@ fn project_part_edits_keep_what_components_use() {
     let mut ed = Editor::new(Project::new("t"));
     ed.execute(Command::import_parts(&lib, &[PART_RESISTOR, PART_LED]).unwrap()).unwrap();
     let r1 = place(&mut ed, PART_RESISTOR, 0.0);
-    let used = ed.project().schematic.components.get(r1).unwrap().variant.unwrap();
+    let used = ed.project().schematic.components.get(r1).unwrap().variant;
 
     // Dropping the variant R1 uses is refused; dropping another one is fine.
     let part = ed.project().library.parts.get(PART_RESISTOR).unwrap().clone();

@@ -328,7 +328,7 @@ fn changing_the_footprint_variant_updates_copper() {
     let c1 = b.ed.project().board.footprints.get(f1).unwrap().component;
     let v0805 = b.ed.project().library.parts.get(PART_RESISTOR).unwrap().variants[1].id;
     let before = b.pad(f1, "2");
-    b.ed.execute(Command::SetComponent { id: c1, refdes: None, value: None, variant: Some(Some(v0805)) }).unwrap();
+    b.ed.execute(Command::SetComponent { id: c1, refdes: None, value: None, variant: Some(v0805) }).unwrap();
     let after = b.pad(f1, "2");
     assert_ne!(before, after, "0805 pads are further apart");
     let bc = b.bc();

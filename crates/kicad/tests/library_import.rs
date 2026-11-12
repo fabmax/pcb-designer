@@ -131,16 +131,21 @@ fn name_clashes_get_unique_names() {
 }
 
 #[test]
-fn symbols_without_footprint_become_parts_off_the_board() {
+fn symbols_without_footprint_get_a_no_footprint_variant() {
     let tmp = tempfile::tempdir().unwrap();
     setup(tmp.path(), false);
     let mut cat = Catalog::scan(&[tmp.path().to_path_buf()]);
     let req = Request { symbols: vec![("Device:R".into(), vec![])], footprints: vec![] };
     let imported = import(&mut cat, &req);
     assert!(imported.errors.is_empty(), "{:?}", imported.errors);
-    assert_eq!(imported.parts.len(), 1);
-    assert!(imported.parts[0].variants.is_empty());
+    let [part] = &imported.parts[..] else { panic!("one part") };
+    assert_eq!(part.variants.len(), 1);
+    assert_eq!(part.variants[0].footprint, None);
+    assert_eq!(part.variants[0].name, "No footprint");
     assert!(imported.warnings.iter().any(|w| w.contains("no footprint")), "{:?}", imported.warnings);
+    let mut lib = LibraryDoc::new(model::Library::new("Imported"));
+    lib.upsert(imported.symbols, imported.footprints, imported.parts).unwrap();
+    assert!(lib.library().validate().is_empty());
 
     // A footprint that fails to load: no part (the error says why).
     let req = Request { symbols: vec![("Device:R".into(), vec!["Resistor_SMD:Missing".into()])], footprints: vec![] };

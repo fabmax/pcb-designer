@@ -143,8 +143,8 @@ pub fn resolve_sheets(project: &Project, mut command: Value) -> Result<Command, 
 #[derive(Clone, Debug, Default)]
 pub struct KicadImport {
     /// `Lib:Name` of each symbol, with the footprints to make a part with (`None`: the
-    /// symbol's default or best matching footprint; empty: a part without footprint, kept
-    /// off the board).
+    /// symbol's default or best matching footprint; empty: a part with a "no footprint"
+    /// variant, kept off the board).
     pub symbols: Vec<(String, Option<Vec<String>>)>,
     /// Lone footprints (`Lib:Name`).
     pub footprints: Vec<String>,
@@ -297,14 +297,14 @@ pub fn kicad_import_reply(
         })
         .collect();
     let footprints: Vec<&str> = imported.footprints.iter().map(|f| f.name.as_str()).collect();
-    let symbols_only: Vec<&str> = req.symbols.iter().filter(|s| s.1.is_empty()).map(|s| s.0.as_str()).collect();
+    let without_footprint: Vec<&str> = req.symbols.iter().filter(|s| s.1.is_empty()).map(|s| s.0.as_str()).collect();
     json!({
         "library": library,
         "added": added,
         "updated": replaced,
         "parts": parts,
         "footprints": footprints,
-        "symbols_without_part": symbols_only,
+        "parts_without_footprint": without_footprint,
         "notes": imported.warnings,
         "errors": imported.errors,
     })
@@ -658,7 +658,7 @@ fn library_parts(lib: &Library) -> Value {
                 .variants
                 .iter()
                 .map(|v| {
-                    let fp = lib.footprints.get(v.footprint).map(|f| f.name.clone());
+                    let fp = v.footprint.and_then(|f| lib.footprints.get(f)).map(|f| f.name.clone());
                     json!({ "id": v.id, "name": v.name, "footprint": fp })
                 })
                 .collect();
@@ -714,7 +714,7 @@ fn component(p: &Project, refdes: &str) -> Result<Value, String> {
     Ok(json!({
         "component": c,
         "part": part.map(|p| json!({ "name": p.name, "description": p.description })),
-        "variant": part.zip(c.variant).and_then(|(p, v)| p.variant(v)).map(|v| v.name.clone()),
+        "variant": part.and_then(|p| p.variant(c.variant)).map(|v| v.name.clone()),
         "symbols": symbols,
         "footprint": footprint,
         "pin_pads": pin_pads,

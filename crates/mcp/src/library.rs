@@ -306,7 +306,7 @@ fn summary_of(lib: &Library, kind: &str, path: Option<&Path>, modified: bool) ->
             let variants: Vec<Value> = p
                 .variants
                 .iter()
-                .map(|v| json!({ "name": v.name, "footprint": footprint_name(v.footprint) }))
+                .map(|v| json!({ "name": v.name, "footprint": v.footprint.map(footprint_name) }))
                 .collect();
             json!({ "id": p.id, "name": p.name, "description": p.description, "units": units, "variants": variants })
         })
@@ -536,7 +536,9 @@ fn part_report(lib: &Library, part: &Part) -> Value {
         .variants
         .iter()
         .map(|v| {
-            let Some(fp) = lib.footprints.get(v.footprint) else { return json!({ "name": v.name }) };
+            let Some(fp) = v.footprint.and_then(|f| lib.footprints.get(f)) else {
+                return json!({ "name": v.name, "footprint": null });
+            };
             let mapped: HashSet<Id> = v.connections.iter().map(|c| c.pad).collect();
             let unconnected: Vec<&str> =
                 fp.pads.iter().filter(|p| !mapped.contains(&p.id)).map(|p| p.name.as_str()).collect();
@@ -745,15 +747,15 @@ fn part(work: &Library, mut map: Map<String, Value>) -> Result<Part, String> {
     let mut part: Part = parse(m, &what)?;
     part.variants = match variants_given {
         Some(Value::Array(vs)) => vs.iter().map(|v| variant(work, &part, old, v, &what)).collect::<Result<_, _>>()?,
-        None if old.is_none() => {
-            return Err(format!(
-                "{what} needs a footprint: variants: [{{\"footprint\": \"FOOTPRINT NAME\"}}] \
-                 (or variants: [] for a part that isn't on the board)"
-            ));
-        }
         None => base.variants.clone(),
         Some(_) => return Err(format!("{what}: variants is a list like [{{\"footprint\": \"NAME\"}}]")),
     };
+    if part.variants.is_empty() {
+        return Err(format!(
+            "{what} needs a variant: variants: [{{\"footprint\": \"FOOTPRINT NAME\"}}] \
+             (or [{{\"name\": \"No footprint\"}}] for a part that isn't on the board)"
+        ));
+    }
     Ok(part)
 }
 
@@ -782,21 +784,29 @@ fn unit_name(i: usize) -> String {
     }
 }
 
-/// Variant: `{"footprint": NAME or id, "name"?, "connections"?}`.
+/// Variant: `{"footprint": NAME or id, "name"?, "connections"?}`; without a footprint a
+/// "no footprint" variant (`{"name"?}`, components off the board).
 fn variant(work: &Library, part: &Part, old: Option<&Part>, v: &Value, what: &str) -> Result<PartVariant, String> {
-    let spec =
-        str_field(v, "footprint").ok_or_else(|| format!("{what}: each variant needs a \"footprint\" (name or id)"))?;
+    let variant_id = |name: &str| {
+        v.get("id")
+            .and_then(parse_id)
+            .or_else(|| old.and_then(|p| p.variants.iter().find(|x| x.name == name).map(|x| x.id)))
+            .unwrap_or_else(Id::new)
+    };
+    let Some(spec) = str_field(v, "footprint") else {
+        if v.get("connections").is_some_and(|c| !c.is_null()) {
+            return Err(format!("{what}: a variant without \"footprint\" has no connections"));
+        }
+        let name = str_field(v, "name").unwrap_or(PartVariant::NO_FOOTPRINT).to_string();
+        return Ok(PartVariant { id: variant_id(&name), name, footprint: None, connections: Vec::new() });
+    };
     let fp_id: Option<Id> = spec.parse().ok();
     let fp =
         work.footprints.iter().find(|f| f.name == spec || Some(f.id) == fp_id).ok_or_else(|| {
             format!("{what}: no footprint {spec:?} in the library (add it in the same edit or before)")
         })?;
     let name = str_field(v, "name").map(str::to_string).unwrap_or_else(|| fp.name.clone());
-    let id = v
-        .get("id")
-        .and_then(parse_id)
-        .or_else(|| old.and_then(|p| p.variants.iter().find(|x| x.name == name).map(|x| x.id)))
-        .unwrap_or_else(Id::new);
+    let id = variant_id(&name);
     let what = format!("{what} variant {name:?}");
     let connections = match v.get("connections") {
         None | Some(Value::Null) => work.map_by_name(&part.units, fp.id),
@@ -809,7 +819,7 @@ fn variant(work: &Library, part: &Part, old: Option<&Part>, v: &Value, what: &st
             ));
         }
     };
-    Ok(PartVariant { id, name, footprint: fp.id, connections })
+    Ok(PartVariant { id, name, footprint: Some(fp.id), connections })
 }
 
 /// `{"pad": PAD NAME or id, "pin": PIN NUMBER, NAME or id, "unit"?: NAME or index}`.
