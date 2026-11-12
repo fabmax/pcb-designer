@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use editor_core::Command;
+use editor_core::clip::Clip;
 use editor_core::query::{PartState, part_statuses};
 use egui::{RichText, WidgetText};
 use egui_tiles::{Behavior, Container, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse};
@@ -22,6 +23,7 @@ use view::{Document, Interaction, KeyAction, LibraryDoc, ViewId, ViewKind};
 
 use crate::agent::{self, Agent, Job};
 use crate::canvas::{self, Canvas, CanvasResources};
+use crate::clipboard;
 use crate::dock::{Dock, Panel, Side, Unseen};
 use crate::icons::{self, Icon};
 use crate::keymap::{Action, Context, Keymap, Shortcut};
@@ -209,6 +211,13 @@ pub struct PcbApp {
     focus_lib: Option<u64>,
     /// The Gerber tab has focus (it takes the measure keys; other view keys do nothing).
     focus_gerber: bool,
+    /// Text a keyboard paste brought this frame.
+    paste_text: Option<String>,
+    /// Clip text to put on the system clipboard at the end of the frame.
+    copy_out: Option<String>,
+    /// The clip being carried and the view it was pasted into; it moves to the sheet
+    /// under the pointer.
+    carry_clip: Option<(ViewId, Clip)>,
     hovered: Option<ViewId>,
     properties: Properties,
     /// Loaded libraries: the built-in one, the project's library files (see
@@ -314,6 +323,9 @@ impl PcbApp {
             last_sheet: root.sheet(),
             focus_lib: None,
             focus_gerber: false,
+            paste_text: None,
+            copy_out: None,
+            carry_clip: None,
             hovered: None,
             properties: Properties::default(),
             libraries: Vec::new(),
@@ -1415,6 +1427,97 @@ impl PcbApp {
         true
     }
 
+    // ------------------------------------------------------------------------------------
+    // Clipboard
+
+    /// Cut, copy, paste and duplicate in the focused library item or the active view.
+    fn clipboard_action(&mut self, action: Action) {
+        if self.focus_gerber && self.tree.tiles.find_pane(&Tab::Gerber).is_some() {
+            return;
+        }
+        let result = if let Some(key) = self.focus_lib {
+            self.lib_clipboard(key, action)
+        } else if self.is_open(self.active) {
+            self.view_clipboard(action)
+        } else {
+            Ok(None)
+        };
+        if let Ok(Some(m)) | Err(m) = result {
+            self.set_status(m);
+        }
+    }
+
+    /// The clip on the system clipboard.
+    fn clip_from_clipboard(&mut self) -> Result<Clip, String> {
+        let text = self.paste_text.take().or_else(clipboard::read).unwrap_or_default();
+        Clip::from_text(&text).unwrap_or_else(|| Err("The clipboard holds no objects to paste".into()))
+    }
+
+    fn lib_clipboard(&mut self, key: u64, action: Action) -> Result<Option<String>, String> {
+        let pasted = if action == Action::Paste { Some(self.clip_from_clipboard()?) } else { None };
+        let l = self.lib(key).ok_or("The library is gone")?;
+        match action {
+            Action::Paste => l.paste(&pasted.expect("read above"))?,
+            Action::Duplicate => {
+                let clip = l.copy(false)?;
+                l.paste(&clip)?;
+            }
+            _ => {
+                let clip = l.copy(action == Action::Cut)?;
+                let n = clip.content.len();
+                self.copy_out = Some(clip.to_text());
+                return Ok(Some(copied(action, n)));
+            }
+        }
+        Ok(None)
+    }
+
+    fn view_clipboard(&mut self, action: Action) -> Result<Option<String>, String> {
+        if action == Action::Paste {
+            let clip = self.clip_from_clipboard()?;
+            self.paste_into_view(clip)?;
+            return Ok(None);
+        }
+        let view = self.active;
+        let it = &self.panes.get(view).it;
+        let (grid, snap) = (it.grid, it.snap);
+        let selection = it.selection.clone();
+        let mut snapper = Interaction::<ObjectId>::new(grid);
+        snapper.snap = snap;
+        let (clip, note) = view::clipboard::copy(self.project.lib.doc.project(), &selection, |p| snapper.snap(p))?;
+        if action == Action::Duplicate {
+            self.paste_into_view(clip)?;
+            return Ok(note);
+        }
+        if action == Action::Cut {
+            let doc = &mut self.project.lib.doc;
+            self.panes.get(view).it.key(&mut doc.target(view), KeyAction::Delete);
+        }
+        let n = clip.content.len();
+        self.copy_out = Some(clip.to_text());
+        Ok(Some(note.unwrap_or_else(|| copied(action, n))))
+    }
+
+    /// Paste into the view under the pointer (else the active one); the objects follow
+    /// the pointer until a click.
+    fn paste_into_view(&mut self, clip: Clip) -> Result<(), String> {
+        if self.busy() {
+            return Ok(());
+        }
+        let view = self.hovered.filter(|v| self.is_open(*v)).unwrap_or(self.active);
+        if view.kind() == ViewKind::Schematic {
+            self.sch.set_tool(SchTool::Select);
+        } else {
+            self.pcb.set_tool(PcbTool::Select);
+        }
+        self.carry_clip = Some((view, clip.clone()));
+        let pointer = self.panes.get(view).canvas.cursor_world.map(|[x, y]| Point::mm(x, y));
+        paste_and_carry(&mut self.project.lib.doc, self.panes.get(view), view, clip, pointer)?;
+        self.active = view;
+        self.focus_lib = None;
+        Ok(())
+    }
+
     /// Keys of the Gerber tab: its tools and fitting. Returns true if handled.
     fn gerber_action(&mut self, action: Action) -> bool {
         match action {
@@ -1430,6 +1533,9 @@ impl PcbApp {
     fn run_action(&mut self, action: Action) {
         if let Some(panel) = Panel::of_action(action) {
             return self.settings.dock.toggle(panel);
+        }
+        if matches!(action, Action::Cut | Action::Copy | Action::Paste | Action::Duplicate) {
+            return self.clipboard_action(action);
         }
         if let Some(key) = self.focus_lib
             && self.lib_action(key, action)
@@ -1465,6 +1571,7 @@ impl PcbApp {
                 return;
             }
             Action::ExportGerber => return self.export_gerber(),
+            Action::Cut | Action::Copy | Action::Paste | Action::Duplicate => return,
             Action::Undo => return self.undo(),
             Action::Redo => return self.redo(),
             _ if !view_keys => return,
@@ -1568,6 +1675,7 @@ impl PcbApp {
             Action::ToolCircle => tool_msg(l, Tool::Circle),
             Action::ToolText => tool_msg(l, Tool::Text),
             Action::ToolMeasure => tool_msg(l, Tool::Measure),
+            Action::Cut | Action::Copy | Action::Paste | Action::Duplicate => None,
             Action::New | Action::Open | Action::Save | Action::SaveAs | Action::Settings | Action::ExportGerber => {
                 None
             }
@@ -2561,6 +2669,27 @@ impl PcbApp {
     }
 }
 
+/// Paste `clip` into `view` under `pointer` (else where it was copied from) and let it
+/// follow the pointer.
+fn paste_and_carry(
+    doc: &mut Document,
+    pane: &mut Pane,
+    view: ViewId,
+    clip: Clip,
+    pointer: Option<Point>,
+) -> Result<(), String> {
+    let at = pointer.map_or(clip.anchor, |p| pane.it.snap(p));
+    let group = view::interaction::new_group();
+    let placed = view::clipboard::paste(doc, view, clip, at, Some(group))?;
+    pane.it.carry(&mut doc.target(view), placed, at, pointer.unwrap_or(at), group);
+    Ok(())
+}
+
+fn copied(action: Action, n: usize) -> String {
+    let verb = if action == Action::Cut { "Cut" } else { "Copied" };
+    if n == 1 { format!("{verb} 1 object") } else { format!("{verb} {n} objects") }
+}
+
 fn key_msg(l: &mut LibraryEditor, action: KeyAction) -> Option<String> {
     l.key(action);
     None
@@ -2691,6 +2820,7 @@ struct TreeBehavior<'a> {
     active: &'a mut ViewId,
     focus_lib: &'a mut Option<u64>,
     focus_gerber: &'a mut bool,
+    carry_clip: &'a mut Option<(ViewId, Clip)>,
     hovered: &'a mut Option<ViewId>,
     close_requests: &'a mut Vec<Tab>,
     /// A sheet symbol was double-clicked.
@@ -2825,8 +2955,31 @@ impl TreeBehavior<'_> {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             }
         } else {
+            // A paste carried on another sheet moves here when the pointer does.
+            if response.hovered()
+                && kind == ViewKind::Schematic
+                && let Some((from, clip)) = self.carry_clip.clone()
+                && from != view
+                && from.kind() == ViewKind::Schematic
+                && self.panes.get(from).it.is_carrying()
+            {
+                self.panes.get(from).it.key(&mut doc.target(from), KeyAction::Escape);
+                let pane = self.panes.get(view);
+                let pointer = pane.canvas.cursor_world.map(|[x, y]| Point::mm(x, y));
+                match paste_and_carry(doc, pane, view, clip.clone(), pointer) {
+                    Ok(()) => {
+                        *self.carry_clip = Some((view, clip));
+                        *self.active = view;
+                    }
+                    Err(e) => *self.status = Some((e, Instant::now())),
+                }
+            }
+            let pane = self.panes.get(view);
             let engaged = !pane.it.is_idle();
-            if let Some(input) = canvas::pointer_input(ui, &response, &pane.canvas, engaged, pane.it.hover.is_some()) {
+            let carried_off = pane.it.is_carrying() && !response.hovered();
+            if let Some(input) = canvas::pointer_input(ui, &response, &pane.canvas, engaged, pane.it.hover.is_some())
+                && !carried_off
+            {
                 pane.it.pointer(&mut doc.target(view), &input);
             }
             // Double-clicking a sheet symbol opens the sheet.
@@ -2849,14 +3002,14 @@ impl TreeBehavior<'_> {
             v.set_preview(project, &ghosts);
         }
         if kind == ViewKind::Board && self.pcb.tool() == PcbTool::Measure {
-            canvas::draw_measure(ui, &pane.canvas, response.rect, &self.pcb.measure);
+            canvas::draw_measure(ui, &self.panes.get(view).canvas, response.rect, &self.pcb.measure);
         }
         if kind == ViewKind::Board
             && let Some(ghosts) = self.pcb.take_preview(doc)
         {
             doc.board.set_board_preview(&ghosts);
         }
-        if !pane.it.is_idle() {
+        if !self.panes.get(view).it.is_idle() {
             ui.ctx().request_repaint();
         }
     }
@@ -3066,7 +3219,7 @@ impl eframe::App for PcbApp {
         #[cfg(target_os = "macos")]
         for picked in self.native_menu.picked() {
             match picked {
-                crate::native_menu::Picked::Key(s) => raw.events.push(crate::native_menu::key_event(s)),
+                crate::native_menu::Picked::Key(s) => raw.events.push(s.event()),
                 crate::native_menu::Picked::Cmd(cmd) => self.menu_cmds.push(cmd),
             }
         }
@@ -3085,6 +3238,9 @@ impl eframe::App for PcbApp {
         self.sync_libraries();
         self.handle_close(&ctx);
         // The name dialog takes the keys while it is open.
+        self.paste_text = ctx.input(|i| {
+            i.events.iter().find_map(|e| if let egui::Event::Paste(t) = e { Some(t.clone()) } else { None })
+        });
         if !self.record_shortcut(&ctx) && self.name_prompt.is_none() {
             for action in self.keymap.triggered(&ctx, self.context()) {
                 self.run_action(action);
@@ -3092,6 +3248,9 @@ impl eframe::App for PcbApp {
         }
         for cmd in std::mem::take(&mut self.menu_cmds) {
             self.run_menu_cmd(&ctx, cmd);
+        }
+        if let Some(text) = self.copy_out.take() {
+            ctx.copy_text(text);
         }
         // The export folder: scanned when the project folder changes and when the window
         // gets focus back (files may have changed outside).
@@ -3145,6 +3304,7 @@ impl eframe::App for PcbApp {
                 active: &mut self.active,
                 focus_lib: &mut self.focus_lib,
                 focus_gerber: &mut self.focus_gerber,
+                carry_clip: &mut self.carry_clip,
                 hovered: &mut self.hovered,
                 close_requests: &mut self.close_requests,
                 enter_sheet: &mut self.enter_sheet,

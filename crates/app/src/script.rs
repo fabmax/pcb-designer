@@ -8,7 +8,7 @@
 use std::collections::VecDeque;
 use view::ViewKind;
 
-use egui::{Event, Key, Modifiers, PointerButton, Pos2};
+use egui::{Event, Modifiers, PointerButton, Pos2};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Step2 {
@@ -23,7 +23,8 @@ enum Step2 {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Step {
-    Key(Key),
+    /// A key with modifiers; Cmd+X/C/V become egui's clipboard events (as egui-winit does).
+    Key(crate::keymap::Shortcut),
     Text(String),
     Move([f64; 2]),
     Press([f64; 2]),
@@ -69,7 +70,7 @@ impl Script {
                 Ok([num(x)?, num(y)?])
             };
             match verb {
-                "key" => steps.push_back(Step::Key(Key::from_name(arg.trim()).ok_or(format!("unknown key {arg:?}"))?)),
+                "key" => steps.push_back(Step::Key(arg.trim().parse().map_err(|e| format!("key {arg:?}: {e}"))?)),
                 "move" => steps.push_back(Step::Move(point()?)),
                 "click" => {
                     let p = point()?;
@@ -122,10 +123,14 @@ impl Script {
         self.wait = GAP;
         let m = Modifiers::NONE;
         match step {
-            Step::Key(key) => vec![
-                Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: m },
-                Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers: m },
-            ],
+            Step::Key(s) => {
+                let press = s.event();
+                let mut release = press.clone();
+                if let Event::Key { pressed, .. } = &mut release {
+                    *pressed = false;
+                }
+                vec![press, release]
+            }
             Step::Move(p) => vec![Event::PointerMoved(to_screen(p))],
             Step::Press(p) | Step::Release(p) => vec![Event::PointerButton {
                 pos: to_screen(p),

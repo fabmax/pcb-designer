@@ -110,7 +110,8 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
     parts; `--show gerber` opens the Gerber tab of a saved project with an export)
   - `--panel messages` (repeatable; shows a panel for this run only, see `dock.rs`)
   - `--script "board; ui-click X,Y; ui-move X,Y; key W; click X,Y; wait N"`, plus
-    `ui-double-click X,Y`, `ui-right-click X,Y` and `type TEXT`. Put a `wait 30` before a
+    `ui-double-click X,Y`, `ui-right-click X,Y` and `type TEXT`. Keys take modifiers
+    (`key Cmd+D`); `key Cmd+C` / `Cmd+V` use the real system clipboard. Put a `wait 30` before a
     double-click: egui counts clicks less than 0.3 s apart as one triple-click.
   - World coordinates are in mm (schematic and board only); `ui-*` steps take screen
     points (use them in library and Gerber tabs).
