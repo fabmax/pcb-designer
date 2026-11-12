@@ -432,15 +432,19 @@ impl Target for ProjectTarget<'_> {
 
     fn edit(&mut self, edit: Edit<ObjectId>, group: Option<u64>) -> Result<Option<String>, String> {
         let is_fp = |id: &ObjectId| matches!(id, ObjectId::Footprint(_));
-        // Wires stay attached to what moves in the schematic.
-        let sch = self.view.kind() == ViewKind::Schematic;
+        // Wires stay attached to what moves in the schematic (not to a carried paste).
+        let (edit, carry) = match edit {
+            Edit::Carry(e) => (*e, true),
+            e => (e, false),
+        };
+        let sch = self.view.kind() == ViewKind::Schematic && !carry;
         match edit {
             Edit::Move { ids, delta } => self.run(Command::Move { ids, delta, keep_connected: sch }, group)?,
             Edit::Rotate { ids, center, angle } => {
                 self.run(Command::Rotate { ids, center, angle, keep_connected: sch }, group)?
             }
             Edit::Mirror { ids, axis_x } | Edit::Flip { ids, axis_x } => match self.view.kind() {
-                ViewKind::Schematic => self.run(Command::Mirror { ids, axis_x, keep_connected: true }, group)?,
+                ViewKind::Schematic => self.run(Command::Mirror { ids, axis_x, keep_connected: !carry }, group)?,
                 ViewKind::Board => {
                     let ids: Vec<ObjectId> = ids.into_iter().filter(is_fp).collect();
                     if ids.is_empty() {
@@ -458,6 +462,7 @@ impl Target for ProjectTarget<'_> {
                     return Ok(Some("Footprints follow the schematic: delete the component there".into()));
                 }
             }
+            Edit::Carry(e) => return self.edit(*e, group),
         }
         Ok(None)
     }

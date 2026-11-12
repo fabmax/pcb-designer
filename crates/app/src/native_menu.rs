@@ -145,12 +145,6 @@ impl NativeMenu {
     }
 }
 
-/// The key press egui would have seen for `s`.
-pub fn key_event(s: Shortcut) -> egui::Event {
-    let modifiers = egui::Modifiers { alt: s.alt, shift: s.shift, mac_cmd: s.command, command: s.command, ctrl: false };
-    egui::Event::Key { key: s.key, physical_key: None, pressed: true, repeat: false, modifiers }
-}
-
 /// Entries in creation order; a menu or submenu comes before its entries. Top-level
 /// menus are `None` (their titles never change).
 fn flatten(menus: &[Menu]) -> Vec<Option<&Entry>> {

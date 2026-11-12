@@ -22,6 +22,10 @@ pub enum Action {
     ExportGerber,
     Undo,
     Redo,
+    Cut,
+    Copy,
+    Paste,
+    Duplicate,
     SelectAll,
     Rotate,
     Mirror,
@@ -74,6 +78,10 @@ impl Action {
         Action::ExportGerber,
         Action::Undo,
         Action::Redo,
+        Action::Cut,
+        Action::Copy,
+        Action::Paste,
+        Action::Duplicate,
         Action::SelectAll,
         Action::Rotate,
         Action::Mirror,
@@ -118,6 +126,10 @@ impl Action {
             Action::ExportGerber => "Export Gerber files",
             Action::Undo => "Undo",
             Action::Redo => "Redo",
+            Action::Cut => "Cut",
+            Action::Copy => "Copy",
+            Action::Paste => "Paste",
+            Action::Duplicate => "Duplicate",
             Action::SelectAll => "Select all",
             Action::Rotate => "Rotate",
             Action::Mirror => "Mirror",
@@ -228,6 +240,28 @@ impl Shortcut {
         key == self.key && m.command == self.command && m.shift == self.shift && m.alt == self.alt
     }
 
+    /// The event egui makes of pressing it. The clipboard shortcuts become the clipboard
+    /// events egui-winit makes of them, so text fields still copy and paste.
+    pub fn event(self) -> egui::Event {
+        if self.command && !self.shift && !self.alt {
+            match self.key {
+                Key::X => return egui::Event::Cut,
+                Key::C => return egui::Event::Copy,
+                Key::V => return egui::Event::Paste(crate::clipboard::read().unwrap_or_default()),
+                _ => {}
+            }
+        }
+        let mac = cfg!(target_os = "macos");
+        let modifiers = egui::Modifiers {
+            alt: self.alt,
+            shift: self.shift,
+            mac_cmd: self.command && mac,
+            command: self.command,
+            ctrl: self.command && !mac,
+        };
+        egui::Event::Key { key: self.key, physical_key: None, pressed: true, repeat: false, modifiers }
+    }
+
     pub fn to_egui(self) -> KeyboardShortcut {
         let mut m = Modifiers::NONE;
         if self.command {
@@ -304,6 +338,10 @@ impl Default for Keymap {
             (Action::ExportGerber, vec![S::cmd_shift(Key::E)]),
             (Action::Undo, vec![S::cmd(Key::Z)]),
             (Action::Redo, vec![S::cmd_shift(Key::Z), S::cmd(Key::Y)]),
+            (Action::Cut, vec![S::cmd(Key::X)]),
+            (Action::Copy, vec![S::cmd(Key::C)]),
+            (Action::Paste, vec![S::cmd(Key::V)]),
+            (Action::Duplicate, vec![S::cmd(Key::D)]),
             (Action::SelectAll, vec![S::cmd(Key::A)]),
             (Action::Rotate, vec![S::key(Key::R)]),
             (Action::Mirror, vec![S::key(Key::X)]),
@@ -398,7 +436,14 @@ impl Keymap {
         let mut actions = Vec::new();
         ctx.input_mut(|i| {
             i.events.retain(|e| {
-                let egui::Event::Key { key, pressed: true, repeat, modifiers, .. } = e else { return true };
+                // egui turns the platform's clipboard shortcuts into these events.
+                let (key, repeat, modifiers) = match e {
+                    egui::Event::Key { key, pressed: true, repeat, modifiers, .. } => (key, repeat, modifiers),
+                    egui::Event::Cut => (&egui::Key::X, &false, &egui::Modifiers::COMMAND),
+                    egui::Event::Copy => (&egui::Key::C, &false, &egui::Modifiers::COMMAND),
+                    egui::Event::Paste(_) => (&egui::Key::V, &false, &egui::Modifiers::COMMAND),
+                    _ => return true,
+                };
                 let Some(action) = self.lookup(*key, *modifiers, context) else { return true };
                 if (typing && !action.works_while_typing()) || (*repeat && !action.repeats()) {
                     return true;

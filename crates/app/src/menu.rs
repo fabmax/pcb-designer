@@ -188,6 +188,10 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
         action(s.redo.as_deref().unwrap_or("Redo"), Action::Redo, s.redo.is_some()),
         Entry::Separator,
     ];
+    for a in [Action::Cut, Action::Copy, Action::Paste, Action::Duplicate] {
+        edit.push(action(a.label(), a, true));
+    }
+    edit.push(Entry::Separator);
     for a in [Action::SelectAll, Action::Rotate, Action::Mirror, Action::Flip, Action::Delete] {
         edit.push(action(a.label(), a, true));
     }

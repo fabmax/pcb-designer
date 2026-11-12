@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use model::*;
 
 use crate::CommandError;
+use crate::clip::{Clip, ClipContent};
 use crate::transaction::{BoardSetup, Transaction};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -172,6 +173,16 @@ pub enum Command {
     Insert {
         objects: Vec<Object>,
     },
+    /// Paste a clip (see [`crate::clip`]) of schematic objects onto `sheet` (default: the
+    /// root sheet), or of board objects, moved so its anchor lands on `at`. Objects get
+    /// new ids. Components keep their reference designator if it is free, else get the
+    /// next one; parts missing from the project are imported from the clip.
+    Paste {
+        clip: Clip,
+        #[serde(default)]
+        sheet: Option<Id>,
+        at: Point,
+    },
     /// Replace raw objects by id (references are validated).
     Update {
         objects: Vec<Object>,
@@ -218,6 +229,7 @@ impl Command {
             Command::Delete { ids } => format!("Delete {} object(s)", ids.len()),
             Command::Insert { objects } => format!("Insert {} object(s)", objects.len()),
             Command::Update { objects } => format!("Update {} object(s)", objects.len()),
+            Command::Paste { .. } => "Paste".into(),
             Command::AddLibrary { path } => format!("Add library {}", file_name(path)),
             Command::RemoveLibrary { path } => format!("Remove library {}", file_name(path)),
             Command::RelinkLibrary { to, .. } => format!("Relink library to {}", file_name(to)),
@@ -394,6 +406,7 @@ impl Command {
                 }
                 Ok(())
             }
+            Command::Paste { clip, sheet, at } => paste(tx, clip, sheet, at),
             Command::Update { objects } => {
                 for o in objects {
                     check_references(tx.project(), &o)?;
@@ -449,6 +462,143 @@ fn resolve_sheet(tx: &Transaction, sheet: Option<Id>) -> Result<Id, CommandError
         Some(s) => Err(CommandError::NotFound(ObjectId::Sheet(s))),
         None => sch.root_sheet().ok_or_else(|| CommandError::Invalid("schematic has no sheet".into())),
     }
+}
+
+fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Result<(), CommandError> {
+    let delta = at - clip.anchor;
+    let mut placed = Vec::new();
+    match clip.content {
+        ClipContent::Schematic { objects, library } => {
+            let sheet = resolve_sheet(tx, sheet)?;
+            // Parts the project lacks come from the clip; present ones stay as they are.
+            for part in library.parts.iter() {
+                if tx.project().library.parts.contains(part.id) {
+                    continue;
+                }
+                let (part, symbols, footprints) =
+                    library.extract_part(part.id).ok_or(CommandError::NotFound(ObjectId::LibPart(part.id)))?;
+                for s in symbols {
+                    if !tx.project().library.symbols.contains(s.id) {
+                        tx.insert(Object::LibSymbol(s))?;
+                    }
+                }
+                for f in footprints {
+                    if !tx.project().library.footprints.contains(f.id) {
+                        tx.insert(Object::LibFootprint(f))?;
+                    }
+                }
+                tx.insert(Object::LibPart(part))?;
+            }
+            let mut components = std::collections::HashMap::new();
+            for o in objects {
+                let o = match o {
+                    Object::Component(mut c) => {
+                        let old = c.id;
+                        c.id = Id::new();
+                        let part = tx
+                            .project()
+                            .library
+                            .parts
+                            .get(c.part)
+                            .ok_or(CommandError::NotFound(ObjectId::LibPart(c.part)))?;
+                        if part.variant(c.variant).is_none() {
+                            c.variant = part.variants.first().map(|v| v.id).unwrap_or(c.variant);
+                        }
+                        if c.refdes.is_empty() || tx.project().schematic.component_by_refdes(&c.refdes).is_some() {
+                            c.refdes = next_refdes(tx.project(), &part.prefix.clone());
+                        }
+                        components.insert(old, c.id);
+                        tx.insert(Object::Component(c))?;
+                        continue;
+                    }
+                    Object::Symbol(mut s) => {
+                        s.component = *components
+                            .get(&s.component)
+                            .ok_or_else(|| CommandError::Invalid("the clip lacks the component of a symbol".into()))?;
+                        s.id = Id::new();
+                        s.sheet = sheet;
+                        Object::Symbol(s)
+                    }
+                    Object::Wire(mut w) => {
+                        (w.id, w.sheet) = (Id::new(), sheet);
+                        Object::Wire(w)
+                    }
+                    Object::BusWire(mut w) => {
+                        (w.id, w.sheet) = (Id::new(), sheet);
+                        Object::BusWire(w)
+                    }
+                    Object::BusEntry(mut e) => {
+                        (e.id, e.sheet) = (Id::new(), sheet);
+                        Object::BusEntry(e)
+                    }
+                    Object::Junction(mut j) => {
+                        (j.id, j.sheet) = (Id::new(), sheet);
+                        Object::Junction(j)
+                    }
+                    Object::Label(mut l) => {
+                        (l.id, l.sheet) = (Id::new(), sheet);
+                        Object::Label(l)
+                    }
+                    Object::SchText(mut t) => {
+                        (t.id, t.sheet) = (Id::new(), sheet);
+                        Object::SchText(t)
+                    }
+                    other => {
+                        return Err(CommandError::Invalid(format!(
+                            "{:?} can't be pasted into a schematic",
+                            other.id().kind()
+                        )));
+                    }
+                };
+                check_references(tx.project(), &o)?;
+                placed.push(tx.insert(o)?);
+            }
+        }
+        ClipContent::Board { objects } => {
+            for o in objects {
+                let o = match o {
+                    Object::Track(mut t) => {
+                        t.id = Id::new();
+                        Object::Track(t)
+                    }
+                    Object::Via(mut v) => {
+                        v.id = Id::new();
+                        Object::Via(v)
+                    }
+                    Object::Zone(mut z) => {
+                        z.id = Id::new();
+                        Object::Zone(z)
+                    }
+                    Object::BoardGraphic(mut g) => {
+                        g.id = Id::new();
+                        Object::BoardGraphic(g)
+                    }
+                    Object::BoardText(mut t) => {
+                        t.id = Id::new();
+                        Object::BoardText(t)
+                    }
+                    other => {
+                        return Err(CommandError::Invalid(format!(
+                            "{:?} can't be pasted onto the board",
+                            other.id().kind()
+                        )));
+                    }
+                };
+                check_references(tx.project(), &o)?;
+                placed.push(tx.insert(o)?);
+            }
+        }
+        other => {
+            return Err(CommandError::Invalid(format!(
+                "the clip holds {}; paste them into a symbol or footprint",
+                other.describe()
+            )));
+        }
+    }
+    if delta != Point::ZERO {
+        transform_objects(tx, &placed, Transform::new(delta, Angle::ZERO, false), Edit::Transform)?;
+    }
+    Ok(())
 }
 
 fn import_parts(tx: &mut Transaction, library: &Library, parts: &[Id]) -> Result<(), CommandError> {

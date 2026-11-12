@@ -60,6 +60,16 @@ pub enum Edit<I> {
     Delete {
         ids: Vec<I>,
     },
+    /// Carrying a paste: the edit moves only these objects; schematic wires attached to
+    /// them don't follow (they belong to whatever the paste passes over).
+    Carry(Box<Edit<I>>),
+}
+
+impl<I> Edit<I> {
+    /// Wrapped in [`Edit::Carry`] if `carry`.
+    fn carried(self, carry: bool) -> Self {
+        if carry { Edit::Carry(Box::new(self)) } else { self }
+    }
 }
 
 /// Something editable on a canvas: a schematic or board view of a project, a symbol, a
@@ -111,6 +121,8 @@ struct Drag<I> {
     group: u64,
     /// Something was executed in `group` (and can be undone on cancel).
     executed: bool,
+    /// Pasted objects following the pointer without a button held; a click drops them.
+    carry: bool,
 }
 
 static NEXT_GROUP: AtomicU64 = AtomicU64::new(1);
@@ -154,6 +166,38 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
 
     pub fn is_dragging(&self) -> bool {
         matches!(self.state, State::Dragging(_))
+    }
+
+    /// Pasted objects are following the pointer.
+    pub fn is_carrying(&self) -> bool {
+        matches!(&self.state, State::Dragging(d) if d.carry)
+    }
+
+    /// The undo group of the objects being carried.
+    pub fn carry_group(&self) -> Option<u64> {
+        match &self.state {
+            State::Dragging(d) if d.carry => Some(d.group),
+            _ => None,
+        }
+    }
+
+    /// Let `ids`, just pasted in undo group `group` with their reference point at
+    /// `anchor`, follow the pointer (now at `pointer`) until a click drops them. Moves
+    /// join `group`; Esc undoes it, paste included.
+    pub fn carry<T: Target<Id = I>>(&mut self, t: &mut T, ids: Vec<I>, anchor: Point, pointer: Point, group: u64) {
+        self.selection = ids.clone();
+        self.hover = None;
+        self.message = None;
+        self.state = State::Dragging(Drag {
+            ids,
+            start: pointer,
+            anchor,
+            moved: Point::ZERO,
+            group,
+            executed: true,
+            carry: true,
+        });
+        self.refresh(t);
     }
 
     /// Active box selection: rectangle and whether it is a crossing (right-to-left) box.
@@ -237,7 +281,15 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                 if let Some(p) = p {
                     self.drag_to(t, &mut drag, p);
                 }
-                if input.released || !input.down {
+                if drag.carry {
+                    if input.pressed && p.is_some() {
+                        // Dropped; Idle ignores this click's release.
+                        t.close_group();
+                        State::Idle
+                    } else {
+                        State::Dragging(drag)
+                    }
+                } else if input.released || !input.down {
                     t.close_group();
                     State::Idle
                 } else {
@@ -274,7 +326,7 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
             return None;
         }
         let anchor = t.anchor(grabbed).unwrap_or(start);
-        Some(Drag { ids, start, anchor, moved: Point::ZERO, group: new_group(), executed: false })
+        Some(Drag { ids, start, anchor, moved: Point::ZERO, group: new_group(), executed: false, carry: false })
     }
 
     fn drag_to<T: Target<Id = I>>(&mut self, t: &mut T, drag: &mut Drag<I>, p: Point) {
@@ -283,7 +335,7 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
         if step == Point::ZERO {
             return;
         }
-        match t.edit(Edit::Move { ids: drag.ids.clone(), delta: step }, Some(drag.group)) {
+        match t.edit(Edit::Move { ids: drag.ids.clone(), delta: step }.carried(drag.carry), Some(drag.group)) {
             Ok(note) => {
                 drag.moved = target;
                 drag.executed = true;
@@ -323,7 +375,7 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                 let angle = Angle::DEG90;
                 if let State::Dragging(drag) = &mut self.state {
                     let center = drag.anchor + drag.moved;
-                    let edit = Edit::Rotate { ids: drag.ids.clone(), center, angle };
+                    let edit = Edit::Rotate { ids: drag.ids.clone(), center, angle }.carried(drag.carry);
                     match t.edit(edit, Some(drag.group)) {
                         Ok(_) => drag.executed = true,
                         Err(e) => self.message = Some(e),
@@ -334,7 +386,21 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                 }
             }
             KeyAction::Mirror | KeyAction::Flip => {
-                if self.is_dragging() {
+                if let State::Dragging(drag) = &mut self.state {
+                    if drag.carry {
+                        let axis_x = (drag.anchor + drag.moved).x;
+                        let ids = drag.ids.clone();
+                        let edit = if action == KeyAction::Mirror {
+                            Edit::Mirror { ids, axis_x }
+                        } else {
+                            Edit::Flip { ids, axis_x }
+                        };
+                        match t.edit(Edit::Carry(Box::new(edit)), Some(drag.group)) {
+                            Ok(_) => drag.executed = true,
+                            Err(e) => self.message = Some(e),
+                        }
+                        self.refresh(t);
+                    }
                     return;
                 }
                 let Some(center) = self.pivot(t) else { return };

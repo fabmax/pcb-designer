@@ -71,6 +71,13 @@ and hierarchical sheets.
 - Part states (`query::part_statuses`): the stored `source.content_hash` is compared
   with the library's hash and with the copy's own → up to date, library changed,
   modified locally, both changed, library missing, removed from library, local.
+- Clipboard (`clip`): a `Clip` is versioned JSON (`pcb_designer_clip`, a `domain` tag,
+  the `anchor` it is held by) of whole objects in their original coordinates.
+  Schematic clips carry the parts their symbols use (components come first). `Paste`
+  gives new ids, keeps a refdes if it's free (so cut + paste keeps it) else the next
+  one, imports missing parts (present ones win), then moves everything by
+  `at - anchor`. Sheet symbols and footprints aren't copied. Library item clips (pins,
+  pads, graphics, texts) are pasted by `view::item::paste_elems` as an `Update`.
 - `query::unused_library_objects` lists unused parts, then the symbols/footprints only
   they need; deleting in that order passes the in-use checks.
 
@@ -212,6 +219,11 @@ and hierarchical sheets.
   measurement per editor, kept in `PcbPlacer` / `Placer` / `GerberPane`, cleared by
   `set_tool`; not saved, no commands. The app draws it (`canvas::draw_measure`).
   Gotcha: `board_points` scans the whole board per hover.
+- `clipboard`: copy (anchor = snapped reference point of the first copyable object) and
+  paste into a view, checking the clip's domain. A paste is carried:
+  `Interaction::carry` is a drag without a button in the paste's undo group (moves,
+  R, X join it; a click drops; Esc undoes the paste). Carried edits are wrapped in
+  `Edit::Carry` so schematic wires the paste passes over aren't rubber-banded.
 - Labels are drawn KiCad style: local with a dot, global as an outline around the name,
   hierarchical as a small arrow before it; `LabelShape::points` says which ends are
   pointed. Label text goes through `Text::upright` (turned 180° with swapped alignment
@@ -305,6 +317,13 @@ and hierarchical sheets.
   icon everywhere; `scripts/bundle-macos.sh` builds the `.app` with `AppIcon.icns`.
   Unbundled (`cargo run`) macOS shows the app as `pcb-designer`; `setProcessName` and an
   embedded `__info_plist` don't change that.
+- **Clipboard:** egui-winit turns ⌘/Ctrl+X/C/V into `Event::Cut/Copy/Paste(text)`, not
+  key events; `Keymap::triggered` maps them back to their shortcuts, and
+  `Shortcut::event` does the reverse for native menu picks and scripts (so text fields
+  still get them). Writing goes through `ctx.copy_text` (`copy_out`, end of frame);
+  reading uses the paste event's text, else `arboard` (`clipboard.rs`). A paste goes to
+  the view under the pointer; `carry_clip` re-pastes it on another sheet when the
+  pointer moves there. Scripts touch the real system clipboard.
 - **Keymap** (`keymap.rs`): actions are global or per context (library, schematic,
   board); contexts may share keys. `ToolMeasure` (M) and `ToolSelect` are global. The
   Gerber tab has no context of its own: `focus_gerber` (set by clicking or opening it,
@@ -361,6 +380,8 @@ defers.
   silkscreen clipped at mask openings, mirrored bottom text in the editor; in the viewer:
   the mask area from the outline's contour (bounding box today), true clear polarity,
   G74 arcs, LM, thermal primitives, slots in drill files.
+- Clipboard: copying sheet symbols (a deep copy of the sub-sheet), carrying a paste
+  between the schematic and the board.
 - Measure tool: edge-to-edge (clearance) measuring, copying the readout (waits for a
   clipboard design), snapping to a pad's centre from anywhere inside it, an index for
   `board_points` on huge boards.

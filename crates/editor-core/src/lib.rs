@@ -5,6 +5,7 @@
 //! replay them, and the same change sets tell views what to update.
 
 pub mod bus;
+pub mod clip;
 pub mod command;
 pub mod connectivity;
 pub mod copper;

@@ -28,6 +28,7 @@
 mod agent;
 mod app;
 mod canvas;
+mod clipboard;
 mod dock;
 mod fields;
 mod icons;

@@ -28,6 +28,18 @@ holes); double-clicking a single file shows only that one, the layers button tog
 them, and hovering names the file, aperture and its function. Open the PCB tab side by
 side to compare. Agents can look too: `screenshot` with target `gerber`.
 
+## Copy and paste
+
+⌘C / ⌘X / ⌘V (Ctrl on Windows and Linux) copy, cut and paste the selection; ⌘D
+duplicates it without touching the clipboard. A paste follows the pointer (R rotates,
+X mirrors) until you click; Esc cancels it. Works in the schematic (symbols, wires,
+buses, labels, texts; across sheets, and into other projects and app instances, since
+clips carry their parts), on the board (tracks, vias, zones, graphics, texts; they keep
+their layers) and in the symbol and footprint editors (pins, pads, graphics, texts;
+pins and pads get the next free numbers). Pasted components get the next free
+reference unless theirs is free (after a cut). Clips are JSON text on the system
+clipboard.
+
 ## Measuring
 
 The layout editors (PCB, the part editor's footprint, the Gerber tab) have a Measure

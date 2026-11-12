@@ -7,6 +7,7 @@
 //!   `update` command on the library document, so undo works as everywhere else.
 
 use editor_core::Command;
+use editor_core::clip::{Clip, ClipContent};
 use model::*;
 use render::{Color, Instance, Scene};
 use rustc_hash::FxHasher;
@@ -130,6 +131,7 @@ fn edit_transform<I>(edit: &Edit<I>) -> Option<Transform> {
             Some(Transform::new(Point::new(2 * axis_x, 0), Angle::ZERO, true))
         }
         Edit::Delete { .. } => None,
+        Edit::Carry(e) => edit_transform(e),
     }
 }
 
@@ -140,6 +142,7 @@ fn edit_ids<I: Copy>(edit: &Edit<I>) -> &[I] {
         | Edit::Mirror { ids, .. }
         | Edit::Flip { ids, .. }
         | Edit::Delete { ids } => ids,
+        Edit::Carry(e) => edit_ids(e),
     }
 }
 
@@ -266,6 +269,83 @@ pub fn update_item<R>(
     let result = f(&mut content)?;
     doc.execute_grouped(Command::Update { objects: vec![content.into_object()] }, group).map_err(|e| e.to_string())?;
     Ok(result)
+}
+
+// ---------------------------------------------------------------------------------------
+// Clipboard
+
+/// A clip of elements of an item, held by `anchor`. `None` if none of them exist.
+pub fn copy_elems(content: &Content, elems: &[Elem], anchor: Point) -> Option<Clip> {
+    let mut elems = elems.to_vec();
+    elems.sort();
+    elems.dedup();
+    let clip = match content {
+        Content::Symbol(s) => ClipContent::Symbol {
+            pins: elems
+                .iter()
+                .filter_map(|&e| if let Elem::Pin(id) = e { s.pins.get(id).cloned() } else { None })
+                .collect(),
+            graphics: elems.iter().filter_map(|&e| graphic_index(e).and_then(|i| s.graphics.get(i).cloned())).collect(),
+            texts: elems.iter().filter_map(|&e| text_index(e).and_then(|i| s.texts.get(i).cloned())).collect(),
+        },
+        Content::Footprint(f) => ClipContent::Footprint {
+            pads: elems
+                .iter()
+                .filter_map(|&e| if let Elem::Pad(id) = e { f.pads.get(id).cloned() } else { None })
+                .collect(),
+            graphics: elems.iter().filter_map(|&e| graphic_index(e).and_then(|i| f.graphics.get(i).cloned())).collect(),
+            texts: elems.iter().filter_map(|&e| text_index(e).and_then(|i| f.texts.get(i).cloned())).collect(),
+        },
+    };
+    (!clip.is_empty()).then(|| Clip::new(anchor, clip))
+}
+
+/// Add a clip's elements to the item, moved so the clip's anchor lands on `at`. Pins and
+/// pads get the next free numbers (pin names stay). Returns the new elements; an error if
+/// the clip is of another kind.
+pub fn paste_elems(content: &mut Content, clip: &Clip, at: Point) -> Result<Vec<Elem>, String> {
+    let mut added = Vec::new();
+    match (&mut *content, &clip.content) {
+        (Content::Symbol(s), ClipContent::Symbol { pins, graphics, texts }) => {
+            for pin in pins {
+                let mut pin = pin.clone();
+                pin.id = Id::new();
+                if !pin.number.is_empty() {
+                    pin.number = next_number(s.pins.iter().map(|p| p.number.as_str()));
+                }
+                added.push(Elem::Pin(pin.id));
+                s.pins.insert(pin);
+            }
+            added.extend((s.graphics.len()..s.graphics.len() + graphics.len()).map(Elem::Graphic));
+            s.graphics.extend(graphics.iter().cloned());
+            added.extend((s.texts.len()..s.texts.len() + texts.len()).map(Elem::Text));
+            s.texts.extend(texts.iter().cloned());
+        }
+        (Content::Footprint(f), ClipContent::Footprint { pads, graphics, texts }) => {
+            for pad in pads {
+                let mut pad = pad.clone();
+                pad.id = Id::new();
+                pad.name = next_number(f.pads.iter().map(|p| p.name.as_str()));
+                added.push(Elem::Pad(pad.id));
+                f.pads.insert(pad);
+            }
+            added.extend((f.graphics.len()..f.graphics.len() + graphics.len()).map(Elem::Graphic));
+            f.graphics.extend(graphics.iter().cloned());
+            added.extend((f.texts.len()..f.texts.len() + texts.len()).map(Elem::Text));
+            f.texts.extend(texts.iter().cloned());
+        }
+        (Content::Symbol(_), other) => {
+            return Err(format!("The clipboard holds {}, not symbol pins", other.describe()));
+        }
+        (Content::Footprint(_), other) => {
+            return Err(format!("The clipboard holds {}, not footprint pads", other.describe()));
+        }
+    }
+    let delta = at - clip.anchor;
+    if delta != Point::ZERO {
+        apply(content, &Edit::Move { ids: added.clone(), delta })?;
+    }
+    Ok(added)
 }
 
 /// Next free numeric name ("1", "2", …) given existing names.

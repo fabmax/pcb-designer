@@ -1,9 +1,10 @@
 //! Library editor tab: browser of a library's parts, symbols and footprints, the symbol
 //! and footprint editors (canvas + tools + element inspector) and the part form.
 
+use editor_core::clip::Clip;
 use egui::RichText;
 use model::*;
-use view::item::{Content, Elem, Item, ItemTarget, ItemView};
+use view::item::{Content, Elem, Item, ItemTarget, ItemView, update_item};
 use view::tools::{Placer, Tool};
 use view::{Interaction, KeyAction, LibraryDoc};
 
@@ -193,6 +194,44 @@ impl LibraryEditor {
         }
         let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
         self.it.key(&mut t, action);
+    }
+
+    /// A clip of the selected elements (removed after copying if `cut`).
+    pub fn copy(&mut self, cut: bool) -> Result<Clip, String> {
+        let Open::Item(item) = self.open else { return Err("Open a symbol or footprint to copy from it".into()) };
+        if cut && let Some(why) = &self.lib.doc.read_only {
+            return Err(why.clone());
+        }
+        let content = Content::get(self.lib.doc.project(), item).ok_or("the item no longer exists")?;
+        let anchor = self.it.selection.iter().find_map(|&e| content.anchor(e)).map(|p| self.it.snap(p));
+        let clip =
+            anchor.and_then(|a| view::item::copy_elems(&content, &self.it.selection, a)).ok_or("Nothing selected")?;
+        if cut {
+            self.key(KeyAction::Delete);
+        }
+        Ok(clip)
+    }
+
+    /// Paste `clip` under the pointer (else where it was copied from); it follows the
+    /// pointer until a click.
+    pub fn paste(&mut self, clip: &Clip) -> Result<(), String> {
+        let Open::Item(item) = self.open else { return Err("Open a symbol or footprint to paste into it".into()) };
+        if let Some(why) = &self.lib.doc.read_only {
+            return Err(why.clone());
+        }
+        if self.busy() {
+            return Ok(());
+        }
+        self.placer.set_tool(Tool::Select, None);
+        self.view.set_preview(&[]);
+        let pointer = self.canvas.cursor_world.map(|[x, y]| Point::mm(x, y));
+        let at = pointer.map_or(clip.anchor, |p| self.it.snap(p));
+        let group = view::interaction::new_group();
+        let added = update_item(&mut self.lib.doc, item, Some(group), |c| view::item::paste_elems(c, clip, at))?;
+        self.view.sync(&self.lib.doc);
+        let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
+        self.it.carry(&mut t, added, at, pointer.unwrap_or(at), group);
+        Ok(())
     }
 
     pub fn undo(&mut self) -> Option<String> {
@@ -425,7 +464,10 @@ impl LibraryEditor {
             }
         } else {
             let engaged = !self.it.is_idle();
-            if let Some(input) = canvas::pointer_input(ui, &response, &self.canvas, engaged, self.it.hover.is_some()) {
+            let carried_off = self.it.is_carrying() && !response.hovered();
+            if let Some(input) = canvas::pointer_input(ui, &response, &self.canvas, engaged, self.it.hover.is_some())
+                && !carried_off
+            {
                 let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
                 self.it.pointer(&mut t, &input);
             }

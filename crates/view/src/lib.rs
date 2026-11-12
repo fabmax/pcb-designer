@@ -6,6 +6,7 @@
 //! * [`Interaction`]: selection, hover, box selection, dragging with grid snapping,
 //!   rotate/mirror/flip/delete. Independent of egui, so it is unit-testable.
 
+pub mod clipboard;
 pub mod demo;
 pub mod document;
 mod draw;
