@@ -33,7 +33,7 @@ pub enum Command {
         size: Option<Size>,
     },
     /// Place a part from the project library: creates a component and its symbol. The
-    /// footprint appears on the board automatically.
+    /// footprint appears on the board automatically. Not for board parts.
     PlacePart {
         part: Id,
         #[serde(default)]
@@ -45,6 +45,22 @@ pub enum Command {
         rotation: Angle,
         #[serde(default)]
         mirror: bool,
+        #[serde(default)]
+        refdes: Option<String>,
+        #[serde(default)]
+        value: Option<String>,
+    },
+    /// Place a board part (a part without symbol: mounting hole, logo) on the board:
+    /// creates its component and footprint. Board parts live on the board only.
+    PlaceBoardPart {
+        part: Id,
+        #[serde(default)]
+        variant: Option<Id>,
+        pos: Point,
+        #[serde(default)]
+        rotation: Angle,
+        #[serde(default)]
+        side: Side,
         #[serde(default)]
         refdes: Option<String>,
         #[serde(default)]
@@ -209,6 +225,7 @@ impl Command {
             Command::ImportParts { parts, .. } => format!("Import {} part(s)", parts.len()),
             Command::UpdateParts { parts, .. } => format!("Update {} part(s) from library", parts.len()),
             Command::PlacePart { .. } => "Place part".into(),
+            Command::PlaceBoardPart { .. } => "Place board part".into(),
             Command::PlaceUnit { .. } => "Place unit".into(),
             Command::AddWire { .. } => "Add wire".into(),
             Command::AddBus { .. } => "Add bus".into(),
@@ -259,6 +276,9 @@ impl Command {
             }
             Command::PlacePart { part, variant, sheet, pos, rotation, mirror, refdes, value } => {
                 place_part(tx, part, variant, sheet, pos, rotation, mirror, refdes, value)
+            }
+            Command::PlaceBoardPart { part, variant, pos, rotation, side, refdes, value } => {
+                place_board_part(tx, part, variant, pos, rotation, side, refdes, value)
             }
             Command::PlaceUnit { component, unit, sheet, pos, rotation, mirror } => {
                 let sheet = resolve_sheet(tx, sheet)?;
@@ -673,6 +693,7 @@ fn update_parts(tx: &mut Transaction, parts: Vec<PartBundle>) -> Result<(), Comm
         let components: Vec<Component> =
             tx.project().schematic.components.iter().filter(|c| c.part == part_id).cloned().collect();
         for c in &components {
+            check_kind_kept(tx.project(), c, &part)?;
             if let Some(s) = tx.project().schematic.symbols_of(c.id).find(|s| s.unit as usize >= part.units.len()) {
                 return Err(CommandError::Forbidden(format!(
                     "{} has unit {} placed, but the library part now has {} unit(s)",
@@ -772,7 +793,58 @@ fn place_part(
     value: Option<String>,
 ) -> Result<(), CommandError> {
     let sheet = resolve_sheet(tx, sheet)?;
-    let part = tx.project().library.parts.get(part_id).ok_or(CommandError::NotFound(ObjectId::LibPart(part_id)))?;
+    let component = new_component(tx.project(), part_id, variant, refdes, value, false)?;
+    let symbol = SymbolInstance { id: Id::new(), sheet, component: component.id, unit: 0, pos, rotation, mirror };
+    // Multi-unit parts: only unit 0 is placed for now (see PLAN.md).
+    tx.insert(Object::Component(component))?;
+    tx.insert(Object::Symbol(symbol))?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn place_board_part(
+    tx: &mut Transaction,
+    part_id: Id,
+    variant: Option<Id>,
+    pos: Point,
+    rotation: Angle,
+    side: Side,
+    refdes: Option<String>,
+    value: Option<String>,
+) -> Result<(), CommandError> {
+    let component = new_component(tx.project(), part_id, variant, refdes, value, true)?;
+    let footprint = FootprintInstance { id: Id::new(), component: component.id, pos, rotation, side, locked: false };
+    // The footprint is in place before sync runs, so sync doesn't stage another one.
+    tx.insert(Object::Component(component))?;
+    tx.insert(Object::Footprint(footprint))?;
+    Ok(())
+}
+
+/// A new component of `part_id` (a board part when `board`), not yet inserted.
+fn new_component(
+    project: &Project,
+    part_id: Id,
+    variant: Option<Id>,
+    refdes: Option<String>,
+    value: Option<String>,
+    board: bool,
+) -> Result<Component, CommandError> {
+    let part = project.library.parts.get(part_id).ok_or(CommandError::NotFound(ObjectId::LibPart(part_id)))?;
+    match (board, part.is_board_part()) {
+        (false, true) => {
+            return Err(CommandError::Invalid(format!(
+                "{:?} is a board part (no symbol); place it on the board (place_board_part)",
+                part.name
+            )));
+        }
+        (true, false) => {
+            return Err(CommandError::Invalid(format!(
+                "{:?} has a symbol; place it in the schematic and its footprint follows",
+                part.name
+            )));
+        }
+        _ => {}
+    }
     let variant = match variant {
         Some(v) if part.variant(v).is_some() => v,
         Some(_) => return Err(CommandError::Invalid("variant does not belong to the part".into())),
@@ -780,26 +852,21 @@ fn place_part(
     };
     let refdes = match refdes {
         Some(r) => {
-            if tx.project().schematic.component_by_refdes(&r).is_some() {
+            if project.schematic.component_by_refdes(&r).is_some() {
                 return Err(CommandError::Invalid(format!("reference designator {r} is already used")));
             }
             r
         }
-        None => next_refdes(tx.project(), &part.prefix),
+        None => next_refdes(project, &part.prefix),
     };
-    let component = Component {
+    Ok(Component {
         id: Id::new(),
         part: part_id,
         variant,
         refdes,
         value: value.unwrap_or_else(|| part.default_value.clone()),
         properties: Default::default(),
-    };
-    let symbol = SymbolInstance { id: Id::new(), sheet, component: component.id, unit: 0, pos, rotation, mirror };
-    // Multi-unit parts: only unit 0 is placed for now (see PLAN.md).
-    tx.insert(Object::Component(component))?;
-    tx.insert(Object::Symbol(symbol))?;
-    Ok(())
+    })
 }
 
 /// Lowest free number for a reference designator prefix ("R" → "R3").
@@ -979,10 +1046,21 @@ fn delete(tx: &mut Transaction, ids: &[ObjectId]) -> Result<(), CommandError> {
             return Err(CommandError::NotFound(id));
         }
         match id {
-            ObjectId::Footprint(_) => {
-                return Err(CommandError::Forbidden(
-                    "footprints follow the schematic; delete the component there".into(),
-                ));
+            ObjectId::Footprint(f) => {
+                // Board parts live on the board: their footprint goes with the component.
+                let p = tx.project();
+                let component = p.board.footprints.get(f).map(|f| f.component);
+                let board_part = component
+                    .and_then(|c| p.schematic.components.get(c))
+                    .and_then(|c| p.library.parts.get(c.part))
+                    .is_some_and(Part::is_board_part);
+                let (true, Some(c)) = (board_part, component) else {
+                    return Err(CommandError::Forbidden(
+                        "footprints follow the schematic; delete the component there".into(),
+                    ));
+                };
+                tx.remove(id)?;
+                delete_component(tx, c)?;
             }
             ObjectId::Sheet(s) => {
                 // A sheet goes with everything on it and its sub-sheets (KiCad does the same).
@@ -1198,10 +1276,11 @@ fn not_listed(path: &std::path::Path) -> CommandError {
     CommandError::Invalid(format!("{} is not one of the project's libraries", path.display()))
 }
 
-/// A changed project part must keep what placed components use: their variant, and every
-/// placed unit.
+/// A changed project part must keep what placed components use: their variant, every
+/// placed unit, and its kind (board part or not).
 fn check_part_still_fits(project: &Project, part: &Part) -> Result<(), CommandError> {
     for c in project.schematic.components.iter().filter(|c| c.part == part.id) {
+        check_kind_kept(project, c, part)?;
         if part.variant(c.variant).is_none() {
             return Err(CommandError::Forbidden(format!(
                 "{} uses this footprint variant; give it another variant first",
@@ -1215,6 +1294,25 @@ fn check_part_still_fits(project: &Project, part: &Part) -> Result<(), CommandEr
                 s.unit + 1
             )));
         }
+    }
+    Ok(())
+}
+
+/// A placed component's part can't become the other kind: a board part (placed on the
+/// board, no symbols) can't get units, a schematic part can't lose all of them.
+fn check_kind_kept(project: &Project, c: &Component, part: &Part) -> Result<(), CommandError> {
+    let on_board_only = project.schematic.symbols_of(c.id).next().is_none();
+    if on_board_only && !part.is_board_part() {
+        return Err(CommandError::Forbidden(format!(
+            "{} is placed on the board as a board part; a board part can't get a symbol while placed",
+            c.refdes
+        )));
+    }
+    if !on_board_only && part.is_board_part() {
+        return Err(CommandError::Forbidden(format!(
+            "{} is placed in the schematic; its part needs a symbol unit",
+            c.refdes
+        )));
     }
     Ok(())
 }

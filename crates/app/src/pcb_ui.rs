@@ -41,8 +41,17 @@ pub fn toolbar(
         b(PcbTool::Zone, Icon::Zone, "Draw a copper zone, filled around other nets.", Action::PcbZone),
     ];
     let measure = [b(PcbTool::Measure, Icon::Measure, "Measure distances between two points.", Action::ToolMeasure)];
+    let place = [ToolButton {
+        tool: PcbTool::Place,
+        icon: Icon::Place,
+        name: "Place",
+        about: "Placing a board part from the library. Esc stops.",
+        action: None,
+    }];
+    let placing: &[ToolButton<PcbTool>] = if pcb.tool() == PcbTool::Place { &place } else { &[] };
     let id = egui::Id::unique("pcb_toolbar");
-    let (chosen, right) = toolbar::strip(ui, canvas, id, &[&select, &copper, &board, &measure], pcb.tool(), keymap);
+    let groups: [&[ToolButton<PcbTool>]; 5] = [&select, &copper, &board, &measure, placing];
+    let (chosen, right) = toolbar::strip(ui, canvas, id, &groups, pcb.tool(), keymap);
     toolbar::header(ui, canvas, right, id.with("header"), |ui| {
         layer_combo(ui, "pcb_layer", &mut pcb.settings.layer, doc)
             .on_hover_text(format!("Active copper layer ({})", keymap.menu_text(ui.ctx(), Action::PcbNextLayer)));
@@ -65,7 +74,7 @@ pub fn toolbar(
         }
     });
     toolbar::hint(ui, canvas, pcb.tool().hint());
-    chosen
+    chosen.filter(|&t| t != PcbTool::Place)
 }
 
 fn layer_combo(ui: &mut egui::Ui, salt: &str, layer: &mut LayerId, doc: &Document) -> egui::Response {
@@ -133,6 +142,29 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
             hint(ui, "Through vias connect all copper layers. Sizes come from the design rules.");
         }
         PcbTool::Outline => hint(ui, "Click two corners. The outline is a graphic on the Board Outline layer."),
+        PcbTool::Place => {
+            let Some(part) = pcb.placing.and_then(|p| doc.project().library.parts.get(p)) else { return };
+            grid(ui, "pcb_tool", |ui| {
+                row(ui, "Part", part.name.clone());
+                label(ui, "Rotation");
+                if let Some(a) = fields::rotation_combo(ui, "pcb_place_rot", s.rotation, ["0°", "90°", "180°", "270°"])
+                {
+                    s.rotation = a;
+                }
+                ui.end_row();
+                label(ui, "Side");
+                egui::ComboBox::from_id_salt("pcb_place_side").selected_text(format!("{:?}", s.side)).show_ui(
+                    ui,
+                    |ui| {
+                        ui.selectable_value(&mut s.side, Side::Top, "Top");
+                        ui.selectable_value(&mut s.side, Side::Bottom, "Bottom");
+                    },
+                );
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            hint(ui, "A board part has no symbol: it lives on the board only, and its pads have no net.");
+        }
         PcbTool::Measure => hint(
             ui,
             "Click a start point, then an end point. Ends snap to pad and via centres, track ends and \

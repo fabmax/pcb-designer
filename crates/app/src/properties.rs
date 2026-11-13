@@ -402,7 +402,12 @@ impl Properties {
         let Some(part) = project.library.parts.get(c.part).cloned() else { return };
         let fp_name = project.library.footprint_of(c.part, c.variant).map_or("?".into(), |fp| fp.name.clone());
         heading(ui, &c.refdes, &fp_name);
-        ui.label(RichText::new("Reference and value are edited in the schematic.").color(theme::text_dim()));
+        let note = if part.is_board_part() {
+            "Board part: placed on the board only, no symbol. Its pads have no net."
+        } else {
+            "Reference and value are edited in the schematic."
+        };
+        ui.label(RichText::new(note).color(theme::text_dim()));
         ui.add_space(4.0);
         grid(ui, |ui| {
             row(ui, "Value", c.value.clone());
@@ -445,7 +450,9 @@ impl Properties {
             }
             ui.end_row();
         });
-        pin_table(ui, cx.doc, None, c.id);
+        if !part.is_board_part() {
+            pin_table(ui, cx.doc, None, c.id);
+        }
     }
 }
 

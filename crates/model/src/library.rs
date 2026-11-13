@@ -242,6 +242,12 @@ impl Part {
     pub fn variant(&self, id: Id) -> Option<&PartVariant> {
         self.variants.iter().find(|v| v.id == id)
     }
+
+    /// A board part has no units (no symbol): it is placed on the board only (mounting
+    /// holes, logos, fiducials), and its pads have no net.
+    pub fn is_board_part(&self) -> bool {
+        self.units.is_empty()
+    }
 }
 
 has_id!(Pin, Symbol, Pad, Footprint, Part);
@@ -407,6 +413,9 @@ impl Library {
                 issues.push((part.id, format!("part {:?} has no variant", part.name)));
             }
             for v in &part.variants {
+                if part.is_board_part() && v.footprint.is_none() {
+                    issues.push((part.id, format!("board part {:?} variant {:?}: no footprint", part.name, v.name)));
+                }
                 let Some(id) = v.footprint else {
                     if !v.connections.is_empty() {
                         issues.push((

@@ -95,7 +95,6 @@ impl PartForm {
         };
         let mut remove_unit = None;
         egui::Grid::new(("units", id)).num_columns(4).spacing([12.0, 6.0]).show(ui, |ui| {
-            let n = part.units.len();
             for (i, unit) in part.units.iter_mut().enumerate() {
                 if let Some(v) = self.fields.text_sized(ui, ("unit_name", id, i), &unit.name, 60.0) {
                     unit.name = v;
@@ -106,7 +105,7 @@ impl PartForm {
                 if ui.button("Edit symbol").clicked() {
                     open = Some(Open::Item(Item::Symbol(unit.symbol)));
                 }
-                if ui.add_enabled(n > 1, egui::Button::new("Remove")).clicked() {
+                if ui.button("Remove").clicked() {
                     remove_unit = Some(i);
                 }
                 ui.end_row();
@@ -122,6 +121,9 @@ impl PartForm {
                     }
                 }
             }
+        }
+        if part.units.is_empty() {
+            hint(ui, "Board part: placed on the PCB only, no symbol. Its pads have no net.");
         }
         if ui.add_enabled(!symbols.is_empty(), egui::Button::new("Add unit")).clicked() {
             let symbol = part.units.last().map_or(symbols[0].0, |u| u.symbol);
@@ -146,9 +148,10 @@ impl PartForm {
              A variant without footprint keeps its components off the board.",
         );
         // Footprint choices of a variant: none, or one of the library's.
-        let fp_options: Vec<(Option<Id>, String)> = std::iter::once((None, "None (not on board)".to_string()))
-            .chain(footprints.iter().map(|(id, n)| (Some(*id), n.clone())))
-            .collect();
+        // Board parts always have a footprint.
+        let none = (!part.is_board_part()).then(|| (None, "None (not on board)".to_string()));
+        let fp_options: Vec<(Option<Id>, String)> =
+            none.into_iter().chain(footprints.iter().map(|(id, n)| (Some(*id), n.clone()))).collect();
         // A variant named after its footprint (or "No footprint") follows a footprint change.
         let auto_name = |fp: Option<Id>| {
             fp.map_or(PartVariant::NO_FOOTPRINT.to_string(), |f| {
@@ -274,6 +277,10 @@ fn mapping_ui(
         ui.label(RichText::new("Footprint missing").color(theme::warn()));
         return;
     };
+    if units.is_empty() {
+        hint(ui, "Board part: no pins to map, its pads have no net.");
+        return;
+    }
     let mut pads: Vec<&Pad> = fp.pads.iter().collect();
     pads.sort_by(|a, b| natural_cmp(&a.name, &b.name));
     let connected = variant.connections.len();

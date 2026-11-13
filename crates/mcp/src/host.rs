@@ -713,7 +713,7 @@ fn component(p: &Project, refdes: &str) -> Result<Value, String> {
         pin_pad_names(p, c.id).into_iter().map(|(pin, pads)| json!({ "pin": pin, "pads": pads })).collect();
     Ok(json!({
         "component": c,
-        "part": part.map(|p| json!({ "name": p.name, "description": p.description })),
+        "part": part.map(|p| json!({ "name": p.name, "description": p.description, "board_part": p.is_board_part() })),
         "variant": part.and_then(|p| p.variant(c.variant)).map(|v| v.name.clone()),
         "symbols": symbols,
         "footprint": footprint,

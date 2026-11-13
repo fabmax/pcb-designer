@@ -542,7 +542,7 @@ impl View {
     }
 
     /// Show what a board tool would create (empty slice clears).
-    pub fn set_board_preview(&mut self, ghosts: &[PcbGhost]) {
+    pub fn set_board_preview(&mut self, project: &Project, ghosts: &[PcbGhost]) {
         if ghosts.is_empty() {
             self.scene.remove_item(PREVIEW_ITEM);
             return;
@@ -551,6 +551,21 @@ impl View {
         let mut out = Vec::new();
         for g in ghosts {
             match *g {
+                PcbGhost::Footprint { part, pos, rotation, side } => {
+                    let Layers::Board(l) = &self.layers else { continue };
+                    let Some(part) = project.library.parts.get(part) else { continue };
+                    let fp = part.variants.first().and_then(|v| project.library.footprints.get(v.footprint?));
+                    let Some(fp) = fp else { continue };
+                    let mut p = Painter::default();
+                    let t = Transform::new(pos, rotation, side == Side::Bottom);
+                    let refdes = format!("{}?", part.prefix);
+                    draw_footprint_at(project, fp, &t, side, &refdes, &part.default_value, l, &mut p);
+                    // Translucent, on top of everything.
+                    out.extend(p.out.into_iter().map(|(_, mut inst)| {
+                        inst.color = inst.color.with_alpha((inst.color.0[3] as u16 * 3 / 4) as u8);
+                        (layer, inst)
+                    }));
+                }
                 PcbGhost::Zone { layer: l, ref points } => {
                     let color = board_layer_color(l).with_alpha(0xc0);
                     let n = points.len();
@@ -1115,8 +1130,23 @@ fn draw_footprint(project: &Project, inst: &FootprintInstance, l: &BoardLayers, 
     let Some(fp) = footprint_of_instance(project, inst) else { return };
     let component = project.schematic.components.get(inst.component);
     let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
-    let t = inst.transform();
-    let side = inst.side;
+    draw_footprint_at(project, fp, &inst.transform(), inst.side, refdes, value, l, p);
+}
+
+/// Draw footprint `fp` placed by `t` on `side` (also the ghost of a board part being
+/// placed).
+#[allow(clippy::too_many_arguments)]
+fn draw_footprint_at(
+    project: &Project,
+    fp: &Footprint,
+    t: &Transform,
+    side: Side,
+    refdes: &str,
+    value: &str,
+    l: &BoardLayers,
+    p: &mut Painter,
+) {
+    let t = *t;
 
     let mut body: Option<Rect> = None;
     let mut courtyard: Option<Rect> = None;

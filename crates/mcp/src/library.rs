@@ -367,7 +367,14 @@ fn render_target(lib: &Library, spec: &str) -> Result<Item, String> {
         _ => None,
     });
     let part_symbol = ids.iter().find_map(|id| match id {
-        ObjectId::LibPart(i) => lib.parts.get(*i)?.units.first().map(|u| Item::Symbol(u.symbol)),
+        // A part shows its first unit's symbol; a board part its first footprint.
+        ObjectId::LibPart(i) => {
+            let p = lib.parts.get(*i)?;
+            p.units
+                .first()
+                .map(|u| Item::Symbol(u.symbol))
+                .or_else(|| p.variants.first()?.footprint.map(Item::Footprint))
+        }
         _ => None,
     });
     symbol
@@ -732,6 +739,7 @@ fn part(work: &Library, mut map: Map<String, Value>) -> Result<Part, String> {
     if old.is_none() && m.get("default_value").and_then(Value::as_str).is_none_or(str::is_empty) {
         m.insert("default_value".into(), json!(name));
     }
+    let units_explicit = units_given.is_some();
     let units = match units_given {
         Some(Value::Array(us)) => {
             us.iter().enumerate().map(|(i, u)| unit(work, i, u, &what)).collect::<Result<_, _>>()?
@@ -739,8 +747,12 @@ fn part(work: &Library, mut map: Map<String, Value>) -> Result<Part, String> {
         None => base.units.clone(),
         Some(_) => return Err(format!("{what}: units is a list like [{{\"symbol\": \"NAME\"}}]")),
     };
-    if units.is_empty() {
-        return Err(format!("{what} needs a symbol: units: [{{\"symbol\": \"SYMBOL NAME\"}}]"));
+    // An explicit `units: []` makes a board part (no symbol, placed on the board only).
+    if units.is_empty() && !units_explicit && old.is_none() {
+        return Err(format!(
+            "{what} needs a symbol: units: [{{\"symbol\": \"SYMBOL NAME\"}}] (or units: [] for a board part, \
+             placed on the board only)"
+        ));
     }
     m.insert("units".into(), serde_json::to_value(&units).map_err(|e| e.to_string())?);
     m.insert("variants".into(), json!([]));

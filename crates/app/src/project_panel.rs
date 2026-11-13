@@ -270,7 +270,9 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
             let k = key(owner);
             out.push(A("Open", Act::OpenItem(k, open_of(item))));
             if let ObjectId::LibPart(p) = item {
-                out.push(A("Place in schematic", Act::Place(owner, p)));
+                // Board parts (their own icon) are placed on the board.
+                let board = info.icon == Some(Icon::BoardPart);
+                out.push(A(if board { "Place on board" } else { "Place in schematic" }, Act::Place(owner, p)));
                 match owner {
                     Owner::Lib(k) => out.push(A("Copy to Project Library", Act::CopyToProject(k, p))),
                     Owner::Project if info.flag => out.push(A("Update from library", Act::Update(Some(p)))),
@@ -354,7 +356,8 @@ pub fn library_children(
         .parts
         .iter()
         .map(|p| {
-            let mut n = item(ObjectId::LibPart(p.id), &p.name, Icon::Part, &p.description);
+            let icon = if p.is_board_part() { Icon::BoardPart } else { Icon::Part };
+            let mut n = item(ObjectId::LibPart(p.id), &p.name, icon, &p.description);
             if let Some(d) = part(p.id) {
                 n.data.detail = d.text;
                 n.data.warn = d.warn;
@@ -851,7 +854,7 @@ fn icon_color(icon: Icon) -> Color32 {
     };
     match icon {
         Icon::Schematic | Icon::Symbol => c(pal.sch_wire),
-        Icon::Board | Icon::Footprint => c(pal.top_copper),
+        Icon::Board | Icon::Footprint | Icon::BoardPart => c(pal.top_copper),
         Icon::Library | Icon::Part => c(pal.sch_label),
         Icon::Missing => theme::warn(),
         _ => theme::text_dim(),

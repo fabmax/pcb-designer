@@ -1177,8 +1177,9 @@ impl PcbApp {
         }
     }
 
-    /// Start placing a part in the schematic (it follows the cursor until clicked),
-    /// importing it from library `lib_key` if the project doesn't have it yet.
+    /// Start placing a part (it follows the cursor until clicked): in the schematic, or
+    /// on the board for a board part. Imports it from library `lib_key` if the project
+    /// doesn't have it yet.
     fn place_part(&mut self, lib_key: Option<u64>, part: Id) {
         if !self.doc().project().library.parts.contains(part) {
             let Some(l) = lib_key.and_then(|k| self.libraries.by_key(k)) else { return };
@@ -1190,6 +1191,12 @@ impl PcbApp {
             if let Err(e) = command.and_then(|c| self.doc_mut().execute(c)) {
                 return self.set_status(format!("Import failed: {e}"));
             }
+        }
+        if self.doc().project().library.parts.get(part).is_some_and(Part::is_board_part) {
+            self.show_view(ViewId::Board);
+            self.set_pcb_tool(PcbTool::Place);
+            self.pcb.place(part);
+            return;
         }
         self.focus_schematic();
         self.set_sch_tool(SchTool::Place);
@@ -1427,6 +1434,14 @@ impl PcbApp {
             }
             Action::Cancel if self.pcb.is_placing() => {
                 self.pcb.escape();
+                return true;
+            }
+            Action::Rotate if self.pcb.tool() == PcbTool::Place => {
+                self.pcb.rotate();
+                return true;
+            }
+            Action::Flip if self.pcb.tool() == PcbTool::Place => {
+                self.pcb.flip();
                 return true;
             }
             _ => return false,
@@ -3027,7 +3042,8 @@ impl TreeBehavior<'_> {
         if kind == ViewKind::Board
             && let Some(ghosts) = self.pcb.take_preview(doc)
         {
-            doc.board.set_board_preview(&ghosts);
+            let (project, v) = doc.project_and_view(ViewId::Board);
+            v.set_board_preview(project, &ghosts);
         }
         if !self.panes.get(view).it.is_idle() {
             ui.ctx().request_repaint();

@@ -3,7 +3,9 @@
 //!
 //! Nets are defined by the schematic only. A pad gets the net of its pin; tracks and vias
 //! get the net of the pads in their island. An island with pads of several nets is a
-//! short; an island without pads has no net.
+//! short; an island without pads has no net. Pads of board parts (no symbol) get a net of
+//! their own per pad number, `unconnected-(H1-Pad1)` as in KiCad, so copper of another net
+//! touching them is a short.
 
 use model::*;
 use rustc_hash::FxHashMap as HashMap;
@@ -219,6 +221,10 @@ impl BoardConnectivity {
         let mut pad_nets: Vec<Option<u32>> = Vec::new();
         for f in board.footprints.iter() {
             let Some(fp) = crate::query::footprint_of_instance(project, f) else { continue };
+            let component = project.schematic.components.get(f.component);
+            let board_part = component
+                .filter(|c| project.library.parts.get(c.part).is_some_and(Part::is_board_part))
+                .map(|c| c.refdes.as_str());
             let t = f.transform();
             let side_copper = layer_bit(LayerId::for_footprint(FootprintLayer::Copper, f.side));
             for pad in fp.pads.iter() {
@@ -228,6 +234,10 @@ impl BoardConnectivity {
                     PadKind::NonPlatedHole { .. } => continue,
                 };
                 let center = t.point(pad.pos);
+                let net = match board_part {
+                    Some(refdes) => Some(bc.intern(&format!("unconnected-({refdes}-Pad{})", pad.name))),
+                    None => pad_net.get(&(f.component, pad.name.as_str())).copied(),
+                };
                 bc.items.push(Copper {
                     item: CopperItem::Pad { footprint: f.id, pad: pad.id },
                     layers,
@@ -237,7 +247,7 @@ impl BoardConnectivity {
                     net: None,
                     flag: None,
                 });
-                pad_nets.push(pad_net.get(&(f.component, pad.name.as_str())).copied());
+                pad_nets.push(net);
             }
         }
         let pads = bc.items.len();

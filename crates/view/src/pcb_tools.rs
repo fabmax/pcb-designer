@@ -1,5 +1,5 @@
 //! Board creation tools: route tracks (45° or 90°), place vias, draw the board outline
-//! and copper zones, measure.
+//! and copper zones, measure, place board parts.
 //! Independent of the GUI toolkit.
 
 use editor_core::Command;
@@ -17,6 +17,8 @@ pub enum PcbTool {
     Outline,
     Zone,
     Measure,
+    /// Place board parts (see [`PcbPlacer::placing`]); started from the project tree.
+    Place,
 }
 
 impl PcbTool {
@@ -31,6 +33,7 @@ impl PcbTool {
             PcbTool::Outline => "Outline",
             PcbTool::Zone => "Zone",
             PcbTool::Measure => "Measure",
+            PcbTool::Place => "Place",
         }
     }
 
@@ -44,6 +47,7 @@ impl PcbTool {
             PcbTool::Outline => "Click two corners of the board outline · Esc done",
             PcbTool::Zone => "Click the zone's corners · click the first or last corner again to close · Esc cancels",
             PcbTool::Measure => crate::measure::HINT,
+            PcbTool::Place => "Click to place · R rotate · F flip side · Esc done",
         }
     }
 }
@@ -66,6 +70,9 @@ pub struct PcbSettings {
     pub bend_first: bool,
     /// Net of new zones; empty: the net of the copper under the first corner.
     pub zone_net: String,
+    /// Rotation and side of board parts being placed.
+    pub rotation: Angle,
+    pub side: Side,
 }
 
 impl Default for PcbSettings {
@@ -76,6 +83,8 @@ impl Default for PcbSettings {
             corners: Corners::Deg45,
             bend_first: false,
             zone_net: String::new(),
+            rotation: Angle::ZERO,
+            side: Side::Top,
         }
     }
 }
@@ -101,6 +110,13 @@ pub enum PcbGhost {
     },
     /// The cursor is on copper (a route would start or end there).
     Target(Point),
+    /// A board part being placed (its first variant's footprint).
+    Footprint {
+        part: Id,
+        pos: Point,
+        rotation: Angle,
+        side: Side,
+    },
 }
 
 /// Active board tool and its in-progress state.
@@ -119,6 +135,8 @@ pub struct PcbPlacer {
     on_copper: bool,
     shown: Vec<PcbGhost>,
     pub measure: Measure,
+    /// The board part placed by [`PcbTool::Place`].
+    pub placing: Option<Id>,
     /// Snap nowhere (Alt held): set by the app before [`PcbPlacer::hover`].
     pub free: bool,
 }
@@ -135,6 +153,7 @@ impl Default for PcbPlacer {
             on_copper: false,
             shown: Vec::new(),
             measure: Measure::default(),
+            placing: None,
             free: false,
         }
     }
@@ -198,12 +217,37 @@ impl PcbPlacer {
     }
 
     pub fn set_tool(&mut self, tool: PcbTool) {
+        if tool != PcbTool::Place {
+            self.placing = None;
+        } else if self.tool != PcbTool::Place {
+            self.settings.rotation = Angle::ZERO;
+            self.settings.side = Side::Top;
+        }
         self.tool = tool;
         self.start = None;
         self.net = None;
         self.corners.clear();
         self.on_copper = false;
         self.measure.clear();
+    }
+
+    /// Start placing board part `part` (in the project library already).
+    pub fn place(&mut self, part: Id) {
+        self.set_tool(PcbTool::Place);
+        self.placing = Some(part);
+    }
+
+    /// Rotate the board part being placed by 90°.
+    pub fn rotate(&mut self) {
+        self.settings.rotation = self.settings.rotation.rotated_by(Angle::DEG90);
+    }
+
+    /// Put the board part being placed on the other side.
+    pub fn flip(&mut self) {
+        self.settings.side = match self.settings.side {
+            Side::Top => Side::Bottom,
+            Side::Bottom => Side::Top,
+        };
     }
 
     pub fn toggle_posture(&mut self) {
@@ -317,6 +361,21 @@ impl PcbPlacer {
                 doc.execute(Command::AddVia { pos: p, diameter: None, drill: None }).map_err(|e| e.to_string())?;
                 Ok(false)
             }
+            PcbTool::Place => {
+                let Some(part) = self.placing else { return Ok(false) };
+                let s = &self.settings;
+                let command = Command::PlaceBoardPart {
+                    part,
+                    variant: None,
+                    pos: p,
+                    rotation: s.rotation,
+                    side: s.side,
+                    refdes: None,
+                    value: None,
+                };
+                doc.execute(command).map_err(|e| e.to_string())?;
+                Ok(false)
+            }
             PcbTool::Zone => self.zone_click(doc, p),
             PcbTool::Outline => {
                 let Some(a) = self.start.take() else {
@@ -385,6 +444,12 @@ impl PcbPlacer {
                 }
             }
             PcbTool::Via => g.push(PcbGhost::Via { pos: p, diameter: doc.project().board.rules.via_diameter }),
+            PcbTool::Place => g.extend(self.placing.map(|part| PcbGhost::Footprint {
+                part,
+                pos: p,
+                rotation: s.rotation,
+                side: s.side,
+            })),
             PcbTool::Outline => {
                 if let Some(a) = self.start {
                     g.push(PcbGhost::Outline(Rect::from_points(a, p)));

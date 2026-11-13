@@ -187,3 +187,39 @@ fn measure_between_pads_snaps_and_leaves_the_board_unchanged() {
     assert!(t.escape());
     assert_eq!(doc.revision, revision);
 }
+
+#[test]
+fn place_board_parts_with_rotation_and_side() {
+    // The header's footprint as a board part (no symbol).
+    let lib = builtin::builtin_library();
+    let mut b = lib.bundles(&[PART_HEADER_1X4]).unwrap().remove(0);
+    b.part.id = Id::new();
+    b.part.prefix = "H".into();
+    b.part.units.clear();
+    b.symbols.clear();
+    b.part.variants.iter_mut().for_each(|v| v.connections.clear());
+    let part = b.part.id;
+    let mut doc = Document::new(Project::new("t"));
+    doc.execute(Command::ImportParts { parts: vec![b] }).unwrap();
+
+    let mut t = PcbPlacer::default();
+    t.place(part);
+    assert_eq!(t.tool(), PcbTool::Place);
+    t.rotate();
+    t.flip();
+    let at = Point::mm(10.0, 10.0);
+    t.hover(&mut doc, Some((at, at)), mm(0.3));
+    t.click(&mut doc).unwrap();
+    assert!(matches!(t.ghosts(&doc)[..], [PcbGhost::Footprint { side: Side::Bottom, .. }]));
+    click_near(&mut t, &mut doc, Point::mm(20.0, 10.0));
+    let p = doc.project();
+    let refs: Vec<&str> = p.schematic.components.iter().map(|c| c.refdes.as_str()).collect();
+    assert_eq!(refs, ["H1", "H2"], "placing continues after a click");
+    let f = p.board.footprints.iter().next().unwrap();
+    assert_eq!((f.pos, f.rotation, f.side), (at, Angle::DEG90, Side::Bottom));
+    assert!(p.schematic.symbols.is_empty());
+    // Esc leaves the tool, and a new placement starts on top again.
+    assert!(t.escape());
+    t.place(part);
+    assert_eq!((t.settings.rotation, t.settings.side), (Angle::ZERO, Side::Top));
+}

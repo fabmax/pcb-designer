@@ -35,6 +35,12 @@ and hierarchical sheets.
   translate.
 - Every object has a UUID. `Store<T>` is insertion-ordered and saved as an array;
   re-inserting at the old index restores the order exactly (undo).
+- Board parts: a `Part` without units (`Part::is_board_part`). Their components have no
+  symbols and live on the board only: `PlaceBoardPart` creates component + footprint
+  (footprint first, so sync doesn't stage another), deleting the footprint deletes the
+  component, `PlacePart` refuses them (and `PlaceBoardPart` normal parts). Every variant
+  needs a footprint. A placed part can't change kind (`check_kind_kept`, in `Update` and
+  `UpdateParts`).
 - Library: `Symbol` (named pins, `Pin::number`, `key()` = number or name), `Footprint`
   (pads by number), `Part` = units (one symbol each) + at least one variant (footprint +
   pad → `(unit, pin)` map; several pads may share a pin). A variant without footprint
@@ -136,6 +142,10 @@ and hierarchical sheets.
   `I2C{SDA SCL}` → `I2C.SDA`), vectors capped at 1024. A label whose name parses is a
   bus label and skipped for nets. Gotcha: members are *label* names (`D0`), not net
   names (`/D0`); find a member's net with `Connectivity::member_net`.
+- **Board part pads** get a net of their own per pad number, `unconnected-(H1-Pad1)` as
+  in KiCad, so copper of another net touching them is a short and pads with the same
+  number (a mounting hole's via ring) don't short each other. Zones keep clearance from
+  them like from any other net.
 - **Board** (`copper`): pads (through-hole on all layers), tracks, vias and zone fill
   pieces form islands (grid broad phase). Nets come from pads; an island with two nets
   is a short; copper touching no pad is unconnected. Ratsnest: MST per net over pads,
@@ -425,13 +435,17 @@ defers.
   6–10; parts from the project's embedded `lib_symbols` and board footprints; KiCad
   UUIDs kept as ids; opens as an unsaved project; best effort with an import report).
   Symbols without footprint get a "No footprint" variant; "exclude from board" adds one
-  to the part. Model prerequisites first, in order: component-less footprints (mounting
-  holes, logos); hidden power pins and power symbols; no-connect flags; footprint
+  to the part; footprints without symbol become board parts. Model prerequisites first,
+  in order: hidden power pins and power symbols; no-connect flags; footprint
   fidelity (back-side layers, slots, per-instance reference/value text); zones (holes,
   keepouts, connection mode); arc tracks. `in_bom` / `dnp` become component properties
   until a BOM exists.
 
 **Board**
+- Board parts: copy/paste and duplicate on the board; a "Place board part" picker in the
+  PCB tool bar; editing their reference and value on the board (read-only today).
+- Unmapped pads of normal parts have no net, so copper touching them isn't a short (KiCad
+  gives them `unconnected-(R1-Pad3)` nets, as board part pads get here).
 - Fabrication outputs: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel
   file extensions, `%TO` object attributes (nets, pads),
   silkscreen clipped at mask openings, mirrored bottom text in the editor; in the viewer:

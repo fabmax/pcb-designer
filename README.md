@@ -109,6 +109,11 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
   schematic and its netlist but have no footprint on the board. A part can offer it next
   to real footprints; switching a component to a variant with a footprint places it in
   the staging area beside the board.
+- **Board parts** (mounting holes, logos, fiducials) have no symbol: a part without units.
+  They show a mounting-hole icon in the tree, and "Place on board" (or P) places them on
+  the PCB, where R rotates and F flips the side; Delete removes them there. Their pads
+  have no net, so copper of a net touching one is a short. The Built-in Library has an
+  M3 mounting hole. Remove a part's last unit in the part form to make one.
 - **Footprint variants** can be switched in Properties both for a symbol in the schematic
   and for a footprint on the board (the board lists only variants with a footprint).
 - **Built-in Library:** a few basic parts that ship with the app. It is read-only; "Save a

@@ -1,6 +1,7 @@
 //! The library tools on the headless host: a part from a "datasheet", start to finish.
 
 use mcp::headless::HeadlessHost;
+use mcp::host::Host;
 use mcp::library::LibraryRequest;
 use mcp::{Call, Reply, Request, handle};
 use model::Id;
@@ -329,4 +330,43 @@ fn no_footprint_variants() {
     let part = get(&mut host, "part:Logo");
     assert_eq!(part["variants"][0]["name"], "No footprint");
     assert!(part["variants"][0].get("footprint").is_none(), "{part}");
+}
+
+#[test]
+fn board_parts() {
+    let mut host = HeadlessHost::new(Document::new(view::demo::demo_project()));
+    lib(&mut host, LibraryRequest::Create { name: "Driver".into(), path: None }).unwrap();
+    edit(&mut host, driver(), &[]).unwrap();
+
+    // A new part without units is refused unless `units: []` says so.
+    let hole = |units: Option<Value>| {
+        let mut p =
+            json!({ "type": "lib_part", "name": "Hole", "prefix": "H", "variants": [{ "footprint": "SOT-23" }] });
+        if let Some(u) = units {
+            p["units"] = u;
+        }
+        json!([p])
+    };
+    let err = edit(&mut host, hole(None), &[]).unwrap_err();
+    assert!(err.contains("units: []"), "{err}");
+    edit(&mut host, hole(Some(json!([]))), &[]).unwrap();
+    let part = get(&mut host, "part:Hole");
+    assert_eq!(part["units"], json!([]));
+    // It renders as its footprint.
+    let render = LibraryRequest::Render { library: "Driver".into(), item: "part:Hole".into(), width: 200, height: 200 };
+    let png = ask(&mut host, Request::Library(render));
+    assert!(matches!(png, Ok(Reply::Png(_))), "{png:?}");
+
+    // Import it, place it on the board, look at it, delete it there.
+    let id: Id = part["id"].as_str().unwrap().parse().unwrap();
+    ask(&mut host, Request::ImportParts { parts: vec![id] }).unwrap();
+    let place = json!({ "command": "place_board_part", "part": id, "pos": [5_000_000, 5_000_000], "side": "bottom" });
+    ask(&mut host, Request::Execute { commands: vec![place] }).unwrap();
+    let Reply::Json(c) = ask(&mut host, Request::Component { refdes: "H1".into() }).unwrap() else { panic!() };
+    assert_eq!(c["part"]["board_part"], true, "{c}");
+    assert_eq!(c["symbols"], json!([]));
+    let fp = c["footprint"]["footprint"]["id"].clone();
+    let delete = json!({ "command": "delete", "ids": [{ "type": "footprint", "id": fp }] });
+    ask(&mut host, Request::Execute { commands: vec![delete] }).unwrap();
+    assert!(host.document().project().schematic.component_by_refdes("H1").is_none());
 }

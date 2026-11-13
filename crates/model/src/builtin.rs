@@ -23,6 +23,7 @@ pub const PART_HEADER_1X4: Id = bid(0x400);
 pub const PART_DIODE: Id = bid(0x500);
 pub const PART_NPN: Id = bid(0x600);
 pub const PART_OPAMP: Id = bid(0x700);
+pub const PART_MOUNTING_HOLE: Id = bid(0x800);
 
 const LINE: Coord = 254_000; // 0.254 mm symbol line width
 const G: f64 = 2.54;
@@ -290,7 +291,53 @@ pub fn builtin_library() -> Library {
     add_diode(&mut lib);
     add_npn(&mut lib);
     add_opamp(&mut lib);
+    add_mounting_hole(&mut lib);
     lib
+}
+
+/// M3 mounting hole: a board part (no symbol), a plated 3.2 mm hole with a 6 mm pad.
+fn add_mounting_hole(lib: &mut Library) {
+    let fp = Footprint {
+        id: bid(0x1800),
+        name: "MountingHole_3.2mm_M3_Pad".into(),
+        description: "Plated mounting hole for M3 screws".into(),
+        pads: [Pad {
+            id: bid(0x1801),
+            name: "1".into(),
+            pos: Point::ZERO,
+            rotation: Angle::ZERO,
+            size: Size::mm(6.0, 6.0),
+            shape: PadShape::Circle,
+            kind: PadKind::ThroughHole { drill: mm(3.2) },
+        }]
+        .into_iter()
+        .collect(),
+        graphics: vec![FootprintGraphic {
+            layer: FootprintLayer::Courtyard,
+            shape: Shape::Circle { center: Point::ZERO, radius: mm(3.45), width: mm(0.05), fill: false },
+        }],
+        texts: vec![FootprintText {
+            layer: FootprintLayer::Fabrication,
+            text: Text::new("${REF}", Point::mm(0.0, 4.0), mm(1.0)).aligned(HAlign::Center, VAlign::Bottom),
+        }],
+    };
+    lib.parts.insert(Part {
+        id: PART_MOUNTING_HOLE,
+        name: "MountingHole_M3".into(),
+        description: "M3 mounting hole (board part: placed on the board only)".into(),
+        prefix: "H".into(),
+        default_value: "MountingHole".into(),
+        units: Vec::new(),
+        variants: vec![PartVariant {
+            id: bid(0x820),
+            name: "M3 Pad".into(),
+            footprint: Some(fp.id),
+            connections: Vec::new(),
+        }],
+        properties: Default::default(),
+        source: None,
+    });
+    lib.footprints.insert(fp);
 }
 
 fn smd_pad(id: Id, name: &str, x: f64, y: f64, size: Size) -> Pad {
@@ -532,7 +579,7 @@ mod tests {
     fn builtin_library_is_consistent() {
         let lib = builtin_library();
         assert_eq!(lib.validate(), Vec::<String>::new());
-        assert_eq!(lib.parts.len(), 7);
+        assert_eq!(lib.parts.len(), 8);
         // Ids are deterministic.
         assert_eq!(builtin_library(), lib);
     }

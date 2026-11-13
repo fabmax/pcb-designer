@@ -50,6 +50,8 @@ pub enum Icon {
     Project,
     Folder,
     Part,
+    /// A part without symbol, placed on the board only.
+    BoardPart,
     Symbol,
     Footprint,
     Missing,
@@ -336,6 +338,15 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             for y in [0.3, 0.5, 0.7] {
                 seg(p(0.08, y), p(0.28, y), line);
                 seg(p(0.72, y), p(0.92, y), line);
+            }
+        }
+        Icon::BoardPart => {
+            // A plated mounting hole: a copper annulus around the drill, with via dots.
+            painter.circle_filled(p(0.5, 0.5), 0.3 * s, faint);
+            ring(p(0.5, 0.5), 0.3, thick);
+            ring(p(0.5, 0.5), 0.1, line);
+            for (x, y) in [(0.12, 0.12), (0.88, 0.12), (0.12, 0.88), (0.88, 0.88)] {
+                dot(p(x, y), 0.07);
             }
         }
         Icon::Symbol => {

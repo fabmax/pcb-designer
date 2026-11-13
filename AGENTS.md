@@ -62,7 +62,9 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), and `kic
   one path is what makes undo, live sync and validation behave the same for agents and
   humans.
 - Sync is one-way, schematic → board. Board edits never change connectivity. Copper whose
-  net no longer matches is flagged, never deleted.
+  net no longer matches is flagged, never deleted. The one exception to "the board
+  follows the schematic" is board parts (parts without symbol: mounting holes, logos):
+  they are placed and deleted on the board only, and their pads have no net.
 - Performance budget: about 10k footprints at 60 fps, and an edit → board → GPU update
   within one frame. Measure with `--release` and `--stress N`. Anything that scans all
   objects per item needs an index (see `RegionIndex`, `rstar`).
