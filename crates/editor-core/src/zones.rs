@@ -118,33 +118,92 @@ fn geo_contours(g: &Geo) -> Vec<Contour> {
     inflate(g, 0)
 }
 
-/// Contours of the board outline (rectangles, polygons and circles on the outline
-/// layer; lines only give their bounding box). `None` without an outline.
+/// Contours of the board outline: rectangles, polygons and circles on the outline
+/// layer, and lines and arcs chained end to end into closed loops (as KiCad draws
+/// outlines). Loops inside another one are cutouts (clockwise, so the non-zero rule
+/// subtracts them). Lines and arcs that close no loop only give their bounding box
+/// when nothing else does. `None` without an outline.
 pub fn board_area(board: &Board) -> Option<Vec<Contour>> {
-    let mut out = Vec::new();
-    let mut lines: Option<Rect> = None;
+    let mut out: Vec<Contour> = Vec::new();
+    let mut strokes: Vec<Vec<Point>> = Vec::new();
     for g in board.graphics.iter().filter(|g| g.layer == LayerId::OUTLINE) {
         match &g.shape {
-            Shape::Rect { a, b, .. } => {
-                let r = Rect::from_points(*a, *b);
-                out.push(rect_contour(r));
-            }
-            Shape::Polygon { points, .. } if points.len() >= 3 => {
-                out.push(oriented(points.iter().map(|&p| pt(p)).collect(), true))
-            }
+            Shape::Rect { a, b, .. } => out.push(rect_contour(Rect::from_points(*a, *b))),
+            Shape::Polygon { points, .. } if points.len() >= 3 => out.push(points.iter().map(|&p| pt(p)).collect()),
             Shape::Circle { center, radius, .. } => out.push(capsule_contour(*center, *center, *radius)),
-            other => {
-                let b = other.bounds();
-                lines = Some(lines.map_or(b, |l| l.union(b)));
+            Shape::Line { a, b, .. } if a != b => strokes.push(vec![*a, *b]),
+            Shape::Arc { center, radius, start, sweep, .. } => {
+                strokes.push(arc_points(*center, *radius, *start, *sweep))
             }
+            _ => {}
         }
     }
+    let (loops, loose) = chain_loops(strokes);
+    out.extend(loops.into_iter().map(|l| l.into_iter().map(pt).collect::<Contour>()));
     if out.is_empty()
-        && let Some(r) = lines
+        && let Some(r) = Rect::union_all(loose.iter().flatten().map(|&p| Rect::from_points(p, p)))
     {
         out.push(rect_contour(r));
     }
-    (!out.is_empty()).then_some(out)
+    if out.is_empty() {
+        return None;
+    }
+    // Orient by nesting depth: outlines counterclockwise, cutouts clockwise.
+    let rings: Vec<Vec<Point>> = out.iter().map(|c| c.iter().map(|&p| unpt(p)).collect()).collect();
+    let oriented_out = out
+        .into_iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let probe = rings[i][0];
+            let depth =
+                (0..rings.len()).filter(|&j| j != i && crate::copper::point_in_polygon(probe, &rings[j])).count();
+            oriented(c, depth % 2 == 0)
+        })
+        .collect();
+    Some(oriented_out)
+}
+
+/// Points along an outline arc (chords within a micrometre).
+fn arc_points(center: Point, radius: Coord, start: Angle, sweep: f64) -> Vec<Point> {
+    let r = radius as f64;
+    let step = 2.0 * (1.0 - (1_000.0 / r.max(1.0)).min(1.0)).acos();
+    let sweep = sweep.to_radians();
+    let n = ((sweep.abs() / step.max(1e-6)).ceil() as usize).clamp(2, 512);
+    (0..=n)
+        .map(|i| {
+            let t = start.radians() + sweep * i as f64 / n as f64;
+            Point::new(center.x + (r * t.cos()).round() as Coord, center.y + (r * t.sin()).round() as Coord)
+        })
+        .collect()
+}
+
+/// Chain strokes (polylines) whose ends meet (within 1 µm) into closed loops. Returns
+/// the loops and the strokes left over.
+fn chain_loops(mut strokes: Vec<Vec<Point>>) -> (Vec<Vec<Point>>, Vec<Vec<Point>>) {
+    const TOL: f64 = 1_000.0;
+    let near = |a: Point, b: Point| (a - b).length() <= TOL;
+    let mut loops = Vec::new();
+    let mut loose = Vec::new();
+    while let Some(mut chain) = strokes.pop() {
+        loop {
+            let (first, last) = (chain[0], *chain.last().unwrap());
+            if chain.len() > 2 && near(first, last) {
+                chain.pop();
+                loops.push(chain);
+                break;
+            }
+            let Some(i) = strokes.iter().position(|s| near(s[0], last) || near(*s.last().unwrap(), last)) else {
+                loose.push(chain);
+                break;
+            };
+            let mut next = strokes.swap_remove(i);
+            if !near(next[0], last) {
+                next.reverse();
+            }
+            chain.extend_from_slice(&next[1..]);
+        }
+    }
+    (loops, loose)
 }
 
 fn rect_contour(r: Rect) -> Contour {

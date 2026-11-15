@@ -208,7 +208,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
             .collect();
         for c in copper.items.iter().filter(|c| !matches!(c.item, CopperItem::Zone { .. })) {
             let p = c.anchors[0];
-            let inside = rings.iter().any(|r| crate::copper::point_in_polygon(p, r));
+            let inside = rings.iter().filter(|r| crate::copper::point_in_polygon(p, r)).count() % 2 == 1;
             let near = edges.iter().map(|e| e.distance(&c.geo)).fold(f64::MAX, f64::min);
             if !inside || near < rules.clearance as f64 {
                 let message = if inside && near <= 0.0 {

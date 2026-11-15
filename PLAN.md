@@ -156,6 +156,11 @@ things to do **later**.
   pieces form islands (grid broad phase). Nets come from pads; an island with two nets
   is a short; copper touching no pad is unconnected. Ratsnest: MST per net over pads,
   vias and track ends (Delaunay for large nets).
+- **Board area** (`zones::board_area`, used by fills and DRC): rectangles, polygons and
+  circles on the outline layer, plus lines and arcs chained end to end (1 µm tolerance)
+  into loops, as KiCad draws outlines. Loops are oriented by nesting depth, so inner
+  ones are cutouts. Strokes that close no loop give only their bounding box, and only
+  when there is nothing else.
 - **Zones** (`zones`, i_overlay on nm): outline minus `holes`, clipped to the board
   outline minus edge clearance and minus `no_pour` keepouts; keep clearance to other
   nets, own pads per `ZoneConnection` (thermal, thermal for through-hole only, solid,
