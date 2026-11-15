@@ -67,13 +67,6 @@ struct Pick {
     refused: Option<String>,
 }
 
-/// Outcome of the last import, shown in the window.
-struct Report {
-    summary: String,
-    warnings: Vec<String>,
-    errors: Vec<String>,
-}
-
 /// What the application should do after the window was drawn.
 pub enum ImportAction {
     /// Import into the library with this key, or into a new library (`None`).
@@ -118,7 +111,6 @@ pub struct KicadImport {
     active: Option<usize>,
     /// Target library key; `None` = a new library.
     pub target: Option<u64>,
-    report: Option<Report>,
     error: Option<String>,
     previews: Previews,
 }
@@ -140,7 +132,6 @@ impl KicadImport {
             footprints: Vec::new(),
             active: None,
             target: None,
-            report: None,
             error: None,
             previews: Previews::default(),
         }
@@ -405,22 +396,11 @@ impl KicadImport {
         kicad::import(self.catalog(), req)
     }
 
-    /// Show the result of an import and clear the selection.
-    pub fn finish(&mut self, imported: &Imported, target: &str, added: usize, replaced: usize) {
-        let summary = format!(
-            "{} part(s), {} symbol(s), {} footprint(s) into {target}: {added} added, {replaced} updated",
-            imported.parts.len(),
-            imported.symbols.len(),
-            imported.footprints.len()
-        );
-        self.report = Some(Report { summary, warnings: imported.warnings.clone(), errors: imported.errors.clone() });
+    /// Clear the selection after an import (the application shows the result).
+    pub fn finish(&mut self) {
         self.picks.clear();
         self.footprints.clear();
         self.active = None;
-    }
-
-    pub fn fail(&mut self, error: String) {
-        self.report = Some(Report { summary: "Import failed".into(), warnings: Vec::new(), errors: vec![error] });
     }
 
     pub fn ui(&mut self, ctx: &egui::Context, libraries: &[(u64, String)]) -> Option<ImportAction> {
@@ -466,14 +446,17 @@ impl KicadImport {
             .show(ui, |ui| {
                 let added = self.extra.len();
                 let mut remove = None;
-                for (i, p) in self.paths().iter().enumerate() {
-                    ui.horizontal(|ui| {
-                        if i < added && ui.small_button("Remove").clicked() {
-                            remove = Some(i);
-                        }
-                        ui.label(RichText::new(p.display().to_string()).monospace());
-                    });
-                }
+                let paths = self.paths();
+                egui::ScrollArea::vertical().id_salt("kicad_paths_scroll").max_height(100.0).show(ui, |ui| {
+                    for (i, p) in paths.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            if i < added && ui.small_button("Remove").clicked() {
+                                remove = Some(i);
+                            }
+                            ui.label(RichText::new(p.display().to_string()).monospace());
+                        });
+                    }
+                });
                 if let Some(i) = remove {
                     self.extra.remove(i);
                     self.rescan();
@@ -481,13 +464,17 @@ impl KicadImport {
             });
         ui.separator();
 
-        // ---- Search (left) and selection (right)
-        let bottom_height = 120.0;
-        let height = (ui.available_height() - bottom_height).max(200.0);
-        ui.columns(2, |cols| {
-            cols[0].set_min_height(height);
-            self.search_ui(&mut cols[0], height);
-            self.selection_ui(&mut cols[1], height);
+        // ---- Search (left) and selection (right): they fill the height left over by the
+        // rows above and below, so the window never grows by itself.
+        let bottom_height = ui.spacing().interact_size.y + 3.0 * ui.spacing().item_spacing.y + 6.0;
+        let height = (ui.available_height() - bottom_height).max(PREVIEW_HEIGHT + 120.0);
+        let size = egui::vec2(ui.available_width(), height);
+        ui.allocate_ui_with_layout(size, egui::Layout::top_down(egui::Align::Min), |ui| {
+            ui.set_min_height(height);
+            ui.columns(2, |cols| {
+                self.search_ui(&mut cols[0]);
+                self.selection_ui(&mut cols[1]);
+            });
         });
         ui.separator();
 
@@ -514,28 +501,6 @@ impl KicadImport {
                 self.active = None;
             }
         });
-        if let Some(r) = &self.report {
-            ui.label(RichText::new(&r.summary).color(if r.errors.is_empty() {
-                theme::success()
-            } else {
-                theme::warn()
-            }));
-            for e in &r.errors {
-                ui.label(RichText::new(e).color(theme::warn()));
-            }
-            if !r.warnings.is_empty() {
-                egui::CollapsingHeader::new(format!("{} note(s)", r.warnings.len())).id_salt("kicad_warnings").show(
-                    ui,
-                    |ui| {
-                        egui::ScrollArea::vertical().id_salt("kicad_warn_scroll").max_height(80.0).show(ui, |ui| {
-                            for w in &r.warnings {
-                                ui.label(RichText::new(w).color(theme::text_dim()));
-                            }
-                        });
-                    },
-                );
-            }
-        }
         action
     }
 
@@ -619,7 +584,7 @@ impl KicadImport {
         });
     }
 
-    fn search_ui(&mut self, ui: &mut egui::Ui, height: f32) {
+    fn search_ui(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.kind, Kind::Symbols, "Symbols");
             ui.selectable_value(&mut self.kind, Kind::Footprints, "Footprints");
@@ -654,7 +619,7 @@ impl KicadImport {
         let active = self.active.and_then(|i| self.picks.get(i)).map(|p| p.symbol.clone());
         egui::ScrollArea::vertical()
             .id_salt("kicad_results")
-            .max_height(height - 60.0)
+            .max_height(ui.available_height())
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for r in &self.results {
@@ -704,16 +669,16 @@ impl KicadImport {
     }
 
     /// The picks above the preview strip.
-    fn selection_ui(&mut self, ui: &mut egui::Ui, height: f32) {
-        let list_height = height - PREVIEW_HEIGHT - 2.0 * ui.spacing().item_spacing.y;
+    fn selection_ui(&mut self, ui: &mut egui::Ui) {
+        let list_height = ui.available_height() - PREVIEW_HEIGHT - ui.spacing().item_spacing.y;
         ui.allocate_ui(egui::vec2(ui.available_width(), list_height), |ui| {
             ui.set_min_height(list_height);
-            self.picks_ui(ui, list_height);
+            self.picks_ui(ui);
         });
         self.preview_ui(ui);
     }
 
-    fn picks_ui(&mut self, ui: &mut egui::Ui, height: f32) {
+    fn picks_ui(&mut self, ui: &mut egui::Ui) {
         ui.label(RichText::new("To import").strong());
         if self.picks.is_empty() && self.footprints.is_empty() {
             hint(ui, "Add symbols (they become parts with the chosen footprint) or lone footprints.");
@@ -722,9 +687,11 @@ impl KicadImport {
         let mut remove = None;
         let mut remove_fp = None;
         let mut focus_fp = None;
-        egui::ScrollArea::vertical().id_salt("kicad_picks").max_height(height - 30.0).auto_shrink([false, false]).show(
-            ui,
-            |ui| {
+        egui::ScrollArea::vertical()
+            .id_salt("kicad_picks")
+            .max_height(ui.available_height())
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
                 for (i, p) in self.picks.iter_mut().enumerate() {
                     let active = self.active == Some(i);
                     let frame = egui::Frame::group(ui.style())
@@ -779,8 +746,7 @@ impl KicadImport {
                         }
                     });
                 }
-            },
-        );
+            });
         if let Some(i) = remove {
             self.picks.remove(i);
             self.active = self.active.and_then(|a| {

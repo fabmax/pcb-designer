@@ -353,6 +353,10 @@ things to do **later**.
   rebuilt when the target changes; it follows the last clicked search result or lone
   footprint, else the active pick. A clicked symbol result shows its first suggested
   footprint. The cache is dropped on rescan and when the window closes.
+- Import window layout: the search and selection columns get exactly the height left
+  between the rows above and the import row (lists scroll inside), so expanding
+  anything never grows the window. The import result (summary, failures, notes) opens
+  in the same report dialog as a project import (`ImportReport`).
 - The catalog indexes names only (~0.1 s) and parses lazily. Footprint suggestion: the
   default footprint, else the best `ki_fp_filters` match.
 - Download (`kicad::download`): official GitLab release archives of `SUPPORTED_MAJOR`

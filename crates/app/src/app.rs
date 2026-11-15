@@ -684,11 +684,16 @@ impl PcbApp {
         Ok(reply)
     }
 
-    /// The report of the last KiCad project import.
+    /// The report of the last KiCad project or parts import.
     fn import_report_ui(&mut self, ctx: &egui::Context) {
         let Some(r) = &self.import_report else { return };
         let mut close = false;
         let modal = theme::dialog(ctx, egui::Id::unique("kicad_import_report"), &r.title, 520.0, |ui| {
+            if let Some(summary) = &r.summary {
+                let color = if r.errors.is_empty() { theme::success() } else { theme::warn() };
+                ui.label(RichText::new(summary).color(color));
+                ui.add_space(8.0);
+            }
             // Long reports scroll inside a framed area, at most half the window tall.
             let max_height = (ctx.content_rect().height() * 0.5).max(120.0);
             egui::Frame::NONE.fill(theme::panel_dark()).corner_radius(6).inner_margin(egui::Margin::same(8)).show(
@@ -696,7 +701,7 @@ impl PcbApp {
                 |ui| {
                     egui::ScrollArea::vertical().max_height(max_height).auto_shrink([false, true]).show(ui, |ui| {
                         let report = &r.report;
-                        if report.is_empty() {
+                        if report.is_empty() && r.errors.is_empty() {
                             ui.label("Everything was imported.");
                         }
                         let section =
@@ -713,6 +718,7 @@ impl PcbApp {
                                     ui.label(if let Some(c) = color { text.color(c) } else { text });
                                 }
                             };
+                        section(ui, "Failed", &r.errors, Some(theme::warn()));
                         section(ui, "Warnings", &report.warnings, Some(theme::warn()));
                         section(ui, "Notes", &report.notes, None);
                         let skipped: Vec<String> =
@@ -1207,11 +1213,12 @@ impl PcbApp {
             Ok((key, imported, added, replaced)) => {
                 let name = self.lib(key).map(|l| l.lib.name().to_string()).unwrap_or_default();
                 self.kicad.target = Some(key);
-                self.kicad.finish(&imported, &name, added, replaced);
+                self.kicad.finish();
+                self.import_report = Some(ImportReport::parts(&imported, &name, added, replaced));
                 self.set_status(format!("Imported from KiCad into {name}"));
                 self.focus_library_tab(key);
             }
-            Err(e) => self.kicad.fail(e),
+            Err(e) => self.import_report = Some(ImportReport::failed(e)),
         }
     }
 
@@ -3553,15 +3560,45 @@ impl eframe::App for PcbApp {
 }
 
 /// What a KiCad project import reported, for its window.
+/// Result of a KiCad project or parts import, shown in a dialog.
 struct ImportReport {
     title: String,
+    /// One line on what was imported (parts import).
+    summary: Option<String>,
+    /// Requested items that failed.
+    errors: Vec<String>,
     report: kicad::Report,
 }
 
 impl ImportReport {
     fn new(path: &std::path::Path, report: kicad::Report) -> Self {
         let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
-        ImportReport { title: format!("Imported {name}"), report }
+        ImportReport { title: format!("Imported {name}"), summary: None, errors: Vec::new(), report }
+    }
+
+    /// The result of importing parts into library `target`.
+    fn parts(imported: &kicad::Imported, target: &str, added: usize, replaced: usize) -> Self {
+        let summary = format!(
+            "{} part(s), {} symbol(s), {} footprint(s) into {target}: {added} added, {replaced} updated.",
+            imported.parts.len(),
+            imported.symbols.len(),
+            imported.footprints.len()
+        );
+        ImportReport {
+            title: "Imported KiCad parts".into(),
+            summary: Some(summary),
+            errors: imported.errors.clone(),
+            report: kicad::Report { notes: imported.warnings.clone(), ..Default::default() },
+        }
+    }
+
+    fn failed(error: String) -> Self {
+        ImportReport {
+            title: "KiCad import failed".into(),
+            summary: None,
+            errors: vec![error],
+            report: kicad::Report::default(),
+        }
     }
 }
 
