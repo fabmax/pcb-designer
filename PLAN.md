@@ -464,7 +464,9 @@ things to do **later**.
   from the `NSWindow` (32 pt on macOS 26). Drag → `StartDrag`; double-click follows
   `AppleActionOnDoubleClick`; no strip in full screen; `setDocumentEdited` for the dot.
   The window appearance follows the app theme. Gotcha: `theme::apply` pins egui's theme,
-  or a window appearance change swaps our visuals for egui's defaults.
+  or a window appearance change swaps our visuals for egui's defaults. Gotcha: winit
+  delivers a click on an unfocused window as press, release, release; in one frame egui
+  saw a double-click and zoomed. `pointer_filter.rs` drops releases without a press.
 - **App icon:** `cargo run -p render --example app_icon -- crates/app/assets/icon.png`
   (committed; deterministic). Drawn on black and white to recover alpha; the squircle is
   two offset triangle fans so their hairline gaps cover each other. Used as the window
@@ -515,9 +517,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Things decided to do later, by area. Remove an entry when it's done; add what a change
 defers.
 
-**Bugs**
-- macOS: When clicking in the title bar of the unfocused window, the window also maximizes (it should only gain focus)
-
 **Schematic**
 - KiCad project export. Import gaps (counted in the import report today): schematic
   graphics, images, text boxes, tables and rule areas; text variables (`${TITLE}` etc. in
@@ -551,6 +550,7 @@ defers.
   symbols on import and export.
 - More corner styles for wires and buses
 - Icon buttons for corner styles in tool panel
+- Several parts with the same part reference should issue a warning
 
 **Board**
 - Board parts: copy/paste and duplicate on the board; a "Place board part" picker in the

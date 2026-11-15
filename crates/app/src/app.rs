@@ -296,6 +296,7 @@ pub struct PcbApp {
     deferred: Vec<Deferred>,
     #[cfg(target_os = "macos")]
     native_menu: crate::native_menu::NativeMenu,
+    pointer_filter: crate::pointer_filter::PointerFilter,
     #[cfg(target_os = "macos")]
     title_bar: title_bar::TitleBar,
 }
@@ -390,6 +391,7 @@ impl PcbApp {
             menu_cmds: Vec::new(),
             #[cfg(target_os = "macos")]
             native_menu: crate::native_menu::NativeMenu::new(&cc.egui_ctx),
+            pointer_filter: Default::default(),
             #[cfg(target_os = "macos")]
             title_bar: title_bar::TitleBar::default(),
         };
@@ -3376,6 +3378,7 @@ impl eframe::App for PcbApp {
                 script.events(|_, w| panes.find(view).map(|p| p.canvas.world_to_screen(w)).unwrap_or_default()),
             );
         }
+        self.pointer_filter.filter(raw);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {

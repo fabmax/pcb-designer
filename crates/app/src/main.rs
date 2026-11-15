@@ -49,6 +49,7 @@ mod native_menu;
 mod outputs;
 mod part_form;
 mod pcb_ui;
+mod pointer_filter;
 mod project_panel;
 mod properties;
 mod sch_ui;
