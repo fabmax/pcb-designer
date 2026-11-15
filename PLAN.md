@@ -2,17 +2,7 @@
 
 Requirements are in [pcb-designer.md](pcb-designer.md). This file holds the decisions,
 the current design of each area with the gotchas a change needs to know, and the list of
-things to do **later**. The detailed notes of every finished milestone (M0–M10 and the
-refinements up to 2026-11-10) are in git history: `git show 5574459:PLAN.md`.
-
-## Status
-
-Milestones 0–10 are done: performance spike, model + undo, canvas editing, MCP, part
-editor, KiCad import, schematic editor, PCB editor, sync edge cases + cross-probing,
-zones + DRC, themes + settings + headless MCP. After them: buses, KiCad library
-download, tool window bars, MCP library tools, the project tree with an editable Project
-Library, macOS chrome (system menu bar, title strip, app bundle, app icon), label scopes
-and hierarchical sheets.
+things to do **later**.
 
 ## Decisions
 
@@ -464,6 +454,20 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Things decided to do later, by area. Remove an entry when it's done; add what a change
 defers.
 
+**Bugs**
+- Reference and value text fields in propeties panel are not editable (they kind of are but typed text immediately disappears)
+- Properties panel sometimes gets slightly wider when sleecting things
+  - STR (in Demo project):
+    1. Open Properties panel
+    2. Select `LED DEMO` text
+    3. Select `SIG` net label
+  - On selection of the net label properties panel width increases slightly
+  - Same for selecting a sub sheet
+  - No Panel should ever resize just because a different part is selected
+- If I click on a part in the editor (schematic or pcb) and the viewport moves simultaneously (e.g. because the right panel width changes)
+  the part moves. Parts should never move on a click. Only during drag (e.g. check for minimum mouse drag movement distance)
+- macOS: When clicking in the title bar of the unfocused window, the window also maximizes (it should only gain focus)
+
 **Schematic**
 - KiCad import/export of hierarchical schematics: reused KiCad sheets get duplicated on
   import (no reuse here); stored sheet pin positions would be recomputed.
@@ -476,6 +480,8 @@ defers.
 - ERC (pin type checks).
 - Wire posture that flips automatically with the cursor.
 - Dragging wire segments themselves.
+- Double click on a wire to select entire wire instead of only the clicked segment
+- When wires overlap during drag they should not connect.
 - Editing text on the canvas.
 - KiCad project import (File → "Import KiCad project…", from a `.kicad_pro`; KiCad
   6–10; parts from the project's embedded `lib_symbols` and board footprints; KiCad
@@ -488,7 +494,6 @@ defers.
   `power:` library name, else from the symbol's graphics; custom glyphs get the closest
   style, noted in the report. Legacy hidden power pins fail the import with their
   symbols named.
-
 - Per-pad mask and paste margins (board-wide today); inner-layer footprint graphics.
 - Footprint texts: re-sync fields when the library footprint's templates change; keep
   texts upright (readable) when a footprint turns past 90°; fields of other texts than
@@ -497,6 +502,8 @@ defers.
 - Custom power symbols: power ports drawn from a symbol of their own (a part flagged
   power, no footprint), for glyphs beyond `PowerStyle`; maps to KiCad custom power
   symbols on import and export.
+- More corner styles for wires and buses
+- Icon buttons for corner styles in tool panel
 
 **Board**
 - Board parts: copy/paste and duplicate on the board; a "Place board part" picker in the
@@ -514,9 +521,11 @@ defers.
   `board_points` on huge boards.
 - Per-pad mask and paste overrides; mask/paste openings in the footprint editor.
 - Clearance checking while routing; push-and-shove; dragging tracks that stay connected.
+- Double click on a routed track to select entire track instead of only the clicked segment
 - Drawing arc tracks: an "Arc" corner style while routing, rounding the corner between
   two tracks (arcs come from import and MCP today).
 - Blind and buried vias in the UI.
+- Highlight corresponding part when draging texts
 - Copper graphics inside footprints (from KiCad custom pads) counting as connections.
 - Incremental or background zone refill (only zones near the change).
 - Zones: drawing holes into an existing zone (cutout tool), editing corners on the
@@ -534,7 +543,6 @@ defers.
   window.
 - KiCad import: back-side footprint content, text boxes, De Morgan bodies, alternate pin
   functions, exact oval drills, 3D models.
-- KiCad 11 libraries (raise `SUPPORTED_MAJOR` once tested).
 
 **Performance**
 - Ratsnest of huge nets (7k-pad GND, ~2.3 ms): incremental MST or a worker thread.
@@ -552,6 +560,7 @@ defers.
 - Tool window bars: drag buttons to reorder or move between bars, a Nets panel, two
   panels stacked on one side.
 - Restyle the Settings and KiCad import windows with `theme::dialog`.
+- MCP in settings: Port, enable on startup
 - Replace the placeholder stroke font.
 - UI icons as SVG files instead of code (`icons.rs`): `egui_extras` `svg` feature
   (resvg) with `install_image_loaders`. Monochrome icons drawn white and tinted
@@ -561,6 +570,8 @@ defers.
 - macOS: a Liquid Glass app icon made with Icon Composer (needs Xcode's `actool`); more
   content in the title strip; "Fill" on title double-click (no public API, zooms today).
 - Native menus don't show shortcuts without ⌘ (they would steal typing).
+- Remove weird items in native macOS Edit menu: Autofill, Start dictation, Emoji and symbols?
+  Is that even possible? It seems to be there in any app...
 
 **Other**
 - Simulation.
