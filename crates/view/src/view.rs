@@ -1227,13 +1227,13 @@ fn draw_footprint_at(
                 push_pad(p, rl, &outline, board_layer_color(layer));
             }
         };
-        for layer in pad_copper_layers(&pad.kind, side, &l.copper) {
+        for layer in pad_copper_layers(pad, side, &l.copper) {
             draw(layer, 0);
         }
-        for layer in pad_mask_layers(&pad.kind, side) {
+        for layer in pad_mask_layers(pad, side) {
             draw(layer, rules.mask_expansion);
         }
-        if let Some(layer) = pad_paste_layer(&pad.kind, side) {
+        if let Some(layer) = pad_paste_layer(pad, side) {
             draw(layer, rules.paste_margin);
         }
         if let PadKind::ThroughHole { drill } | PadKind::NonPlatedHole { drill } = pad.kind {
@@ -1248,7 +1248,7 @@ fn draw_footprint_at(
     }
 
     for g in &fp.graphics {
-        let layer = LayerId::for_footprint(g.layer, side);
+        let layer = g.board_layer(side);
         let shape = g.shape.transformed(&t);
         let b = shape.bounds();
         if g.layer == FootprintLayer::Courtyard {
@@ -1261,7 +1261,7 @@ fn draw_footprint_at(
         }
     }
     for ft in &fp.texts {
-        let layer = LayerId::for_footprint(ft.layer, side);
+        let layer = ft.board_layer(side);
         if let Some(&rl) = l.map.get(&layer) {
             p.text(rl, &ft.text.transformed(&t), board_layer_color(layer), &|s| substitute(s, refdes, value), false);
         }

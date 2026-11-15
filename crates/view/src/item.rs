@@ -724,12 +724,12 @@ fn draw_elem(l: &Layers, content: &Content, e: Elem, p: &mut Painter, color: Opt
                     FootprintLayer::Copper => l.copper,
                     _ => l.silk,
                 };
-                p.shape(layer, &g.shape, c(footprint_layer_color(g.layer)), None);
+                p.shape(layer, &g.shape, c(board_layer_color(g.board_layer(Side::Top))), None);
             }
         }
         (Content::Footprint(f), Elem::Text(i)) => {
             if let Some(t) = f.texts.get(i) {
-                p.text(l.text, &t.text, c(footprint_layer_color(t.layer)), &placeholder, true);
+                p.text(l.text, &t.text, c(board_layer_color(t.board_layer(Side::Top))), &placeholder, true);
             }
         }
         _ => {}
@@ -766,7 +766,8 @@ fn draw_pin(l: &Layers, pin: &Pin, p: &mut Painter, color: Option<Color>) {
 }
 
 fn draw_pad(l: &Layers, pad: &Pad, p: &mut Painter, color: Option<Color>) {
-    let copper = color.unwrap_or(board_layer_color(LayerId::TOP_COPPER));
+    let side = if pad.back { LayerId::BOTTOM_COPPER } else { LayerId::TOP_COPPER };
+    let copper = color.unwrap_or(board_layer_color(side));
     let c = mmf(pad.pos);
     let rot = pad.rotation.radians() as f32;
     let (w, h) = ((pad.size.w as f64 * 1e-6) as f32, (pad.size.h as f64 * 1e-6) as f32);

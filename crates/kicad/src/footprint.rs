@@ -34,16 +34,23 @@ pub fn parse(lib: &str, text: &str) -> Result<KiFootprint, sexpr::ParseError> {
     Ok(convert(lib, &root))
 }
 
-fn layer(name: &str) -> Option<FootprintLayer> {
-    Some(match name {
-        "F.Cu" => FootprintLayer::Copper,
-        "F.SilkS" | "F.Silkscreen" => FootprintLayer::Silkscreen,
-        "F.Fab" => FootprintLayer::Fabrication,
-        "F.CrtYd" | "F.Courtyard" => FootprintLayer::Courtyard,
-        "F.Mask" => FootprintLayer::SolderMask,
-        "F.Paste" => FootprintLayer::SolderPaste,
+/// Footprint layer of a KiCad layer name, and whether it's on the back (`B.*`).
+fn layer(name: &str) -> Option<(FootprintLayer, bool)> {
+    let (back, rest) = match name.split_once('.') {
+        Some(("F", rest)) => (false, rest),
+        Some(("B", rest)) => (true, rest),
         _ => return None,
-    })
+    };
+    let layer = match rest {
+        "Cu" => FootprintLayer::Copper,
+        "SilkS" | "Silkscreen" => FootprintLayer::Silkscreen,
+        "Fab" => FootprintLayer::Fabrication,
+        "CrtYd" | "Courtyard" => FootprintLayer::Courtyard,
+        "Mask" => FootprintLayer::SolderMask,
+        "Paste" => FootprintLayer::SolderPaste,
+        _ => return None,
+    };
+    Some((layer, back))
 }
 
 /// Layers that are silently ignored (documentation and board outline layers).
@@ -69,8 +76,6 @@ struct Ctx<'a> {
     lib: &'a str,
     name: &'a str,
     warnings: Vec<String>,
-    /// SMD pads with copper only on the back side.
-    bottom_pads: Vec<Pad>,
 }
 
 impl Ctx<'_> {
@@ -78,14 +83,13 @@ impl Ctx<'_> {
         self.warnings.push(w.into());
     }
 
-    /// Footprint layer of an item, or `None` (with a warning for unsupported layers).
-    fn layer_of(&mut self, n: &Node, what: &str) -> Option<FootprintLayer> {
+    /// Footprint layer of an item and whether it's on the back, or `None` (with a
+    /// warning for unsupported layers).
+    fn layer_of(&mut self, n: &Node, what: &str) -> Option<(FootprintLayer, bool)> {
         let name = n.child("layer").and_then(|l| l.arg(0)).unwrap_or("");
         let l = layer(name);
         if l.is_none() && !ignored_layer(name) {
-            if name.starts_with("B.") {
-                self.warn("back-side graphics and texts skipped");
-            } else if name.starts_with("In") && name.ends_with(".Cu") {
+            if name.starts_with("In") && name.ends_with(".Cu") {
                 self.warn("inner-layer graphics and texts skipped");
             } else {
                 self.warn(format!("{what} on layer {name} skipped"));
@@ -99,7 +103,7 @@ pub fn convert(lib: &str, root: &Node) -> KiFootprint {
     let name = root.arg(0).unwrap_or("").to_string();
     // Names may carry a library prefix in old files ("Lib:Name").
     let name = name.rsplit(':').next().unwrap_or("").to_string();
-    let mut cx = Ctx { lib, name: &name, warnings: Vec::new(), bottom_pads: Vec::new() };
+    let mut cx = Ctx { lib, name: &name, warnings: Vec::new() };
     let mut fp = Footprint {
         id: kid(&["kicad-footprint", lib, &name]),
         name: name.clone(),
@@ -113,9 +117,9 @@ pub fn convert(lib: &str, root: &Node) -> KiFootprint {
     for item in root.lists() {
         match item.head() {
             "fp_line" | "fp_rect" | "fp_circle" | "fp_arc" | "fp_poly" | "fp_curve" => {
-                if let Some(layer) = cx.layer_of(item, "graphic") {
+                if let Some((layer, back)) = cx.layer_of(item, "graphic") {
                     for shape in graphic(item, Point::ZERO, Angle::ZERO) {
-                        fp.graphics.push(FootprintGraphic { layer, shape });
+                        fp.graphics.push(FootprintGraphic { back, layer, shape });
                     }
                 }
             }
@@ -146,14 +150,6 @@ pub fn convert(lib: &str, root: &Node) -> KiFootprint {
             _ => {}
         }
     }
-    // Back-side copies of front pads (exposed pads with thermal vias) are redundant;
-    // pads that exist only on the back are moved to the front so that no pin is lost.
-    for pad in std::mem::take(&mut cx.bottom_pads) {
-        if !fp.pads.iter().any(|p| p.name == pad.name) {
-            cx.warn("bottom-side pad imported on the top side");
-            fp.pads.insert(pad);
-        }
-    }
     let mut warnings = std::mem::take(&mut cx.warnings);
     warnings.sort();
     warnings.dedup();
@@ -174,9 +170,9 @@ fn fp_text(cx: &mut Ctx, n: &Node, content: String) -> Option<FootprintText> {
     if n.flag("hide") {
         return None;
     }
-    let layer = cx.layer_of(n, "text")?;
+    let (layer, back) = cx.layer_of(n, "text")?;
     let t = text(content, n.child("at")?, n.child("effects"), true, 1.0)?;
-    Some(FootprintText { layer, text: t })
+    Some(FootprintText { back, layer, text: t })
 }
 
 /// A graphic item (also pad primitives: `gr_*` relative to the pad at `origin`/`rot`).
@@ -297,8 +293,16 @@ fn pad(cx: &mut Ctx, n: &Node, fp: &mut Footprint, seen: &mut std::collections::
     let (w, h) = (nm(w), nm(h));
     let layers: Vec<&str> =
         n.child("layers").map(|l| l.items().iter().skip(1).filter_map(Node::as_atom).collect()).unwrap_or_default();
-    let front_copper = layers.iter().any(|l| matches!(*l, "F.Cu" | "*.Cu" | "F&B.Cu"));
+    let has = |names: &[&str]| layers.iter().any(|l| names.contains(l));
+    let front_copper = has(&["F.Cu", "*.Cu", "F&B.Cu"]);
     let any_copper = front_copper || layers.iter().any(|l| l.ends_with(".Cu"));
+    // SMD pads only on the back (card edge fingers); their mask and paste are the back's.
+    let back = !front_copper && has(&["B.Cu"]);
+    let (mask, paste) = if back {
+        (has(&["B.Mask", "*.Mask", "F&B.Mask"]), has(&["B.Paste", "*.Paste"]))
+    } else {
+        (has(&["F.Mask", "*.Mask", "F&B.Mask", "B.Mask"]), has(&["F.Paste", "*.Paste"]))
+    };
 
     // Drill.
     let mut drill = 0;
@@ -389,14 +393,14 @@ fn pad(cx: &mut Ctx, n: &Node, fp: &mut Footprint, seen: &mut std::collections::
         _ => {
             if !any_copper {
                 // Aperture-only pad (paste or mask opening): a filled graphic.
-                let layer = if layers.contains(&"F.Paste") {
-                    Some(FootprintLayer::SolderPaste)
-                } else if layers.contains(&"F.Mask") {
-                    Some(FootprintLayer::SolderMask)
+                let layer = if has(&["F.Paste", "B.Paste"]) {
+                    Some((FootprintLayer::SolderPaste, !has(&["F.Paste"])))
+                } else if has(&["F.Mask", "B.Mask"]) {
+                    Some((FootprintLayer::SolderMask, !has(&["F.Mask"])))
                 } else {
                     None
                 };
-                if let Some(layer) = layer {
+                if let Some((layer, back)) = layer {
                     let t = Transform::new(pos, rotation, false);
                     let outline = match &shape {
                         PadShape::Circle => Shape::Circle { center: pos, radius: w / 2, width: 0, fill: true },
@@ -411,7 +415,7 @@ fn pad(cx: &mut Ctx, n: &Node, fp: &mut Footprint, seen: &mut std::collections::
                             fill: true,
                         },
                     };
-                    fp.graphics.push(FootprintGraphic { layer, shape: outline });
+                    fp.graphics.push(FootprintGraphic { back, layer, shape: outline });
                 }
                 return;
             }
@@ -419,17 +423,14 @@ fn pad(cx: &mut Ctx, n: &Node, fp: &mut Footprint, seen: &mut std::collections::
         }
     };
     for shape in extra {
-        fp.graphics.push(FootprintGraphic { layer: FootprintLayer::Copper, shape });
+        fp.graphics.push(FootprintGraphic { back: false, layer: FootprintLayer::Copper, shape });
     }
     let occurrence = seen.entry(name.clone()).or_default();
     *occurrence += 1;
     let id = kid(&["kicad-pad", cx.lib, cx.name, &name, &occurrence.to_string()]);
-    let pad = Pad { id, name, pos, rotation, size, shape, kind };
-    if !front_copper && pad.kind == PadKind::Smd {
-        cx.bottom_pads.push(pad);
-    } else {
-        fp.pads.insert(pad);
-    }
+    let back = back && kind == PadKind::Smd;
+    let paste = kind != PadKind::Smd || paste;
+    fp.pads.insert(Pad { back, mask, paste, id, name, pos, rotation, size, shape, kind });
 }
 
 #[cfg(test)]
@@ -478,13 +479,39 @@ mod tests {
         assert!(fp.texts.iter().any(|t| t.text.text == "${REF}" && t.layer == FootprintLayer::Fabrication));
         assert!(fp.texts.iter().any(|t| t.text.text == "${VALUE}"));
         assert_eq!(fp.texts.len(), 3);
-        // Silk line, courtyard rect, paste aperture; the B.SilkS line is skipped.
-        assert_eq!(fp.graphics.len(), 3);
+        // Silk line, courtyard rect, back silk line, paste aperture.
+        assert_eq!(fp.graphics.len(), 4);
         assert!(fp.graphics.iter().any(|g| g.layer == FootprintLayer::SolderPaste));
-        assert!(k.warnings.iter().any(|w| w.contains("back-side")));
+        let back: Vec<_> = fp.graphics.iter().filter(|g| g.back).collect();
+        assert!(matches!(back[..], [g] if g.layer == FootprintLayer::Silkscreen));
         assert!(k.warnings.iter().any(|w| w.contains("oval drill")));
         // Stable ids.
         assert_eq!(fp.id, parse("Resistor_SMD", R0603).unwrap().footprint.id);
+    }
+
+    #[test]
+    fn back_pads_and_pads_without_paste() {
+        let src = r#"(footprint "X" (layer "F.Cu")
+  (pad "1" connect rect (at 0 0) (size 1 3) (layers "F.Cu" "F.Mask"))
+  (pad "2" connect rect (at 2 0) (size 1 3) (layers "B.Cu" "B.Mask"))
+  (pad "3" smd rect (at 4 0) (size 1 1) (layers "B.Cu" "B.Paste" "B.Mask"))
+  (pad "4" smd rect (at 6 0) (size 1 1) (layers "F.Cu"))
+  (pad "" smd rect (at 8 0) (size 1 1) (layers "B.Paste"))
+  (fp_text user "BOT" (at 0 0) (layer "B.SilkS") (effects (font (size 1 1) (thickness 0.15)) (justify mirror)))
+)"#;
+        let k = parse("L", src).unwrap();
+        let pad = |n: &str| k.footprint.pads.iter().find(|p| p.name == n).unwrap().clone();
+        let flags = |n: &str| {
+            let p = pad(n);
+            (p.back, p.mask, p.paste)
+        };
+        assert_eq!(flags("1"), (false, true, false), "test point: no paste");
+        assert_eq!(flags("2"), (true, true, false), "card edge finger on the back");
+        assert_eq!(flags("3"), (true, true, true));
+        assert_eq!(flags("4"), (false, false, false));
+        assert!(matches!(&k.footprint.graphics[..], [g] if g.back && g.layer == FootprintLayer::SolderPaste));
+        assert!(matches!(&k.footprint.texts[..], [t] if t.back && t.layer == FootprintLayer::Silkscreen));
+        assert!(k.warnings.is_empty(), "{:?}", k.warnings);
     }
 
     #[test]

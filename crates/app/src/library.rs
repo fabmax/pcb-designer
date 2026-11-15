@@ -788,6 +788,31 @@ impl LibraryEditor {
                     if before != (pad.shape.clone(), pad.kind.clone(), pad.size) {
                         changed = Some(true);
                     }
+                    let smd = pad.kind == PadKind::Smd;
+                    if smd {
+                        label(ui, "Back side");
+                        if ui
+                            .checkbox(&mut pad.back, "")
+                            .on_hover_text("On the footprint's other side (card edge fingers)")
+                            .changed()
+                        {
+                            changed = Some(false);
+                        }
+                        ui.end_row();
+                    }
+                    label(ui, "Mask opening");
+                    if ui.checkbox(&mut pad.mask, "").changed() {
+                        changed = Some(false);
+                    }
+                    ui.end_row();
+                    if smd {
+                        label(ui, "Solder paste");
+                        if ui.checkbox(&mut pad.paste, "").on_hover_text("Off for test points and fiducials").changed()
+                        {
+                            changed = Some(false);
+                        }
+                        ui.end_row();
+                    }
                     label(ui, "Rotation");
                     if let Some(a) = fields::rotation_combo(ui, "pad_rot", pad.rotation, DEGREES) {
                         pad.rotation = a;
@@ -811,6 +836,11 @@ impl LibraryEditor {
                         changed = Some(false);
                     }
                     ui.end_row();
+                    label(ui, "Back side");
+                    if ui.checkbox(&mut g.back, "").changed() {
+                        changed = Some(false);
+                    }
+                    ui.end_row();
                     changed = changed.or(shape_fields(ui, f, &mut g.shape));
                 });
             }
@@ -826,6 +856,11 @@ impl LibraryEditor {
                     label(ui, "Layer");
                     if let Some(l) = layer_combo(ui, "t_layer", t.layer) {
                         t.layer = l;
+                        changed = Some(false);
+                    }
+                    ui.end_row();
+                    label(ui, "Back side");
+                    if ui.checkbox(&mut t.back, "").changed() {
                         changed = Some(false);
                     }
                     ui.end_row();

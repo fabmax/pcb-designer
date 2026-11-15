@@ -335,6 +335,7 @@ pub fn blank_footprint(name: String) -> Footprint {
         pads: Default::default(),
         graphics: Vec::new(),
         texts: vec![FootprintText {
+            back: false,
             layer: FootprintLayer::Silkscreen,
             text: Text::new("${REF}", Point::mm(0.0, 2.0), mm(1.0)).aligned(HAlign::Center, VAlign::Bottom),
         }],

@@ -70,6 +70,9 @@ fn chip(id: Id, name: &str, pad_ids: [Id; 2], pad_x: f64, pad: Size, body: (f64,
     let pads = [(pad_ids[0], "1", -pad_x), (pad_ids[1], "2", pad_x)]
         .into_iter()
         .map(|(id, n, x)| Pad {
+            back: false,
+            mask: true,
+            paste: true,
             id,
             name: n.into(),
             pos: Point::mm(x, 0.0),
@@ -90,23 +93,28 @@ fn chip(id: Id, name: &str, pad_ids: [Id; 2], pad_x: f64, pad: Size, body: (f64,
         pads,
         graphics: vec![
             FootprintGraphic {
+                back: false,
                 layer: FootprintLayer::Silkscreen,
                 shape: Shape::line(Point::mm(-bw * 0.3, silk_y), Point::mm(bw * 0.3, silk_y), mm(0.12)),
             },
             FootprintGraphic {
+                back: false,
                 layer: FootprintLayer::Silkscreen,
                 shape: Shape::line(Point::mm(-bw * 0.3, -silk_y), Point::mm(bw * 0.3, -silk_y), mm(0.12)),
             },
             FootprintGraphic {
+                back: false,
                 layer: FootprintLayer::Fabrication,
                 shape: Shape::rect(Point::mm(-bw, -bh), Point::mm(bw, bh), mm(0.1)),
             },
             FootprintGraphic {
+                back: false,
                 layer: FootprintLayer::Courtyard,
                 shape: Shape::rect(Point::mm(-court_x, -court_y), Point::mm(court_x, court_y), mm(0.05)),
             },
         ],
         texts: vec![FootprintText {
+            back: false,
             layer: FootprintLayer::Silkscreen,
             text: Text::new("${REF}", Point::mm(0.0, court_y + 0.2), mm(1.0)).aligned(HAlign::Center, VAlign::Bottom),
         }],
@@ -240,6 +248,9 @@ pub fn builtin_library() -> Library {
         description: "Through hole pin header, 2.54 mm pitch".into(),
         pads: (0..n)
             .map(|i| Pad {
+                back: false,
+                mask: true,
+                paste: true,
                 id: hdr_pads[i],
                 name: format!("{}", i + 1),
                 pos: Point::mm(0.0, top - i as f64 * 2.54),
@@ -251,15 +262,18 @@ pub fn builtin_library() -> Library {
             .collect(),
         graphics: vec![
             FootprintGraphic {
+                back: false,
                 layer: FootprintLayer::Silkscreen,
                 shape: Shape::rect(Point::mm(-1.33, -top - 1.33), Point::mm(1.33, top + 1.33), mm(0.12)),
             },
             FootprintGraphic {
+                back: false,
                 layer: FootprintLayer::Courtyard,
                 shape: Shape::rect(Point::mm(-1.8, -top - 1.8), Point::mm(1.8, top + 1.8), mm(0.05)),
             },
         ],
         texts: vec![FootprintText {
+            back: false,
             layer: FootprintLayer::Silkscreen,
             text: Text::new("${REF}", Point::mm(0.0, top + 2.0), mm(1.0)).aligned(HAlign::Center, VAlign::Bottom),
         }],
@@ -302,6 +316,9 @@ fn add_mounting_hole(lib: &mut Library) {
         name: "MountingHole_3.2mm_M3_Pad".into(),
         description: "Plated mounting hole for M3 screws".into(),
         pads: [Pad {
+            back: false,
+            mask: true,
+            paste: true,
             id: bid(0x1801),
             name: "1".into(),
             pos: Point::ZERO,
@@ -313,10 +330,12 @@ fn add_mounting_hole(lib: &mut Library) {
         .into_iter()
         .collect(),
         graphics: vec![FootprintGraphic {
+            back: false,
             layer: FootprintLayer::Courtyard,
             shape: Shape::Circle { center: Point::ZERO, radius: mm(3.45), width: mm(0.05), fill: false },
         }],
         texts: vec![FootprintText {
+            back: false,
             layer: FootprintLayer::Fabrication,
             text: Text::new("${REF}", Point::mm(0.0, 4.0), mm(1.0)).aligned(HAlign::Center, VAlign::Bottom),
         }],
@@ -342,6 +361,9 @@ fn add_mounting_hole(lib: &mut Library) {
 
 fn smd_pad(id: Id, name: &str, x: f64, y: f64, size: Size) -> Pad {
     Pad {
+        back: false,
+        mask: true,
+        paste: true,
         id,
         name: name.into(),
         pos: Point::mm(x, y),
@@ -370,15 +392,18 @@ fn smd_footprint(
         pads: pads.into_iter().collect(),
         graphics: vec![
             FootprintGraphic {
+                back: false,
                 layer: FootprintLayer::Fabrication,
                 shape: Shape::rect(Point::mm(-bw, -bh), Point::mm(bw, bh), mm(0.1)),
             },
             FootprintGraphic {
+                back: false,
                 layer: FootprintLayer::Courtyard,
                 shape: Shape::rect(Point::mm(-cw, -ch), Point::mm(cw, ch), mm(0.05)),
             },
         ],
         texts: vec![FootprintText {
+            back: false,
             layer: FootprintLayer::Silkscreen,
             text: Text::new("${REF}", Point::mm(0.0, ch + 0.2), mm(1.0)).aligned(HAlign::Center, VAlign::Bottom),
         }],
@@ -429,6 +454,7 @@ fn add_diode(lib: &mut Library) {
     );
     // Cathode bar on the silkscreen.
     fp.graphics.push(FootprintGraphic {
+        back: false,
         layer: FootprintLayer::Silkscreen,
         shape: Shape::line(Point::mm(-2.4, -0.9), Point::mm(-2.4, 0.9), mm(0.12)),
     });
@@ -546,6 +572,7 @@ fn add_opamp(lib: &mut Library) {
     let mut fp =
         smd_footprint(bid(0x1600), "SOIC-8", "SOIC-8, 3.9 mm body, 1.27 mm pitch", pads, (3.9, 4.9), (7.4, 5.4));
     fp.graphics.push(FootprintGraphic {
+        back: false,
         layer: FootprintLayer::Silkscreen,
         shape: Shape::Circle { center: Point::mm(-3.6, 2.6), radius: mm(0.15), width: 0, fill: true },
     });

@@ -188,7 +188,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
             let r = Rect::union_all(
                 def.graphics
                     .iter()
-                    .filter(|g| g.layer == FootprintLayer::Courtyard)
+                    .filter(|g| g.layer == FootprintLayer::Courtyard && !g.back)
                     .map(|g| g.shape.transformed(&t).bounds()),
             )?;
             Some((f.id, refdes(f), f.side, r))

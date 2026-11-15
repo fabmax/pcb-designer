@@ -226,10 +226,9 @@ impl BoardConnectivity {
                 .filter(|c| project.library.parts.get(c.part).is_some_and(Part::is_board_part))
                 .map(|c| c.refdes.as_str());
             let t = f.transform();
-            let side_copper = layer_bit(LayerId::for_footprint(FootprintLayer::Copper, f.side));
             for pad in fp.pads.iter() {
                 let layers = match pad.kind {
-                    PadKind::Smd => side_copper,
+                    PadKind::Smd => layer_bit(LayerId::for_footprint(FootprintLayer::Copper, pad.side(f.side))),
                     PadKind::ThroughHole { .. } => all_copper,
                     PadKind::NonPlatedHole { .. } => continue,
                 };

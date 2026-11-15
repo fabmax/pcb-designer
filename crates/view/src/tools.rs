@@ -249,6 +249,9 @@ impl Placer {
                 show_number: true,
             }),
             Tool::Pad => Ghost::Pad(Pad {
+                back: false,
+                mask: true,
+                paste: true,
                 id: Id::new(),
                 name: s.name.clone(),
                 pos: p,
@@ -309,11 +312,11 @@ pub fn add(doc: &mut Document, item: Item, ghost: Ghost, layer: FootprintLayer) 
                 Elem::Pad(id)
             }
             (Content::Footprint(f), Ghost::Shape(shape)) => {
-                f.graphics.push(FootprintGraphic { layer, shape });
+                f.graphics.push(FootprintGraphic { back: false, layer, shape });
                 Elem::Graphic(f.graphics.len() - 1)
             }
             (Content::Footprint(f), Ghost::Text(text)) => {
-                f.texts.push(FootprintText { layer, text });
+                f.texts.push(FootprintText { back: false, layer, text });
                 Elem::Text(f.texts.len() - 1)
             }
             (Content::Symbol(_), Ghost::Pad(_)) => return Err("symbols have pins, not pads".into()),

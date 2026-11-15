@@ -119,17 +119,17 @@ pub fn layer_file(project: &Project, copper: &BoardConnectivity, layer: LayerId)
         let t = inst.transform();
         for pad in fp.pads.iter() {
             let (margin, function) = if is_copper {
-                if !pad_copper_layers(&pad.kind, inst.side, &copper_ids).contains(&layer) {
+                if !pad_copper_layers(pad, inst.side, &copper_ids).contains(&layer) {
                     continue;
                 }
                 (0, Some(if matches!(pad.kind, PadKind::Smd) { "SMDPad,CuDef" } else { "ComponentPad" }))
             } else if matches!(layer, LayerId::TOP_MASK | LayerId::BOTTOM_MASK) {
-                if !pad_mask_layers(&pad.kind, inst.side).contains(&layer) {
+                if !pad_mask_layers(pad, inst.side).contains(&layer) {
                     continue;
                 }
                 (rules.mask_expansion, None)
             } else if matches!(layer, LayerId::TOP_PASTE | LayerId::BOTTOM_PASTE) {
-                if pad_paste_layer(&pad.kind, inst.side) != Some(layer) {
+                if pad_paste_layer(pad, inst.side) != Some(layer) {
                     continue;
                 }
                 (rules.paste_margin, None)
@@ -142,10 +142,10 @@ pub fn layer_file(project: &Project, copper: &BoardConnectivity, layer: LayerId)
         }
         let component = project.schematic.components.get(inst.component);
         let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
-        for g in fp.graphics.iter().filter(|g| LayerId::for_footprint(g.layer, inst.side) == layer) {
+        for g in fp.graphics.iter().filter(|g| g.board_layer(inst.side) == layer) {
             write_shape(&mut w, &g.shape.transformed(&t), graphic_function(layer));
         }
-        for ft in fp.texts.iter().filter(|ft| LayerId::for_footprint(ft.layer, inst.side) == layer) {
+        for ft in fp.texts.iter().filter(|ft| ft.board_layer(inst.side) == layer) {
             let text = ft.text.text.replace("${REF}", refdes).replace("${VALUE}", value);
             write_text(&mut w, &ft.text.transformed(&t), &text, is_bottom(layer), text_function(layer));
         }

@@ -173,7 +173,11 @@ and hierarchical sheets.
   as `ZoneNet`.
 - **Mask and paste** (`fab`) are derived from pads, never stored: every pad opens the
   mask on its side (holes on both sides) grown by `DesignRules::mask_expansion`; SMD
-  pads get paste grown by `paste_margin` (negative shrinks, as in KiCad). Vias stay
+  pads get paste grown by `paste_margin` (negative shrinks, as in KiCad). Per pad,
+  `mask` / `paste` turn that off (test points), and `back` puts an SMD pad on the
+  footprint's other side (card edge fingers); footprint graphics and texts have `back`
+  too (`board_layer(side)`). Always go through `fab::pad_*_layers` / `Pad::side`,
+  never `for_footprint(…, inst.side)` for pads. Back courtyards are ignored by DRC. Vias stay
   tented. Explicit footprint mask/paste graphics add to that. `fab::pad_outline` is the
   one placed pad shape (rotation includes mirroring; grown rectangles keep sharp
   corners, polygons offset with round joins) for the board view and the Gerber export.
@@ -297,8 +301,8 @@ and hierarchical sheets.
   from sub-symbols, `extends` merged, power symbols skipped (they are power labels
   here), symbols with hidden `power_in` pins refused (KiCad joins those implicitly to the
   global net of the pin name; none in KiCad's current libraries), other hidden pins shown
-  with a warning, footprints y-flipped and
-  front layers only. A symbol requested without footprints gets a "No footprint" variant
+  with a warning, footprints y-flipped; `B.*` items and `B.Cu`-only pads become `back`
+  ones, a pad's mask/paste come from its layer list. A symbol requested without footprints gets a "No footprint" variant
   (with a warning); one whose footprints all fail to load makes no part. Deterministic ids (FNV of library, name, element), so re-imports
   update in place.
 - The catalog indexes names only (~0.1 s) and parses lazily. Footprint suggestion: the
@@ -449,13 +453,14 @@ defers.
   Symbols without footprint get a "No footprint" variant; "exclude from board" adds one
   to the part; footprints without symbol become board parts. Model prerequisites first,
   in order: footprint
-  fidelity (back-side layers, slots, per-instance reference/value text); zones (holes,
+  fidelity (slots, per-instance reference/value text); zones (holes,
   keepouts, connection mode); arc tracks. `in_bom` / `dnp` become component properties
   until a BOM exists. Power symbols become power labels; the style comes from the
   `power:` library name, else from the symbol's graphics; custom glyphs get the closest
   style, noted in the report. Legacy hidden power pins fail the import with their
   symbols named.
 
+- Per-pad mask and paste margins (board-wide today); inner-layer footprint graphics.
 - Wiring a pin of kind "not connected" isn't reported yet (KiCad's ERC does).
 - Custom power symbols: power ports drawn from a symbol of their own (a part flagged
   power, no footprint), for glyphs beyond `PowerStyle`; maps to KiCad custom power

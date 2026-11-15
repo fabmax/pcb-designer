@@ -36,27 +36,30 @@ pub enum PadOutline {
     Polygon(Vec<Vec<Vec<Point>>>),
 }
 
-/// Copper layers of a pad: SMD pads on their side, through-hole pads on all of
-/// `copper`, non-plated holes on none.
-pub fn pad_copper_layers(kind: &PadKind, side: Side, copper: &[LayerId]) -> Vec<LayerId> {
-    match kind {
-        PadKind::Smd => vec![LayerId::for_footprint(FootprintLayer::Copper, side)],
+/// Copper layers of a pad of a footprint on `side`: SMD pads on their side (the other one
+/// for `back` pads), through-hole pads on all of `copper`, non-plated holes on none.
+pub fn pad_copper_layers(pad: &Pad, side: Side, copper: &[LayerId]) -> Vec<LayerId> {
+    match pad.kind {
+        PadKind::Smd => vec![LayerId::for_footprint(FootprintLayer::Copper, pad.side(side))],
         PadKind::ThroughHole { .. } => copper.to_vec(),
         PadKind::NonPlatedHole { .. } => vec![],
     }
 }
 
-/// Solder mask layers a pad opens: SMD pads on their side, holes on both.
-pub fn pad_mask_layers(kind: &PadKind, side: Side) -> Vec<LayerId> {
-    match kind {
-        PadKind::Smd => vec![LayerId::for_footprint(FootprintLayer::SolderMask, side)],
+/// Solder mask layers a pad opens: SMD pads on their side, holes on both; none if the
+/// pad has its mask turned off.
+pub fn pad_mask_layers(pad: &Pad, side: Side) -> Vec<LayerId> {
+    match pad.kind {
+        _ if !pad.mask => vec![],
+        PadKind::Smd => vec![LayerId::for_footprint(FootprintLayer::SolderMask, pad.side(side))],
         PadKind::ThroughHole { .. } | PadKind::NonPlatedHole { .. } => vec![LayerId::TOP_MASK, LayerId::BOTTOM_MASK],
     }
 }
 
-/// Paste layer of a pad: SMD pads only.
-pub fn pad_paste_layer(kind: &PadKind, side: Side) -> Option<LayerId> {
-    matches!(kind, PadKind::Smd).then(|| LayerId::for_footprint(FootprintLayer::SolderPaste, side))
+/// Paste layer of a pad: SMD pads with paste only.
+pub fn pad_paste_layer(pad: &Pad, side: Side) -> Option<LayerId> {
+    (matches!(pad.kind, PadKind::Smd) && pad.paste)
+        .then(|| LayerId::for_footprint(FootprintLayer::SolderPaste, pad.side(side)))
 }
 
 /// The pad placed by `t`, grown by `margin` (negative shrinks). `None` when shrinking
@@ -129,6 +132,9 @@ mod tests {
 
     fn pad(shape: PadShape, kind: PadKind) -> Pad {
         Pad {
+            back: false,
+            mask: true,
+            paste: true,
             id: Id::new(),
             name: "1".into(),
             pos: Point::mm(1.0, 0.0),
@@ -142,13 +148,28 @@ mod tests {
     #[test]
     fn layers_by_kind() {
         let copper = [LayerId::TOP_COPPER, LayerId::BOTTOM_COPPER];
-        assert_eq!(pad_mask_layers(&PadKind::Smd, Side::Bottom), vec![LayerId::BOTTOM_MASK]);
-        assert_eq!(pad_paste_layer(&PadKind::Smd, Side::Top), Some(LayerId::TOP_PASTE));
-        let th = PadKind::ThroughHole { drill: mm(0.8) };
+        let smd = pad(PadShape::Rect, PadKind::Smd);
+        assert_eq!(pad_mask_layers(&smd, Side::Bottom), vec![LayerId::BOTTOM_MASK]);
+        assert_eq!(pad_paste_layer(&smd, Side::Top), Some(LayerId::TOP_PASTE));
+        let th = pad(PadShape::Circle, PadKind::ThroughHole { drill: mm(0.8) });
         assert_eq!(pad_mask_layers(&th, Side::Top), vec![LayerId::TOP_MASK, LayerId::BOTTOM_MASK]);
         assert_eq!(pad_paste_layer(&th, Side::Top), None);
         assert_eq!(pad_copper_layers(&th, Side::Top, &copper), copper.to_vec());
-        assert!(pad_copper_layers(&PadKind::NonPlatedHole { drill: mm(3.0) }, Side::Top, &copper).is_empty());
+        let npth = pad(PadShape::Circle, PadKind::NonPlatedHole { drill: mm(3.0) });
+        assert!(pad_copper_layers(&npth, Side::Top, &copper).is_empty());
+    }
+
+    #[test]
+    fn back_pads_and_pads_without_mask_or_paste() {
+        let copper = [LayerId::TOP_COPPER, LayerId::BOTTOM_COPPER];
+        let back = Pad { back: true, ..pad(PadShape::Rect, PadKind::Smd) };
+        assert_eq!(pad_copper_layers(&back, Side::Top, &copper), [LayerId::BOTTOM_COPPER]);
+        assert_eq!(pad_mask_layers(&back, Side::Top), [LayerId::BOTTOM_MASK]);
+        assert_eq!(pad_paste_layer(&back, Side::Bottom), Some(LayerId::TOP_PASTE), "flipped footprint");
+        let bare = Pad { mask: false, paste: false, ..pad(PadShape::Rect, PadKind::Smd) };
+        assert!(pad_mask_layers(&bare, Side::Top).is_empty());
+        assert_eq!(pad_paste_layer(&bare, Side::Top), None);
+        assert_eq!(pad_copper_layers(&bare, Side::Top, &copper), [LayerId::TOP_COPPER]);
     }
 
     #[test]

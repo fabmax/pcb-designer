@@ -132,6 +132,32 @@ pub struct Pad {
     pub size: Size,
     pub shape: PadShape,
     pub kind: PadKind,
+    /// An SMD pad on the opposite side of the footprint (card edge fingers). Holes go
+    /// through, so this only matters for SMD pads.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub back: bool,
+    /// The solder mask opens over the pad (default).
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub mask: bool,
+    /// SMD pads get solder paste (default); off for test points, fiducials, pads with
+    /// paste drawn separately.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub paste: bool,
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+impl Pad {
+    /// The side the pad's copper (SMD) is on, for a footprint placed on `side`.
+    pub fn side(&self, side: crate::board::Side) -> crate::board::Side {
+        if self.back { side.flipped() } else { side }
+    }
 }
 
 /// Layers available inside a footprint (defined on the top side; mirrored when placed on
@@ -150,13 +176,33 @@ pub enum FootprintLayer {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FootprintGraphic {
     pub layer: FootprintLayer,
+    /// On the opposite side of the footprint (KiCad's `B.SilkS` in a front footprint).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub back: bool,
     pub shape: Shape,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FootprintText {
     pub layer: FootprintLayer,
+    /// On the opposite side of the footprint.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub back: bool,
     pub text: Text,
+}
+
+impl FootprintGraphic {
+    /// Board layer of this graphic for a footprint placed on `side`.
+    pub fn board_layer(&self, side: crate::board::Side) -> crate::board::LayerId {
+        crate::board::LayerId::for_footprint(self.layer, if self.back { side.flipped() } else { side })
+    }
+}
+
+impl FootprintText {
+    /// Board layer of this text for a footprint placed on `side`.
+    pub fn board_layer(&self, side: crate::board::Side) -> crate::board::LayerId {
+        crate::board::LayerId::for_footprint(self.layer, if self.back { side.flipped() } else { side })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]

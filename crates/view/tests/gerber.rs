@@ -95,6 +95,7 @@ fn pads_round_trip() {
         pads[0].rotation = Angle::deg(30.0);
         pads[1].shape = PadShape::Oval;
         pads[1].size = Size::mm(0.6, 1.2);
+        pads[1].paste = false;
         let tri = vec![Point::mm(-0.5, -0.4), Point::mm(0.5, -0.4), Point::mm(0.0, 0.6)];
         let mut extra = pads[0].clone();
         extra.id = Id::new();
@@ -102,6 +103,7 @@ fn pads_round_trip() {
         extra.pos = Point::mm(0.0, 3.0);
         extra.rotation = Angle::deg(20.0);
         extra.shape = PadShape::Polygon { points: tri };
+        extra.back = true;
         pads.push(extra);
         fp.pads = Store::default();
         for pad in pads {
@@ -134,9 +136,9 @@ fn pads_round_trip() {
         let t = inst.transform();
         for pad in fp.pads.iter() {
             let mut layers: Vec<(LayerId, Coord)> =
-                pad_copper_layers(&pad.kind, inst.side, &copper).into_iter().map(|l| (l, 0)).collect();
-            layers.extend(pad_mask_layers(&pad.kind, inst.side).into_iter().map(|l| (l, p.board.rules.mask_expansion)));
-            layers.extend(pad_paste_layer(&pad.kind, inst.side).map(|l| (l, p.board.rules.paste_margin)));
+                pad_copper_layers(pad, inst.side, &copper).into_iter().map(|l| (l, 0)).collect();
+            layers.extend(pad_mask_layers(pad, inst.side).into_iter().map(|l| (l, p.board.rules.mask_expansion)));
+            layers.extend(pad_paste_layer(pad, inst.side).map(|l| (l, p.board.rules.paste_margin)));
             for (layer, margin) in layers {
                 let img = images.entry(layer).or_insert_with(|| image(layer));
                 let at = |q: Point| t.point(pad.pos + q.rotated(pad.rotation));
@@ -177,6 +179,26 @@ fn pads_round_trip() {
         }
     }
     assert!(checked > 100, "{checked}");
+
+    // Nothing where a pad has no paste, or on the footprint's side for back pads.
+    let mut absent = 0;
+    for inst in p.board.footprints.iter() {
+        let fp = editor_core::query::footprint_of_instance(p, inst).unwrap();
+        for pad in fp.pads.iter() {
+            let c = inst.transform().point(pad.pos);
+            let not_on = if !pad.paste {
+                LayerId::for_footprint(FootprintLayer::SolderPaste, inst.side)
+            } else if pad.back {
+                LayerId::for_footprint(FootprintLayer::Copper, inst.side)
+            } else {
+                continue;
+            };
+            let img = images.entry(not_on).or_insert_with(|| image(not_on));
+            assert!(!img.covers(c), "pad {} on {not_on:?}", pad.name);
+            absent += 1;
+        }
+    }
+    assert!(absent >= 4, "{absent}");
 }
 
 /// Tracks, vias, drills and the zone fill of the demo read back where they are.
