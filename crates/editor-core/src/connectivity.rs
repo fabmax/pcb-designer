@@ -17,7 +17,7 @@
 //! Nets are named after their labels (power ports first). Unnamed nets with pins are
 //! called `Net-(R1-1)` after their first pin (reference and pad), like KiCad does.
 
-use rustc_hash::FxHashMap as HashMap;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use model::*;
 
@@ -105,8 +105,12 @@ pub struct Connectivity {
     /// Automatic junction dots: (sheet, point) where three or more wire ends / pins meet,
     /// or where something connects to the inside of a wire.
     pub dots: Vec<(Id, Point)>,
-    /// Pins connected to nothing: (symbol instance, pin, position).
+    /// Pins connected to nothing: (symbol instance, pin, position). Pins under a
+    /// no-connect flag and pins of kind "not connected" are left out: they are meant to
+    /// stay unconnected.
     pub unconnected: Vec<(Id, Id, Point)>,
+    /// Pins under a no-connect flag: (symbol instance, pin), sorted.
+    pub flagged: Vec<(Id, Id)>,
     /// Nets with conflicting names, misused buses and similar problems.
     pub problems: Vec<Problem>,
 }
@@ -182,6 +186,10 @@ impl Connectivity {
         // ---- Nodes
         let mut pins: Vec<NetPin> = Vec::new();
         let mut pin_sheet: Vec<Id> = Vec::new();
+        // Pins meant to stay unconnected: (symbol instance, pin).
+        let flags: HashSet<(Id, Point)> = s.no_connects.iter().map(|n| (n.sheet, n.pos)).collect();
+        let mut intentional: HashSet<(Id, Id)> = HashSet::default();
+        let mut flagged: Vec<(Id, Id)> = Vec::new();
         for inst in s.symbols.iter() {
             let Some(sym) = symbol_of_instance(project, inst) else { continue };
             let Some(c) = s.components.get(inst.component) else { continue };
@@ -201,6 +209,13 @@ impl Connectivity {
                 };
                 pads.sort_by(|a, b| natural_cmp(a, b));
                 pads.dedup();
+                let pos = t.point(pin.pos);
+                if flags.contains(&(inst.sheet, pos)) {
+                    flagged.push((inst.id, pin.id));
+                    intentional.insert((inst.id, pin.id));
+                } else if pin.kind == PinKind::NotConnected {
+                    intentional.insert((inst.id, pin.id));
+                }
                 pins.push(NetPin {
                     symbol: inst.id,
                     pin: pin.id,
@@ -210,7 +225,7 @@ impl Connectivity {
                     pin_name: pin.name.clone(),
                     pin_number: pin.key().to_string(),
                     pads,
-                    pos: t.point(pin.pos),
+                    pos,
                 });
                 pin_sheet.push(inst.sheet);
             }
@@ -301,7 +316,7 @@ impl Connectivity {
         }
         let mut dots = Vec::new();
         // Points something reaches from the inside of a wire.
-        let mut on_wire: std::collections::HashSet<(Id, Point)> = Default::default();
+        let mut on_wire: HashSet<(Id, Point)> = Default::default();
         for (&(sheet, p), at) in &points {
             let mut inside = 0;
             if let Some(ws) = grid.get(&(sheet, cell(p))) {
@@ -375,6 +390,19 @@ impl Connectivity {
             }
         }
 
+        // ---- No-connect flags belong on a pin end with nothing else attached.
+        for n in s.no_connects.iter() {
+            let at = points.get(&(n.sheet, n.pos));
+            let message = if at.is_none_or(|at| at.pins == 0) {
+                "No-connect flag is not on a pin"
+            } else if at.is_some_and(|at| at.nodes.len() > 1) || on_wire.contains(&(n.sheet, n.pos)) {
+                "No-connect flag on a connected pin"
+            } else {
+                continue;
+            };
+            problems.push(Problem::new(message.into(), vec![ObjectId::NoConnect(n.id)], Some(n.pos)));
+        }
+
         // ---- Group into nets
         let mut groups: HashMap<usize, Net> = HashMap::default();
         let mut pins: Vec<Option<NetPin>> = pins.into_iter().map(Some).collect();
@@ -405,7 +433,19 @@ impl Connectivity {
                 && net.sheet_pins.is_empty()
             {
                 let p = &net.pins[0];
-                unconnected.push((p.symbol, p.pin, p.pos));
+                if !intentional.contains(&(p.symbol, p.pin)) {
+                    unconnected.push((p.symbol, p.pin, p.pos));
+                    let name = if p.pin_name.is_empty() || p.pin_name == p.pin_number {
+                        String::new()
+                    } else {
+                        format!(" ({})", p.pin_name)
+                    };
+                    problems.push(Problem::new(
+                        format!("Unconnected pin {}-{}{name}", p.refdes, p.pin_number),
+                        vec![ObjectId::Symbol(p.symbol)],
+                        Some(p.pos),
+                    ));
+                }
             }
             // Name, as KiCad does: power ports first, then global labels, then local and
             // then hierarchical labels by their sheet path (`/NAME` on the root sheet), the
@@ -457,6 +497,7 @@ impl Connectivity {
                 .then_with(|| a.wires.first().cmp(&b.wires.first()))
         });
         unconnected.sort_by_key(|&(s, p, _)| (s, p));
+        flagged.sort();
 
         let mut net_of = HashMap::default();
         let mut pin_net = HashMap::default();
@@ -485,6 +526,7 @@ impl Connectivity {
             bus_of: HashMap::default(),
             dots,
             unconnected,
+            flagged,
             problems,
         };
         c.build_buses(project, &bus_pins);

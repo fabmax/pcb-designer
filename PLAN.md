@@ -127,7 +127,13 @@ and hierarchical sheets.
   fewest `/` first, else `Net-(R1-1)`. Power ports are labels, not symbols: their
   `style` (`PowerStyle`, KiCad's power glyphs) is drawing only; `None` means the one the
   name suggests (`PowerStyle::for_name`: *GND* or EARTH → ground, CHASSIS, PE, else a
-  bar). There are no hidden pins: pins connect only by wire. "Several names" is reported per sheet only (a net
+  bar). There are no hidden pins: pins connect only by wire.
+- **No-connect flags** (`NoConnect`, an X at a pin end) are documentation too. A pin
+  under one, or of kind `NotConnected`, is left out of `unconnected` (in `flagged`
+  instead); every other open pin is a problem ("Unconnected pin R1-2"), as are flags off
+  a pin or on a connected point. Flags on a symbol's pins move with it (all of `Move`,
+  `Rotate`, `Mirror` via `transform_connected`) and are deleted with it. Gotcha: tests
+  that expect no problems must wire or flag every pin, or filter "Unconnected pin". "Several names" is reported per sheet only (a net
   may be named differently on each side of a sheet pin). Gotcha: local nets are
   `/NAME`; tests that only need a named net use global labels. Problems are `Problem
   {message, objects, pos}`.
@@ -251,7 +257,7 @@ and hierarchical sheets.
   buses): orthogonal wires shift and stay orthogonal, the far end stretches or gets a
   dogleg; rotate/mirror stretch.
 - Tools: `tools::Placer` (library: pin/pad, line, rect, circle, text; names
-  auto-increment), `sch_tools` (wire, bus, bus entry, label, power, junction, place;
+  auto-increment), `sch_tools` (wire, bus, bus entry, label, power, junction, no connect, place;
   `/` flips the corner; `SchPlacer::sheet` is the sheet they work on, `set_sheet` ends a
   wire begun elsewhere; the Sheet tool places a new sheet's symbol with one
   `AddSheet`), `pcb_tools` (route 45°/90° with copper snapping, L changes
@@ -442,7 +448,7 @@ defers.
   UUIDs kept as ids; opens as an unsaved project; best effort with an import report).
   Symbols without footprint get a "No footprint" variant; "exclude from board" adds one
   to the part; footprints without symbol become board parts. Model prerequisites first,
-  in order: no-connect flags; footprint
+  in order: footprint
   fidelity (back-side layers, slots, per-instance reference/value text); zones (holes,
   keepouts, connection mode); arc tracks. `in_bom` / `dnp` become component properties
   until a BOM exists. Power symbols become power labels; the style comes from the
@@ -450,6 +456,7 @@ defers.
   style, noted in the report. Legacy hidden power pins fail the import with their
   symbols named.
 
+- Wiring a pin of kind "not connected" isn't reported yet (KiCad's ERC does).
 - Custom power symbols: power ports drawn from a symbol of their own (a part flagged
   power, no footprint), for glyphs beyond `PowerStyle`; maps to KiCad custom power
   symbols on import and export.

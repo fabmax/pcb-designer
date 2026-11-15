@@ -695,9 +695,16 @@ fn component(p: &Project, refdes: &str) -> Result<Value, String> {
         .schematic
         .symbols_of(c.id)
         .map(|s| {
+            let flagged = |pos: Point| p.schematic.no_connects.iter().any(|n| n.sheet == s.sheet && n.pos == pos);
             let pins: Vec<Value> = pin_positions(p, s.id)
                 .into_iter()
-                .map(|(id, name, pos)| json!({ "id": id, "name": name, "pos": pos }))
+                .map(|(id, name, pos)| {
+                    let mut pin = json!({ "id": id, "name": name, "pos": pos });
+                    if flagged(pos) {
+                        pin["no_connect"] = true.into();
+                    }
+                    pin
+                })
                 .collect();
             json!({ "symbol": s, "pins": pins })
         })

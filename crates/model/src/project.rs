@@ -89,6 +89,7 @@ impl Project {
             .iter()
             .map(|w| w.sheet)
             .chain(sch.junctions.iter().map(|j| j.sheet))
+            .chain(sch.no_connects.iter().map(|n| n.sheet))
             .chain(sch.labels.iter().map(|l| l.sheet))
             .chain(sch.texts.iter().map(|t| t.sheet));
         for sheet in sheet_refs {

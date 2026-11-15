@@ -61,6 +61,7 @@ impl ViewKind {
                     | ObjectKind::BusWire
                     | ObjectKind::BusEntry
                     | ObjectKind::Junction
+                    | ObjectKind::NoConnect
                     | ObjectKind::Label
                     | ObjectKind::SchText
             ),
@@ -323,6 +324,7 @@ impl View {
                     .chain(s.bus_wires.ids().map(ObjectId::BusWire))
                     .chain(s.bus_entries.ids().map(ObjectId::BusEntry))
                     .chain(s.junctions.ids().map(ObjectId::Junction))
+                    .chain(s.no_connects.ids().map(ObjectId::NoConnect))
                     .chain(s.labels.ids().map(ObjectId::Label))
                     .chain(s.texts.ids().map(ObjectId::SchText))
                     .collect()
@@ -499,6 +501,7 @@ impl View {
                 SchGhost::Bus(a, b) => p.line(l.wires, *a, *b, BUS_WIDTH, pal().sch_bus),
                 SchGhost::Entry(pos, dir) => p.line(l.wires, *pos, *pos + dir.offset(), BUS_WIDTH, pal().sch_bus),
                 SchGhost::Junction(pos) => p.circle(l.wires, *pos, JUNCTION_RADIUS, pal().sch_junction),
+                SchGhost::NoConnect(pos) => draw_no_connect(*pos, l, &mut p),
                 SchGhost::Target(pos) => {
                     p.push(l.wires, Instance::circle_outline(mmf(*pos), 0.6, 0.12, pal().hover.with_alpha(0xc0)))
                 }
@@ -794,6 +797,9 @@ impl View {
                 ObjectId::Junction(j) => {
                     project.schematic.junctions.get(j).map(|j| dist(p, j.pos) - JUNCTION_RADIUS as f64)
                 }
+                ObjectId::NoConnect(n) => {
+                    project.schematic.no_connects.get(n).map(|n| dist(p, n.pos) - NO_CONNECT_HALF as f64)
+                }
                 ObjectId::Via(v) => project.board.vias.get(v).map(|v| dist(p, v.pos) - v.diameter as f64 / 2.0),
                 ObjectId::BoardGraphic(g) => match project.board.graphics.get(g).map(|g| &g.shape) {
                     Some(Shape::Line { a, b, width }) => Some(seg_dist(p, *a, *b) - *width as f64 / 2.0),
@@ -871,6 +877,9 @@ impl View {
                 .get(i)
                 .map(|j| p.circle(l.wires, j.pos, JUNCTION_RADIUS, pal().sch_junction))
                 .is_some(),
+            (Layers::Sch(l), ObjectId::NoConnect(i)) => {
+                project.schematic.no_connects.get(i).map(|n| draw_no_connect(n.pos, l, p)).is_some()
+            }
             (Layers::Sch(l), ObjectId::Label(i)) => {
                 project.schematic.labels.get(i).map(|lab| draw_label(lab, l, p)).is_some()
             }
@@ -1057,6 +1066,17 @@ fn draw_sheet_symbol(s: &Schematic, sheet: &Sheet, l: &SchLayers, p: &mut Painte
             rotation: if pin.right { Angle::DEG180 } else { Angle::ZERO },
         };
         draw_label(&lab, l, p);
+    }
+}
+
+/// Half the size of a no-connect flag's X.
+const NO_CONNECT_HALF: Coord = 635_000;
+
+/// A no-connect flag: an X centred on the pin end.
+fn draw_no_connect(pos: Point, l: &SchLayers, p: &mut Painter) {
+    let h = NO_CONNECT_HALF;
+    for (a, b) in [(Point::new(-h, -h), Point::new(h, h)), (Point::new(-h, h), Point::new(h, -h))] {
+        p.line(l.labels, pos + a, pos + b, WIRE_WIDTH, pal().sch_no_connect);
     }
 }
 

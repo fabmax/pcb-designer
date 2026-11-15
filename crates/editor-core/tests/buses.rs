@@ -72,8 +72,9 @@ fn resistor(ed: &mut Editor, x: f64, y: f64) -> (Id, Point, Point) {
     (s, pins[0].2, pins[1].2)
 }
 
+/// Problems, without unconnected pins (the resistors' other ends are left open).
 fn messages(c: &Connectivity) -> Vec<String> {
-    c.problems.iter().map(|p| p.message.clone()).collect()
+    c.problems.iter().map(|p| p.message.clone()).filter(|m| !m.starts_with("Unconnected pin")).collect()
 }
 
 const P: fn(f64, f64) -> Point = Point::mm;
@@ -101,7 +102,7 @@ fn touching_bus_wires_form_one_bus_named_by_its_labels() {
     // The T-joint gets a dot; bus labels make no nets.
     assert_eq!(c.dots, vec![(ed.project().schematic.root_sheet().unwrap(), P(10.16, 0.0))]);
     assert!(c.nets.is_empty(), "{:?}", c.nets);
-    assert!(c.problems.is_empty(), "{:?}", messages(&c));
+    assert!(messages(&c).is_empty(), "{:?}", messages(&c));
 }
 
 #[test]
@@ -120,7 +121,7 @@ fn signals_connect_through_entries_by_label_only() {
     label(&mut ed, P(5.08, 40.64), "D1");
 
     let c = Connectivity::build(ed.project());
-    assert!(c.problems.is_empty(), "{:?}", messages(&c));
+    assert!(messages(&c).is_empty(), "{:?}", messages(&c));
     // The bus doesn't join D0 and D1; each entry knows its signal.
     assert_eq!(c.net_of(ObjectId::BusEntry(e0)).unwrap().name, "/D0");
     assert_eq!(c.net_of(ObjectId::BusEntry(e1)).unwrap().name, "/D1");

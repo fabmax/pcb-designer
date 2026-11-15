@@ -79,7 +79,8 @@ signal_ground/chassis/protective_earth picks the glyph, default from the name: G
 add_bus_entry) only group signals: name a bus with a label whose name is a bus name \
 (D[0..7], {SDA SCL}, I2C{SDA SCL} with members I2C.SDA, I2C.SCL) placed on a bus wire; signals \
 leave through bus entries on wires labelled with a member name. Bus wires never connect \
-to wires or pins.";
+to wires or pins. Pins left open on purpose get a no-connect flag (add_no_connect at the pin \
+end; it moves and is deleted with the symbol); other unconnected pins are reported as problems.";
 
 #[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -449,7 +450,8 @@ impl PcbTools {
     }
 
     #[tool(description = "Schematic netlist: every net with at least two pins or a label, with \
-        its pins (reference, pin name, footprint pads, position), plus unconnected pins and \
+        its pins (reference, pin name, footprint pads, position), plus unconnected pins (without \
+        those under a no-connect flag or of kind not_connected) and \
         connectivity problems (e.g. two different labels on one net, misused buses; each with \
         message, objects and position). Pins connect where wire ends, pins, labels and \
         junctions coincide, where a wire ends on another wire, and through same-named labels \

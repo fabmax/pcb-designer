@@ -18,6 +18,8 @@ pub enum SchTool {
     Label,
     Power,
     Junction,
+    /// No-connect flags on pin ends.
+    NoConnect,
     /// Place parts (see [`SchPlacer::placing`]).
     Place,
     /// Place the symbol of a new sheet (see [`SchPlacer::place_sheet`]).
@@ -34,6 +36,7 @@ impl SchTool {
         SchTool::Label,
         SchTool::Power,
         SchTool::Junction,
+        SchTool::NoConnect,
     ];
 
     pub fn label(self) -> &'static str {
@@ -45,6 +48,7 @@ impl SchTool {
             SchTool::Label => "Label",
             SchTool::Power => "Power",
             SchTool::Junction => "Junction",
+            SchTool::NoConnect => "No connect",
             SchTool::Place => "Place",
             SchTool::Sheet => "Sheet",
         }
@@ -61,6 +65,7 @@ impl SchTool {
             SchTool::BusEntry => "Click on a bus to place an entry · R rotate · X mirror · Esc done",
             SchTool::Label | SchTool::Power => "Click to place · R rotate · Esc done",
             SchTool::Junction => "Click to place a junction · Esc done",
+            SchTool::NoConnect => "Click a pin end to mark it unconnected on purpose · Esc done",
             SchTool::Place => "Click to place · R rotate · X mirror · Esc done",
             SchTool::Sheet => "Click to place the sheet's top left corner · Esc cancels",
         }
@@ -124,6 +129,7 @@ pub enum SchGhost {
     /// A bus entry's bus end and direction.
     Entry(Point, EntryDir),
     Junction(Point),
+    NoConnect(Point),
     Label(NetLabel),
     Symbol {
         part: Id,
@@ -534,6 +540,13 @@ impl SchPlacer {
                 rotation: s.rotation,
             },
             SchTool::Junction => Command::AddJunction { sheet: Some(sheet), pos: p },
+            SchTool::NoConnect => {
+                // One flag per point: clicking an existing one does nothing.
+                if doc.project().schematic.no_connects.iter().any(|n| n.sheet == sheet && n.pos == p) {
+                    return Ok(placed);
+                }
+                Command::AddNoConnect { sheet: Some(sheet), pos: p }
+            }
             SchTool::Sheet => {
                 let Some(name) = self.new_sheet.clone() else { return Ok(placed) };
                 // The cursor is the top left corner (y points up).
@@ -678,6 +691,7 @@ impl SchPlacer {
                 })]
             }
             SchTool::Junction => vec![SchGhost::Junction(p)],
+            SchTool::NoConnect => vec![SchGhost::NoConnect(p)],
             SchTool::Sheet => self
                 .new_sheet
                 .iter()

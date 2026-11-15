@@ -46,6 +46,7 @@ pub enum Action {
     SchLabel,
     SchPower,
     SchJunction,
+    SchNoConnect,
     Posture,
     PcbRoute,
     PcbVia,
@@ -102,6 +103,7 @@ impl Action {
         Action::SchLabel,
         Action::SchPower,
         Action::SchJunction,
+        Action::SchNoConnect,
         Action::Posture,
         Action::PcbRoute,
         Action::PcbVia,
@@ -150,6 +152,7 @@ impl Action {
             Action::SchLabel => "Label tool (schematic)",
             Action::SchPower => "Power port tool (schematic)",
             Action::SchJunction => "Junction tool (schematic)",
+            Action::SchNoConnect => "No-connect flag tool (schematic)",
             Action::Posture => "Corner direction (wires, tracks)",
             Action::PcbRoute => "Route tool (PCB)",
             Action::PcbVia => "Via tool (PCB)",
@@ -177,7 +180,8 @@ impl Action {
             | Action::SchBusEntry
             | Action::SchLabel
             | Action::SchPower
-            | Action::SchJunction => Some(Context::Schematic),
+            | Action::SchJunction
+            | Action::SchNoConnect => Some(Context::Schematic),
             Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => {
                 Some(Context::Board)
             }
@@ -362,6 +366,7 @@ impl Default for Keymap {
             (Action::SchLabel, vec![S::key(Key::L)]),
             (Action::SchPower, vec![S::key(Key::P)]),
             (Action::SchJunction, vec![S::key(Key::J)]),
+            (Action::SchNoConnect, vec![S::key(Key::Q)]),
             (Action::Posture, vec![S::key(Key::Slash)]),
             (Action::PcbRoute, vec![S::key(Key::T)]),
             (Action::PcbVia, vec![S::shift(Key::V)]),

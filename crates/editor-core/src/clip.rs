@@ -28,7 +28,7 @@ pub struct Clip {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "domain", rename_all = "snake_case")]
 pub enum ClipContent {
-    /// Symbols (with their components), wires, buses, bus entries, junctions, labels and
+    /// Symbols (with their components), wires, buses, bus entries, junctions, no-connect flags, labels and
     /// texts; `library` holds the parts the symbols use.
     Schematic { objects: Vec<Object>, library: Box<Library> },
     /// Tracks, vias, zones, graphics and texts.
@@ -173,6 +173,7 @@ fn is_schematic_copyable(kind: ObjectKind) -> bool {
             | ObjectKind::BusWire
             | ObjectKind::BusEntry
             | ObjectKind::Junction
+            | ObjectKind::NoConnect
             | ObjectKind::Label
             | ObjectKind::SchText
     )

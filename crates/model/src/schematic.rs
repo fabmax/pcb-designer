@@ -213,6 +213,15 @@ pub struct Junction {
     pub pos: Point,
 }
 
+/// No-connect flag (an X) on a pin end: the pin is meant to stay unconnected.
+/// Documentation only; connectivity ignores it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct NoConnect {
+    pub id: Id,
+    pub sheet: Id,
+    pub pos: Point,
+}
+
 /// What a label connects to, as in KiCad.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -403,7 +412,7 @@ pub struct SchText {
     pub text: Text,
 }
 
-has_id!(Sheet, Component, SymbolInstance, Wire, BusWire, BusEntry, Junction, NetLabel, SchText);
+has_id!(Sheet, Component, SymbolInstance, Wire, BusWire, BusEntry, Junction, NoConnect, NetLabel, SchText);
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Schematic {
@@ -420,6 +429,8 @@ pub struct Schematic {
     pub bus_entries: Store<BusEntry>,
     #[serde(default)]
     pub junctions: Store<Junction>,
+    #[serde(default, skip_serializing_if = "Store::is_empty")]
+    pub no_connects: Store<NoConnect>,
     #[serde(default)]
     pub labels: Store<NetLabel>,
     #[serde(default)]
@@ -544,6 +555,7 @@ impl Schematic {
             ObjectId::BusWire(o) => self.bus_wires.get(o).map(|o| o.sheet),
             ObjectId::BusEntry(o) => self.bus_entries.get(o).map(|o| o.sheet),
             ObjectId::Junction(o) => self.junctions.get(o).map(|o| o.sheet),
+            ObjectId::NoConnect(o) => self.no_connects.get(o).map(|o| o.sheet),
             ObjectId::Label(o) => self.labels.get(o).map(|o| o.sheet),
             ObjectId::SchText(o) => self.texts.get(o).map(|o| o.sheet),
             _ => None,
@@ -560,6 +572,7 @@ impl Schematic {
             .chain(self.bus_wires.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::BusWire(o.id)))
             .chain(self.bus_entries.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::BusEntry(o.id)))
             .chain(self.junctions.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::Junction(o.id)))
+            .chain(self.no_connects.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::NoConnect(o.id)))
             .chain(self.labels.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::Label(o.id)))
             .chain(self.texts.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::SchText(o.id)))
             .collect()

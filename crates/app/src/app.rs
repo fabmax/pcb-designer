@@ -1380,6 +1380,7 @@ impl PcbApp {
             Action::SchLabel => SchTool::Label,
             Action::SchPower => SchTool::Power,
             Action::SchJunction => SchTool::Junction,
+            Action::SchNoConnect => SchTool::NoConnect,
             Action::ToolSelect => SchTool::Select,
             Action::Posture => {
                 self.sch.toggle_posture();
@@ -1637,6 +1638,7 @@ impl PcbApp {
             | Action::SchLabel
             | Action::SchPower
             | Action::SchJunction
+            | Action::SchNoConnect
             | Action::Posture
             | Action::PcbRoute
             | Action::PcbVia
@@ -1727,6 +1729,7 @@ impl PcbApp {
             | Action::SchLabel
             | Action::SchPower
             | Action::SchJunction
+            | Action::SchNoConnect
             | Action::Posture => None,
             Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => None,
             Action::PanelProject

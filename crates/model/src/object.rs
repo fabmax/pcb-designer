@@ -9,7 +9,9 @@ use crate::board::{BoardGraphic, BoardText, FootprintInstance, Track, Via, Zone}
 use crate::id::Id;
 use crate::library::{Footprint, Part, Symbol};
 use crate::project::Project;
-use crate::schematic::{BusEntry, BusWire, Component, Junction, NetLabel, SchText, Sheet, SymbolInstance, Wire};
+use crate::schematic::{
+    BusEntry, BusWire, Component, Junction, NetLabel, NoConnect, SchText, Sheet, SymbolInstance, Wire,
+};
 
 macro_rules! objects {
     ($( $variant:ident ( $ty:ty ) => $($path:ident).+ ;)*) => {
@@ -123,6 +125,7 @@ objects! {
     BusWire(BusWire) => schematic.bus_wires;
     BusEntry(BusEntry) => schematic.bus_entries;
     Junction(Junction) => schematic.junctions;
+    NoConnect(NoConnect) => schematic.no_connects;
     Label(NetLabel) => schematic.labels;
     SchText(SchText) => schematic.texts;
     Footprint(FootprintInstance) => board.footprints;
@@ -148,6 +151,7 @@ impl ObjectKind {
                 | ObjectKind::BusWire
                 | ObjectKind::BusEntry
                 | ObjectKind::Junction
+                | ObjectKind::NoConnect
                 | ObjectKind::Label
                 | ObjectKind::SchText
         )

@@ -42,6 +42,7 @@ fn search_and_import_into_the_project() {
     fs::write(dir.path().join("Resistor_SMD.pretty/R_0603_1608Metric.kicad_mod"), FP).unwrap();
 
     let mut host = HeadlessHost::new(Document::new(Project::new("Test")));
+    host.installed_kicad = false;
     // Nothing to download into: refused with a clear message.
     let refused = reply(|r| host.kicad_download(false, r));
     assert!(refused.unwrap_err().contains("no folder"));

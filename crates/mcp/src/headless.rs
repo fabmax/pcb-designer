@@ -34,6 +34,9 @@ pub struct HeadlessHost {
     pub kicad_root: Option<PathBuf>,
     /// More KiCad library folders, always searched.
     pub kicad_paths: Vec<PathBuf>,
+    /// Without downloaded libraries, use an installed KiCad's (off in tests, so they
+    /// don't depend on the machine).
+    pub installed_kicad: bool,
     pub kicad_source: Source,
     catalog: Option<Catalog>,
     selection: std::collections::HashMap<ViewId, Vec<ObjectId>>,
@@ -48,6 +51,7 @@ impl HeadlessHost {
             missing: Vec::new(),
             kicad_root: None,
             kicad_paths: Vec::new(),
+            installed_kicad: true,
             kicad_source: Source::default(),
             catalog: None,
             selection: Default::default(),
@@ -58,8 +62,12 @@ impl HeadlessHost {
     }
 
     fn catalog(&mut self) -> &mut Catalog {
-        let paths: Vec<PathBuf> =
-            self.kicad_paths.iter().cloned().chain(download::library_paths(self.kicad_root.as_deref())).collect();
+        let mut paths = self.kicad_paths.clone();
+        match self.kicad_root.as_deref().and_then(download::installed) {
+            Some(i) => paths.extend(i.paths()),
+            None if self.installed_kicad => paths.extend(download::library_paths(None)),
+            None => {}
+        }
         self.catalog.get_or_insert_with(|| Catalog::scan(&paths))
     }
 

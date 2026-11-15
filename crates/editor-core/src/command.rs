@@ -105,6 +105,13 @@ pub enum Command {
         sheet: Option<Id>,
         pos: Point,
     },
+    /// A no-connect flag (X) on a pin end: the pin stays unconnected on purpose. It moves
+    /// and is deleted with its symbol.
+    AddNoConnect {
+        #[serde(default)]
+        sheet: Option<Id>,
+        pos: Point,
+    },
     AddLabel {
         #[serde(default)]
         sheet: Option<Id>,
@@ -234,6 +241,7 @@ impl Command {
             Command::AddBus { .. } => "Add bus".into(),
             Command::AddBusEntry { .. } => "Add bus entry".into(),
             Command::AddJunction { .. } => "Add junction".into(),
+            Command::AddNoConnect { .. } => "Add no-connect flag".into(),
             Command::AddLabel { name, .. } => format!("Add label {name}"),
             Command::AddSheet { name, .. } => format!("Add sheet {name}"),
             Command::SetComponent { .. } => "Edit component".into(),
@@ -332,6 +340,13 @@ impl Command {
             Command::AddJunction { sheet, pos } => {
                 let sheet = resolve_sheet(tx, sheet)?;
                 tx.insert(Object::Junction(Junction { id: Id::new(), sheet, pos })).map(drop)
+            }
+            Command::AddNoConnect { sheet, pos } => {
+                let sheet = resolve_sheet(tx, sheet)?;
+                if tx.project().schematic.no_connects.iter().any(|n| n.sheet == sheet && n.pos == pos) {
+                    return Err(CommandError::Invalid("there is a no-connect flag here already".into()));
+                }
+                tx.insert(Object::NoConnect(NoConnect { id: Id::new(), sheet, pos })).map(drop)
             }
             Command::AddLabel { sheet, pos, name, kind, shape, style, rotation } => {
                 if name.trim().is_empty() {
@@ -577,6 +592,10 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
                     Object::Junction(mut j) => {
                         (j.id, j.sheet) = (Id::new(), sheet);
                         Object::Junction(j)
+                    }
+                    Object::NoConnect(mut n) => {
+                        (n.id, n.sheet) = (Id::new(), sheet);
+                        Object::NoConnect(n)
                     }
                     Object::Label(mut l) => {
                         (l.id, l.sheet) = (Id::new(), sheet);
@@ -898,6 +917,18 @@ fn transform_connected(
     edit: Edit,
     keep_connected: bool,
 ) -> Result<(), CommandError> {
+    // No-connect flags on moved symbols' pins go along.
+    let mut all = ids.to_vec();
+    for &id in ids {
+        if let ObjectId::Symbol(sym) = id {
+            for f in flags_on_pins(tx.project(), sym) {
+                if !all.contains(&f) {
+                    all.push(f);
+                }
+            }
+        }
+    }
+    let ids = &all[..];
     if !keep_connected {
         return transform_objects(tx, ids, t, edit);
     }
@@ -971,6 +1002,7 @@ fn transform_objects(tx: &mut Transaction, ids: &[ObjectId], t: Transform, edit:
                     e.dir = EntryDir::of_offset(end - e.pos);
                 }
                 Object::Junction(j) => j.pos = t.point(j.pos),
+                Object::NoConnect(n) => n.pos = t.point(n.pos),
                 Object::Sheet(sh) => {
                     if sh.is_root() {
                         return Err(CommandError::Invalid("the root sheet has no symbol to move".into()));
@@ -1039,6 +1071,18 @@ fn reject_mirror_on_board(edit: Edit) -> Result<(), CommandError> {
     }
 }
 
+/// The no-connect flags on the pin ends of symbol `sym`.
+fn flags_on_pins(p: &Project, sym: Id) -> Vec<ObjectId> {
+    let Some(inst) = p.schematic.symbols.get(sym) else { return Vec::new() };
+    let pins: Vec<Point> = crate::query::pin_positions(p, sym).into_iter().map(|(_, _, pt)| pt).collect();
+    p.schematic
+        .no_connects
+        .iter()
+        .filter(|n| n.sheet == inst.sheet && pins.contains(&n.pos))
+        .map(|n| ObjectId::NoConnect(n.id))
+        .collect()
+}
+
 fn delete(tx: &mut Transaction, ids: &[ObjectId]) -> Result<(), CommandError> {
     for &id in ids {
         if !tx.project().contains(id) {
@@ -1085,6 +1129,9 @@ fn delete(tx: &mut Transaction, ids: &[ObjectId]) -> Result<(), CommandError> {
             ObjectId::Component(c) => delete_component(tx, c)?,
             ObjectId::Symbol(s) => {
                 let component = tx.project().schematic.symbols.get(s).unwrap().component;
+                for flag in flags_on_pins(tx.project(), s) {
+                    tx.remove(flag)?;
+                }
                 tx.remove(id)?;
                 // A component without any placed unit is removed with its last symbol.
                 if tx.project().schematic.symbols_of(component).next().is_none() {
@@ -1158,6 +1205,7 @@ fn check_references(p: &Project, o: &Object) -> Result<(), CommandError> {
         | Object::BusWire(BusWire { sheet, .. })
         | Object::BusEntry(BusEntry { sheet, .. })
         | Object::Junction(Junction { sheet, .. })
+        | Object::NoConnect(NoConnect { sheet, .. })
         | Object::Label(NetLabel { sheet, .. })
         | Object::SchText(SchText { sheet, .. }) => {
             if sheet_ok(*sheet) {

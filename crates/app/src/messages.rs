@@ -80,7 +80,11 @@ fn schematic(ui: &mut egui::Ui, doc: &Document) -> Option<Show> {
     let problems = &doc.connectivity().problems;
     heading(ui, "Schematic", problems.len());
     if problems.is_empty() {
-        hint(ui, "No problems: nets are named consistently and buses are used correctly.");
+        hint(
+            ui,
+            "No problems: every pin is connected or flagged, nets are named consistently and buses are used \
+             correctly.",
+        );
     }
     let mut show = None;
     for p in problems.iter().take(SHOWN) {

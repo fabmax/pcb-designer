@@ -167,6 +167,12 @@ impl Properties {
                     net_rows(ui, cx.doc, id);
                 });
             }
+            Object::NoConnect(n) => {
+                heading(ui, "No-connect flag", "");
+                grid(ui, |ui| {
+                    row(ui, "Position", fmt_point(n.pos));
+                });
+            }
             Object::Junction(j) => {
                 heading(ui, "Junction", "");
                 grid(ui, |ui| {

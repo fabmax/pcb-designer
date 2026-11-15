@@ -15,6 +15,7 @@ pub enum Icon {
     Label,
     Power,
     Junction,
+    NoConnect,
     Place,
     Route,
     Via,
@@ -130,6 +131,12 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             seg(p(0.5, 0.5), p(0.5, 0.92), line);
             seg(p(0.5, 0.08), p(0.5, 0.5), Stroke::new(w, faint));
             dot(p(0.5, 0.5), 0.13);
+        }
+        Icon::NoConnect => {
+            // A pin ending in an X.
+            seg(p(0.08, 0.5), p(0.64, 0.5), line);
+            seg(p(0.42, 0.28), p(0.86, 0.72), line);
+            seg(p(0.42, 0.72), p(0.86, 0.28), line);
         }
         Icon::Place => {
             // A resistor with its leads and a "+".

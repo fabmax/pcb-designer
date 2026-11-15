@@ -161,7 +161,8 @@ fn labels_connect_by_name_and_name_the_net() {
     s.label(p, "VCC", LabelKind::Power);
     let c = s.conn();
     assert!(c.net("VCC").is_some_and(|n| n.pins.len() == 2));
-    assert_eq!(c.problems.len(), 1, "{:?}", c.problems);
+    let names = c.problems.iter().filter(|p| p.message.starts_with("Net has several names")).count();
+    assert_eq!(names, 1, "{:?}", c.problems);
 }
 
 #[test]

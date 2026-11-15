@@ -38,6 +38,12 @@ pub fn toolbar(ui: &mut egui::Ui, canvas: egui::Rect, sch: &SchPlacer, keymap: &
         b(SchTool::Label, Icon::Label, "Name a net: local, global or hierarchical labels.", Action::SchLabel),
         b(SchTool::Power, Icon::Power, "Place a power port (GND, +3V3, ...): connects to its net.", Action::SchPower),
         b(SchTool::Junction, Icon::Junction, "Connect crossing wires with a junction dot.", Action::SchJunction),
+        b(
+            SchTool::NoConnect,
+            Icon::NoConnect,
+            "Mark a pin as unconnected on purpose with a no-connect flag.",
+            Action::SchNoConnect,
+        ),
     ];
     let place = [ToolButton {
         tool: SchTool::Place,
@@ -186,6 +192,11 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
             });
         }
         SchTool::Junction => hint(ui, "Connects crossing wires. T-connections and pins don't need one."),
+        SchTool::NoConnect => hint(
+            ui,
+            "Click a pin end that stays unconnected on purpose: it is no longer reported as unconnected. \
+             The flag moves and is deleted with its symbol.",
+        ),
         SchTool::Place => {
             let Some(pl) = sch.placing else { return };
             let project = doc.project();

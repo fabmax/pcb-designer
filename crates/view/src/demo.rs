@@ -100,6 +100,12 @@ pub fn demo_project() -> Project {
 
     // Schematic.
     let j1 = place(&mut ed, PART_HEADER_1X4, 0.0, 0.0, Angle::ZERO, "J1", "Conn");
+    // Pin 3 is left open on purpose.
+    let nc = {
+        let p = ed.project();
+        pin_positions(p, symbol_of(p, j1)).into_iter().find(|x| x.1 == "3").unwrap().2
+    };
+    ed.execute(Command::AddNoConnect { sheet: None, pos: nc }).unwrap();
     let changes = ed
         .execute(Command::AddSheet { parent: None, name: "Indicator".into(), pos: Point::mm(25.4, 5.08), size: None })
         .unwrap();

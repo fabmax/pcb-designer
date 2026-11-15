@@ -76,6 +76,36 @@ fn place_wire_and_label_a_circuit() {
 }
 
 #[test]
+fn power_styles_and_no_connect_flags() {
+    let mut doc = doc_with(vec![PART_RESISTOR], builtin::builtin_library());
+    let mut t = SchPlacer::default();
+    t.place(PART_RESISTOR);
+    t.click(&mut doc, Point::mm(0.0, 0.0)).unwrap();
+    let r1 = symbols(&doc)[0].id;
+
+    // A power port with a chosen glyph.
+    t.set_tool(SchTool::Power);
+    t.settings.power = "GND".into();
+    t.settings.power_style = Some(PowerStyle::Chassis);
+    let p = pin(&doc, r1, "1");
+    t.hover(&mut doc, Some(p));
+    assert!(matches!(&t.ghosts()[..], [SchGhost::Label(l)] if l.power_style() == PowerStyle::Chassis));
+    t.click(&mut doc, p).unwrap();
+    assert_eq!(doc.project().schematic.labels.iter().next().unwrap().style, Some(PowerStyle::Chassis));
+
+    // A flag on the other pin; a second click there adds nothing.
+    t.set_tool(SchTool::NoConnect);
+    let p = pin(&doc, r1, "2");
+    t.hover(&mut doc, Some(p));
+    assert_eq!(t.ghosts(), [SchGhost::NoConnect(p)]);
+    t.click(&mut doc, p).unwrap();
+    t.click(&mut doc, p).unwrap();
+    assert_eq!(doc.project().schematic.no_connects.len(), 1);
+    let c = doc.current_connectivity();
+    assert!(c.unconnected.is_empty() && c.problems.is_empty(), "{:?}", c.problems);
+}
+
+#[test]
 fn wire_chain_continues_in_free_space_and_ends_on_double_click() {
     let mut doc = Document::new(Project::new("T"));
     let mut t = SchPlacer::default();
@@ -176,7 +206,7 @@ fn draw_a_bus_with_entries() {
     let c = doc.current_connectivity();
     assert_eq!(c.buses.len(), 1);
     assert_eq!(c.buses[0].members, ["D0", "D1", "D2", "D3"]);
-    assert!(c.problems.is_empty(), "{:?}", c.problems);
+    assert!(c.problems.iter().all(|p| p.message.starts_with("Unconnected pin")), "{:?}", c.problems);
     assert_eq!(c.nets.iter().filter(|n| n.named).map(|n| n.name.as_str()).collect::<Vec<_>>(), ["/D2"]);
 }
 
@@ -237,7 +267,7 @@ fn new_buses_and_signals_leaving_them_ask_for_a_name() {
     assert_eq!((*pos, *rotation), (p(5.08, 7.62), Angle::ZERO), "on the wire, next to the entry");
     doc.execute(prompt.label("D1").unwrap()).unwrap();
     let c = doc.current_connectivity();
-    assert!(c.problems.is_empty(), "{:?}", c.problems);
+    assert!(c.problems.iter().all(|p| p.message.starts_with("Unconnected pin")), "{:?}", c.problems);
     assert_eq!(c.net("/D1").unwrap().pins.len(), 1);
 
     // An entry placed onto an unnamed wire asks too, now with D1 in use; a named one doesn't.

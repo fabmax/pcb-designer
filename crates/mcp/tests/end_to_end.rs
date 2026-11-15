@@ -34,6 +34,7 @@ async fn agent_session() {
     // The "application": owns the document and answers calls on its own thread.
     let app = std::thread::spawn(move || {
         let mut host = HeadlessHost::new(Document::new(view::demo::demo_project()));
+        host.installed_kicad = false;
         while let Ok(call) = calls.recv() {
             handle(call, &mut host);
         }
@@ -84,6 +85,12 @@ async fn agent_session() {
     let project = ok_json(call("get_project", Value::Null).await);
     assert_eq!(project["name"], "Demo");
     assert_eq!(project["counts"]["component"], 5);
+    // J1's pin 3 is open on purpose.
+    let j1 = ok_json(call("get_component", json!({ "refdes": "J1" })).await);
+    let flagged: Vec<&Value> =
+        j1["symbols"][0]["pins"].as_array().unwrap().iter().filter(|p| p["no_connect"] == true).collect();
+    assert_eq!(flagged.len(), 1, "{j1}");
+    assert_eq!(flagged[0]["name"], "3");
 
     // Libraries and project part states.
     let libs = ok_json(call("list_library_parts", Value::Null).await);
@@ -165,7 +172,10 @@ async fn agent_session() {
     assert_eq!(bus["members"][0]["net"], "/D0");
     assert_eq!(bus["members"][0]["pins"][0], format!("{refdes}.1"));
     assert_eq!(bus["members"][1]["net"], Value::Null);
-    assert_eq!(netlist["problems"], json!([]), "{netlist}");
+    // Only the new resistor's other end is open.
+    let problems: Vec<&str> =
+        netlist["problems"].as_array().unwrap().iter().map(|p| p["message"].as_str().unwrap()).collect();
+    assert_eq!(problems, [format!("Unconnected pin {refdes}-2")], "{netlist}");
     ok_json(call("undo", Value::Null).await);
 
     // The demo board is partly routed; route one ratsnest line with a track.

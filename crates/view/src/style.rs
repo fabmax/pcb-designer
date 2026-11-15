@@ -49,6 +49,8 @@ pub struct Palette {
     pub sch_sheet_fill: Color,
     pub sch_text: Color,
     pub sch_junction: Color,
+    /// No-connect flags (blue, as in KiCad).
+    pub sch_no_connect: Color,
     /// Bus wires and bus entries.
     pub sch_bus: Color,
 
@@ -109,6 +111,7 @@ pub static DARK: Palette = Palette {
     sch_sheet_fill: Color::rgba(0xb0, 0x90, 0xe0, 0x18),
     sch_text: Color::rgb(0x9f, 0xb4, 0xff),
     sch_junction: Color::rgb(0x5f, 0xd3, 0xa0),
+    sch_no_connect: Color::rgb(0x70, 0x9c, 0xf2),
     sch_bus: Color::rgb(0x7c, 0x8a, 0xff),
 
     selection: Color::rgba(0x4c, 0x9a, 0xff, 0xe0),
@@ -165,6 +168,7 @@ pub static LIGHT: Palette = Palette {
     sch_sheet_fill: Color::rgba(0xf3, 0xee, 0xfb, 0xff),
     sch_text: Color::rgb(0x1a, 0x3a, 0xb0),
     sch_junction: Color::rgb(0x0f, 0x7a, 0x4a),
+    sch_no_connect: Color::rgb(0x1f, 0x4c, 0xc4),
     sch_bus: Color::rgb(0x22, 0x30, 0xa0),
 
     selection: Color::rgba(0x1f, 0x6f, 0xe0, 0xe0),

@@ -130,7 +130,9 @@ Local labels connect on their sheet only (nets are named `/Sheet/NAME`), global 
 labels everywhere. Power ports (Power tool, P) are drawn like KiCad's power symbols: pick
 the glyph (bar, arrow, circle, ground, signal ground, chassis, protective earth) in the
 tool settings or Properties, or leave it on Auto, which goes by the name (GND, AGND, … get
-ground). Pins connect only through wires; there are no hidden pins. Hierarchical labels on a sheet become pins of its symbol on the parent
+ground). Pins connect only through wires; there are no hidden pins. Messages lists pins
+left unconnected; mark the ones open on purpose with a no-connect flag (tool bar, Q): an X
+on the pin end, which moves and is deleted with its symbol. Hierarchical labels on a sheet become pins of its symbol on the parent
 sheet (inputs on the left, the others on the right, in name order; the symbol grows to
 fit them); wire them there like component pins. The Messages panel lists sheet pins left
 unwired.
