@@ -296,7 +296,9 @@ things to do **later**.
   document itself (one undo history).
 - `Interaction`: click/shift/cmd select, box (left→right inside, right→left crossing),
   drag with snap of the grabbed reference point (one undo step; R rotates while
-  dragging), `snap` toggle. Locked footprints don't move.
+  dragging), `snap` toggle. Locked footprints don't move. A press becomes a drag when
+  the *hand* moves the pointer 4 points on screen (`PointerInput::screen`), not when the
+  view shifts under it (a panel changing width); the drag then follows the hand's motion.
 - Dragging keeps schematic wires attached (`keep_connected`; `rubber_band` over wires and
   buses): orthogonal wires shift and stay orthogonal, the far end stretches or gets a
   dogleg; rotate/mirror stretch.
@@ -438,7 +440,10 @@ things to do **later**.
   button is down.
 - **Properties** (`properties.rs`): a symbol and a footprint both have the component's
   Footprint variant combo (`variant_combo`); on the board it leaves out "no footprint"
-  variants, which would delete the selected footprint.
+  variants, which would delete the selected footprint. Text fields keep their typed
+  text in buffers keyed by (object, field): the object must be a selected one (others'
+  buffers are dropped each frame), and fields being edited are tracked explicitly (focus
+  can move to a field drawn earlier in the frame before the edited one sees it go).
 - **Project tree** (`project_panel.rs`): project (the root sheet as "Schematic" with its
   sub-sheets nested by name, PCB, Project Library, Outputs › Gerber), Built-in Library (read-only),
   External Libraries; new sheets come from the + menu or a sheet's menu (name dialog,
@@ -508,7 +513,6 @@ Things decided to do later, by area. Remove an entry when it's done; add what a 
 defers.
 
 **Bugs**
-- Reference and value text fields in propeties panel are not editable (they kind of are but typed text immediately disappears)
 - Properties panel sometimes gets slightly wider when sleecting things
   - STR (in Demo project):
     1. Open Properties panel
@@ -517,8 +521,6 @@ defers.
   - On selection of the net label properties panel width increases slightly
   - Same for selecting a sub sheet
   - No Panel should ever resize just because a different part is selected
-- If I click on a part in the editor (schematic or pcb) and the viewport moves simultaneously (e.g. because the right panel width changes)
-  the part moves. Parts should never move on a click. Only during drag (e.g. check for minimum mouse drag movement distance)
 - macOS: When clicking in the title bar of the unfocused window, the window also maximizes (it should only gain focus)
 
 **Schematic**

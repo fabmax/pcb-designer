@@ -278,3 +278,37 @@ fn slow_library_redraws_wait_for_the_drag() {
     let fresh = view::View::new(ViewId::Sheet(r1.sheet), doc.project());
     assert_eq!(fresh.index.bounds(ObjectId::Symbol(r1.id)), Some(bounds(&doc)));
 }
+
+/// Pointer input with a screen position, at 10 points per mm.
+fn on_screen(world: Point, screen: [f64; 2]) -> PointerInput {
+    PointerInput { screen: Some(screen), nm_per_point: 100_000.0, ..input(world) }
+}
+
+#[test]
+fn a_click_never_moves_when_the_view_shifts() {
+    let mut doc = Document::new(demo_project());
+    let mut it = Interaction::new(mm(1.27));
+    let r1 = symbol(&doc, "R1");
+    let v = ViewId::Sheet(r1.sheet);
+    let at = [500.0, 300.0];
+
+    // Pressed, then the canvas shifts 6 mm (a panel got wider) under the still pointer.
+    it.pointer(&mut doc.target(v), &PointerInput { pressed: true, down: true, ..on_screen(r1.pos, at) });
+    let shifted = r1.pos + Point::mm(6.0, 0.0);
+    it.pointer(&mut doc.target(v), &PointerInput { down: true, ..on_screen(shifted, at) });
+    assert!(!it.is_dragging(), "the hand didn't move");
+    it.pointer(&mut doc.target(v), &PointerInput { released: true, ..on_screen(shifted, at) });
+    assert_eq!(symbol(&doc, "R1").pos, r1.pos);
+    assert!(!doc.is_modified());
+    assert_eq!(it.selection, vec![ObjectId::Symbol(r1.id)]);
+
+    // A real drag after such a shift moves by the hand's motion only (5.08 mm right).
+    it.pointer(&mut doc.target(v), &PointerInput { pressed: true, down: true, ..on_screen(r1.pos, at) });
+    it.pointer(&mut doc.target(v), &PointerInput { down: true, ..on_screen(shifted, at) });
+    let hand = [at[0] + 50.8, at[1]];
+    let pointer = shifted + Point::mm(5.08, 0.0);
+    it.pointer(&mut doc.target(v), &PointerInput { down: true, ..on_screen(pointer, hand) });
+    assert!(it.is_dragging());
+    it.pointer(&mut doc.target(v), &PointerInput { released: true, ..on_screen(pointer, hand) });
+    assert_eq!(symbol(&doc, "R1").pos, r1.pos + Point::mm(5.08, 0.0));
+}

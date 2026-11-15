@@ -221,6 +221,8 @@ pub fn pointer_input(
             command: i.modifiers.command,
             tolerance: px_to_nm(5.0),
             drag_threshold: px_to_nm(4.0),
+            screen: pos.map(|p| [p.x as f64, p.y as f64]),
+            nm_per_point: 1e6 / canvas.camera.zoom,
         }
     }))
 }

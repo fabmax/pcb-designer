@@ -24,6 +24,12 @@ pub struct PointerInput {
     pub tolerance: Coord,
     /// Distance the pointer must move before a press becomes a drag (nm).
     pub drag_threshold: Coord,
+    /// Cursor position on screen (points, y down), if known. A press becomes a drag only
+    /// when the hand moves the pointer, not when the view moves under a still pointer
+    /// (a panel changing width shifts the canvas).
+    pub screen: Option<[f64; 2]>,
+    /// World length of one screen point (nm); 0 if unknown.
+    pub nm_per_point: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,6 +106,8 @@ enum State<I> {
     /// Primary button down, not moved far enough to be a drag yet.
     Pressed {
         start: Point,
+        /// The pointer's screen position at the press (if known).
+        start_screen: Option<[f64; 2]>,
         hit: Option<I>,
         was_selected: bool,
     },
@@ -247,7 +255,7 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                         }
                         self.selection.push(h);
                     }
-                    State::Pressed { start: p, hit, was_selected }
+                    State::Pressed { start: p, start_screen: input.screen, hit, was_selected }
                 } else {
                     State::Idle
                 }
@@ -256,8 +264,16 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                 self.hover = None;
                 State::Idle
             }
-            (State::Pressed { start, hit, was_selected }, p) => {
+            (State::Pressed { start, start_screen, hit, was_selected }, p) => {
                 let p = p.unwrap_or(start);
+                // How far the hand moved, in world units: on screen when known.
+                let moved = match (start_screen, input.screen) {
+                    (Some(a), Some(b)) if input.nm_per_point > 0.0 => {
+                        let (dx, dy) = ((b[0] - a[0]) * input.nm_per_point, (b[1] - a[1]) * input.nm_per_point);
+                        Point::new(dx.round() as Coord, -dy.round() as Coord)
+                    }
+                    _ => p - start,
+                };
                 if input.released || !input.down {
                     // Click without drag.
                     match hit {
@@ -268,13 +284,15 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                         None => {}
                     }
                     State::Idle
-                } else if (p - start).length() > input.drag_threshold as f64 {
+                } else if moved.length() > input.drag_threshold as f64 {
                     match hit {
-                        Some(h) => self.start_drag(t, start, h).map_or(State::Idle, State::Dragging),
+                        // Grabbed where the pointer is now, less the hand's motion: if the
+                        // view moved meanwhile, the object doesn't jump with it.
+                        Some(h) => self.start_drag(t, p - moved, h).map_or(State::Idle, State::Dragging),
                         None => State::Boxing { start, current: p },
                     }
                 } else {
-                    State::Pressed { start, hit, was_selected }
+                    State::Pressed { start, start_screen, hit, was_selected }
                 }
             }
             (State::Dragging(mut drag), p) => {

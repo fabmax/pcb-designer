@@ -678,7 +678,8 @@ impl Properties {
         let project = cx.doc.project();
         let Some(c) = project.schematic.components.get(s.component).cloned() else { return };
         let Some(part) = project.library.parts.get(c.part).cloned() else { return };
-        let target = ObjectId::Component(c.id);
+        // Text buffers are kept for selected objects only: key them by the symbol.
+        let target = ObjectId::Symbol(s.id);
         heading(ui, &c.refdes, &part.name);
         if !part.description.is_empty() {
             ui.label(RichText::new(&part.description).color(theme::text_dim()));
