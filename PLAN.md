@@ -149,10 +149,19 @@ things to do **later**.
   `I2C{SDA SCL}` → `I2C.SDA`), vectors capped at 1024. A label whose name parses is a
   bus label and skipped for nets. Gotcha: members are *label* names (`D0`), not net
   names (`/D0`); find a member's net with `Connectivity::member_net`.
-- **Board part pads** get a net of their own per pad number, `unconnected-(H1-Pad1)` as
-  in KiCad, so copper of another net touching them is a short and pads with the same
-  number (a mounting hole's via ring) don't short each other. Zones keep clearance from
-  them like from any other net.
+- **Pads without a pin** (pads no pin maps to, and all pads of board parts) get a net of
+  their own per pad name, `unconnected-(H1-Pad1)` as in KiCad, so copper of another net
+  touching them is a short and pads with the same name (a mounting hole's via ring) don't
+  short each other. Zones keep clearance from them like from any other net. Gotcha:
+  overlapping footprints now short through such pads too.
+- **ERC** (`erc.rs`, run at the end of `Connectivity::build`, its findings join
+  `problems`): per wired net (lone pins are left to "Unconnected pin"), from
+  `NetPin::kind`: two hard drivers (output, power output), or one with a tri-state or
+  open collector pin, conflict; inputs need a driver (any other kind but power input
+  and not connected, or a power port); power inputs need a power output pin or a power
+  port (power ports stand in for KiCad's power symbols; there is no PWR_FLAG); wired
+  pins of kind not connected. Plus components sharing a reference (`R?` and empty
+  ones aside). Messages name pins as `U1-14 (VCC)`, not nets.
 - **Arc tracks** are a `Track` with `mid` (a point on the arc, KiCad's start/mid/end);
   `a`/`b` stay the ends, so anchors, ratsnest and routing don't know about arcs.
   `Track::arc()` gives the exact `Shape::Arc` (drawing, Gerber G02/G03 with exact ends),
@@ -568,8 +577,10 @@ defers.
 - After sheets: re-parenting sheets, moving objects between sheets, hierarchical bus
   pins (bus-named hierarchical labels are drawn as pins but don't connect), ERC of pin
   directions across sheet pins.
+- ERC: a PWR_FLAG equivalent (a power input fed from a connector's passive pin needs a
+  power port today), configurable severities and a pin conflict matrix, and excluding
+  single findings.
 - KiCad's "unfold bus".
-- ERC (pin type checks).
 - Wire posture that flips automatically with the cursor.
 - Dragging wire segments themselves.
 - Double click on a wire to select entire wire instead of only the clicked segment
@@ -579,19 +590,15 @@ defers.
 - Footprint texts: re-sync fields when the library footprint's templates change; keep
   texts upright (readable) when a footprint turns past 90°; fields of other texts than
   `${REF}` / `${VALUE}`.
-- Wiring a pin of kind "not connected" isn't reported yet (KiCad's ERC does).
 - Custom power symbols: power ports drawn from a symbol of their own (a part flagged
   power, no footprint), for glyphs beyond `PowerStyle`; maps to KiCad custom power
   symbols on import and export.
 - More corner styles for wires and buses
 - Icon buttons for corner styles in tool panel
-- Several parts with the same part reference should issue a warning
 
 **Board**
 - Board parts: copy/paste and duplicate on the board; a "Place board part" picker in the
   PCB tool bar; editing their reference and value on the board (read-only today).
-- Unmapped pads of normal parts have no net, so copper touching them isn't a short (KiCad
-  gives them `unconnected-(R1-Pad3)` nets, as board part pads get here).
 - Fabrication outputs: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel
   file extensions, `%TO` object attributes (nets, pads),
   silkscreen clipped at mask openings, mirrored bottom text in the editor; in the viewer:

@@ -86,7 +86,7 @@ open project, so only turn it on when you need it.
 
 Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `search_kicad`, `import_kicad`, `download_kicad_libraries`, `import_kicad_project`, `list_objects`, `get_objects`, `get_component`,
-`get_netlist` (nets, buses and their members, schematic problems), `get_routing`,
+`get_netlist` (nets, buses and their members, schematic and ERC problems), `get_routing`,
 `run_drc`, `export_gerber`, `execute` (any editor command, as one undo step), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
 or the whole window) and `save_project`. Sheets are added, renamed and deleted with
 `execute` (`add_sheet`, `update`, `delete`); `get_project` lists their paths, and wherever

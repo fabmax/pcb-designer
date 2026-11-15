@@ -74,7 +74,7 @@ pub fn toolbar(
                 .on_hover_text("Tracks and vias in a short, or touching no pad (see Board problems)");
         }
         if !copper.shorts.is_empty() {
-            let tip: Vec<String> = copper.shorts.iter().map(|(nets, _)| nets.join(" ↔ ")).collect();
+            let tip: Vec<String> = copper.shorts.iter().map(|(nets, _)| nets.join(", ")).collect();
             ui.label(RichText::new(format!("{} short(s)", copper.shorts.len())).color(theme::warn()))
                 .on_hover_text(tip.join("\n"));
         }

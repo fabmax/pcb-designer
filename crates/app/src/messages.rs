@@ -82,8 +82,8 @@ fn schematic(ui: &mut egui::Ui, doc: &Document) -> Option<Show> {
     if problems.is_empty() {
         hint(
             ui,
-            "No problems: every pin is connected or flagged, nets are named consistently and buses are used \
-             correctly.",
+            "No problems: every pin is connected or flagged, outputs don't fight, inputs are driven, references \
+             are unique, nets are named consistently and buses are used correctly.",
         );
     }
     let mut show = None;
@@ -112,7 +112,7 @@ fn board(ui: &mut egui::Ui, doc: &mut Document) -> Option<Show> {
     let unconnected = copper.flagged().filter(|c| c.flag == Some(Flag::Unconnected)).count();
     heading(ui, "Board", copper.shorts.len() + usize::from(!flagged.is_empty()));
     for (nets, at) in &copper.shorts {
-        if item(ui, &format!("Short: {} at {}", nets.join(" ↔ "), units::fmt_point(*at))) {
+        if item(ui, &format!("Short: {} at {}", nets.join(", "), units::fmt_point(*at))) {
             show = Some(Show::Objects(ViewId::Board, Vec::new(), Some(*at)));
         }
     }

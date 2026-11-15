@@ -36,6 +36,7 @@ pub struct NetPin {
     pub pin_name: String,
     /// Pin number (pin name if the pin has no number).
     pub pin_number: String,
+    pub kind: PinKind,
     /// Footprint pads of this pin in the component's variant.
     pub pads: Vec<String>,
     pub pos: Point,
@@ -224,6 +225,7 @@ impl Connectivity {
                     refdes: c.refdes.clone(),
                     pin_name: pin.name.clone(),
                     pin_number: pin.key().to_string(),
+                    kind: pin.kind,
                     pads,
                     pos,
                 });
@@ -498,6 +500,7 @@ impl Connectivity {
         });
         unconnected.sort_by_key(|&(s, p, _)| (s, p));
         flagged.sort();
+        problems.extend(crate::erc::check(project, &nets));
 
         let mut net_of = HashMap::default();
         let mut pin_net = HashMap::default();

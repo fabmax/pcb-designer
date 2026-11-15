@@ -3,9 +3,9 @@
 //!
 //! Nets are defined by the schematic only. A pad gets the net of its pin; tracks and vias
 //! get the net of the pads in their island. An island with pads of several nets is a
-//! short; an island without pads has no net. Pads of board parts (no symbol) get a net of
-//! their own per pad number, `unconnected-(H1-Pad1)` as in KiCad, so copper of another net
-//! touching them is a short.
+//! short; an island without pads has no net. Pads without a pin (unmapped pads, and all
+//! pads of board parts) get a net of their own per pad, `unconnected-(H1-Pad1)` as in
+//! KiCad, so copper of another net touching them is a short.
 
 use model::*;
 use rustc_hash::FxHashMap as HashMap;
@@ -240,13 +240,13 @@ impl BoardConnectivity {
         let all_copper: LayerMask = board.copper_layers().map(|l| layer_bit(l.id)).fold(0, |a, b| a | b);
 
         // Items.
-        let mut pad_nets: Vec<Option<u32>> = Vec::new();
+        let mut pad_nets: Vec<u32> = Vec::new();
         for f in board.footprints.iter() {
             let Some(fp) = crate::query::footprint_of_instance(project, f) else { continue };
             let component = project.schematic.components.get(f.component);
-            let board_part = component
-                .filter(|c| project.library.parts.get(c.part).is_some_and(Part::is_board_part))
-                .map(|c| c.refdes.as_str());
+            let board_part =
+                component.is_some_and(|c| project.library.parts.get(c.part).is_some_and(Part::is_board_part));
+            let refdes = component.map_or("?", |c| c.refdes.as_str());
             let t = f.transform();
             for pad in fp.pads.iter() {
                 let layers = match pad.kind {
@@ -255,9 +255,10 @@ impl BoardConnectivity {
                     PadKind::NonPlatedHole { .. } => continue,
                 };
                 let center = t.point(pad.pos);
-                let net = match board_part {
-                    Some(refdes) => Some(bc.intern(&format!("unconnected-({refdes}-Pad{})", pad.name))),
-                    None => pad_net.get(&(f.component, pad.name.as_str())).copied(),
+                // Pads without a pin (and all pads of board parts) get a net of their own.
+                let net = match pad_net.get(&(f.component, pad.name.as_str())) {
+                    Some(&n) if !board_part => n,
+                    _ => bc.intern(&format!("unconnected-({refdes}-Pad{})", pad.name)),
                 };
                 bc.items.push(Copper {
                     item: CopperItem::Pad { footprint: f.id, pad: pad.id },
@@ -349,16 +350,12 @@ impl BoardConnectivity {
         // Island nets and shorts.
         let islands = island_of_root.len();
         let mut island_nets: Vec<Vec<u32>> = vec![Vec::new(); islands];
-        for (i, net) in pad_nets.iter().enumerate() {
-            if let Some(n) = *net {
-                let v = &mut island_nets[bc.items[i].island as usize];
-                if !v.contains(&n) {
-                    v.push(n);
-                }
+        for (i, &n) in pad_nets.iter().enumerate() {
+            let v = &mut island_nets[bc.items[i].island as usize];
+            if !v.contains(&n) {
+                v.push(n);
             }
-        }
-        for (i, net) in pad_nets.into_iter().enumerate() {
-            bc.items[i].net = net;
+            bc.items[i].net = Some(n);
         }
         for c in &mut bc.items[pads..] {
             let nets = &island_nets[c.island as usize];

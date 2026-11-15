@@ -472,7 +472,8 @@ impl PcbTools {
     #[tool(description = "Schematic netlist: every net with at least two pins or a label, with \
         its pins (reference, pin name, footprint pads, position), plus unconnected pins (without \
         those under a no-connect flag or of kind not_connected) and \
-        connectivity problems (e.g. two different labels on one net, misused buses; each with \
+        connectivity and ERC problems (e.g. two different labels on one net, misused buses, \
+        outputs driving each other, undriven inputs, reused references; each with \
         message, objects and position). Pins connect where wire ends, pins, labels and \
         junctions coincide, where a wire ends on another wire, and through same-named labels \
         (local: same sheet; global and power: all sheets); \

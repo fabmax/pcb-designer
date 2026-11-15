@@ -180,3 +180,29 @@ fn copper_touching_a_board_part_pad_is_a_short() {
     assert_eq!(shorts.len(), 1, "{v:?}");
     assert!(shorts[0].message.contains("unconnected-(FID1-Pad"), "{}", shorts[0].message);
 }
+
+#[test]
+fn copper_touching_an_unmapped_pad_is_a_short() {
+    // A resistor whose second pad has no pin.
+    let mut ed = Editor::new(Project::new("t"));
+    let mut b = builtin::builtin_library().bundles(&[PART_RESISTOR]).unwrap().remove(0);
+    let second = b.symbols[0].pins.iter().nth(1).unwrap().id;
+    for v in &mut b.part.variants {
+        v.connections.retain(|c| c.pin != second);
+    }
+    ed.execute(Command::ImportParts { parts: vec![b] }).unwrap();
+    place_sch(&mut ed, PART_RESISTOR).unwrap();
+    let r1 = ed.project().schematic.component_by_refdes("R1").unwrap().id;
+    let f = ed.project().board.footprint_of(r1).unwrap().id;
+    let pads = pad_positions(ed.project(), f);
+    let p = ed.project();
+    let bc = BoardConnectivity::build(p, &Connectivity::build(p));
+    assert!(bc.nets.iter().any(|n| n == "unconnected-(R1-Pad2)"), "{:?}", bc.nets);
+
+    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![pads[0].2, pads[1].2], width: None })
+        .unwrap();
+    let p = ed.project();
+    let bc = BoardConnectivity::build(p, &Connectivity::build(p));
+    assert_eq!(bc.shorts.len(), 1, "{:?}", bc.shorts);
+    assert!(bc.shorts[0].0.contains(&"unconnected-(R1-Pad2)".to_string()));
+}
