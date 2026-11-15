@@ -204,6 +204,16 @@ pub fn problem_key(section: &str, text: &str) -> u64 {
     h.finish()
 }
 
+/// Contents of a panel, clipped to its current size. egui grows a resizable panel to fit
+/// content that overflows it and keeps that size, so a single frame of overflow (a grid
+/// laid out with the previous selection's column widths) would widen the panel for good.
+pub fn fixed_size<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let rect = ui.available_rect_before_wrap();
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(*ui.layout()));
+    ui.advance_cursor_after_rect(rect);
+    add(&mut child)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,6 +250,33 @@ mod tests {
         // Missing fields fall back to the defaults.
         let partial: Dock = serde_json::from_str(r#"{"right": null}"#).unwrap();
         assert_eq!((partial.left, partial.right), (Some(Panel::Project), None));
+    }
+
+    #[test]
+    fn overflow_keeps_the_panel_size() {
+        // Shows a 300 pt panel whose content wants 400 pt; returns the panel's width.
+        let width = |clip: bool| {
+            let ctx = egui::Context::default();
+            let mut width = 0.0;
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 600.0))),
+                    ..Default::default()
+                };
+                let mut out = ctx.run_ui(input, |ui| {
+                    let wide = |ui: &mut egui::Ui| {
+                        ui.allocate_exact_size(egui::vec2(400.0, 20.0), egui::Sense::hover());
+                    };
+                    let panel = egui::Panel::right("p").resizable(true).default_size(300.0).size_range(100.0..=700.0);
+                    let r = panel.show(ui, |ui| if clip { fixed_size(ui, wide) } else { wide(ui) });
+                    width = r.response.rect.width();
+                });
+                out.textures_delta.clear();
+            }
+            width
+        };
+        assert!(width(false) > 400.0, "egui grows the panel to fit overflowing content");
+        assert_eq!(width(true), 300.0);
     }
 
     #[test]

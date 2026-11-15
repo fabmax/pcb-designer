@@ -437,7 +437,10 @@ things to do **later**.
 - **Tool windows** (`dock.rs`): icon bars on both edges, one open panel per side, never
   opened automatically. Project (⌘1), Messages (⌘3, with an unseen-problems badge),
   Properties, Tool settings, Board setup, Overview. Saved in settings when no pointer
-  button is down.
+  button is down. Panel content is drawn through `dock::fixed_size`, which clips
+  overflow: egui grows a resizable panel to fit wider content and keeps that size, and
+  grids overflow for a frame when they reuse the column widths of the previous
+  selection.
 - **Properties** (`properties.rs`): a symbol and a footprint both have the component's
   Footprint variant combo (`variant_combo`); on the board it leaves out "no footprint"
   variants, which would delete the selected footprint. Text fields keep their typed
@@ -513,14 +516,6 @@ Things decided to do later, by area. Remove an entry when it's done; add what a 
 defers.
 
 **Bugs**
-- Properties panel sometimes gets slightly wider when sleecting things
-  - STR (in Demo project):
-    1. Open Properties panel
-    2. Select `LED DEMO` text
-    3. Select `SIG` net label
-  - On selection of the net label properties panel width increases slightly
-  - Same for selecting a sub sheet
-  - No Panel should ever resize just because a different part is selected
 - macOS: When clicking in the title bar of the unfocused window, the window also maximizes (it should only gain focus)
 
 **Schematic**

@@ -2537,35 +2537,38 @@ impl PcbApp {
             .default_size(self.settings.dock.size(side))
             .size_range(if side == Side::Bottom { 80.0..=800.0 } else { 160.0..=700.0 })
             .show(ui, |ui| {
-                let mut header_act = None;
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(panel.title()).strong());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let (rect, r) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
-                        if r.hovered() {
-                            ui.painter().rect_filled(rect, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
-                        }
-                        icons::paint(ui.painter(), rect.shrink(4.0), Icon::Minus, theme::text_dim());
-                        hide = r.on_hover_text("Hide").clicked();
-                        if panel == Panel::Project {
-                            ui.add_space(6.0);
-                            let roots = self.tree_nodes();
-                            header_act = self.project_tree.header_ui(ui, &roots);
-                        }
+                // The panel's size is the user's: overflowing content is clipped.
+                crate::dock::fixed_size(ui, |ui| {
+                    let mut header_act = None;
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(panel.title()).strong());
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let (rect, r) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                            if r.hovered() {
+                                ui.painter().rect_filled(rect, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
+                            }
+                            icons::paint(ui.painter(), rect.shrink(4.0), Icon::Minus, theme::text_dim());
+                            hide = r.on_hover_text("Hide").clicked();
+                            if panel == Panel::Project {
+                                ui.add_space(6.0);
+                                let roots = self.tree_nodes();
+                                header_act = self.project_tree.header_ui(ui, &roots);
+                            }
+                        });
                     });
-                });
-                if let Some(act) = header_act {
-                    self.tree_act(act);
-                }
-                ui.add_space(4.0);
-                if panel == Panel::Messages {
-                    self.panel_ui(ui, panel);
-                } else {
-                    egui::ScrollArea::vertical()
-                        .id_salt(("dock", side as u8))
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| self.panel_ui(ui, panel));
-                }
+                    if let Some(act) = header_act {
+                        self.tree_act(act);
+                    }
+                    ui.add_space(4.0);
+                    if panel == Panel::Messages {
+                        self.panel_ui(ui, panel);
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .id_salt(("dock", side as u8))
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| self.panel_ui(ui, panel));
+                    }
+                })
             });
         if hide {
             self.settings.dock.hide(side);
