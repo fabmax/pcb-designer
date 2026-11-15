@@ -16,6 +16,7 @@ pub mod index;
 pub mod interaction;
 pub mod item;
 pub mod library_doc;
+pub mod list_nav;
 pub mod measure;
 pub mod pcb_tools;
 pub mod probe;

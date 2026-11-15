@@ -364,6 +364,13 @@ things to do **later**.
   for 180 footprints). A pick lists them with check boxes (one variant each), hiding
   those missing pins unless asked or none fits; long names truncate so nothing widens
   the window.
+- Import window lists (`nav_list.rs`, cursor moves in `view::list_nav`): rows select on a
+  click anywhere, double click / Enter activates (add a result, toggle a footprint;
+  Space too), ↑↓ Home End PgUp PgDn move, Esc returns to the search field, whose ↑↓ and
+  Enter drive the results. One selection (`Selected`) across the lists is what the
+  previews show (captioned with the names); without one they show the active pick.
+  Adding keeps the row selected, so ↓ Enter ↓ Enter adds several. A list's focus is a
+  widget under its rows with a focus lock filter, as in the Project tree.
 - Download (`kicad::download`): official GitLab release archives of `SUPPORTED_MAJOR`
   (10), unpacked into `<config>/kicad/<version>` via a temp folder and rename. Gotcha:
   cancel has its own error; `io::ErrorKind::Interrupted` would be retried forever by

@@ -198,7 +198,9 @@ rendered offscreen.
 footprint, or a "No footprint" variant for parts that stay off the board) and footprints
 from KiCad's libraries. A symbol's footprint list shows those matching its filters whose
 pads fit its pins, exact fits first; footprints missing pins are hidden unless you ask
-for them, and "Use" in the footprint search adds any footprint. It uses an installed KiCad's libraries, or downloads KiCad's
+for them, and "Use" in the footprint search adds any footprint. The lists work with the
+keyboard: ↑/↓ (also from the search field) select and preview, Enter or a double click
+adds a result or toggles a footprint (Space too), Esc returns to the search field. It uses an installed KiCad's libraries, or downloads KiCad's
 official symbol and footprint libraries (about 24 MB, 450 MB on disk, no 3D models) into
 the configuration folder, e.g. `~/Library/Application Support/pcb-designer/kicad/10.0.8/`
 on macOS. The window offers the download when no libraries are found, and "Check for

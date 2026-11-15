@@ -21,23 +21,42 @@ use view::LibraryDoc;
 use view::item::Item;
 
 use crate::fields::{self, hint};
+use crate::nav_list;
 use crate::preview::{Empty, Preview};
 use crate::theme;
 
 const RESULT_LIMIT: usize = 400;
-/// Height of the preview strip under the selection.
+/// Height of the preview boxes under the selection.
 const PREVIEW_HEIGHT: f32 = 180.0;
+/// Height of the names over the preview boxes.
+const CAPTION_HEIGHT: f32 = 18.0;
 
 /// `Lib:Name` of the symbol and footprint previewed.
 type PreviewTarget = (Option<String>, Option<String>);
 
-/// Previews of the last clicked search result or pick: KiCad items converted (and
+/// The selected row of the window's lists; it is what the previews show.
+#[derive(Clone, PartialEq, Eq)]
+enum Selected {
+    /// A symbol search result, with its suggested footprint.
+    SymbolResult {
+        name: String,
+        footprint: Option<String>,
+    },
+    FootprintResult(String),
+    /// A footprint in a pick's list.
+    Candidate {
+        pick: String,
+        footprint: String,
+    },
+    /// A lone footprint to import.
+    Lone(String),
+}
+
+/// Previews of the selection (else the active pick): KiCad items converted (and
 /// cached), shown from a scratch library.
 #[derive(Default)]
 struct Previews {
     cache: PreviewCache,
-    /// A clicked search result or lone footprint; `None`: the active pick.
-    focus: Option<PreviewTarget>,
     /// What `doc` holds.
     shown: Option<PreviewTarget>,
     doc: Option<LibraryDoc>,
@@ -154,7 +173,14 @@ pub struct KicadImport {
     /// Target library key; `None` = a new library.
     pub target: Option<u64>,
     error: Option<String>,
+    /// The selected row (`None`: the previews show the active pick).
+    selected: Option<Selected>,
     previews: Previews,
+}
+
+/// The search field (lists hand the focus back to it on Esc).
+fn search_id() -> egui::Id {
+    egui::Id::unique("kicad_search")
 }
 
 impl KicadImport {
@@ -175,6 +201,7 @@ impl KicadImport {
             active: None,
             target: None,
             error: None,
+            selected: None,
             previews: Previews::default(),
         }
     }
@@ -296,10 +323,13 @@ impl KicadImport {
         p.doc = None;
     }
 
-    /// What the previews show: the clicked result, else the active pick.
+    /// What the previews show: the selected row, else the active pick.
     fn preview_target(&self) -> PreviewTarget {
-        if let Some(t) = &self.previews.focus {
-            return t.clone();
+        match &self.selected {
+            Some(Selected::SymbolResult { name, footprint }) => return (Some(name.clone()), footprint.clone()),
+            Some(Selected::FootprintResult(f) | Selected::Lone(f)) => return (None, Some(f.clone())),
+            Some(Selected::Candidate { pick, footprint }) => return (Some(pick.clone()), Some(footprint.clone())),
+            None => {}
         }
         match self.active.and_then(|i| self.picks.get(i)) {
             Some(p) => (Some(p.symbol.clone()), p.chosen().next().cloned()),
@@ -359,6 +389,20 @@ impl KicadImport {
         fn empty<'a>(error: &'a Option<String>, hint: &'a str) -> Empty<'a> {
             error.as_deref().map_or(Empty::Hint(hint), Empty::Error)
         }
+        let names = p.shown.clone().unwrap_or_default();
+        let caption = |ui: &mut egui::Ui, name: &Option<String>| {
+            // A line even when empty, so the boxes don't move.
+            ui.allocate_ui(egui::vec2(size.x, CAPTION_HEIGHT), |ui| {
+                ui.set_min_size(egui::vec2(size.x, CAPTION_HEIGHT));
+                if let Some(n) = name {
+                    ui.add(egui::Label::new(RichText::new(n).color(theme::text_dim())).truncate());
+                }
+            });
+        };
+        ui.horizontal(|ui| {
+            caption(ui, &names.0);
+            caption(ui, &names.1);
+        });
         ui.horizontal(|ui| {
             p.symbol_view.ui(ui, &doc.doc, p.symbol.0, size, empty(&p.symbol.1, symbol_hint));
             p.footprint_view.ui(ui, &doc.doc, p.footprint.0, size, empty(&p.footprint.1, footprint_hint));
@@ -398,7 +442,6 @@ impl KicadImport {
                     },
                 });
                 self.active = Some(self.picks.len() - 1);
-                self.previews.focus = None;
                 self.error = None;
             }
             Err(e) => self.error = Some(e.to_string()),
@@ -639,7 +682,10 @@ impl KicadImport {
             Kind::Symbols => "Search symbols, e.g. \"device r\", \"lm358\", \"stm32f103\"",
             Kind::Footprints => "Search footprints, e.g. \"soic-8\", \"0603\"",
         };
-        ui.add(egui::TextEdit::singleline(&mut self.query).hint_text(hint_text).desired_width(f32::INFINITY));
+        // Arrows and Enter in the field move and add in the results.
+        let field_keys = nav_list::field_keys(ui, search_id());
+        let field = egui::TextEdit::singleline(&mut self.query).id(search_id());
+        ui.add(field.hint_text(hint_text).desired_width(f32::INFINITY));
         let key = (self.query.clone(), self.kind);
         if self.results_for.as_ref() != Some(&key) {
             let q = self.query.trim().to_string();
@@ -660,48 +706,53 @@ impl KicadImport {
         }
         let mut add = None;
         let mut assign = None;
-        let mut focus = None;
-        let focused = self.previews.focus.clone();
+        let kind = self.kind;
+        let selected = self.results.iter().position(|r| match (&self.selected, kind) {
+            (Some(Selected::SymbolResult { name, .. }), Kind::Symbols) => name == r,
+            (Some(Selected::FootprintResult(f)), Kind::Footprints) => f == r,
+            _ => false,
+        });
         let active = self.active.and_then(|i| self.picks.get(i)).map(|p| p.symbol.clone());
-        egui::ScrollArea::vertical()
-            .id_salt("kicad_results")
-            .max_height(ui.available_height())
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for r in &self.results {
-                    ui.horizontal(|ui| {
-                        if ui.small_button("Add").clicked() {
-                            add = Some(r.clone());
-                        }
-                        if self.kind == Kind::Footprints
-                            && let Some(sym) = &active
-                            && ui
-                                .small_button("Use")
-                                .on_hover_text(format!("Add as a footprint variant of {sym}"))
-                                .clicked()
-                        {
-                            assign = Some(r.clone());
-                        }
-                        let (lib, name) = r.split_once(':').unwrap_or(("", r));
-                        ui.label(RichText::new(lib).color(theme::text_dim()));
-                        let selected = focused.as_ref().is_some_and(|f| match self.kind {
-                            Kind::Symbols => f.0.as_ref() == Some(r),
-                            Kind::Footprints => f.0.is_none() && f.1.as_ref() == Some(r),
-                        });
-                        let b = egui::Button::selectable(selected, name).truncate();
-                        if ui.add(b).on_hover_text("Click to preview").clicked() {
-                            focus = Some(r.clone());
-                        }
-                    });
+        let results = &self.results;
+        let out = nav_list::show(
+            ui,
+            egui::Id::unique("kicad_results"),
+            results.len(),
+            selected,
+            ui.available_height(),
+            false,
+            field_keys,
+            |ui, i| {
+                let r = &results[i];
+                if ui.small_button("Add").clicked() {
+                    add = Some(r.clone());
                 }
+                if kind == Kind::Footprints
+                    && let Some(sym) = &active
+                    && ui.small_button("Use").on_hover_text(format!("Add as a footprint variant of {sym}")).clicked()
+                {
+                    assign = Some(r.clone());
+                }
+                let (lib, name) = r.split_once(':').unwrap_or(("", r));
+                nav_list::dim(ui, lib);
+                nav_list::name(ui, name);
+            },
+        );
+        if out.escape {
+            ui.memory_mut(|m| m.request_focus(search_id()));
+        }
+        if let Some(i) = out.select {
+            let r = self.results[i].clone();
+            self.selected = Some(match kind {
+                Kind::Symbols => {
+                    let footprint = self.suggested(&r).ok().and_then(|f| f.into_iter().next());
+                    Selected::SymbolResult { name: r, footprint }
+                }
+                Kind::Footprints => Selected::FootprintResult(r),
             });
-        match (focus, self.kind) {
-            (Some(r), Kind::Symbols) => {
-                let footprint = self.suggested(&r).ok().and_then(|f| f.into_iter().next());
-                self.previews.focus = Some((Some(r), footprint));
-            }
-            (Some(r), Kind::Footprints) => self.previews.focus = Some((None, Some(r))),
-            _ => {}
+        }
+        if let Some(i) = out.activate {
+            add = Some(self.results[i].clone());
         }
         match (add, self.kind) {
             (Some(r), Kind::Symbols) => self.pick_symbol(&r),
@@ -720,7 +771,7 @@ impl KicadImport {
 
     /// The picks above the preview strip.
     fn selection_ui(&mut self, ui: &mut egui::Ui) {
-        let list_height = ui.available_height() - PREVIEW_HEIGHT - ui.spacing().item_spacing.y;
+        let list_height = ui.available_height() - PREVIEW_HEIGHT - CAPTION_HEIGHT - 2.0 * ui.spacing().item_spacing.y;
         ui.allocate_ui(egui::vec2(ui.available_width(), list_height), |ui| {
             ui.set_min_height(list_height);
             self.picks_ui(ui);
@@ -736,10 +787,9 @@ impl KicadImport {
         }
         let mut remove = None;
         let mut remove_fp = None;
-        let mut focus_fp = None;
-        let mut focus_candidate = None;
-        // The previewed symbol and footprint, to highlight the footprint in its pick.
-        let target = self.preview_target();
+        let mut select = None;
+        let mut escape = false;
+        let selected = self.selected.clone();
         egui::ScrollArea::vertical()
             .id_salt("kicad_picks")
             .max_height(ui.available_height())
@@ -770,9 +820,16 @@ impl KicadImport {
                                 ui.label(RichText::new(why).color(theme::warn()));
                                 return;
                             }
-                            let focused = target.1.as_deref().filter(|_| target.0.as_ref() == Some(&p.symbol));
-                            if let Some(f) = footprints_ui(ui, i, p, focused) {
-                                focus_candidate = Some((p.symbol.clone(), f));
+                            let in_pick = match &selected {
+                                Some(Selected::Candidate { pick, footprint }) if *pick == p.symbol => {
+                                    Some(footprint.as_str())
+                                }
+                                _ => None,
+                            };
+                            let (s, esc) = footprints_ui(ui, p, in_pick);
+                            escape |= esc;
+                            if let Some(f) = s {
+                                select = Some(Selected::Candidate { pick: p.symbol.clone(), footprint: f });
                             }
                         })
                     });
@@ -786,7 +843,7 @@ impl KicadImport {
                     let pressed = ui.input(|i| i.pointer.primary_clicked().then(|| i.pointer.interact_pos()).flatten());
                     if r.response.clicked() || pressed.is_some_and(|p| r.response.rect.contains(p)) {
                         self.active = Some(i);
-                        self.previews.focus = None;
+                        self.selected = None;
                     }
                 }
                 for (i, f) in self.footprints.iter().enumerate() {
@@ -795,11 +852,10 @@ impl KicadImport {
                             remove_fp = Some(i);
                         }
                         ui.label(RichText::new("Footprint").color(theme::text_dim()));
-                        let selected =
-                            self.previews.focus.as_ref().is_some_and(|p| p.0.is_none() && p.1.as_ref() == Some(f));
-                        let b = egui::Button::selectable(selected, f.as_str()).truncate();
+                        let is_selected = selected == Some(Selected::Lone(f.clone()));
+                        let b = egui::Button::selectable(is_selected, f.as_str()).truncate();
                         if ui.add(b).on_hover_text("Click to preview").clicked() {
-                            focus_fp = Some(f.clone());
+                            select = Some(Selected::Lone(f.clone()));
                         }
                     });
                 }
@@ -810,11 +866,12 @@ impl KicadImport {
             let n = self.picks.len();
             self.active = self.active.map(|a| if a > i { a - 1 } else { a }).filter(|&a| a < n);
         }
-        if let Some(f) = focus_fp {
-            self.previews.focus = Some((None, Some(f)));
+        // After the cards' own clicks, which select their pick.
+        if select.is_some() {
+            self.selected = select;
         }
-        if let Some((symbol, f)) = focus_candidate {
-            self.previews.focus = Some((Some(symbol), Some(f)));
+        if escape {
+            ui.memory_mut(|m| m.request_focus(search_id()));
         }
         if let Some(i) = remove_fp {
             self.footprints.remove(i);
@@ -826,8 +883,9 @@ impl KicadImport {
 const FOOTPRINT_LIST_HEIGHT: f32 = 132.0;
 
 /// A pick's footprints with a check box each (a variant per checked one), best fitting
-/// first. Returns a footprint whose name was clicked (to preview it).
-fn footprints_ui(ui: &mut egui::Ui, i: usize, p: &mut Pick, focused: Option<&str>) -> Option<String> {
+/// first. A double click, Enter or Space toggles one. Returns a footprint to select and
+/// whether Esc was pressed in the list.
+fn footprints_ui(ui: &mut egui::Ui, p: &mut Pick, selected: Option<&str>) -> (Option<String>, bool) {
     let chosen = p.chosen().count();
     let missing = p.candidates.iter().filter(|c| !c.listed(false)).count();
     ui.horizontal(|ui| {
@@ -841,41 +899,37 @@ fn footprints_ui(ui: &mut egui::Ui, i: usize, p: &mut Pick, focused: Option<&str
     });
     if p.candidates.is_empty() {
         hint(ui, "No footprint matches; search one under Footprints and press Use.");
-        return None;
+        return (None, false);
     }
-    let mut clicked = None;
-    egui::Frame::NONE.fill(theme::panel_dark()).corner_radius(4).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
-        egui::ScrollArea::vertical()
-            .id_salt(("kicad_fps", i))
-            .max_height(FOOTPRINT_LIST_HEIGHT)
-            .auto_shrink([false, true])
-            .show(ui, |ui| {
-                let show_missing = p.show_missing;
-                for c in p.candidates.iter_mut().filter(|c| c.listed(show_missing)) {
-                    ui.horizontal(|ui| {
-                        ui.checkbox(&mut c.checked, "");
-                        let selected = focused == Some(c.name.as_str());
-                        let name = RichText::new(&c.name).color(if c.fit.is_none_or(Fit::fits) {
-                            ui.visuals().text_color()
-                        } else {
-                            theme::warn()
-                        });
-                        if let Some(note) = fit_note(c.fit) {
-                            ui.label(RichText::new(note).color(theme::text_dim()).small());
-                        }
-                        // Long names are cut, so the list never widens the window.
-                        let b = egui::Button::selectable(selected, name).truncate();
-                        if ui.add(b).on_hover_text(&c.name).clicked() {
-                            clicked = Some(c.name.clone());
-                        }
-                    });
+    let show_missing = p.show_missing;
+    let listed: Vec<usize> = (0..p.candidates.len()).filter(|&i| p.candidates[i].listed(show_missing)).collect();
+    let current = listed.iter().position(|&i| selected == Some(p.candidates[i].name.as_str()));
+    let id = egui::Id::unique(("kicad_fps", &p.symbol));
+    let candidates = &mut p.candidates;
+    let out = egui::Frame::NONE
+        .fill(theme::panel_dark())
+        .corner_radius(4)
+        .inner_margin(egui::Margin::same(2))
+        .show(ui, |ui| {
+            nav_list::show(ui, id, listed.len(), current, FOOTPRINT_LIST_HEIGHT, true, Default::default(), |ui, row| {
+                let c = &mut candidates[listed[row]];
+                ui.checkbox(&mut c.checked, "");
+                if let Some(note) = fit_note(c.fit) {
+                    nav_list::dim(ui, &note);
                 }
-            });
-    });
+                let color = if c.fit.is_none_or(Fit::fits) { ui.visuals().text_color() } else { theme::warn() };
+                nav_list::name(ui, RichText::new(&c.name).color(color));
+            })
+        })
+        .inner;
+    if let Some(row) = out.activate {
+        let c = &mut p.candidates[listed[row]];
+        c.checked = !c.checked;
+    }
     if missing > 0 && missing < p.candidates.len() {
         ui.checkbox(&mut p.show_missing, format!("Show {missing} footprint(s) missing pins"));
     } else if missing > 0 {
         hint(ui, "No footprint has a pad for every pin.");
     }
-    clicked
+    (out.select.map(|row| p.candidates[listed[row]].name.clone()), out.escape)
 }
