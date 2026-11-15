@@ -21,6 +21,9 @@ pub struct Properties {
     /// A grouped widget is being dragged or edited this frame.
     active: bool,
     texts: FxHashMap<(ObjectId, &'static str), String>,
+    /// Text fields being edited: their buffers aren't reset to the model's value. Usually
+    /// one; two in the frame where focus moves from one to another.
+    editing: Vec<(ObjectId, &'static str)>,
 }
 
 struct Ctx<'a> {
@@ -50,6 +53,7 @@ impl Properties {
         }
         let live: Vec<ObjectId> = selection.to_vec();
         self.texts.retain(|(id, _), _| live.contains(id));
+        self.editing.retain(|(id, _)| live.contains(id));
     }
 
     fn run(&mut self, cx: &mut Ctx, cmd: Command, grouped: bool) {
@@ -65,27 +69,43 @@ impl Properties {
 
     /// Text field committed on Enter / focus loss. Returns the new text if it changed.
     fn text(&mut self, ui: &mut egui::Ui, target: ObjectId, label: &'static str, current: &str) -> Option<String> {
-        let id = ui.make_persistent_id((target, label));
-        let focused = ui.memory(|m| m.has_focus(id));
-        let buf = self.texts.entry((target, label)).or_insert_with(|| current.to_string());
-        if !focused {
-            buf.clear();
-            buf.push_str(current);
-        }
-        let r = ui.add(egui::TextEdit::singleline(buf).id(id).desired_width(f32::INFINITY));
-        (r.lost_focus() && buf != current).then(|| buf.clone())
+        self.edit(ui, target, label, current, false)
     }
 
     /// Multi-line text field (Enter adds a line), committed on focus loss.
     fn multiline(&mut self, ui: &mut egui::Ui, target: ObjectId, label: &'static str, current: &str) -> Option<String> {
-        let id = ui.make_persistent_id((target, label));
-        let focused = ui.memory(|m| m.has_focus(id));
-        let buf = self.texts.entry((target, label)).or_insert_with(|| current.to_string());
-        if !focused {
+        self.edit(ui, target, label, current, true)
+    }
+
+    /// A text field showing `current` until it is edited. The buffer follows the model
+    /// except while this field is being edited: focus can move to a field drawn earlier
+    /// in the same frame, so "not focused" alone would reset the buffer before the field
+    /// reports losing focus, and the edit would be lost.
+    fn edit(
+        &mut self,
+        ui: &mut egui::Ui,
+        target: ObjectId,
+        label: &'static str,
+        current: &str,
+        multiline: bool,
+    ) -> Option<String> {
+        let key = (target, label);
+        let id = ui.make_persistent_id(key);
+        let editing = self.editing.contains(&key);
+        let buf = self.texts.entry(key).or_insert_with(|| current.to_string());
+        if !editing {
             buf.clear();
             buf.push_str(current);
         }
-        let r = ui.add(egui::TextEdit::multiline(buf).id(id).desired_rows(3).desired_width(f32::INFINITY));
+        let edit =
+            if multiline { egui::TextEdit::multiline(buf).desired_rows(3) } else { egui::TextEdit::singleline(buf) };
+        let r = ui.add(edit.id(id).desired_width(f32::INFINITY));
+        let buf = &self.texts[&key];
+        if r.has_focus() && !editing {
+            self.editing.push(key);
+        } else if !r.has_focus() && editing {
+            self.editing.retain(|k| *k != key);
+        }
         (r.lost_focus() && buf != current).then(|| buf.clone())
     }
 
@@ -194,7 +214,13 @@ impl Properties {
                 ui.end_row();
             }
             // Soft-wrapped here; only its line breaks start lines in the frame.
-            label(ui, "Comment");
+            // Top aligned with the field's first line (the grid centres rows).
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                // A one-line field is `interact_size.y` tall with its line centred.
+                let line = ui.text_style_height(&egui::TextStyle::Body);
+                ui.add_space(((ui.spacing().interact_size.y - line) / 2.0).max(0.0));
+                ui.add(egui::Label::new(RichText::new("Comment").color(theme::text_dim())).extend());
+            });
             if let Some(v) = self.multiline(ui, target, "Comment", &tb.comment.clone()) {
                 tb.comment = v;
                 changed = true;
