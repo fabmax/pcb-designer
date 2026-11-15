@@ -36,6 +36,19 @@ fn hierarchical_routed_project() {
     assert_eq!((sheet_of("R1"), sheet_of("R2"), sheet_of("R3")), ("amp".into(), "amp2".into(), "Schematic".into()));
     assert!(report.contains("wires to them were stretched"), "{report}");
 
+    // Pages: each sheet file's paper; the content is shifted onto it.
+    let page_of = |name: &str| p.schematic.sheets.iter().find(|s| s.name == name).unwrap().page;
+    assert_eq!(page_of("Schematic"), model::Page { size: model::PageSize::A4, portrait: false });
+    assert_eq!(page_of("amp2"), model::Page { size: model::PageSize::A3, portrait: true });
+    for w in p.schematic.wires.iter() {
+        let page = p.schematic.sheets.get(w.sheet).unwrap().page.rect().unwrap();
+        assert!(page.contains(w.a) && page.contains(w.b), "wire {:?}–{:?} off its page", w.a, w.b);
+    }
+    let tb = p.schematic.title_block();
+    assert_eq!((tb.title.as_str(), tb.date.as_str(), tb.revision.as_str()), ("Hier test", "2026-11-15", "B"));
+    assert_eq!((tb.company.as_str(), tb.comments.clone()), ("ACME", vec![String::new(), "second".into()]));
+    assert!(!report.contains("title block"), "{report}");
+
     // Nets as KiCad has them (power port included).
     let mut nets: Vec<BTreeSet<String>> = our_nets(p);
     nets.sort();

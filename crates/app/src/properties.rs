@@ -99,6 +99,115 @@ impl Properties {
         out
     }
 
+    /// A sheet's drawing page: size, orientation, custom dimensions.
+    fn page(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, mut sh: Sheet) {
+        ui.add_space(10.0);
+        heading(ui, "Page", "");
+        let page = sh.page;
+        grid(ui, |ui| {
+            label(ui, "Size");
+            let mut size = page.size;
+            let custom = match page.size {
+                PageSize::Custom { .. } => page.size,
+                _ => {
+                    let d = page.dimensions().unwrap_or(Size::new(mm(297.0), mm(210.0)));
+                    PageSize::Custom { w: d.w, h: d.h }
+                }
+            };
+            egui::ComboBox::from_id_salt("page_size").selected_text(size.label()).show_ui(ui, |ui| {
+                ui.selectable_value(&mut size, PageSize::None, PageSize::None.label());
+                for p in PageSize::NAMED {
+                    ui.selectable_value(&mut size, p, p.label());
+                }
+                ui.selectable_value(&mut size, custom, PageSize::Custom { w: 0, h: 0 }.label());
+            });
+            if size != page.size {
+                sh.page.size = size;
+                self.update(cx, Object::Sheet(sh.clone()), false);
+            }
+            ui.end_row();
+            match sh.page.size {
+                PageSize::None => {}
+                PageSize::Custom { w, h } => {
+                    label(ui, "Width");
+                    if let Some(w) = self.length(ui, w, 50.0) {
+                        sh.page.size = PageSize::Custom { w, h };
+                        self.update(cx, Object::Sheet(sh.clone()), true);
+                    }
+                    ui.end_row();
+                    label(ui, "Height");
+                    if let Some(h) = self.length(ui, h, 50.0) {
+                        sh.page.size = PageSize::Custom { w, h };
+                        self.update(cx, Object::Sheet(sh.clone()), true);
+                    }
+                    ui.end_row();
+                }
+                _ => {
+                    label(ui, "Orientation");
+                    let mut portrait = sh.page.portrait;
+                    let text = if portrait { "Portrait" } else { "Landscape" };
+                    egui::ComboBox::from_id_salt("page_orientation").selected_text(text).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut portrait, false, "Landscape");
+                        ui.selectable_value(&mut portrait, true, "Portrait");
+                    });
+                    if portrait != sh.page.portrait {
+                        sh.page.portrait = portrait;
+                        self.update(cx, Object::Sheet(sh.clone()), false);
+                    }
+                    ui.end_row();
+                }
+            }
+        });
+    }
+
+    /// The project's title block (the same on every sheet). `target` keys the text fields.
+    fn title_block(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, target: ObjectId) {
+        const COMMENTS: [&str; TitleBlock::COMMENTS] = [
+            "Comment 1",
+            "Comment 2",
+            "Comment 3",
+            "Comment 4",
+            "Comment 5",
+            "Comment 6",
+            "Comment 7",
+            "Comment 8",
+            "Comment 9",
+        ];
+        ui.add_space(10.0);
+        heading(ui, "Title block", "all sheets");
+        let mut tb = cx.doc.project().schematic.title_block();
+        let mut changed = false;
+        grid(ui, |ui| {
+            for (name, field) in [
+                ("Title", &mut tb.title),
+                ("Date", &mut tb.date),
+                ("Revision", &mut tb.revision),
+                ("Company", &mut tb.company),
+            ] {
+                label(ui, name);
+                if let Some(v) = self.text(ui, target, name, field) {
+                    *field = v;
+                    changed = true;
+                }
+                ui.end_row();
+            }
+            // The comments so far and one more.
+            let shown = (tb.comments.len() + 1).min(TitleBlock::COMMENTS);
+            tb.comments.resize(shown, String::new());
+            for (i, name) in COMMENTS.iter().enumerate().take(shown) {
+                label(ui, name);
+                if let Some(v) = self.text(ui, target, name, &tb.comments[i].clone()) {
+                    tb.comments[i] = v;
+                    changed = true;
+                }
+                ui.end_row();
+            }
+        });
+        if changed {
+            self.run(cx, Command::SetTitleBlock { title_block: tb }, false);
+        }
+    }
+
     fn single(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, id: ObjectId) {
         let Some(object) = cx.doc.project().get(id) else { return };
         match object {
@@ -134,6 +243,8 @@ impl Properties {
                     row(ui, "Symbols", symbols.to_string());
                     row(ui, "Sub-sheets", s.children(sh.id).count().to_string());
                 });
+                self.page(ui, cx, sh.clone());
+                self.title_block(ui, cx, id);
             }
             Object::Wire(w) => {
                 heading(ui, "Wire", "");

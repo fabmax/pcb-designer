@@ -91,6 +91,9 @@ fn move_footprint(ed: &mut Editor, footprint: Id, to: Point, rotation: Angle) {
     }
 }
 
+/// Where the demo schematic sits on its pages (it was drawn around the origin).
+pub const DEMO_PAGE_OFFSET: Point = Point::new(101_600_000, 101_600_000);
+
 /// A small LED circuit with a board outline, placed footprints, tracks, a via and a zone.
 /// The LED and its resistor are on a sub-sheet, "Indicator", fed through its pin IN.
 pub fn demo_project() -> Project {
@@ -161,6 +164,11 @@ pub fn demo_project() -> Project {
         })],
     })
     .unwrap();
+    // Onto the A4 pages (their lower left corner is the origin).
+    for sheet in ed.project().schematic.page_order() {
+        let ids = ed.project().schematic.objects_on(sheet);
+        ed.execute(Command::Move { ids, delta: DEMO_PAGE_OFFSET, keep_connected: false }).unwrap();
+    }
 
     // Board.
     ed.execute(Command::Insert {

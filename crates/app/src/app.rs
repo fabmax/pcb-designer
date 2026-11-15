@@ -2577,9 +2577,9 @@ impl PcbApp {
                 }
                 let view = self.active;
                 let mut selection = if self.is_open(view) { self.panes.selection(view) } else { Vec::new() };
-                // Nothing selected on a sub-sheet: the sheet itself.
+                // Nothing selected on a sheet: the sheet itself (its page and the title block).
                 if let (true, Some(s)) = (selection.is_empty() && self.is_open(view), view.sheet())
-                    && self.doc().project().schematic.sheets.get(s).is_some_and(|s| !s.is_root())
+                    && self.doc().project().schematic.sheets.contains(s)
                 {
                     selection = vec![ObjectId::Sheet(s)];
                 }
@@ -3568,7 +3568,7 @@ fn sheet_node(p: &Project, id: Id) -> TreeNode {
         ..Info::icon(Icon::Schematic)
     };
     let mut children: Vec<&model::Sheet> = s.children(id).collect();
-    children.sort_by(|a, b| a.name.cmp(&b.name));
+    children.sort_by(|a, b| model::natural_cmp(&a.name, &b.name));
     let label =
         if root { "Schematic".to_string() } else { s.sheets.get(id).map_or(String::new(), |sh| sh.name.clone()) };
     TreeNode::new(NodeId::Sheet(id), label, info)

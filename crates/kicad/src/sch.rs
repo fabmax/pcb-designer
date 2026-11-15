@@ -99,11 +99,14 @@ pub fn import(root: &Path, report: &mut Report) -> Result<SchImport, String> {
         parent: None,
         pos: Point::ZERO,
         size: Size::default(),
+        page: Page::default(),
+        title_block: Some(title_block(&root_node)),
     };
     let root_id = root_sheet.id;
     l.out.sheets.push(root_sheet);
     l.sheet(&file, root_id, &format!("/{root_uuid}"), 0)?;
     let mut out = l.out;
+    to_pages(&mut out);
     // Bus entries: `pos` is the end on the bus.
     let on_bus =
         |sheet: Id, p: Point, buses: &[BusWire]| buses.iter().any(|b| b.sheet == sheet && on_segment(p, b.a, b.b));
@@ -115,6 +118,98 @@ pub fn import(root: &Path, report: &mut Report) -> Result<SchImport, String> {
         }
     }
     Ok(out)
+}
+
+impl Loader<'_> {
+    /// The page of a sheet file: `(paper "A4" [portrait])` or `(paper "User" W H)`.
+    fn page(&mut self, node: &Node, file: &str) -> Page {
+        let Some(paper) = node.child("paper") else { return Page::default() };
+        let portrait = paper.flag("portrait");
+        let size = match paper.arg(0).unwrap_or("A4") {
+            "A5" => PageSize::A5,
+            "A4" => PageSize::A4,
+            "A3" => PageSize::A3,
+            "A2" => PageSize::A2,
+            "A1" => PageSize::A1,
+            "A0" => PageSize::A0,
+            "A" | "USLetter" => PageSize::Letter,
+            "USLegal" => PageSize::Legal,
+            "B" | "USLedger" => PageSize::Tabloid,
+            "C" => PageSize::AnsiC,
+            "D" => PageSize::AnsiD,
+            "E" => PageSize::AnsiE,
+            "User" => match (paper.num(1), paper.num(2)) {
+                (Some(w), Some(h)) => PageSize::Custom { w: nm(w), h: nm(h) },
+                _ => PageSize::A4,
+            },
+            other => {
+                self.report.warn(format!("{file}: paper size {other} is unknown; A4 is used"));
+                PageSize::A4
+            }
+        };
+        Page { size, portrait }
+    }
+}
+
+/// A file's `(title_block …)`.
+fn title_block(node: &Node) -> TitleBlock {
+    let Some(tb) = node.child("title_block") else { return TitleBlock::default() };
+    let text = |key: &str| tb.child(key).and_then(|c| c.arg(0)).unwrap_or("").to_string();
+    let mut comments = vec![String::new(); TitleBlock::COMMENTS];
+    for c in tb.children("comment") {
+        let n = c.num(0).unwrap_or(0.0) as usize;
+        if (1..=TitleBlock::COMMENTS).contains(&n) {
+            comments[n - 1] = c.arg(1).unwrap_or("").to_string();
+        }
+    }
+    while comments.last().is_some_and(String::is_empty) {
+        comments.pop();
+    }
+    TitleBlock { title: text("title"), date: text("date"), revision: text("rev"), company: text("company"), comments }
+}
+
+/// KiCad pages hang down from the origin (y down, so negative y here); ours stand on it.
+/// Shift each sheet's content up by its page height.
+fn to_pages(out: &mut SchImport) {
+    let heights: HashMap<Id, Coord> =
+        out.sheets.iter().map(|s| (s.id, s.page.dimensions().map_or(0, |d| d.h))).collect();
+    let up = |sheet: Id| Point::new(0, heights.get(&sheet).copied().unwrap_or(0));
+    for s in &mut out.sheets {
+        if let Some(parent) = s.parent {
+            s.pos = s.pos + up(parent);
+        }
+    }
+    for i in &mut out.instances {
+        i.pos = i.pos + up(i.sheet);
+    }
+    for w in &mut out.wires {
+        (w.a, w.b) = (w.a + up(w.sheet), w.b + up(w.sheet));
+    }
+    for w in &mut out.bus_wires {
+        (w.a, w.b) = (w.a + up(w.sheet), w.b + up(w.sheet));
+    }
+    for e in &mut out.bus_entries {
+        e.pos = e.pos + up(e.sheet);
+    }
+    for j in &mut out.junctions {
+        j.pos = j.pos + up(j.sheet);
+    }
+    for n in &mut out.no_connects {
+        n.pos = n.pos + up(n.sheet);
+    }
+    for l in &mut out.labels {
+        l.pos = l.pos + up(l.sheet);
+    }
+    for t in &mut out.texts {
+        t.text.pos = t.text.pos + up(t.sheet);
+    }
+    // Pins of a sub-sheet's symbol are on its parent.
+    let parents: HashMap<Id, Id> = out.sheets.iter().filter_map(|s| Some((s.id, s.parent?))).collect();
+    for (sheet, _, at) in &mut out.kicad_sheet_pins {
+        if let Some(&parent) = parents.get(sheet) {
+            *at = *at + up(parent);
+        }
+    }
 }
 
 /// A KiCad UUID as our id.
@@ -175,6 +270,16 @@ impl Loader<'_> {
             }
         };
         let uuid_of = |n: &Node| n.child("uuid").and_then(|u| u.arg(0)).map(str::to_string);
+        let page = self.page(&node, file);
+        if let Some(s) = self.out.sheets.iter_mut().find(|s| s.id == sheet) {
+            s.page = page;
+        }
+        if depth > 0 && node.child("title_block").is_some_and(|t| t.lists().next().is_some()) {
+            let root = self.out.sheets.first().and_then(|s| s.title_block.clone()).unwrap_or_default();
+            if title_block(&node) != root {
+                self.report.note("sub-sheets have title blocks of their own; the root sheet's is used");
+            }
+        }
         for item in node.lists() {
             let uuid = uuid_of(item);
             let oid = id(uuid.as_deref());
@@ -258,9 +363,6 @@ impl Loader<'_> {
                 _ => {}
             }
         }
-        if node.child("title_block").is_some() && depth == 0 {
-            self.report.skip("title block");
-        }
         Ok(())
     }
 
@@ -277,7 +379,15 @@ impl Loader<'_> {
             sheet_name = format!("{name} ({n})");
             n += 1;
         }
-        self.out.sheets.push(Sheet { id, name: sheet_name, parent: Some(parent), pos, size });
+        self.out.sheets.push(Sheet {
+            id,
+            name: sheet_name,
+            parent: Some(parent),
+            pos,
+            size,
+            page: Page::default(),
+            title_block: None,
+        });
         // Pins: remembered where KiCad has them, wired to ours later.
         for pin in item.children("pin") {
             if let Some(at) = child_point(pin, "at", true) {

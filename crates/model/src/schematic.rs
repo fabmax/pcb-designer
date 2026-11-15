@@ -31,6 +31,144 @@ pub struct Sheet {
     pub pos: Point,
     #[serde(default)]
     pub size: Size,
+    /// The drawing page: its lower left corner is at the origin.
+    #[serde(default)]
+    pub page: Page,
+    /// The project's title block, kept on the root sheet (`None` on the others).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_block: Option<TitleBlock>,
+}
+
+/// A sheet's drawing page: paper size and orientation. The frame (border, zone grid and
+/// title block) is drawn around it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Page {
+    #[serde(default)]
+    pub size: PageSize,
+    /// Portrait instead of landscape (custom sizes ignore it).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub portrait: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PageSize {
+    /// No page and no frame.
+    None,
+    A5,
+    #[default]
+    A4,
+    A3,
+    A2,
+    A1,
+    A0,
+    Letter,
+    Legal,
+    Tabloid,
+    AnsiC,
+    AnsiD,
+    AnsiE,
+    /// Width × height as given.
+    Custom {
+        w: Coord,
+        h: Coord,
+    },
+}
+
+impl PageSize {
+    /// The named sizes, for pickers.
+    pub const NAMED: [PageSize; 12] = [
+        PageSize::A5,
+        PageSize::A4,
+        PageSize::A3,
+        PageSize::A2,
+        PageSize::A1,
+        PageSize::A0,
+        PageSize::Letter,
+        PageSize::Legal,
+        PageSize::Tabloid,
+        PageSize::AnsiC,
+        PageSize::AnsiD,
+        PageSize::AnsiE,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            PageSize::None => "None",
+            PageSize::A5 => "A5",
+            PageSize::A4 => "A4",
+            PageSize::A3 => "A3",
+            PageSize::A2 => "A2",
+            PageSize::A1 => "A1",
+            PageSize::A0 => "A0",
+            PageSize::Letter => "US Letter",
+            PageSize::Legal => "US Legal",
+            PageSize::Tabloid => "Tabloid",
+            PageSize::AnsiC => "ANSI C",
+            PageSize::AnsiD => "ANSI D",
+            PageSize::AnsiE => "ANSI E",
+            PageSize::Custom { .. } => "Custom",
+        }
+    }
+
+    /// Landscape width and height (`None` for no page).
+    pub fn landscape(self) -> Option<Size> {
+        let mm = |w: f64, h: f64| Size { w: (w * 1e6).round() as Coord, h: (h * 1e6).round() as Coord };
+        let inch = |w: f64, h: f64| mm(w * 25.4, h * 25.4);
+        Some(match self {
+            PageSize::None => return None,
+            PageSize::A5 => mm(210.0, 148.0),
+            PageSize::A4 => mm(297.0, 210.0),
+            PageSize::A3 => mm(420.0, 297.0),
+            PageSize::A2 => mm(594.0, 420.0),
+            PageSize::A1 => mm(841.0, 594.0),
+            PageSize::A0 => mm(1189.0, 841.0),
+            PageSize::Letter => inch(11.0, 8.5),
+            PageSize::Legal => inch(14.0, 8.5),
+            PageSize::Tabloid => inch(17.0, 11.0),
+            PageSize::AnsiC => inch(22.0, 17.0),
+            PageSize::AnsiD => inch(34.0, 22.0),
+            PageSize::AnsiE => inch(44.0, 34.0),
+            PageSize::Custom { w, h } => Size { w, h },
+        })
+    }
+}
+
+impl Page {
+    /// The page's width and height (`None`: no page).
+    pub fn dimensions(&self) -> Option<Size> {
+        let s = self.size.landscape()?;
+        if self.portrait && !matches!(self.size, PageSize::Custom { .. }) {
+            Some(Size { w: s.h, h: s.w })
+        } else {
+            Some(s)
+        }
+    }
+
+    /// The page rectangle, from the origin (`None`: no page).
+    pub fn rect(&self) -> Option<Rect> {
+        self.dimensions().map(|s| Rect::from_points(Point::ZERO, Point::new(s.w, s.h)))
+    }
+}
+
+/// The title block of the drawing frame: free text, as written.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TitleBlock {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub date: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub revision: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub company: String,
+    /// Up to [`TitleBlock::COMMENTS`] comment lines.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub comments: Vec<String>,
+}
+
+impl TitleBlock {
+    pub const COMMENTS: usize = 9;
 }
 
 impl Sheet {
@@ -447,8 +585,32 @@ impl Schematic {
             parent: None,
             pos: Point::ZERO,
             size: Size::default(),
+            page: Page::default(),
+            title_block: Some(TitleBlock::default()),
         });
         s
+    }
+
+    /// The project's title block (on the root sheet).
+    pub fn title_block(&self) -> TitleBlock {
+        self.root_sheet().and_then(|r| self.sheets.get(r)).and_then(|s| s.title_block.clone()).unwrap_or_default()
+    }
+
+    /// Sheets in page order: the root first, then depth first with the sub-sheets of each
+    /// sheet sorted by name (the Project panel's order).
+    pub fn page_order(&self) -> Vec<Id> {
+        let mut out = Vec::new();
+        let mut stack: Vec<Id> = self.root_sheet().into_iter().collect();
+        while let Some(id) = stack.pop() {
+            if out.len() > self.sheets.len() {
+                break; // a cycle (invalid project); don't hang
+            }
+            out.push(id);
+            let mut children: Vec<&Sheet> = self.children(id).collect();
+            children.sort_by(|a, b| natural_cmp(&a.name, &b.name));
+            stack.extend(children.iter().rev().map(|s| s.id));
+        }
+        out
     }
 
     /// The root sheet (the one without a parent).
@@ -596,6 +758,11 @@ impl Schematic {
                 } else if !self.sheet_and_descendants(self.root_sheet().unwrap_or(p)).contains(&s.id) {
                     issues.push(format!("sheet {}: not below the root (cycle)", s.name));
                 }
+            }
+            if let PageSize::Custom { w, h } = s.page.size
+                && (w <= 0 || h <= 0)
+            {
+                issues.push(format!("sheet {}: the page needs a positive width and height", s.name));
             }
             if self.sheets.iter().any(|o| o.id != s.id && o.parent == s.parent && o.name == s.name) {
                 issues.push(format!("sheet name {} is used twice on one sheet", s.name));

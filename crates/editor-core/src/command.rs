@@ -149,6 +149,11 @@ pub enum Command {
     SetCopperLayers {
         count: u16,
     },
+    /// Replace the project's title block (shown in the frame of every sheet; kept on the
+    /// root sheet).
+    SetTitleBlock {
+        title_block: TitleBlock,
+    },
     /// Replace the design rules (track width, via size, clearance, …).
     SetDesignRules {
         rules: DesignRules,
@@ -249,6 +254,7 @@ impl Command {
             Command::AddVia { .. } => "Add via".into(),
             Command::SetCopperLayers { count } => format!("{count} copper layers"),
             Command::SetDesignRules { .. } => "Edit design rules".into(),
+            Command::SetTitleBlock { .. } => "Edit title block".into(),
             Command::Move { ids, .. } => format!("Move {} object(s)", ids.len()),
             Command::Rotate { ids, .. } => format!("Rotate {} object(s)", ids.len()),
             Command::Mirror { ids, .. } => format!("Mirror {} object(s)", ids.len()),
@@ -281,7 +287,15 @@ impl Command {
             Command::UpdateParts { parts } => update_parts(tx, parts),
             Command::AddSheet { parent, name, pos, size } => {
                 let parent = resolve_sheet(tx, parent)?;
-                let sheet = Sheet { id: Id::new(), name, parent: Some(parent), pos, size: size.unwrap_or(Sheet::SIZE) };
+                let sheet = Sheet {
+                    id: Id::new(),
+                    name,
+                    parent: Some(parent),
+                    pos,
+                    size: size.unwrap_or(Sheet::SIZE),
+                    page: Page::default(),
+                    title_block: None,
+                };
                 check_references(tx.project(), &Object::Sheet(sheet.clone()))?;
                 tx.insert(Object::Sheet(sheet)).map(drop)
             }
@@ -394,6 +408,24 @@ impl Command {
                 Ok(())
             }
             Command::SetCopperLayers { count } => set_copper_layers(tx, count),
+            Command::SetTitleBlock { mut title_block } => {
+                if title_block.comments.len() > TitleBlock::COMMENTS {
+                    return Err(CommandError::Invalid(format!(
+                        "a title block has at most {} comments",
+                        TitleBlock::COMMENTS
+                    )));
+                }
+                while title_block.comments.last().is_some_and(String::is_empty) {
+                    title_block.comments.pop();
+                }
+                let root = tx.project().schematic.root_sheet().ok_or(CommandError::Invalid("no root sheet".into()))?;
+                tx.update(ObjectId::Sheet(root), |o| {
+                    if let Object::Sheet(s) = o {
+                        s.title_block = Some(title_block);
+                    }
+                    Ok(())
+                })
+            }
             Command::SetDesignRules { rules } => {
                 if rules.track_width <= 0 || rules.via_drill <= 0 || rules.via_diameter <= rules.via_drill {
                     return Err(CommandError::Invalid(
@@ -1349,6 +1381,20 @@ fn check_sheet(p: &Project, s: &Sheet) -> Result<(), CommandError> {
     }
     if s.parent.is_some() && (s.size.w <= 0 || s.size.h <= 0) {
         return Err(CommandError::Invalid("a sheet symbol needs a width and a height".into()));
+    }
+    if let PageSize::Custom { w, h } = s.page.size
+        && (w <= 0 || h <= 0)
+    {
+        return Err(CommandError::Invalid("a custom page needs a positive width and height".into()));
+    }
+    match &s.title_block {
+        Some(_) if s.parent.is_some() => {
+            return Err(CommandError::Invalid("only the root sheet has a title block".into()));
+        }
+        Some(tb) if tb.comments.len() > TitleBlock::COMMENTS => {
+            return Err(CommandError::Invalid(format!("a title block has at most {} comments", TitleBlock::COMMENTS)));
+        }
+        _ => {}
     }
     Ok(())
 }

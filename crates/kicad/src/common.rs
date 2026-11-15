@@ -128,8 +128,10 @@ pub fn text(content: String, at: &Node, effects: Option<&Node>, flip_y: bool, an
     Some(t)
 }
 
-/// KiCad text markup: `~{RESET}` (overbar), `_{x}`, `^{x}` → plain text.
+/// KiCad text markup: `~{RESET}` (overbar), `_{x}`, `^{x}` → plain text, and KiCad's
+/// escapes (`{slash}`, `{lt}`, …) → their characters.
 pub fn plain(s: &str) -> String {
+    let s = &unescape(s);
     let mut out = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
     // For each open brace: whether it belongs to markup (and its `}` is dropped).
@@ -146,6 +148,34 @@ pub fn plain(s: &str) -> String {
             _ => {}
         }
         out.push(c);
+    }
+    out
+}
+
+/// KiCad escapes characters that mean something in net names and files as `{name}`.
+fn unescape(s: &str) -> String {
+    const ESCAPES: [(&str, &str); 14] = [
+        ("{slash}", "/"),
+        ("{backslash}", "\\"),
+        ("{dblquote}", "\""),
+        ("{quote}", "'"),
+        ("{lt}", "<"),
+        ("{gt}", ">"),
+        ("{bar}", "|"),
+        ("{comma}", ","),
+        ("{colon}", ":"),
+        ("{space}", " "),
+        ("{dollar}", "$"),
+        ("{tab}", "\t"),
+        ("{return}", "\n"),
+        ("{brace}", "{"),
+    ];
+    if !s.contains('{') {
+        return s.to_string();
+    }
+    let mut out = s.to_string();
+    for (from, to) in ESCAPES {
+        out = out.replace(from, to);
     }
     out
 }
@@ -212,6 +242,8 @@ mod tests {
         assert_eq!(plain("V_{CC}"), "VCC");
         assert_eq!(plain("${REFERENCE}"), "${REFERENCE}");
         assert_eq!(plain("~{CS}_{${X}}"), "CS${X}");
+        assert_eq!(plain("GPIO2{slash}SDA1"), "GPIO2/SDA1");
+        assert_eq!(plain("~{A{slash}B}"), "A/B");
         assert!(glob("SOIC*3.9x4.9mm*P1.27mm*", "SOIC-8_3.9x4.9mm_P1.27mm"));
         assert!(glob("R_*", "r_0603_1608Metric"));
         assert!(!glob("DIP*W7.62mm*", "SOIC-8"));

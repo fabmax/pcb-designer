@@ -39,6 +39,12 @@ fn import_replaces_the_project_and_saves() {
     assert!(!project.board.tracks.is_empty() && !project.board.zones.is_empty());
     let components = project.schematic.components.len();
 
+    let summary = call(&mut host, Request::Project).unwrap();
+    let root = &summary["sheets"][0];
+    assert_eq!(root["title_block"]["title"], "Hier test", "{root}");
+    assert_eq!(root["page"]["size"], "a4", "{root}");
+    assert_eq!(root["page_rect"]["max"][1], 210_000_000, "{root}");
+
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("hier.pcbproj");
     call(&mut host, Request::Save { path: Some(out.clone()) }).unwrap();

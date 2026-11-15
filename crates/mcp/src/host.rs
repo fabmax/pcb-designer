@@ -658,8 +658,12 @@ fn sheet_summary(p: &Project, s: &Sheet) -> Value {
         "id": s.id,
         "path": p.schematic.display_path(s.id),
         "symbols": p.schematic.symbols.iter().filter(|y| y.sheet == s.id).count(),
+        "page": s.page,
+        "page_rect": s.page.rect().map(|r| json!({ "min": r.min, "max": r.max })),
     });
-    if !s.is_root() {
+    if s.is_root() {
+        v["title_block"] = json!(p.schematic.title_block());
+    } else {
         let (rect, pins) = s.layout(&p.schematic.hier_ports(s.id));
         v["symbol"] = json!({ "min": rect.min, "max": rect.max });
         v["pins"] = pins

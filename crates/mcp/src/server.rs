@@ -63,7 +63,9 @@ left edge, the others on the right, from the top down in name order, 2.54 mm apa
 get_project lists them with their positions); wire them on the parent sheet like \
 component pins. screenshot, \
 get_selection and set_selection take a sheet too. Reference designators are unique \
-across all sheets.
+across all sheets. Each sheet has a page (A4 landscape by default; size none for no frame) \
+whose lower left corner is the origin: keep objects inside page_rect. update a sheet's page \
+to change it; set_title_block edits the title block shown on every sheet.
 
 Schematic and board are linked: placing a part creates its footprint on the board automatically \
 (in a staging area right of the board outline), deleting the component removes it. Footprints \

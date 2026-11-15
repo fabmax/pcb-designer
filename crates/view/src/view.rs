@@ -96,6 +96,7 @@ pub struct LayerEntry {
 }
 
 struct SchLayers {
+    frame: RLayer,
     body_fill: RLayer,
     body: RLayer,
     pins: RLayer,
@@ -154,6 +155,8 @@ const NET_ITEM: u64 = (3 << 62) | 2;
 const PROBE_ITEM: u64 = (3 << 62) | 3;
 /// Design rule violation markers.
 const DRC_ITEM: u64 = (3 << 62) | 4;
+/// The drawing frame of a schematic sheet.
+const FRAME_ITEM: u64 = (3 << 62) | 5;
 
 fn overlay_item(id: ObjectId, hover: bool) -> u64 {
     item(id) | if hover { 2 << 62 } else { 1 << 62 }
@@ -187,6 +190,7 @@ impl View {
         let layers = match kind {
             ViewKind::Schematic => {
                 let l = SchLayers {
+                    frame: scene.add_layer("Frame"),
                     body_fill: scene.add_layer("Symbol fill"),
                     body: scene.add_layer("Symbols"),
                     pins: scene.add_layer("Pins"),
@@ -263,6 +267,7 @@ impl View {
                 e(l.wires, Some(p.sch_wire), 1),
                 e(l.labels, Some(p.sch_label), 1),
                 e(l.text, Some(p.sch_text), 1),
+                e(l.frame, Some(p.sch_frame), 2),
             ],
             Layers::Board(b) => {
                 let board = |id: LayerId, group| e(b.map[&id], Some(board_layer_color(id)), group);
@@ -347,6 +352,18 @@ impl View {
         for id in ids {
             self.redraw(project, id);
         }
+        self.draw_frame(project);
+    }
+
+    /// The sheet's drawing frame (it shows the title block, sheet names and the page count,
+    /// so any sheet change redraws it).
+    fn draw_frame(&mut self, project: &Project) {
+        let (Layers::Sch(l), Some(sheet)) = (&self.layers, self.id.sheet()) else { return };
+        let mut p = std::mem::take(&mut self.painter);
+        p.clear();
+        crate::frame::draw(project, sheet, l.frame, &mut p);
+        self.scene.set_item(FRAME_ITEM, p.out.drain(..));
+        self.painter = p;
     }
 
     /// Update after a command, undo or redo: [`apply_objects`](Self::apply_objects), then
@@ -406,6 +423,9 @@ impl View {
             if seen.insert(id) {
                 self.redraw(project, id);
             }
+        }
+        if changes.ids().any(|id| id.kind() == ObjectKind::Sheet) {
+            self.draw_frame(project);
         }
     }
 
@@ -522,6 +542,8 @@ impl View {
                         parent: None,
                         pos: rect.min,
                         size: Size { w: rect.width(), h: rect.height() },
+                        page: Page::default(),
+                        title_block: None,
                     };
                     draw_sheet_symbol(&project.schematic, &sheet, l, &mut p);
                 }

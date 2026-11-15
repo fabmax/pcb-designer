@@ -53,6 +53,9 @@ pub struct Palette {
     pub sch_no_connect: Color,
     /// Bus wires and bus entries.
     pub sch_bus: Color,
+    /// The drawing frame (border, zone grid, title block) and the paper's edge.
+    pub sch_frame: Color,
+    pub sch_page: Color,
 
     pub selection: Color,
     pub selection_fill: Color,
@@ -113,6 +116,8 @@ pub static DARK: Palette = Palette {
     sch_junction: Color::rgb(0x5f, 0xd3, 0xa0),
     sch_no_connect: Color::rgb(0x70, 0x9c, 0xf2),
     sch_bus: Color::rgb(0x7c, 0x8a, 0xff),
+    sch_frame: Color::rgb(0xa0, 0x78, 0x7c),
+    sch_page: Color::rgb(0x34, 0x38, 0x42),
 
     selection: Color::rgba(0x4c, 0x9a, 0xff, 0xe0),
     selection_fill: Color::rgba(0x4c, 0x9a, 0xff, 0x28),
@@ -170,6 +175,8 @@ pub static LIGHT: Palette = Palette {
     sch_junction: Color::rgb(0x0f, 0x7a, 0x4a),
     sch_no_connect: Color::rgb(0x1f, 0x4c, 0xc4),
     sch_bus: Color::rgb(0x22, 0x30, 0xa0),
+    sch_frame: Color::rgb(0x9a, 0x3c, 0x44),
+    sch_page: Color::rgb(0xd2, 0xd0, 0xc8),
 
     selection: Color::rgba(0x1f, 0x6f, 0xe0, 0xe0),
     selection_fill: Color::rgba(0x1f, 0x6f, 0xe0, 0x22),

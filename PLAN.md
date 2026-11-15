@@ -46,6 +46,13 @@ things to do **later**.
   have no `/`; `sheet_path` is `/Power/Regulator` (empty for the root, as in net names),
   `display_path` shows the root as `/`, `find_sheet` takes an id, a path or a unique
   name. `sheet_of(id)` is where an object is drawn (a sheet's symbol: its parent).
+- Pages: every sheet has a `Page` (`PageSize`: ISO A5–A0, US Letter/Legal/Tabloid, ANSI
+  C–E, `Custom {w, h}`, or `None` for no frame; plus `portrait`), its lower left corner
+  at the origin, so content on the page has positive coordinates. The project's
+  `TitleBlock` (title, date, revision, company, up to 9 comments, free text) lives on
+  the root sheet so that `update` and undo cover it; `Schematic::title_block()` reads
+  it, `SetTitleBlock` writes it. `page_order` numbers pages: root first, then depth
+  first with sub-sheets in `natural_cmp` name order (the Project panel's order).
 - Board: `FootprintInstance` stores only the placement; the footprint comes from the
   component's variant, so variant swaps need no board edit. Copper layers 0 (top)…63,
   technical layers from 100.
@@ -272,6 +279,12 @@ things to do **later**.
   leave out the fill layer and cover bodies with a translucent rectangle instead. An R*-tree does hit testing (thin
   beats body, small body beats large) and box selection. `ItemView` does the same for a
   single symbol or footprint.
+- The drawing frame (`frame.rs`): paper edge, border with zone grid (zones divide the
+  border evenly, about 50 mm each) and the title block (110 × 32 mm, close to KiCad's
+  default so text KiCad users put in its comment area lands there here too). One scene
+  item on the "Frame" layer, not in the R-tree (not selectable); redrawn on any sheet
+  change, since it shows the title block, sheet names and the page count. Fit to view
+  includes it (scene bounds).
 - Library edits redraw only their users (`View::users_of`): symbols depend on symbol,
   part and the component's footprint (pad names); footprints on footprint and part.
   Edits that don't change drawing (name, prefix…) redraw nothing.
@@ -358,7 +371,10 @@ things to do **later**.
     dropped. Every sheet instance becomes a sheet (reused files get ids derived from the
     instance path); sheet pins are laid out by name here, so wires ending on KiCad's pin
     positions are stretched to ours. Refdes from the symbol's `instances`, else the root
-    `symbol_instances` (KiCad 6), else the Reference property.
+    `symbol_instances` (KiCad 6), else the Reference property. Each file's `paper`
+    becomes its sheets' page and `to_pages` lifts the content by the page height (KiCad
+    pages hang down from the origin). The root file's `title_block` is the project's.
+    `common::plain` also undoes KiCad's `{slash}`-style escapes.
   - Board: pad and text angles in `.kicad_pcb` are absolute (minus the footprint's
     orientation). Back footprints are stored mirrored: un-mirrored (negate y and angles,
     swap F./B. layers and chamfer corners), then placed with rotation + 180 on the
@@ -506,11 +522,15 @@ defers.
 
 **Schematic**
 - KiCad project export. Import gaps (counted in the import report today): schematic
-  graphics, images, text boxes, tables and rule areas; title block and text variables;
+  graphics, images, text boxes, tables and rule areas; text variables (`${TITLE}` etc. in
+  texts stay as written; the frame shows the title block);
   bus aliases; directive labels (net class flags); per-instance symbol field positions
   (fields follow the symbol); stored sheet pin positions (laid out by name); reused
   sheets are duplicated (no reuse here); bus entries of unusual sizes.
 - Multi-line text: the font stacks lines, but the Text properties field is single-line.
+- Drawing frames: custom KiCad drawing sheets (`.kicad_wks`; the default frame is used),
+  an "update the date on save" option, text variables in schematic texts, printing and
+  PDF export of the pages.
 - GPU scenes of closed sheet canvases stay allocated until the app quits
   (`CanvasResources::scenes` is never pruned).
 - After sheets: re-parenting sheets, moving objects between sheets, hierarchical bus
@@ -562,6 +582,7 @@ defers.
   keepouts inside footprints; keepouts enforced while routing.
 - Arc outlines in zone fills (circles are 16–64-segment polygons today).
 - Exact courtyard polygons in DRC (bounding boxes today).
+- A board drawing frame / fabrication drawing.
 - Per-net clearance classes (KiCad net classes other than Default are only listed by the
   import).
 - From KiCad board import (skipped and counted today): dimensions, groups, images, text
