@@ -147,7 +147,8 @@ sub-sheets along (after asking). Reference designators are unique across all she
 Each sheet is drawn on a page with a frame: a zone grid and a title block. With nothing
 selected, Properties shows the sheet's page (A5–A0, US and ANSI sizes, custom, or None
 for no frame; landscape or portrait) and the project's title block (title, date,
-revision, company, comments), which every sheet's frame shows with its page number.
+revision, company and a comment), which every sheet's frame shows with its page number.
+The comment field wraps in the panel; only its line breaks start new lines in the frame.
 Local labels connect on their sheet only (nets are named `/Sheet/NAME`), global and power
 labels everywhere. Power ports (Power tool, P) are drawn like KiCad's power symbols: pick
 the glyph (bar, arrow, circle, ground, signal ground, chassis, protective earth) in the

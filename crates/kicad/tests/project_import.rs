@@ -46,7 +46,7 @@ fn hierarchical_routed_project() {
     }
     let tb = p.schematic.title_block();
     assert_eq!((tb.title.as_str(), tb.date.as_str(), tb.revision.as_str()), ("Hier test", "2026-11-15", "B"));
-    assert_eq!((tb.company.as_str(), tb.comments.clone()), ("ACME", vec![String::new(), "second".into()]));
+    assert_eq!((tb.company.as_str(), tb.comment.as_str()), ("ACME", "\nsecond"));
     assert!(!report.contains("title block"), "{report}");
 
     // Nets as KiCad has them (power port included).

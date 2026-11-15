@@ -76,6 +76,19 @@ impl Properties {
         (r.lost_focus() && buf != current).then(|| buf.clone())
     }
 
+    /// Multi-line text field (Enter adds a line), committed on focus loss.
+    fn multiline(&mut self, ui: &mut egui::Ui, target: ObjectId, label: &'static str, current: &str) -> Option<String> {
+        let id = ui.make_persistent_id((target, label));
+        let focused = ui.memory(|m| m.has_focus(id));
+        let buf = self.texts.entry((target, label)).or_insert_with(|| current.to_string());
+        if !focused {
+            buf.clear();
+            buf.push_str(current);
+        }
+        let r = ui.add(egui::TextEdit::multiline(buf).id(id).desired_rows(3).desired_width(f32::INFINITY));
+        (r.lost_focus() && buf != current).then(|| buf.clone())
+    }
+
     /// Length in the display unit, edited by dragging or typing; at least `min` mm.
     /// Returns the new value in nm.
     fn length(&mut self, ui: &mut egui::Ui, value: Coord, min: f64) -> Option<Coord> {
@@ -162,17 +175,6 @@ impl Properties {
 
     /// The project's title block (the same on every sheet). `target` keys the text fields.
     fn title_block(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, target: ObjectId) {
-        const COMMENTS: [&str; TitleBlock::COMMENTS] = [
-            "Comment 1",
-            "Comment 2",
-            "Comment 3",
-            "Comment 4",
-            "Comment 5",
-            "Comment 6",
-            "Comment 7",
-            "Comment 8",
-            "Comment 9",
-        ];
         ui.add_space(10.0);
         heading(ui, "Title block", "all sheets");
         let mut tb = cx.doc.project().schematic.title_block();
@@ -191,17 +193,13 @@ impl Properties {
                 }
                 ui.end_row();
             }
-            // The comments so far and one more.
-            let shown = (tb.comments.len() + 1).min(TitleBlock::COMMENTS);
-            tb.comments.resize(shown, String::new());
-            for (i, name) in COMMENTS.iter().enumerate().take(shown) {
-                label(ui, name);
-                if let Some(v) = self.text(ui, target, name, &tb.comments[i].clone()) {
-                    tb.comments[i] = v;
-                    changed = true;
-                }
-                ui.end_row();
+            // Soft-wrapped here; only its line breaks start lines in the frame.
+            label(ui, "Comment");
+            if let Some(v) = self.multiline(ui, target, "Comment", &tb.comment.clone()) {
+                tb.comment = v;
+                changed = true;
             }
+            ui.end_row();
         });
         if changed {
             self.run(cx, Command::SetTitleBlock { title_block: tb }, false);

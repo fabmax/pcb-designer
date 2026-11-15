@@ -144,7 +144,7 @@ fn title_block(project: &Project, sheet: Id, inner: Rect, layer: LayerId, p: &mu
 
     // Company and comments, top down: comments 1… then the company.
     let line_h = mm(3.2);
-    let mut lines: Vec<&str> = tb.comments.iter().map(String::as_str).collect();
+    let mut lines: Vec<&str> = if tb.comment.is_empty() { Vec::new() } else { tb.comment.lines().collect() };
     lines.push(&tb.company);
     let top = (inner.min.y + TITLE_HEIGHT).max(y + line_h * lines.len() as Coord + pad);
     for (i, l) in lines.iter().enumerate() {

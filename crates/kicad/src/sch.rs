@@ -155,17 +155,27 @@ impl Loader<'_> {
 fn title_block(node: &Node) -> TitleBlock {
     let Some(tb) = node.child("title_block") else { return TitleBlock::default() };
     let text = |key: &str| tb.child(key).and_then(|c| c.arg(0)).unwrap_or("").to_string();
-    let mut comments = vec![String::new(); TitleBlock::COMMENTS];
+    // KiCad's numbered comments (1–9) become lines, gaps kept as empty lines.
+    let mut comments: Vec<String> = Vec::new();
     for c in tb.children("comment") {
         let n = c.num(0).unwrap_or(0.0) as usize;
-        if (1..=TitleBlock::COMMENTS).contains(&n) {
+        if (1..=9).contains(&n) {
+            if comments.len() < n {
+                comments.resize(n, String::new());
+            }
             comments[n - 1] = c.arg(1).unwrap_or("").to_string();
         }
     }
     while comments.last().is_some_and(String::is_empty) {
         comments.pop();
     }
-    TitleBlock { title: text("title"), date: text("date"), revision: text("rev"), company: text("company"), comments }
+    TitleBlock {
+        title: text("title"),
+        date: text("date"),
+        revision: text("rev"),
+        company: text("company"),
+        comment: comments.join("\n"),
+    }
 }
 
 /// KiCad pages hang down from the origin (y down, so negative y here); ours stand on it.

@@ -49,7 +49,8 @@ things to do **later**.
 - Pages: every sheet has a `Page` (`PageSize`: ISO A5–A0, US Letter/Legal/Tabloid, ANSI
   C–E, `Custom {w, h}`, or `None` for no frame; plus `portrait`), its lower left corner
   at the origin, so content on the page has positive coordinates. The project's
-  `TitleBlock` (title, date, revision, company, up to 9 comments, free text) lives on
+  `TitleBlock` (title, date, revision, company and a multi-line comment, free text; the
+  comment's line breaks are its lines in the frame, KiCad's comments 1–9 become lines) lives on
   the root sheet so that `update` and undo cover it; `Schematic::title_block()` reads
   it, `SetTitleBlock` writes it. `page_order` numbers pages: root first, then depth
   first with sub-sheets in `natural_cmp` name order (the Project panel's order).

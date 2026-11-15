@@ -408,16 +408,7 @@ impl Command {
                 Ok(())
             }
             Command::SetCopperLayers { count } => set_copper_layers(tx, count),
-            Command::SetTitleBlock { mut title_block } => {
-                if title_block.comments.len() > TitleBlock::COMMENTS {
-                    return Err(CommandError::Invalid(format!(
-                        "a title block has at most {} comments",
-                        TitleBlock::COMMENTS
-                    )));
-                }
-                while title_block.comments.last().is_some_and(String::is_empty) {
-                    title_block.comments.pop();
-                }
+            Command::SetTitleBlock { title_block } => {
                 let root = tx.project().schematic.root_sheet().ok_or(CommandError::Invalid("no root sheet".into()))?;
                 tx.update(ObjectId::Sheet(root), |o| {
                     if let Object::Sheet(s) = o {
@@ -1390,9 +1381,6 @@ fn check_sheet(p: &Project, s: &Sheet) -> Result<(), CommandError> {
     match &s.title_block {
         Some(_) if s.parent.is_some() => {
             return Err(CommandError::Invalid("only the root sheet has a title block".into()));
-        }
-        Some(tb) if tb.comments.len() > TitleBlock::COMMENTS => {
-            return Err(CommandError::Invalid(format!("a title block has at most {} comments", TitleBlock::COMMENTS)));
         }
         _ => {}
     }

@@ -162,13 +162,10 @@ pub struct TitleBlock {
     pub revision: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub company: String,
-    /// Up to [`TitleBlock::COMMENTS`] comment lines.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub comments: Vec<String>,
-}
-
-impl TitleBlock {
-    pub const COMMENTS: usize = 9;
+    /// Free text above the company; each line break starts a line in the frame (the
+    /// user keeps it short enough to fit).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub comment: String,
 }
 
 impl Sheet {

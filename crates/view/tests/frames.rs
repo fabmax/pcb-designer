@@ -62,8 +62,13 @@ fn the_title_block_is_shared_and_undoable() {
     assert_eq!(doc.project().schematic.title_block(), TitleBlock::default());
     assert_eq!(instances(&doc, root), root_before);
 
-    let too_many = TitleBlock { comments: vec!["x".into(); 10], ..Default::default() };
-    assert!(doc.execute(Command::SetTitleBlock { title_block: too_many }).is_err());
+    // Each line of the comment is a line in the frame: more lines, more strokes.
+    let one = TitleBlock { comment: "AB".into(), ..Default::default() };
+    doc.execute(Command::SetTitleBlock { title_block: one }).unwrap();
+    let after_one = instances(&doc, root);
+    let two = TitleBlock { comment: "AB\nAB".into(), ..Default::default() };
+    doc.execute(Command::SetTitleBlock { title_block: two }).unwrap();
+    assert!(instances(&doc, root) > after_one);
 }
 
 #[test]
