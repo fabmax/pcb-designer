@@ -214,7 +214,8 @@ impl Properties {
             Object::Symbol(s) => self.symbol(ui, cx, s),
             Object::Footprint(f) => self.footprint(ui, cx, f),
             Object::Sheet(mut sh) => {
-                let path = cx.doc.project().schematic.display_path(sh.id);
+                // Sub-sheets show their path; the root's ("/") says nothing.
+                let path = if sh.is_root() { String::new() } else { cx.doc.project().schematic.display_path(sh.id) };
                 heading(ui, "Sheet", &path);
                 grid(ui, |ui| {
                     label(ui, "Name");
