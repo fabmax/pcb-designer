@@ -109,8 +109,10 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
 - More flags:
   - `--side-by-side`
   - `--select R1`
-  - `--show footprint:SOIC-8` (opens an item of the last library, with `--demo` the demo
-    parts; `--show gerber` opens the Gerber tab of a saved project with an export)
+  - `--show footprint:SOIC-8` (opens an item by name, searching the libraries from the
+    last loaded one: with `--demo` the demo parts, then the built-in library, e.g.
+    `--show part:74HC00`; `--show gerber` opens the Gerber tab of a saved project with an
+    export)
   - `--panel messages` (repeatable; shows a panel for this run only, see `dock.rs`)
   - `--script "board; ui-click X,Y; ui-move X,Y; key W; click X,Y; wait N"`, plus
     `ui-double-click X,Y`, `ui-right-click X,Y` and `type TEXT`. Keys take modifiers

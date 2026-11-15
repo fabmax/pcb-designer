@@ -1127,22 +1127,25 @@ impl PcbApp {
         }
     }
 
-    /// Open a part, symbol or footprint by name in the last library (development aid).
+    /// Open a part, symbol or footprint by name, searching the libraries from the last
+    /// loaded one (development aid).
     fn show_by_name(&mut self, name: &str) {
-        let Some(l) = self.libraries.last_mut() else { return };
-        let lib = l.lib.library();
         // "symbol:NAME" / "footprint:NAME" / "part:NAME", or the first match of NAME.
         let (kind, name) = name.split_once(':').unwrap_or(("", name));
-        let part = lib.parts.iter().find(|p| p.name == name).filter(|_| matches!(kind, "" | "part"));
-        let symbol = lib.symbols.iter().find(|s| s.name == name).filter(|_| matches!(kind, "" | "symbol"));
-        let footprint = lib.footprints.iter().find(|f| f.name == name).filter(|_| matches!(kind, "" | "footprint"));
-        let open = if let Some(p) = part {
-            Open::Part(p.id)
-        } else if let Some(s) = symbol {
-            Open::Item(Item::Symbol(s.id))
-        } else if let Some(f) = footprint {
-            Open::Item(Item::Footprint(f.id))
-        } else {
+        let find = |lib: &Library| {
+            let part = lib.parts.iter().find(|p| p.name == name).filter(|_| matches!(kind, "" | "part"));
+            let symbol = lib.symbols.iter().find(|s| s.name == name).filter(|_| matches!(kind, "" | "symbol"));
+            let footprint = lib.footprints.iter().find(|f| f.name == name).filter(|_| matches!(kind, "" | "footprint"));
+            if let Some(p) = part {
+                Some(Open::Part(p.id))
+            } else if let Some(s) = symbol {
+                Some(Open::Item(Item::Symbol(s.id)))
+            } else {
+                footprint.map(|f| Open::Item(Item::Footprint(f.id)))
+            }
+        };
+        let Some((l, open)) = self.libraries.iter_mut().rev().find_map(|l| find(l.lib.library()).map(|o| (l, o)))
+        else {
             return;
         };
         l.show(open);

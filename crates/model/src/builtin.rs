@@ -24,6 +24,7 @@ pub const PART_DIODE: Id = bid(0x500);
 pub const PART_NPN: Id = bid(0x600);
 pub const PART_OPAMP: Id = bid(0x700);
 pub const PART_MOUNTING_HOLE: Id = bid(0x800);
+pub const PART_74HC00: Id = bid(0x900);
 
 const LINE: Coord = 254_000; // 0.254 mm symbol line width
 const G: f64 = 2.54;
@@ -306,7 +307,168 @@ pub fn builtin_library() -> Library {
     add_npn(&mut lib);
     add_opamp(&mut lib);
     add_mounting_hole(&mut lib);
+    add_74hc00(&mut lib);
     lib
+}
+
+/// 74HC00, quad 2-input NAND: four gate units (A–D) and a power unit (E), in DIP-14
+/// and SOIC-14. One symbol per unit, so each gate shows its own pin numbers.
+fn add_74hc00(lib: &mut Library) {
+    // (unit name, [(pin name, pad number)]): gates are A, B inputs and Y output.
+    let gates = [
+        ("A", [("A", 1), ("B", 2), ("Y", 3)]),
+        ("B", [("A", 4), ("B", 5), ("Y", 6)]),
+        ("C", [("A", 9), ("B", 10), ("Y", 8)]),
+        ("D", [("A", 12), ("B", 13), ("Y", 11)]),
+    ];
+    // Pin ids by unit: 0x9u0 + pin index; symbols 0x910 + unit.
+    let pin_id = |unit: usize, i: usize| bid(0x9000 + 0x10 * unit as u128 + i as u128);
+    let symbol_id = |unit: usize| bid(0x910 + unit as u128);
+    // NAND body: flat back at -1.5 G, a half circle of radius 1.5 G, the bubble after it.
+    let r = 1.5 * G;
+    let mut body = vec![Point::mm(0.0, -r), Point::mm(-r, -r), Point::mm(-r, r), Point::mm(0.0, r)];
+    body.extend((1..16).map(|i| {
+        let a = std::f64::consts::FRAC_PI_2 - std::f64::consts::PI * i as f64 / 16.0;
+        Point::mm(r * a.cos(), r * a.sin())
+    }));
+    let bubble = 0.635;
+    let mut units = Vec::new();
+    let mut pads_of: Vec<(Id, usize, u32)> = Vec::new(); // (pin, pad number, unit)
+    for (u, (unit, pins)) in gates.iter().enumerate() {
+        let gate_pin = |i: usize| {
+            let (name, number) = pins[i];
+            let (pos, direction, length, kind) = match name {
+                "A" => (Point::mm(-3.0 * G, G), Angle::ZERO, mm(3.0 * G - r), PinKind::Input),
+                "B" => (Point::mm(-3.0 * G, -G), Angle::ZERO, mm(3.0 * G - r), PinKind::Input),
+                _ => (Point::mm(3.0 * G, 0.0), Angle::DEG180, mm(3.0 * G - r - 2.0 * bubble), PinKind::Output),
+            };
+            Pin { number: number.to_string(), kind, ..pin(pin_id(u, i), name, pos, direction, length) }
+        };
+        lib.symbols.insert(Symbol {
+            id: symbol_id(u),
+            name: format!("74HC00 {unit}"),
+            graphics: vec![
+                Shape::Polygon { points: body.clone(), width: LINE, fill: true },
+                Shape::Circle { center: Point::mm(r + bubble, 0.0), radius: mm(bubble), width: LINE, fill: false },
+            ],
+            texts: ref_value_texts(r + 0.5, -r - 0.5),
+            pins: (0..3).map(gate_pin).collect(),
+        });
+        units.push(PartUnit { name: unit.to_string(), symbol: symbol_id(u) });
+        pads_of.extend(pins.iter().enumerate().map(|(i, &(_, n))| (pin_id(u, i), n, u as u32)));
+    }
+    // Power unit: VCC (14) on top, GND (7) below.
+    let power = [("VCC", 14, G * 2.5, Angle::DEG270), ("GND", 7, -G * 2.5, Angle::DEG90)];
+    lib.symbols.insert(Symbol {
+        id: symbol_id(4),
+        name: "74HC00 E".into(),
+        graphics: vec![Shape::rect(Point::mm(-G, -1.5 * G), Point::mm(G, 1.5 * G), LINE)],
+        texts: vec![
+            Text::new("${REF}", Point::mm(1.5 * G, 0.5), mm(1.27)).aligned(HAlign::Left, VAlign::Bottom),
+            Text::new("${VALUE}", Point::mm(1.5 * G, -0.5), mm(1.27)).aligned(HAlign::Left, VAlign::Top),
+        ],
+        pins: power
+            .iter()
+            .enumerate()
+            .map(|(i, &(name, number, y, dir))| Pin {
+                number: number.to_string(),
+                kind: PinKind::PowerIn,
+                show_name: true,
+                ..pin(pin_id(4, i), name, Point::mm(0.0, y), dir, mm(G))
+            })
+            .collect(),
+    });
+    units.push(PartUnit { name: "E".into(), symbol: symbol_id(4) });
+    pads_of.extend(power.iter().enumerate().map(|(i, &(_, n, _, _))| (pin_id(4, i), n, 4)));
+
+    // Pins 1-7 on the left (top to bottom), 8-14 on the right (bottom to top).
+    let dual_row = |pad_ids: &[Id], x: f64, pitch: f64, pad: &dyn Fn(Id, &str, f64, f64) -> Pad| -> Vec<Pad> {
+        (0..14)
+            .map(|i| {
+                let (x, y) = if i < 7 {
+                    (-x, 3.0 * pitch - i as f64 * pitch)
+                } else {
+                    (x, -3.0 * pitch + (i - 7) as f64 * pitch)
+                };
+                pad(pad_ids[i], &(i + 1).to_string(), x, y)
+            })
+            .collect()
+    };
+    let dip_pads: Vec<Id> = (0..14).map(|i| bid(0x1901 + i)).collect();
+    let tht = |id: Id, name: &str, x: f64, y: f64| Pad {
+        back: false,
+        mask: true,
+        paste: false,
+        id,
+        name: name.into(),
+        pos: Point::mm(x, y),
+        rotation: Angle::ZERO,
+        size: Size::mm(1.6, 1.6),
+        shape: if name == "1" { PadShape::Rect } else { PadShape::Oval },
+        kind: PadKind::ThroughHole { drill: Size::square(mm(0.8)) },
+    };
+    let mut dip = smd_footprint(
+        bid(0x1900),
+        "DIP-14",
+        "DIP-14, 7.62 mm row spacing, 2.54 mm pitch",
+        dual_row(&dip_pads, 3.81, 2.54, &tht),
+        (6.35, 19.05),
+        (9.8, 19.6),
+    );
+    dip.graphics.push(FootprintGraphic {
+        back: false,
+        layer: FootprintLayer::Silkscreen,
+        shape: Shape::rect(Point::mm(-2.6, -9.65), Point::mm(2.6, 9.65), mm(0.12)),
+    });
+    dip.graphics.push(FootprintGraphic {
+        back: false,
+        layer: FootprintLayer::Silkscreen,
+        shape: Shape::Arc {
+            center: Point::mm(0.0, 9.65),
+            radius: mm(1.0),
+            start: Angle::DEG180,
+            sweep: 180.0,
+            width: mm(0.12),
+        },
+    });
+    let soic_pads: Vec<Id> = (0..14).map(|i| bid(0x1a01 + i)).collect();
+    let smd = |id: Id, name: &str, x: f64, y: f64| smd_pad(id, name, x, y, Size::mm(1.95, 0.6));
+    let mut soic = smd_footprint(
+        bid(0x1a00),
+        "SOIC-14",
+        "SOIC-14, 3.9 mm body, 1.27 mm pitch",
+        dual_row(&soic_pads, 2.475, 1.27, &smd),
+        (3.9, 8.65),
+        (7.4, 9.2),
+    );
+    soic.graphics.push(FootprintGraphic {
+        back: false,
+        layer: FootprintLayer::Silkscreen,
+        shape: Shape::Circle { center: Point::mm(-3.6, 4.4), radius: mm(0.15), width: 0, fill: true },
+    });
+    let variant = |id: Id, fp: &Footprint, pad_ids: &[Id]| PartVariant {
+        id,
+        name: fp.name.clone(),
+        footprint: Some(fp.id),
+        connections: pads_of
+            .iter()
+            .map(|&(pin, number, unit)| PadConnection { pad: pad_ids[number - 1], unit, pin })
+            .collect(),
+    };
+    let variants = vec![variant(bid(0x920), &dip, &dip_pads), variant(bid(0x921), &soic, &soic_pads)];
+    lib.parts.insert(Part {
+        id: PART_74HC00,
+        name: "74HC00".into(),
+        description: "Quad 2-input NAND gate".into(),
+        prefix: "U".into(),
+        default_value: "74HC00".into(),
+        units,
+        variants,
+        properties: Default::default(),
+        source: None,
+    });
+    lib.footprints.insert(dip);
+    lib.footprints.insert(soic);
 }
 
 /// M3 mounting hole: a board part (no symbol), a plated 3.2 mm hole with a 6 mm pad.
@@ -606,7 +768,7 @@ mod tests {
     fn builtin_library_is_consistent() {
         let lib = builtin_library();
         assert_eq!(lib.validate(), Vec::<String>::new());
-        assert_eq!(lib.parts.len(), 8);
+        assert_eq!(lib.parts.len(), 9);
         // Ids are deterministic.
         assert_eq!(builtin_library(), lib);
     }
@@ -638,5 +800,35 @@ mod tests {
         assert_eq!(got, ["2", "3", "4", "6", "7"]);
         // Name matching finds nothing here: the mapping UI's "Map by name" is not enough.
         assert!(lib.map_by_name(&part.units, fp.id).is_empty());
+    }
+
+    #[test]
+    fn hc00_pinout() {
+        let lib = builtin_library();
+        let part = lib.parts.get(PART_74HC00).unwrap();
+        assert_eq!(part.units.len(), 5);
+        assert_eq!(part.variants.len(), 2);
+        for v in &part.variants {
+            let fp = lib.footprints.get(v.footprint.unwrap()).unwrap();
+            assert_eq!(v.connections.len(), 14, "{}", v.name);
+            // Every pin goes to the pad of its number.
+            for c in &v.connections {
+                let sym = lib.symbols.get(part.units[c.unit as usize].symbol).unwrap();
+                let pin = sym.pins.get(c.pin).unwrap();
+                assert_eq!(fp.pads.get(c.pad).unwrap().name, pin.number, "{}", v.name);
+            }
+        }
+        // Gate C's output is pin 8; the power unit has VCC 14 and GND 7.
+        let pins = |u: usize| {
+            lib.symbols
+                .get(part.units[u].symbol)
+                .unwrap()
+                .pins
+                .iter()
+                .map(|p| (p.name.clone(), p.number.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert!(pins(2).contains(&("Y".into(), "8".into())));
+        assert_eq!(pins(4), [("VCC".into(), "14".into()), ("GND".into(), "7".into())]);
     }
 }

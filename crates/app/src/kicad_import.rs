@@ -432,7 +432,7 @@ impl KicadImport {
         }
         let mut open = self.open;
         let action =
-            theme::window(ctx, "Import KiCad parts", &mut open, [980.0, 620.0], |ui| self.contents(ui, libraries));
+            theme::window(ctx, "Import KiCad parts", &mut open, [980.0, 780.0], |ui| self.contents(ui, libraries));
         self.open = open;
         action.flatten()
     }
