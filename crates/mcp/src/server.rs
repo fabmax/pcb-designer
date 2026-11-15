@@ -70,7 +70,10 @@ Schematic and board are linked: placing a part creates its footprint on the boar
 cannot be created or deleted directly, only moved/rotated/flipped. The exception are board \
 parts: parts without symbol (units: []; mounting holes, logos, fiducials) are placed with \
 place_board_part (part, pos, rotation, side) and deleted on the board; their pads have no net, so \
-copper of a net touching them is a short. Schematic connectivity is \
+copper of a net touching them is a short. Each footprint has its own reference/value texts \
+(kind footprint_field: text ${REF} or ${VALUE} in footprint coordinates, layer, hidden); \
+move or rotate them, or update them (size, hidden); they move with their footprint and can't \
+be deleted. Schematic connectivity is \
 by wire endpoints touching pin ends and by labels with equal names, scoped as in KiCad: add_label \
 kind local (default; same sheet, net named /NAME, or /Sheet/NAME below the root), global (all \
 sheets, plain name; shape input/output/bidirectional/tri_state/passive), hierarchical (to the \

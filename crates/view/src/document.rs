@@ -454,7 +454,26 @@ impl Target for ProjectTarget<'_> {
                 }
             },
             Edit::Delete { ids } => {
-                let (footprints, ids): (Vec<ObjectId>, Vec<ObjectId>) = ids.into_iter().partition(is_fp);
+                // Footprint texts can only be hidden (in Properties).
+                let (fields, ids): (Vec<ObjectId>, Vec<ObjectId>) =
+                    ids.into_iter().partition(|id| matches!(id, ObjectId::FootprintField(_)));
+                if !fields.is_empty() && ids.is_empty() {
+                    return Ok(Some("Reference and value texts can't be deleted: hide them in Properties".into()));
+                }
+                // Board parts live on the board and are deleted there; other footprints
+                // follow the schematic.
+                let project = self.doc.project();
+                let board_part = |id: &ObjectId| match id {
+                    ObjectId::Footprint(f) => project
+                        .board
+                        .footprints
+                        .get(*f)
+                        .and_then(|f| project.schematic.components.get(f.component))
+                        .and_then(|c| project.library.parts.get(c.part))
+                        .is_some_and(model::Part::is_board_part),
+                    _ => true,
+                };
+                let (ids, footprints): (Vec<ObjectId>, Vec<ObjectId>) = ids.into_iter().partition(board_part);
                 if !ids.is_empty() {
                     self.run(Command::Delete { ids }, group)?;
                 }

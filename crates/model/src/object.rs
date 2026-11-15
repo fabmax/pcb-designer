@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::board::{BoardGraphic, BoardText, FootprintInstance, Track, Via, Zone};
+use crate::board::{BoardGraphic, BoardText, FootprintField, FootprintInstance, Track, Via, Zone};
 use crate::id::Id;
 use crate::library::{Footprint, Part, Symbol};
 use crate::project::Project;
@@ -129,6 +129,7 @@ objects! {
     Label(NetLabel) => schematic.labels;
     SchText(SchText) => schematic.texts;
     Footprint(FootprintInstance) => board.footprints;
+    FootprintField(FootprintField) => board.fields;
     Track(Track) => board.tracks;
     Via(Via) => board.vias;
     Zone(Zone) => board.zones;
@@ -161,6 +162,7 @@ impl ObjectKind {
         matches!(
             self,
             ObjectKind::Footprint
+                | ObjectKind::FootprintField
                 | ObjectKind::Track
                 | ObjectKind::Via
                 | ObjectKind::Zone

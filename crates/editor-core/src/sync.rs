@@ -54,9 +54,10 @@ pub(crate) fn sync_board(tx: &mut Transaction) -> Result<(), CommandError> {
             _ => {}
         }
     }
-    for f in removed {
+    for &f in &removed {
         tx.remove(ObjectId::Footprint(f))?;
     }
+    crate::command::remove_fields(tx, &removed.into_iter().collect())?;
     if new_components.is_empty() {
         return Ok(());
     }
@@ -70,7 +71,9 @@ pub(crate) fn sync_board(tx: &mut Transaction) -> Result<(), CommandError> {
             side: Side::Top,
             locked: false,
         };
+        let id = fp.id;
         tx.insert(Object::Footprint(fp))?;
+        crate::command::insert_fields(tx, id)?;
         y -= STAGING_PITCH;
     }
     Ok(())

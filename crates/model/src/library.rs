@@ -210,6 +210,12 @@ impl FootprintGraphic {
 }
 
 impl FootprintText {
+    /// The reference or value text (exactly `${REF}` or `${VALUE}`): a template that
+    /// placed footprints copy into a [`crate::board::FootprintField`] of their own.
+    pub fn is_field(&self) -> bool {
+        matches!(self.text.text.as_str(), "${REF}" | "${VALUE}")
+    }
+
     /// Board layer of this text for a footprint placed on `side`.
     pub fn board_layer(&self, side: crate::board::Side) -> crate::board::LayerId {
         crate::board::LayerId::for_footprint(self.layer, if self.back { side.flipped() } else { side })

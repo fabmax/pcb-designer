@@ -44,6 +44,11 @@ impl Project {
             }
             *footprints_per_component.entry(f.component).or_default() += 1;
         }
+        for f in self.board.fields.iter() {
+            if !self.board.footprints.contains(f.footprint) {
+                issues.push(format!("footprint text {:?} references missing footprint", f.id));
+            }
+        }
         for c in sch.components.iter() {
             let variant = match self.library.parts.get(c.part) {
                 None => {

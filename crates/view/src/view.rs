@@ -334,6 +334,7 @@ impl View {
                 b.footprints
                     .ids()
                     .map(ObjectId::Footprint)
+                    .chain(b.fields.ids().map(ObjectId::FootprintField))
                     .chain(b.tracks.ids().map(ObjectId::Track))
                     .chain(b.vias.ids().map(ObjectId::Via))
                     .chain(b.zones.ids().map(ObjectId::Zone))
@@ -391,6 +392,13 @@ impl View {
                     }
                 }
             }
+        }
+        // Footprint texts move with their footprint and show its component's reference.
+        let footprints: FxHashSet<Id> =
+            ids.iter().filter_map(|id| if let ObjectId::Footprint(f) = id { Some(*f) } else { None }).collect();
+        if !footprints.is_empty() {
+            let fields = project.board.fields.iter().filter(|f| footprints.contains(&f.footprint));
+            ids.extend(fields.map(|f| ObjectId::FootprintField(f.id)).collect::<Vec<_>>());
         }
         let mut seen = FxHashSet::default();
         for id in ids {
@@ -562,7 +570,7 @@ impl View {
                     let mut p = Painter::default();
                     let t = Transform::new(pos, rotation, side == Side::Bottom);
                     let refdes = format!("{}?", part.prefix);
-                    draw_footprint_at(project, fp, &t, side, &refdes, &part.default_value, l, &mut p);
+                    draw_footprint_at(project, fp, &t, side, &refdes, &part.default_value, true, l, &mut p);
                     // Translucent, on top of everything.
                     out.extend(p.out.into_iter().map(|(_, mut inst)| {
                         inst.color = inst.color.with_alpha((inst.color.0[3] as u16 * 3 / 4) as u8);
@@ -892,6 +900,9 @@ impl View {
             (Layers::Board(l), ObjectId::Footprint(i)) => {
                 project.board.footprints.get(i).map(|f| draw_footprint(project, f, l, p)).is_some()
             }
+            (Layers::Board(l), ObjectId::FootprintField(i)) => {
+                project.board.fields.get(i).is_some_and(|f| draw_field(project, f, l, p))
+            }
             (Layers::Board(l), ObjectId::Track(i)) => project
                 .board
                 .tracks
@@ -1197,11 +1208,27 @@ fn draw_footprint(project: &Project, inst: &FootprintInstance, l: &BoardLayers, 
     let Some(fp) = footprint_of_instance(project, inst) else { return };
     let component = project.schematic.components.get(inst.component);
     let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
-    draw_footprint_at(project, fp, &inst.transform(), inst.side, refdes, value, l, p);
+    draw_footprint_at(project, fp, &inst.transform(), inst.side, refdes, value, false, l, p);
+}
+
+/// A footprint's reference or value text; nothing if hidden.
+fn draw_field(project: &Project, field: &FootprintField, l: &BoardLayers, p: &mut Painter) -> bool {
+    let Some(inst) = project.board.footprints.get(field.footprint) else { return false };
+    if field.hidden {
+        return false;
+    }
+    let component = project.schematic.components.get(inst.component);
+    let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
+    let layer = field.board_layer(inst.side);
+    let Some(&rl) = l.map.get(&layer) else { return false };
+    let text = field.text.transformed(&inst.transform());
+    p.text(rl, &text, board_layer_color(layer), &|s| substitute(s, refdes, value), true);
+    true
 }
 
 /// Draw footprint `fp` placed by `t` on `side` (also the ghost of a board part being
-/// placed).
+/// placed). The reference and value texts are drawn only `with_fields` (the ghost):
+/// placed footprints have their own ([`draw_field`]).
 #[allow(clippy::too_many_arguments)]
 fn draw_footprint_at(
     project: &Project,
@@ -1210,6 +1237,7 @@ fn draw_footprint_at(
     side: Side,
     refdes: &str,
     value: &str,
+    with_fields: bool,
     l: &BoardLayers,
     p: &mut Painter,
 ) {
@@ -1264,7 +1292,7 @@ fn draw_footprint_at(
             p.push_shape(rl, &shape, board_layer_color(layer));
         }
     }
-    for ft in &fp.texts {
+    for ft in fp.texts.iter().filter(|ft| with_fields || !ft.is_field()) {
         let layer = ft.board_layer(side);
         if let Some(&rl) = l.map.get(&layer) {
             p.text(rl, &ft.text.transformed(&t), board_layer_color(layer), &|s| substitute(s, refdes, value), false);

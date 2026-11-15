@@ -116,6 +116,10 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
   M3 mounting hole. Remove a part's last unit in the part form to make one.
 - **Footprint variants** can be switched in Properties both for a symbol in the schematic
   and for a footprint on the board (the board lists only variants with a footprint).
+- **Reference and value texts** on the board belong to each footprint: click one to
+  select it, drag it away from the pads, R turns it; it moves and flips with its
+  footprint. Properties sets its layer, size, offset and rotation, and hides it (the
+  footprint's Properties have a visibility checkbox per text).
 - **Built-in Library:** a few basic parts that ship with the app. It is read-only; "Save a
   copy as…" makes an editable library of your own from it.
 - **External Libraries:** the project's library files (`.pcblib`).

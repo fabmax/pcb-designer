@@ -194,7 +194,53 @@ pub struct BoardText {
     pub text: Text,
 }
 
-has_id!(FootprintInstance, Track, Via, Zone, BoardGraphic, BoardText);
+/// A placed footprint's own copy of a reference or value text ([`FootprintText::is_field`])
+/// of its library footprint, so it can be moved, resized or hidden per footprint (as
+/// KiCad does). Its text is in footprint coordinates: it moves with the footprint.
+/// Created and removed together with the footprint.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct FootprintField {
+    pub id: Id,
+    pub footprint: Id,
+    pub layer: FootprintLayer,
+    /// On the footprint's other side.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub back: bool,
+    /// `${REF}` or `${VALUE}`, placed relative to the footprint.
+    pub text: Text,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+}
+
+impl FootprintField {
+    /// Fresh fields for footprint instance `footprint` from the field texts of `def`.
+    pub fn for_footprint(footprint: Id, def: &crate::library::Footprint) -> Vec<FootprintField> {
+        def.texts
+            .iter()
+            .filter(|t| t.is_field())
+            .map(|t| FootprintField {
+                id: Id::new(),
+                footprint,
+                layer: t.layer,
+                back: t.back,
+                text: t.text.clone(),
+                hidden: false,
+            })
+            .collect()
+    }
+
+    /// Board layer for a footprint placed on `side`.
+    pub fn board_layer(&self, side: Side) -> LayerId {
+        LayerId::for_footprint(self.layer, if self.back { side.flipped() } else { side })
+    }
+
+    /// "Reference" or "Value".
+    pub fn label(&self) -> &'static str {
+        if self.text.text == "${VALUE}" { "Value" } else { "Reference" }
+    }
+}
+
+has_id!(FootprintInstance, FootprintField, Track, Via, Zone, BoardGraphic, BoardText);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DesignRules {
@@ -254,6 +300,9 @@ pub struct Board {
     pub rules: DesignRules,
     #[serde(default)]
     pub footprints: Store<FootprintInstance>,
+    /// Reference and value texts of the footprints.
+    #[serde(default)]
+    pub fields: Store<FootprintField>,
     #[serde(default)]
     pub tracks: Store<Track>,
     #[serde(default)]
@@ -307,6 +356,7 @@ impl Board {
             layers,
             rules: DesignRules::default(),
             footprints: Store::default(),
+            fields: Store::default(),
             tracks: Store::default(),
             vias: Store::default(),
             zones: Store::default(),

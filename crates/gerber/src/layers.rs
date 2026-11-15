@@ -145,10 +145,21 @@ pub fn layer_file(project: &Project, copper: &BoardConnectivity, layer: LayerId)
         for g in fp.graphics.iter().filter(|g| g.board_layer(inst.side) == layer) {
             write_shape(&mut w, &g.shape.transformed(&t), graphic_function(layer));
         }
-        for ft in fp.texts.iter().filter(|ft| ft.board_layer(inst.side) == layer) {
+        // Reference and value texts come from the footprint's own fields (below).
+        for ft in fp.texts.iter().filter(|ft| !ft.is_field() && ft.board_layer(inst.side) == layer) {
             let text = ft.text.text.replace("${REF}", refdes).replace("${VALUE}", value);
             write_text(&mut w, &ft.text.transformed(&t), &text, is_bottom(layer), text_function(layer));
         }
+    }
+    for field in board.fields.iter().filter(|f| !f.hidden) {
+        let Some(inst) = board.footprints.get(field.footprint) else { continue };
+        if field.board_layer(inst.side) != layer {
+            continue;
+        }
+        let component = project.schematic.components.get(inst.component);
+        let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
+        let text = field.text.text.replace("${REF}", refdes).replace("${VALUE}", value);
+        write_text(&mut w, &field.text.transformed(&inst.transform()), &text, is_bottom(layer), text_function(layer));
     }
 
     for g in board.graphics.iter().filter(|g| g.layer == layer) {

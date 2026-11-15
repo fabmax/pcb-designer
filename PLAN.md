@@ -186,6 +186,15 @@ and hierarchical sheets.
   tented. Explicit footprint mask/paste graphics add to that. `fab::pad_outline` is the
   one placed pad shape (rotation includes mirroring; grown rectangles keep sharp
   corners, polygons offset with round joins) for the board view and the Gerber export.
+- **Reference and value texts** (`FootprintField`, `board.fields`): a placed footprint
+  gets its own copy of each library footprint text that is exactly `${REF}` / `${VALUE}`
+  (`FootprintText::is_field`), in footprint coordinates, so it moves, turns and flips
+  with the footprint but can be dragged and turned on its own. Created and removed with
+  the footprint (`insert_fields` / `remove_fields`: sync and board parts); deleting one
+  is refused, hide it instead. `draw_footprint_at` skips the templates for placed
+  footprints (the place ghost draws them); Gerber exports the fields. Hit testing is the
+  text's bounding box, which beats the footprint's courtyard. Gotcha: a library edit of
+  the templates doesn't reach footprints already placed.
 - **Slow rebuilds wait:** when connectivity (or redrawing library users) took over 4 ms
   (`Document::slow`), it is deferred during a drag and caught up afterwards.
 
@@ -457,8 +466,7 @@ defers.
   UUIDs kept as ids; opens as an unsaved project; best effort with an import report).
   Symbols without footprint get a "No footprint" variant; "exclude from board" adds one
   to the part; footprints without symbol become board parts. Model prerequisites first,
-  in order: footprint
-  fidelity (per-instance reference/value text); zones (holes,
+  in order: zones (holes,
   keepouts, connection mode); arc tracks. `in_bom` / `dnp` become component properties
   until a BOM exists. Power symbols become power labels; the style comes from the
   `power:` library name, else from the symbol's graphics; custom glyphs get the closest
@@ -466,6 +474,9 @@ defers.
   symbols named.
 
 - Per-pad mask and paste margins (board-wide today); inner-layer footprint graphics.
+- Footprint texts: re-sync fields when the library footprint's templates change; keep
+  texts upright (readable) when a footprint turns past 90°; fields of other texts than
+  `${REF}` / `${VALUE}`.
 - Wiring a pin of kind "not connected" isn't reported yet (KiCad's ERC does).
 - Custom power symbols: power ports drawn from a symbol of their own (a part flagged
   power, no footprint), for glyphs beyond `PowerStyle`; maps to KiCad custom power

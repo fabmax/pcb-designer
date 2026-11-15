@@ -436,6 +436,9 @@ impl Command {
                 transform_connected(tx, &ids, t, Edit::Mirror, keep_connected)
             }
             Command::FlipSide { ids, axis_x } => {
+                // Footprint texts flip with their footprint.
+                let ids: Vec<ObjectId> =
+                    ids.into_iter().filter(|id| !matches!(id, ObjectId::FootprintField(_))).collect();
                 if let Some(bad) = ids.iter().find(|id| !matches!(id, ObjectId::Footprint(_))) {
                     return Err(CommandError::Invalid(format!("only footprints can change sides, got {bad:?}")));
                 }
@@ -838,7 +841,36 @@ fn place_board_part(
     let footprint = FootprintInstance { id: Id::new(), component: component.id, pos, rotation, side, locked: false };
     // The footprint is in place before sync runs, so sync doesn't stage another one.
     tx.insert(Object::Component(component))?;
+    let id = footprint.id;
     tx.insert(Object::Footprint(footprint))?;
+    insert_fields(tx, id)
+}
+
+/// Add the reference and value texts of a newly placed footprint.
+pub(crate) fn insert_fields(tx: &mut Transaction, footprint: Id) -> Result<(), CommandError> {
+    let p = tx.project();
+    let Some(def) = p.board.footprints.get(footprint).and_then(|f| crate::query::footprint_of_instance(p, f)) else {
+        return Ok(());
+    };
+    for field in FootprintField::for_footprint(footprint, def) {
+        tx.insert(Object::FootprintField(field))?;
+    }
+    Ok(())
+}
+
+/// Remove the texts of the footprints `footprints` (one pass over all texts).
+pub(crate) fn remove_fields(
+    tx: &mut Transaction,
+    footprints: &std::collections::HashSet<Id>,
+) -> Result<(), CommandError> {
+    if footprints.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<Id> =
+        tx.project().board.fields.iter().filter(|f| footprints.contains(&f.footprint)).map(|f| f.id).collect();
+    for id in ids {
+        tx.remove(ObjectId::FootprintField(id))?;
+    }
     Ok(())
 }
 
@@ -972,8 +1004,37 @@ fn connection_points(p: &Project, ids: &[ObjectId], kind: crate::rubber_band::Ki
 
 fn transform_objects(tx: &mut Transaction, ids: &[ObjectId], t: Transform, edit: Edit) -> Result<(), CommandError> {
     let mut seen = std::collections::HashSet::new();
+    // Footprint texts move in their footprint's coordinates; with their footprint, they
+    // just go along. Footprints only flip as a whole.
+    let moved: std::collections::HashSet<Id> =
+        ids.iter().filter_map(|id| if let ObjectId::Footprint(f) = id { Some(*f) } else { None }).collect();
+    let mut frames: std::collections::HashMap<Id, Transform> = Default::default();
+    for &id in ids {
+        if let ObjectId::FootprintField(i) = id {
+            let p = tx.project();
+            let Some(fp) = p.board.fields.get(i).and_then(|f| p.board.footprints.get(f.footprint)) else { continue };
+            if !moved.contains(&fp.id) && edit != Edit::Flip {
+                frames.insert(i, fp.transform());
+            }
+        }
+    }
     for &id in ids {
         if !seen.insert(id) {
+            continue;
+        }
+        if let ObjectId::FootprintField(i) = id {
+            let Some(&frame) = frames.get(&i) else { continue };
+            if edit == Edit::Mirror {
+                return Err(CommandError::Invalid("footprint texts can't be mirrored".into()));
+            }
+            tx.update(id, |o| {
+                if let Object::FootprintField(f) = o {
+                    let world = t.point(frame.point(f.text.pos));
+                    f.text.pos = frame.inverse_point(world);
+                    f.text.rotation = frame.inverse_angle(t.angle(frame.angle(f.text.rotation)));
+                }
+                Ok(())
+            })?;
             continue;
         }
         tx.update(id, |o| {
@@ -1107,7 +1168,13 @@ fn delete(tx: &mut Transaction, ids: &[ObjectId]) -> Result<(), CommandError> {
                     ));
                 };
                 tx.remove(id)?;
+                remove_fields(tx, &[f].into())?;
                 delete_component(tx, c)?;
+            }
+            ObjectId::FootprintField(_) => {
+                return Err(CommandError::Forbidden(
+                    "reference and value texts belong to their footprint; hide them instead".into(),
+                ));
             }
             ObjectId::Sheet(s) => {
                 // A sheet goes with everything on it and its sub-sheets (KiCad does the same).
@@ -1219,6 +1286,13 @@ fn check_references(p: &Project, o: &Object) -> Result<(), CommandError> {
                 Ok(())
             } else {
                 missing(ObjectId::Component(f.component))
+            }
+        }
+        Object::FootprintField(f) => {
+            if p.board.footprints.contains(f.footprint) {
+                Ok(())
+            } else {
+                missing(ObjectId::Footprint(f.footprint))
             }
         }
         Object::Track(t) => {

@@ -198,6 +198,18 @@ impl Transform {
         a.rotated_by(self.rotation)
     }
 
+    /// The point that [`Transform::point`] maps to `q`.
+    pub fn inverse_point(&self, q: Point) -> Point {
+        let p = (q - self.offset).rotated(Angle::deg(-self.rotation.degrees()));
+        if self.mirror { Point::new(-p.x, p.y) } else { p }
+    }
+
+    /// The angle that [`Transform::angle`] maps to `a`.
+    pub fn inverse_angle(&self, a: Angle) -> Angle {
+        let a = Angle::deg(a.degrees() - self.rotation.degrees());
+        if self.mirror { a.mirrored() } else { a }
+    }
+
     /// Sweep direction flips under mirroring.
     pub fn sweep(&self, sweep: f64) -> f64 {
         if self.mirror { -sweep } else { sweep }
@@ -438,6 +450,19 @@ impl Text {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inverse_transform() {
+        for mirror in [false, true] {
+            let t = Transform::new(Point::mm(3.0, -2.0), Angle::deg(30.0), mirror);
+            let p = Point::mm(1.5, 0.7);
+            let back = t.inverse_point(t.point(p));
+            assert!((back.x - p.x).abs() <= 1 && (back.y - p.y).abs() <= 1, "{back:?}");
+            let a = Angle::deg(75.0);
+            let b = t.inverse_angle(t.angle(a)).degrees().rem_euclid(360.0);
+            assert!((b - 75.0).abs() < 1e-9, "{b}");
+        }
+    }
 
     #[test]
     fn point_serializes_as_array() {

@@ -451,6 +451,10 @@ pub fn reference_point(project: &Project, id: ObjectId) -> Option<Point> {
         ObjectId::Label(i) => s.labels.get(i).map(|o| o.pos),
         ObjectId::SchText(i) => s.texts.get(i).map(|o| o.text.pos),
         ObjectId::Footprint(i) => b.footprints.get(i).map(|o| o.pos),
+        ObjectId::FootprintField(i) => {
+            let f = b.fields.get(i)?;
+            b.footprints.get(f.footprint).map(|fp| fp.transform().point(f.text.pos))
+        }
         ObjectId::Track(i) => b.tracks.get(i).map(|o| o.a),
         ObjectId::Via(i) => b.vias.get(i).map(|o| o.pos),
         ObjectId::Zone(i) => b.zones.get(i).and_then(|o| o.outline.first().copied()),

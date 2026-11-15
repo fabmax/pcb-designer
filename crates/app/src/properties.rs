@@ -327,6 +327,56 @@ impl Properties {
                     row(ui, "Shape", shape_name(&g.shape).into());
                 });
             }
+            Object::FootprintField(mut f) => {
+                let project = cx.doc.project();
+                let Some(fp) = project.board.footprints.get(f.footprint).cloned() else { return };
+                let c = project.schematic.components.get(fp.component);
+                let (refdes, value) =
+                    c.map_or(("?".to_string(), String::new()), |c| (c.refdes.clone(), c.value.clone()));
+                heading(ui, &format!("{} text", f.label()), &refdes);
+                ui.label(RichText::new("Moves with its footprint. Drag it, or R to turn it.").color(theme::text_dim()));
+                ui.add_space(4.0);
+                grid(ui, |ui| {
+                    row(ui, "Text", f.text.text.replace("${REF}", &refdes).replace("${VALUE}", &value));
+                    label(ui, "Layer");
+                    let mut layer = f.layer;
+                    egui::ComboBox::from_id_salt("field_layer").selected_text(format!("{layer:?}")).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut layer, FootprintLayer::Silkscreen, "Silkscreen");
+                        ui.selectable_value(&mut layer, FootprintLayer::Fabrication, "Fabrication");
+                    });
+                    if layer != f.layer {
+                        f.layer = layer;
+                        self.update(cx, Object::FootprintField(f.clone()), false);
+                    }
+                    ui.end_row();
+                    label(ui, "Size");
+                    if let Some(v) = self.length(ui, f.text.size, 0.1) {
+                        f.text.size = v;
+                        f.text.width = v / 7;
+                        self.update(cx, Object::FootprintField(f.clone()), true);
+                    }
+                    ui.end_row();
+                    label(ui, "Offset");
+                    if let Some(p) = self.point(ui, f.text.pos) {
+                        f.text.pos = p;
+                        self.update(cx, Object::FootprintField(f.clone()), true);
+                    }
+                    ui.end_row();
+                    label(ui, "Rotation");
+                    if let Some(r) = rotation_combo(ui, "field_rot", f.text.rotation) {
+                        f.text.rotation = r;
+                        self.update(cx, Object::FootprintField(f.clone()), false);
+                    }
+                    ui.end_row();
+                    label(ui, "Visible");
+                    let mut visible = !f.hidden;
+                    if ui.checkbox(&mut visible, "").changed() {
+                        f.hidden = !visible;
+                        self.update(cx, Object::FootprintField(f.clone()), false);
+                    }
+                    ui.end_row();
+                });
+            }
             Object::BoardText(mut t) => {
                 heading(ui, "Board text", "");
                 grid(ui, |ui| {
@@ -463,6 +513,19 @@ impl Properties {
                 self.update(cx, Object::Footprint(f.clone()), false);
             }
             ui.end_row();
+            // Show or hide its reference and value texts (hidden ones can't be clicked).
+            let fields: Vec<FootprintField> =
+                cx.doc.project().board.fields.iter().filter(|x| x.footprint == f.id).cloned().collect();
+            for mut field in fields {
+                let layer = if field.layer == FootprintLayer::Fabrication { " (fab)" } else { "" };
+                label(ui, &format!("{} text{layer}", field.label()));
+                let mut visible = !field.hidden;
+                if ui.checkbox(&mut visible, "visible").changed() {
+                    field.hidden = !visible;
+                    self.update(cx, Object::FootprintField(field), false);
+                }
+                ui.end_row();
+            }
         });
         if !part.is_board_part() {
             pin_table(ui, cx.doc, None, c.id);
