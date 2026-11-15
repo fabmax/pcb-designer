@@ -386,7 +386,7 @@ things to do **later**.
   (10), unpacked into `<config>/kicad/<version>` via a temp folder and rename. Gotcha:
   cancel has its own error; `io::ErrorKind::Interrupted` would be retried forever by
   `std`'s and `tar`'s read loops.
-- Verified against the full KiCad 9 and 10 libraries (`kicad/tests/corpus.rs`, enabled
+- Verified against the full KiCad 9 and 10 libraries (`kicad/tests/all/corpus.rs`, enabled
   by `KICAD_SYMBOL_DIR`/`KICAD_FOOTPRINT_DIR`). 3.6% of parts have a pin without a pad,
   from KiCad's own data.
 - Project import (`kicad::import_project`, `sch.rs` + `pcb.rs` → `project.rs`): a
@@ -418,7 +418,7 @@ things to do **later**.
     fields. Zone nets are resolved through the pads of the KiCad net (KiCad names like
     `Net-(R3-Pad1)` differ from ours), else kept with a warning. Rules from the Default
     net class and board setup.
-  - Tests (`kicad/tests/project_import.rs`): a hierarchical, routed fixture; with
+  - Tests (`kicad/tests/all/project_import.rs`): a hierarchical, routed fixture; with
     `KICAD_CLI` and `KICAD_TEMPLATE_DIR` set, every KiCad template is compared against
     `kicad-cli`: schematic nets (`sch export netlist`) and pad positions (`pcb export
     ipcd356`, after removing its constant origin offset).

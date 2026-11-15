@@ -3,7 +3,7 @@
 //!
 //! ```sh
 //! KICAD_SYMBOL_DIR=/path/to/symbols KICAD_FOOTPRINT_DIR=/path/to/footprints \
-//!     cargo test -p kicad --release --test corpus -- --nocapture
+//!     cargo test -p kicad --release --test all corpus:: -- --nocapture
 //! ```
 
 use std::collections::BTreeMap;

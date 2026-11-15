@@ -15,7 +15,11 @@ Each change (a milestone or a refinement) runs through these steps:
 
 1. Branch off `main`.
 2. Implement, with tests for new behaviour. Logic goes in the GUI-independent crates
-   (`editor-core`, `view`), where it's unit-testable headless.
+   (`editor-core`, `view`), where it's unit-testable headless. Integration tests are one
+   binary per crate: a new file in `crates/<crate>/tests/all/` needs a `mod` line in its
+   `main.rs`. Run one file with `cargo test -p view --test all sheets::`. (Every test
+   binary costs link time and, on macOS, a first-launch check of a second or more;
+   `view/tests/theme.rs` stays separate because it switches the global palette.)
 3. Make it green: `cargo test --workspace`, `cargo clippy --workspace --all-targets` with
    zero warnings, and `cargo fmt`.
 4. For anything visible, look at it in a real-window screenshot (see below): both themes,
@@ -75,7 +79,7 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), and `kic
   `label`, `context` and the default binding. Then handle it in `app.rs`; the matches
   are exhaustive, so the compiler lists every site.
 - **MCP tool:** add a `#[tool]` in `mcp/src/server.rs`, plus a `Request` variant with
-  arms in both `describe` and `respond` in `host.rs`. Test it in `mcp/tests`. Update
+  arms in both `describe` and `respond` in `host.rs`. Test it in `mcp/tests/all`. Update
   the tool list in README.md.
 - **Colours:** canvas palettes live in `view/src/style.rs` (`DARK`, `LIGHT`) and chrome
   in `app/src/theme.rs`. Scenes bake colours when drawn, so a theme switch calls

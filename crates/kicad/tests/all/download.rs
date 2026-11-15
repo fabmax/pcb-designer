@@ -1,5 +1,5 @@
 //! Library download against a local HTTP server serving generated archives (no internet).
-//! `cargo test -p kicad --test download -- --ignored` also runs one against the real GitLab.
+//! `cargo test -p kicad --test all download:: -- --ignored` also runs one against the real GitLab.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
