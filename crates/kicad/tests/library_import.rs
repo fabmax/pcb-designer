@@ -153,3 +153,36 @@ fn symbols_without_footprint_get_a_no_footprint_variant() {
     assert!(!imported.errors.is_empty());
     assert!(imported.parts.is_empty());
 }
+
+#[test]
+fn preview_cache_converts_and_evicts() {
+    use kicad::preview::{CAPACITY, PreviewCache};
+    let tmp = tempfile::tempdir().unwrap();
+    setup(tmp.path(), false);
+    let mut cat = Catalog::scan(&[tmp.path().to_path_buf()]);
+    let mut cache = PreviewCache::default();
+
+    let sym = cache.symbol(&mut cat, "Device:R_Small").unwrap();
+    assert_eq!(sym.pins.len(), 2);
+    let fp = cache.footprint(&cat, "Resistor_SMD:R_0603_1608Metric").unwrap();
+    assert_eq!(fp.pads.len(), 2);
+    assert_eq!(cache.len(), 2);
+    // Cached: the same item again adds nothing.
+    assert_eq!(cache.symbol(&mut cat, "Device:R_Small").unwrap().id, sym.id);
+    assert_eq!(cache.len(), 2);
+    // Errors are kept too.
+    assert!(cache.footprint(&cat, "Resistor_SMD:Nope").is_err());
+    assert!(cache.symbol(&mut cat, "Nope:R").is_err());
+    assert_eq!(cache.len(), 4);
+
+    // Least recently used goes first.
+    for i in 0..CAPACITY {
+        let _ = cache.footprint(&cat, &format!("X:{i}"));
+        if i == 0 {
+            let _ = cache.symbol(&mut cat, "Device:R_Small");
+        }
+    }
+    assert_eq!(cache.len(), CAPACITY);
+    cache.clear();
+    assert!(cache.is_empty());
+}

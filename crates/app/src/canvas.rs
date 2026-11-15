@@ -1,10 +1,15 @@
 //! Canvas widget: hosts a GPU rendered [`Scene`] inside egui and handles navigation.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use egui_wgpu::{CallbackResources, CallbackTrait, ScreenDescriptor};
 use render::gpu::{Background, GpuScene, Renderer, ViewUniform};
 use render::{Camera, Scene, SceneUpload};
+
+/// Ids of dropped canvases whose GPU scenes are freed by the next `prepare`.
+static RELEASED: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Shared GPU state, stored in egui-wgpu's callback resources.
 pub struct CanvasResources {
@@ -19,6 +24,7 @@ impl CanvasResources {
     }
 }
 
+/// A GPU canvas. Each has its own GPU scene, freed when the canvas is dropped.
 pub struct Canvas {
     id: u64,
     pub camera: Camera,
@@ -32,9 +38,9 @@ pub struct Canvas {
 }
 
 impl Canvas {
-    pub fn new(id: u64, background: Background) -> Self {
+    pub fn new(background: Background) -> Self {
         Self {
-            id,
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             camera: Camera::default(),
             background,
             pending: Default::default(),
@@ -80,7 +86,14 @@ impl Canvas {
             self.fit_requested = false;
         }
         self.handle_input(ui, &response, rect);
+        self.paint(ui, rect, scene);
+        response
+    }
 
+    /// Draw the scene into `rect` without handling input.
+    pub fn paint(&mut self, ui: &egui::Ui, rect: egui::Rect, scene: &mut Scene) {
+        self.rect = rect;
+        self.viewport = [rect.width() as f64, rect.height() as f64];
         let upload = scene.take_upload();
         if !upload.is_empty() {
             self.pending.lock().unwrap().push(upload);
@@ -94,7 +107,6 @@ impl Canvas {
             visible: scene.visible_layers(self.camera.zoom),
         };
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, callback));
-        response
     }
 
     fn handle_input(&mut self, ui: &egui::Ui, response: &egui::Response, rect: egui::Rect) {
@@ -147,6 +159,12 @@ impl Canvas {
     }
 }
 
+impl Drop for Canvas {
+    fn drop(&mut self) {
+        RELEASED.lock().unwrap().push(self.id);
+    }
+}
+
 struct CanvasCallback {
     id: u64,
     view: ViewUniform,
@@ -164,6 +182,10 @@ impl CallbackTrait for CanvasCallback {
         resources: &mut CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         let res: &mut CanvasResources = resources.get_mut().expect("canvas resources installed");
+        let released = std::mem::take(&mut *RELEASED.lock().unwrap());
+        if !released.is_empty() {
+            res.scenes.retain(|(id, _)| !released.contains(id));
+        }
         let idx = match res.scenes.iter().position(|(id, _)| *id == self.id) {
             Some(i) => i,
             None => {

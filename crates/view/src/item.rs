@@ -36,6 +36,39 @@ impl Item {
     }
 }
 
+/// Which unit and variant of a part a preview shows. Indices out of range and unknown
+/// variants fall back to the first.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PartPreview {
+    pub unit: usize,
+    pub variant: Option<Id>,
+}
+
+impl PartPreview {
+    /// The unit index shown (0 when out of range).
+    pub fn unit_index(&self, part: &Part) -> usize {
+        if self.unit < part.units.len() { self.unit } else { 0 }
+    }
+
+    /// The variant shown: the chosen one if it still exists, else the first.
+    pub fn variant<'a>(&self, part: &'a Part) -> Option<&'a PartVariant> {
+        self.variant.and_then(|v| part.variant(v)).or(part.variants.first())
+    }
+
+    /// The symbol and footprint to show (`None`: missing from the library or unset).
+    pub fn items(&self, lib: &Library, part: &Part) -> (Option<Item>, Option<Item>) {
+        let symbol = part
+            .units
+            .get(self.unit_index(part))
+            .map(|u| u.symbol)
+            .filter(|&s| lib.symbols.contains(s))
+            .map(Item::Symbol);
+        let footprint =
+            self.variant(part).and_then(|v| v.footprint).filter(|&f| lib.footprints.contains(f)).map(Item::Footprint);
+        (symbol, footprint)
+    }
+}
+
 /// An element inside a symbol or footprint. Graphics and texts are addressed by index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Elem {
@@ -521,6 +554,16 @@ impl ItemView {
         let r = self.index.total();
         // Always include the origin.
         Some(r.map_or(Rect::around(Point::ZERO, mm(5.0)), |r| r.union(Rect::around(Point::ZERO, mm(1.0)))))
+    }
+
+    /// Bounds of the item's elements, without the origin (`None`: nothing drawn).
+    pub fn content_bounds(&self) -> Option<Rect> {
+        self.index.total()
+    }
+
+    /// Show or hide the origin cross (hidden in previews).
+    pub fn set_origin_visible(&mut self, visible: bool) {
+        self.scene.layer_mut(self.layers.origin).visible = visible;
     }
 
     fn redraw(&mut self) {

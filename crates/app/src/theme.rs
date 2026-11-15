@@ -53,6 +53,58 @@ pub fn panel_frame(outer: Margin) -> Frame {
     Frame::NONE.fill(panel()).corner_radius(RADIUS).inner_margin(Margin::same(8)).outer_margin(outer)
 }
 
+/// Padding of dialogs and windows.
+const PAD: i8 = 18;
+
+/// Frame of dialogs and windows: no padding (the title bar spans the full width).
+fn floating_frame(ctx: &egui::Context) -> Frame {
+    Frame::NONE
+        .fill(panel())
+        .stroke(Stroke::new(1.0, border()))
+        .corner_radius(RADIUS)
+        .shadow(ctx.global_style().visuals.popup_shadow)
+}
+
+/// The title bar of dialogs and windows, with a close button when `close` is given.
+/// Then the content with generous padding.
+fn floating_contents<R>(
+    ui: &mut egui::Ui,
+    title: &str,
+    close: Option<&mut bool>,
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    let r = RADIUS;
+    let spacing = ui.spacing().item_spacing;
+    ui.spacing_mut().item_spacing.y = 0.0;
+    let bar = Frame::NONE
+        .fill(panel_dark())
+        .corner_radius(CornerRadius { nw: r - 1, ne: r - 1, sw: 0, se: 0 })
+        .inner_margin(Margin { left: PAD, right: PAD, top: 11, bottom: 10 })
+        .show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.horizontal(|ui| {
+                bold_label(ui, title, 17.0, accent());
+                if let Some(close) = close {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let b = egui::Button::new(egui::RichText::new("×").size(18.0).color(text_dim())).frame(false);
+                        if ui.add(b).on_hover_text("Close").clicked() {
+                            *close = true;
+                        }
+                    });
+                }
+            });
+        });
+    let line = bar.response.rect;
+    ui.painter().hline(line.x_range(), line.bottom(), Stroke::new(1.0, border()));
+    Frame::NONE
+        .inner_margin(Margin { left: PAD, right: PAD, top: 14, bottom: PAD })
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing = spacing;
+            add_contents(ui)
+        })
+        .inner
+}
+
 /// A modal dialog: a title bar in the accent colour over `width` points of content with
 /// generous padding. Closes on Esc or a click outside (see `ModalResponse::should_close`).
 pub fn dialog<R>(
@@ -62,35 +114,38 @@ pub fn dialog<R>(
     width: f32,
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> egui::ModalResponse<R> {
-    const PAD: i8 = 18;
-    let r = RADIUS;
-    let frame = Frame::NONE
-        .fill(panel())
-        .stroke(Stroke::new(1.0, border()))
-        .corner_radius(r)
-        .shadow(ctx.global_style().visuals.popup_shadow);
-    egui::Modal::new(id).frame(frame).show(ctx, |ui| {
+    egui::Modal::new(id).frame(floating_frame(ctx)).show(ctx, |ui| {
         ui.set_width(width + 2.0 * f32::from(PAD));
-        let spacing = ui.spacing().item_spacing;
-        ui.spacing_mut().item_spacing.y = 0.0;
-        let bar = Frame::NONE
-            .fill(panel_dark())
-            .corner_radius(CornerRadius { nw: r - 1, ne: r - 1, sw: 0, se: 0 })
-            .inner_margin(Margin { left: PAD, right: PAD, top: 11, bottom: 10 })
-            .show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                bold_label(ui, title, 17.0, accent());
-            });
-        let line = bar.response.rect;
-        ui.painter().hline(line.x_range(), line.bottom(), Stroke::new(1.0, border()));
-        Frame::NONE
-            .inner_margin(Margin { left: PAD, right: PAD, top: 14, bottom: PAD })
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing = spacing;
-                add_contents(ui)
-            })
-            .inner
+        floating_contents(ui, title, None, add_contents)
     })
+}
+
+/// A resizable, non-modal window that looks like [`dialog`], with a close button. Shown
+/// while `open`; returns the contents' result when shown.
+pub fn window<R>(
+    ctx: &egui::Context,
+    title: &str,
+    open: &mut bool,
+    default_size: [f32; 2],
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> Option<R> {
+    if !*open {
+        return None;
+    }
+    let mut close = false;
+    let r = egui::Window::new(title)
+        .id(egui::Id::unique(("theme_window", title)))
+        .title_bar(false)
+        .frame(floating_frame(ctx))
+        .default_size(default_size)
+        .resizable(true)
+        .collapsible(false)
+        .show(ctx, |ui| floating_contents(ui, title, Some(&mut close), add_contents))
+        .and_then(|r| r.inner);
+    if close {
+        *open = false;
+    }
+    r
 }
 
 /// Text in a bolder weight. egui ships no bold face, so the text is drawn three times,

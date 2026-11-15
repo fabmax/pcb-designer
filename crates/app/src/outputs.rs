@@ -133,7 +133,7 @@ pub struct GerberPane {
 impl Default for GerberPane {
     fn default() -> Self {
         GerberPane {
-            canvas: Canvas::new(3, view::style::background(0.5)),
+            canvas: Canvas::new(view::style::background(0.5)),
             view: None,
             error: None,
             grid: model::mm(0.5),

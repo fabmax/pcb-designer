@@ -4,16 +4,97 @@
 use egui::RichText;
 use model::*;
 use view::LibraryDoc;
-use view::item::Item;
+use view::item::{Item, PartPreview};
 
 use crate::fields::{self, Fields, hint, label};
 use crate::library::{Open, issues_ui};
+use crate::preview::{Empty, Preview};
 use crate::theme;
 
 #[derive(Default)]
 pub struct PartForm {
     fields: Fields,
     new_property: String,
+    /// The part whose unit and variant `shown` chooses (reset when another opens).
+    shown_part: Option<Id>,
+    shown: PartPreview,
+    symbol_preview: Preview,
+    footprint_preview: Preview,
+}
+
+/// Height of the symbol and footprint previews.
+const PREVIEW_HEIGHT: f32 = 200.0;
+
+impl PartForm {
+    /// Symbol (with a unit choice) and footprint (with a variant choice) side by side.
+    /// A click on a preview opens the item.
+    fn preview_ui(&mut self, ui: &mut egui::Ui, lib: &LibraryDoc, part: &Part) -> Option<Open> {
+        if self.shown_part != Some(part.id) {
+            self.shown_part = Some(part.id);
+            self.shown = PartPreview::default();
+        }
+        let (symbol, footprint) = self.shown.items(lib.library(), part);
+        let gap = ui.spacing().item_spacing.x * 2.0;
+        let width = ((ui.available_width() - gap) / 2.0).max(120.0);
+        let size = egui::vec2(width, PREVIEW_HEIGHT);
+        let mut open = None;
+        let mut clicked = |r: egui::Response, item: Option<Item>| {
+            if let Some(item) = item
+                && r.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Click to edit").clicked()
+            {
+                open = Some(Open::Item(item));
+            }
+        };
+        ui.horizontal_top(|ui| {
+            ui.spacing_mut().item_spacing.x = gap;
+            ui.vertical(|ui| {
+                ui.set_width(width);
+                caption_row(ui, "Symbol", |ui| {
+                    if part.units.len() > 1 {
+                        let units: Vec<(usize, String)> =
+                            part.units.iter().enumerate().map(|(i, u)| (i, format!("Unit {}", u.name))).collect();
+                        if let Some(u) =
+                            fields::combo(ui, ("preview_unit", part.id), &self.shown.unit_index(part), &units)
+                        {
+                            self.shown.unit = u;
+                        }
+                    }
+                });
+                let placeholder = if part.units.is_empty() { "Board part: no symbol" } else { "Symbol missing" };
+                let r = self.symbol_preview.ui(ui, &lib.doc, symbol, size, Empty::Hint(placeholder));
+                clicked(r, symbol);
+            });
+            ui.vertical(|ui| {
+                ui.set_width(width);
+                let variant = self.shown.variant(part);
+                caption_row(ui, "Footprint", |ui| {
+                    if part.variants.len() > 1 {
+                        let variants: Vec<(Option<Id>, String)> =
+                            part.variants.iter().map(|v| (Some(v.id), v.name.clone())).collect();
+                        if let Some(v) =
+                            fields::combo(ui, ("preview_variant", part.id), &variant.map(|v| v.id), &variants)
+                        {
+                            self.shown.variant = v;
+                        }
+                    }
+                });
+                let placeholder =
+                    if variant.is_some_and(|v| v.footprint.is_some()) { "Footprint missing" } else { "No footprint" };
+                let r = self.footprint_preview.ui(ui, &lib.doc, footprint, size, Empty::Hint(placeholder));
+                clicked(r, footprint);
+            });
+        });
+        open
+    }
+}
+
+/// A dim caption over a preview, with its selector (if any) on the right.
+fn caption_row(ui: &mut egui::Ui, caption: &str, selector: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.set_min_height(24.0);
+        ui.label(RichText::new(caption).color(theme::text_dim()));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), selector);
+    });
 }
 
 /// Pin choices of a part: (unit, pin id, label).
@@ -77,6 +158,11 @@ impl PartForm {
             }
             ui.end_row();
         });
+
+        ui.add_space(12.0);
+        if let Some(o) = self.preview_ui(ui, lib, &part) {
+            open = Some(o);
+        }
 
         // ---- Units
         ui.add_space(12.0);

@@ -10,6 +10,7 @@ pub mod download;
 pub mod footprint;
 pub mod import;
 pub mod pcb;
+pub mod preview;
 pub mod project;
 pub mod sch;
 pub mod sexpr;

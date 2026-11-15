@@ -122,12 +122,12 @@ pub(crate) struct Pane {
 }
 
 impl Pane {
-    fn new(view: ViewId, canvas_id: u64) -> Self {
+    fn new(view: ViewId) -> Self {
         let grid = match view.kind() {
             ViewKind::Schematic => 1.27,
             ViewKind::Board => 0.5,
         };
-        let canvas = Canvas::new(canvas_id, view::style::background(grid as f32));
+        let canvas = Canvas::new(view::style::background(grid as f32));
         Pane { view, canvas, it: Interaction::new(mm(grid)) }
     }
 }
@@ -136,15 +136,11 @@ impl Pane {
 /// panes share their grid settings.
 pub(crate) struct Panes {
     list: Vec<Pane>,
-    next_canvas: u64,
 }
 
 impl Panes {
-    /// Canvas ids of sheet panes (library canvases use small ones).
-    const FIRST_SHEET_CANVAS: u64 = 1 << 32;
-
     fn new() -> Self {
-        Panes { list: vec![Pane::new(ViewId::Board, 2)], next_canvas: Self::FIRST_SHEET_CANVAS }
+        Panes { list: vec![Pane::new(ViewId::Board)] }
     }
 
     /// The pane of `view`, made if there is none yet.
@@ -152,8 +148,7 @@ impl Panes {
         let i = match self.list.iter().position(|p| p.view == view) {
             Some(i) => i,
             None => {
-                let mut pane = Pane::new(view, self.next_canvas);
-                self.next_canvas += 1;
+                let mut pane = Pane::new(view);
                 if let Some(other) = self.list.iter().find(|p| p.view.kind() == view.kind()) {
                     pane.it.grid = other.it.grid;
                     pane.it.snap = other.it.snap;
@@ -1972,72 +1967,69 @@ impl PcbApp {
         let mut open = self.show_settings;
         let mut theme_choice = None;
         let mut changed = false;
-        egui::Window::new("Settings").open(&mut open).resizable(true).default_height(560.0).collapsible(false).show(
-            ctx,
-            |ui| {
-                ui.heading("Appearance");
-                ui.horizontal(|ui| {
-                    ui.label("Theme");
-                    let current = view::style::theme();
-                    for &t in view::style::Theme::ALL {
-                        if ui.selectable_label(current == t, t.label()).clicked() && current != t {
-                            theme_choice = Some(t);
-                        }
+        theme::window(ctx, "Settings", &mut open, [520.0, 560.0], |ui| {
+            ui.heading("Appearance");
+            ui.horizontal(|ui| {
+                ui.label("Theme");
+                let current = view::style::theme();
+                for &t in view::style::Theme::ALL {
+                    if ui.selectable_label(current == t, t.label()).clicked() && current != t {
+                        theme_choice = Some(t);
                     }
-                });
-                ui.add_space(8.0);
-                ui.heading("Keyboard shortcuts");
-                let conflicts = self.keymap.conflicts();
-                if !conflicts.is_empty() {
-                    let text: Vec<String> = conflicts
-                        .iter()
-                        .map(|(s, a)| {
-                            let names: Vec<&str> = a.iter().map(|a| a.label()).collect();
-                            format!("{} is bound to {}", ctx.format_shortcut(&s.to_egui()), names.join(" and "))
-                        })
-                        .collect();
-                    ui.label(RichText::new(text.join("\n")).color(theme::warn()));
                 }
-                egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
-                    egui::Grid::new("keymap").num_columns(2).striped(true).spacing([24.0, 4.0]).show(ui, |ui| {
-                        for &action in Action::ALL {
-                            ui.label(action.label());
-                            ui.horizontal(|ui| {
-                                let keys = self.keymap.shortcuts(action).to_vec();
-                                for (i, k) in keys.iter().enumerate() {
-                                    let text = format!("{}  ×", ctx.format_shortcut(&k.to_egui()));
-                                    if ui.small_button(text).on_hover_text("Remove").clicked() {
-                                        let mut keys = keys.clone();
-                                        keys.remove(i);
-                                        self.keymap.set(action, keys);
-                                        changed = true;
-                                    }
+            });
+            ui.add_space(8.0);
+            ui.heading("Keyboard shortcuts");
+            let conflicts = self.keymap.conflicts();
+            if !conflicts.is_empty() {
+                let text: Vec<String> = conflicts
+                    .iter()
+                    .map(|(s, a)| {
+                        let names: Vec<&str> = a.iter().map(|a| a.label()).collect();
+                        format!("{} is bound to {}", ctx.format_shortcut(&s.to_egui()), names.join(" and "))
+                    })
+                    .collect();
+                ui.label(RichText::new(text.join("\n")).color(theme::warn()));
+            }
+            egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                egui::Grid::new("keymap").num_columns(2).striped(true).spacing([24.0, 4.0]).show(ui, |ui| {
+                    for &action in Action::ALL {
+                        ui.label(action.label());
+                        ui.horizontal(|ui| {
+                            let keys = self.keymap.shortcuts(action).to_vec();
+                            for (i, k) in keys.iter().enumerate() {
+                                let text = format!("{}  ×", ctx.format_shortcut(&k.to_egui()));
+                                if ui.small_button(text).on_hover_text("Remove").clicked() {
+                                    let mut keys = keys.clone();
+                                    keys.remove(i);
+                                    self.keymap.set(action, keys);
+                                    changed = true;
                                 }
-                                if self.recording == Some(action) {
-                                    ui.label(RichText::new("Press a key… (Esc cancels)").color(theme::accent()));
-                                } else if ui.small_button("+").on_hover_text("Add a shortcut").clicked() {
-                                    self.recording = Some(action);
-                                }
-                            });
-                            ui.end_row();
-                        }
-                    });
-                });
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Reset to defaults").clicked() {
-                        self.keymap = Keymap::default();
-                        changed = true;
-                    }
-                    if ui.button("Copy as JSON").clicked() {
-                        ui.ctx().copy_text(self.keymap.to_json());
+                            }
+                            if self.recording == Some(action) {
+                                ui.label(RichText::new("Press a key… (Esc cancels)").color(theme::accent()));
+                            } else if ui.small_button("+").on_hover_text("Add a shortcut").clicked() {
+                                self.recording = Some(action);
+                            }
+                        });
+                        ui.end_row();
                     }
                 });
-                if let Some(path) = Settings::path() {
-                    ui.label(RichText::new(format!("Saved in {}", path.display())).color(theme::text_dim()));
+            });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.button("Reset to defaults").clicked() {
+                    self.keymap = Keymap::default();
+                    changed = true;
                 }
-            },
-        );
+                if ui.button("Copy as JSON").clicked() {
+                    ui.ctx().copy_text(self.keymap.to_json());
+                }
+            });
+            if let Some(path) = Settings::path() {
+                ui.label(RichText::new(format!("Saved in {}", path.display())).color(theme::text_dim()));
+            }
+        });
         if !open {
             self.recording = None;
         }

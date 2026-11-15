@@ -62,7 +62,7 @@ impl LibraryEditor {
     }
 
     pub fn new(key: u64, lib: LibraryDoc) -> Self {
-        let canvas = Canvas::new(1000 + key, view::style::background(1.27));
+        let canvas = Canvas::new(view::style::background(1.27));
         LibraryEditor {
             key,
             lib,

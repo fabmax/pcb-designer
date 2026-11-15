@@ -347,6 +347,12 @@ things to do **later**.
   ones, a pad's mask/paste come from its layer list. A symbol requested without footprints gets a "No footprint" variant
   (with a warning); one whose footprints all fail to load makes no part. Deterministic ids (FNV of library, name, element), so re-imports
   update in place.
+- Previews (`kicad::preview::PreviewCache`): the first unit of a symbol or a footprint,
+  converted as an import would (power and refused symbols too), cached by name with
+  errors (LRU, 32 items). The import window shows them from a scratch `LibraryDoc`,
+  rebuilt when the target changes; it follows the last clicked search result or lone
+  footprint, else the active pick. A clicked symbol result shows its first suggested
+  footprint. The cache is dropped on rescan and when the window closes.
 - The catalog indexes names only (~0.1 s) and parses lazily. Footprint suggestion: the
   default footprint, else the best `ki_fp_filters` match.
 - Download (`kicad::download`): official GitLab release archives of `SUPPORTED_MAJOR`
@@ -490,7 +496,20 @@ things to do **later**.
 - **Settings** (`settings.rs`, `PCB_DESIGNER_CONFIG` overrides the folder): theme, unit,
   recent projects, changed key bindings, dock.
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
-  `theme::bold_label`). Bus prompts are `name_prompt.rs`.
+  `theme::bold_label`) and, for non-modal resizable ones, `theme::window` (same frame
+  and title bar, a × button; Settings, KiCad import). Bus prompts are `name_prompt.rs`.
+- **GPU canvases** (`canvas.rs`): each `Canvas` takes a unique id and its own `GpuScene`
+  in `CanvasResources`; dropping the canvas queues the id and the next `prepare` frees
+  the scene. Gotcha: a new canvas only receives the scene's incremental uploads, so it
+  must start with a scene that wasn't uploaded elsewhere (a fresh `ItemView`, or keep
+  the canvas with its scene).
+- **Previews** (`preview.rs`): `Preview` is a view-only `ItemView` + `Canvas` in a box
+  (fitted every frame to `ItemView::content_bounds`, no grid, axis or origin, square
+  corners with a border, a hint or error text when empty). It restyles itself on a
+  theme change. Previews switch items instead of being recreated, so their count stays
+  fixed (two per part form, two in the import window). The part form shows the symbol
+  of a chosen unit and the footprint of a chosen variant (`view::item::PartPreview`,
+  falling back to the first); a click opens the item.
 - **Dev aids:** `--script` steps (see AGENTS.md), `--screenshot` (captures egui output:
   the native window buttons don't show), `--panel`, `--show`, `--select`.
 
@@ -528,8 +547,6 @@ defers.
 - Drawing frames: custom KiCad drawing sheets (`.kicad_wks`; the default frame is used),
   an "update the date on save" option, text variables in schematic texts, printing and
   PDF export of the pages.
-- GPU scenes of closed sheet canvases stay allocated until the app quits
-  (`CanvasResources::scenes` is never pruned).
 - After sheets: re-parenting sheets, moving objects between sheets, hierarchical bus
   pins (bus-named hierarchical labels are drawn as pins but don't connect), ERC of pin
   directions across sheet pins.
@@ -591,8 +608,6 @@ defers.
 **Libraries and parts**
 - Drawing tools for arcs and polygons (numeric editing only today).
 - Pad arrays and footprint wizards.
-- A part preview in the part form; symbol and footprint previews in the KiCad import
-  window.
 - KiCad import: back-side footprint content, text boxes, De Morgan bodies, alternate pin
   functions, exact oval drills, 3D models.
 
@@ -611,7 +626,6 @@ defers.
 - Per-layer colour customisation; UI scale.
 - Tool window bars: drag buttons to reorder or move between bars, a Nets panel, two
   panels stacked on one side.
-- Restyle the Settings and KiCad import windows with `theme::dialog`.
 - MCP in settings: Port, enable on startup
 - Replace the placeholder stroke font.
 - UI icons as SVG files instead of code (`icons.rs`): `egui_extras` `svg` feature
