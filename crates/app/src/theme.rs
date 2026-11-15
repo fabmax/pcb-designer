@@ -120,8 +120,8 @@ pub fn dialog<R>(
     })
 }
 
-/// A resizable, non-modal window that looks like [`dialog`], with a close button. Shown
-/// while `open`; returns the contents' result when shown.
+/// A resizable, non-modal window that looks like [`dialog`], with a close button, first
+/// shown centred. Shown while `open`; returns the contents' result when shown.
 pub fn window<R>(
     ctx: &egui::Context,
     title: &str,
@@ -138,6 +138,9 @@ pub fn window<R>(
         .title_bar(false)
         .frame(floating_frame(ctx))
         .default_size(default_size)
+        // Opens centred in the app window; egui remembers where it was moved to.
+        .pivot(egui::Align2::CENTER_CENTER)
+        .default_pos(ctx.content_rect().center())
         .resizable(true)
         .collapsible(false)
         .show(ctx, |ui| floating_contents(ui, title, Some(&mut close), add_contents))

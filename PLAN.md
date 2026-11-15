@@ -506,7 +506,7 @@ things to do **later**.
   recent projects, changed key bindings, dock.
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
   `theme::bold_label`) and, for non-modal resizable ones, `theme::window` (same frame
-  and title bar, a × button; Settings, KiCad import). Bus prompts are `name_prompt.rs`.
+  and title bar, a × button, opens centred; Settings, KiCad import). Bus prompts are `name_prompt.rs`.
 - **GPU canvases** (`canvas.rs`): each `Canvas` takes a unique id and its own `GpuScene`
   in `CanvasResources`; dropping the canvas queues the id and the next `prepare` frees
   the scene. Gotcha: a new canvas only receives the scene's incremental uploads, so it
