@@ -793,7 +793,7 @@ fn arc_points(a: (f64, f64), b: (f64, f64), c: (f64, f64), ccw: bool) -> Vec<(f6
 // ---------------------------------------------------------------------------------------
 // Excellon
 
-/// Parse an Excellon drill file: every hole becomes a circle (slots are skipped).
+/// Parse an Excellon drill file: every hole becomes a circle, every G85 slot a stroke.
 pub fn parse_excellon(text: &str) -> Result<Image, ParseError> {
     let mut img = Image::default();
     let mut scale = 1e6;
@@ -835,31 +835,35 @@ pub fn parse_excellon(text: &str) -> Result<Image, ParseError> {
                 }
             }
             _ if line.starts_with('X') || line.starts_with('Y') => {
-                if line.contains("G85") {
-                    img.warnings.push("slots (G85) are skipped".into());
-                    continue;
-                }
-                let mut x = pos.0;
-                let mut y = pos.1;
                 let num = |s: &str| {
                     s.chars().take_while(|c| c.is_ascii_digit() || matches!(c, '-' | '+' | '.')).collect::<String>()
                 };
-                if let Some(i) = line.find('X') {
-                    x = implied(&num(&line[i + 1..]), scale).ok_or_else(|| err(format!("bad coordinate {line:?}")))?;
-                }
-                if let Some(i) = line.find('Y') {
-                    y = implied(&num(&line[i + 1..]), scale).ok_or_else(|| err(format!("bad coordinate {line:?}")))?;
-                }
-                pos = (x, y);
+                // `X…Y…`, or a slot `X…Y…G85X…Y…`; missing coordinates repeat the last.
+                let mut coords = |part: &str| -> Result<Point, ParseError> {
+                    let (mut x, mut y) = pos;
+                    if let Some(i) = part.find('X') {
+                        x = implied(&num(&part[i + 1..]), scale)
+                            .ok_or_else(|| err(format!("bad coordinate {line:?}")))?;
+                    }
+                    if let Some(i) = part.find('Y') {
+                        y = implied(&num(&part[i + 1..]), scale)
+                            .ok_or_else(|| err(format!("bad coordinate {line:?}")))?;
+                    }
+                    pos = (x, y);
+                    Ok(Point::new((x * scale).round() as Coord, (y * scale).round() as Coord))
+                };
+                let (start, end) = match line.split_once("G85") {
+                    Some((a, b)) => (coords(a)?, Some(coords(b)?)),
+                    None => (coords(line)?, None),
+                };
                 let tool = current.ok_or_else(|| err("hole without a tool".into()))?;
                 let d = tools.get(&tool).copied().ok_or_else(|| err(format!("undefined tool T{tool}")))?;
-                let center = Point::new((x * scale).round() as Coord, (y * scale).round() as Coord);
-                img.objects.push(Object {
-                    dark: true,
-                    dcode: Some(tool),
-                    prims: vec![Prim::Circle { center, diameter: (d * scale).round() as Coord }],
-                    flash: Some(center),
-                });
+                let diameter = (d * scale).round() as Coord;
+                let prim = match end {
+                    Some(b) => Prim::Line { a: start, b, width: diameter },
+                    None => Prim::Circle { center: start, diameter },
+                };
+                img.objects.push(Object { dark: true, dcode: Some(tool), prims: vec![prim], flash: Some(start) });
             }
             _ => {}
         }
@@ -873,6 +877,16 @@ pub fn parse_excellon(text: &str) -> Result<Image, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn excellon_slots() {
+        let f = "M48\nMETRIC\nT1C0.8000\n%\nT1\nX1.0000Y2.0000\nX5.0000Y0.0000G85X6.0000Y0.0000\nM30\n";
+        let img = parse_excellon(f).unwrap();
+        assert!(img.warnings.is_empty(), "{:?}", img.warnings);
+        assert_eq!(img.objects[0].prims, [Prim::Circle { center: Point::mm(1.0, 2.0), diameter: mm(0.8) }]);
+        let slot = Prim::Line { a: Point::mm(5.0, 0.0), b: Point::mm(6.0, 0.0), width: mm(0.8) };
+        assert_eq!(img.objects[1].prims, [slot]);
+    }
 
     #[test]
     fn expressions() {

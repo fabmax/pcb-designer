@@ -119,9 +119,9 @@ fn part_from_a_datasheet() {
         &mut host,
         json!([
             { "type": "lib_footprint", "name": "TO-92", "pads": [
-                { "name": "1", "pos": [-1_270_000, 0], "size": [1_300_000, 1_300_000], "shape": { "type": "rect" }, "kind": { "type": "through_hole", "drill": 750_000 } },
-                { "name": "2", "pos": [0, 0], "size": [1_300_000, 1_300_000], "shape": { "type": "oval" }, "kind": { "type": "through_hole", "drill": 750_000 } },
-                { "name": "3", "pos": [1_270_000, 0], "size": [1_300_000, 1_300_000], "shape": { "type": "oval" }, "kind": { "type": "through_hole", "drill": 750_000 } }
+                { "name": "1", "pos": [-1_270_000, 0], "size": [1_300_000, 1_300_000], "shape": { "type": "rect" }, "kind": { "type": "through_hole", "drill": [750_000, 750_000] } },
+                { "name": "2", "pos": [0, 0], "size": [1_300_000, 1_300_000], "shape": { "type": "oval" }, "kind": { "type": "through_hole", "drill": [750_000, 750_000] } },
+                { "name": "3", "pos": [1_270_000, 0], "size": [1_300_000, 1_300_000], "shape": { "type": "oval" }, "kind": { "type": "through_hole", "drill": [750_000, 750_000] } }
             ] },
             { "type": "lib_part", "name": "DRV1", "variants": [
                 { "footprint": "SOT-23", "name": "DRV1-SOT" },

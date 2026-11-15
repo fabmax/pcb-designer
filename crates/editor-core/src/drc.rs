@@ -251,7 +251,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
         let Some(def) = crate::query::footprint_of_instance(project, f) else { continue };
         let t = f.transform();
         for pad in def.pads.iter() {
-            let (PadKind::ThroughHole { drill: d } | PadKind::NonPlatedHole { drill: d }) = pad.kind else { continue };
+            let Some(d) = pad.kind.drill().map(|d| d.w.min(d.h)) else { continue };
             if d < rules.min_drill {
                 out.push(drill(
                     format!("Pad {}.{}", refdes(f), pad.name),

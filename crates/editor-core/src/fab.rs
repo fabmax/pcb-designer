@@ -62,6 +62,31 @@ pub fn pad_paste_layer(pad: &Pad, side: Side) -> Option<LayerId> {
         .then(|| LayerId::for_footprint(FootprintLayer::SolderPaste, pad.side(side)))
 }
 
+/// A placed hole: a round one has `a == b`; a slot is the stroke from `a` to `b` with
+/// round ends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Hole {
+    pub a: Point,
+    pub b: Point,
+    pub diameter: Coord,
+}
+
+impl Hole {
+    pub fn is_slot(&self) -> bool {
+        self.a != self.b
+    }
+}
+
+/// The hole of `pad` placed by `t`, if it has one.
+pub fn pad_hole(pad: &Pad, t: &Transform) -> Option<Hole> {
+    let drill = pad.kind.drill()?;
+    let diameter = drill.w.min(drill.h);
+    let half = (drill.w.max(drill.h) - diameter) / 2;
+    let axis = if drill.w >= drill.h { Point::new(half, 0) } else { Point::new(0, half) };
+    let end = |p: Point| t.point(pad.pos + p.rotated(pad.rotation));
+    Some(Hole { a: end(-axis), b: end(axis), diameter })
+}
+
 /// The pad placed by `t`, grown by `margin` (negative shrinks). `None` when shrinking
 /// leaves nothing. Corners stay sharp when growing a rectangle (as in KiCad); polygons
 /// grow with round corners.
@@ -151,12 +176,35 @@ mod tests {
         let smd = pad(PadShape::Rect, PadKind::Smd);
         assert_eq!(pad_mask_layers(&smd, Side::Bottom), vec![LayerId::BOTTOM_MASK]);
         assert_eq!(pad_paste_layer(&smd, Side::Top), Some(LayerId::TOP_PASTE));
-        let th = pad(PadShape::Circle, PadKind::ThroughHole { drill: mm(0.8) });
+        let th = pad(PadShape::Circle, PadKind::ThroughHole { drill: Size::square(mm(0.8)) });
         assert_eq!(pad_mask_layers(&th, Side::Top), vec![LayerId::TOP_MASK, LayerId::BOTTOM_MASK]);
         assert_eq!(pad_paste_layer(&th, Side::Top), None);
         assert_eq!(pad_copper_layers(&th, Side::Top, &copper), copper.to_vec());
-        let npth = pad(PadShape::Circle, PadKind::NonPlatedHole { drill: mm(3.0) });
+        let npth = pad(PadShape::Circle, PadKind::NonPlatedHole { drill: Size::square(mm(3.0)) });
         assert!(pad_copper_layers(&npth, Side::Top, &copper).is_empty());
+    }
+
+    #[test]
+    fn holes_and_slots() {
+        // `pad` is at (1, 0), turned 90°; a 0.8 × 2 slot runs along the pad's x axis.
+        let round = pad(PadShape::Circle, PadKind::ThroughHole { drill: Size::square(mm(0.8)) });
+        let h = pad_hole(&round, &Transform::IDENTITY).unwrap();
+        assert!(!h.is_slot());
+        assert_eq!((h.a, h.diameter), (Point::mm(1.0, 0.0), mm(0.8)));
+        let slot = pad(PadShape::Oval, PadKind::NonPlatedHole { drill: Size::mm(2.0, 0.8) });
+        let h = pad_hole(&slot, &Transform::IDENTITY).unwrap();
+        assert!(h.is_slot());
+        assert_eq!((h.a, h.b, h.diameter), (Point::mm(1.0, -0.6), Point::mm(1.0, 0.6), mm(0.8)));
+        // Placed: moved, turned another 90° and mirrored to the bottom.
+        let t = Transform::new(Point::mm(10.0, 0.0), Angle::DEG90, true);
+        let h = pad_hole(&slot, &t).unwrap();
+        let sorted = |mut v: [Point; 2]| {
+            v.sort_by_key(|p| (p.x, p.y));
+            v
+        };
+        let expected = [t.point(Point::mm(1.0, -0.6)), t.point(Point::mm(1.0, 0.6))];
+        assert_eq!(sorted([h.a, h.b]), sorted(expected));
+        assert!(pad_hole(&pad(PadShape::Rect, PadKind::Smd), &t).is_none());
     }
 
     #[test]

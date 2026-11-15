@@ -601,8 +601,10 @@ impl PcbTools {
         - lib_footprint: name, description, pads, graphics, texts. Pad: name (as in the \
         datasheet), pos (centre), size [w, h], shape ({\"type\": \"rect\"}, round_rect with \
         ratio, oval, circle), kind ({\"type\": \"smd\"}, through_hole or non_plated_hole \
-        with drill). Origin at the package centre, pad 1 top left, Y up. Graphics \
-        {\"layer\": silkscreen, fabrication or courtyard, \"shape\": …}: body outline on \
+        with drill [w, h]: equal for a round hole, else an oval slot), optional back (SMD pad on \
+        the other side), mask and paste (false: no mask opening / no solder paste). Origin at the \
+        package centre, pad 1 top left, Y up. Graphics \
+        {\"layer\": silkscreen, fabrication or courtyard, \"shape\": …, \"back\"?}: body outline on \
         fabrication, courtyard around everything, silkscreen clear of the pads.\n\
         - lib_part: name, description, prefix (default U), default_value (default the \
         name), properties, units [{\"symbol\": SYMBOL NAME}] (named A, B, …; [] for a board part \

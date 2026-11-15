@@ -177,7 +177,12 @@ and hierarchical sheets.
   `mask` / `paste` turn that off (test points), and `back` puts an SMD pad on the
   footprint's other side (card edge fingers); footprint graphics and texts have `back`
   too (`board_layer(side)`). Always go through `fab::pad_*_layers` / `Pad::side`,
-  never `for_footprint(…, inst.side)` for pads. Back courtyards are ignored by DRC. Vias stay
+  never `for_footprint(…, inst.side)` for pads. Back courtyards are ignored by DRC.
+- **Drills** are a `Size`: round when square, else an oval slot along the longer side,
+  turning with the pad. `fab::pad_hole` is the one placed hole (`Hole { a, b,
+  diameter }`, `a == b` for round) for the view, Excellon (slots as `G85` routes, read
+  back as strokes) and DRC (minimum drill = the narrow side). Drill offsets are ignored
+  on import. Vias stay
   tented. Explicit footprint mask/paste graphics add to that. `fab::pad_outline` is the
   one placed pad shape (rotation includes mirroring; grown rectangles keep sharp
   corners, polygons offset with round joins) for the board view and the Gerber export.
@@ -453,7 +458,7 @@ defers.
   Symbols without footprint get a "No footprint" variant; "exclude from board" adds one
   to the part; footprints without symbol become board parts. Model prerequisites first,
   in order: footprint
-  fidelity (slots, per-instance reference/value text); zones (holes,
+  fidelity (per-instance reference/value text); zones (holes,
   keepouts, connection mode); arc tracks. `in_bom` / `dnp` become component properties
   until a BOM exists. Power symbols become power labels; the style comes from the
   `power:` library name, else from the symbol's graphics; custom glyphs get the closest

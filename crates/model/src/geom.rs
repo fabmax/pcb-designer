@@ -106,6 +106,11 @@ impl From<Size> for [Coord; 2] {
 }
 
 impl Size {
+    /// A square (a round drill).
+    pub const fn square(d: Coord) -> Self {
+        Size { w: d, h: d }
+    }
+
     pub const fn new(w: Coord, h: Coord) -> Self {
         Size { w, h }
     }

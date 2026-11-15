@@ -257,7 +257,7 @@ pub fn builtin_library() -> Library {
                 rotation: Angle::ZERO,
                 size: Size::mm(1.7, 1.7),
                 shape: if i == 0 { PadShape::Rect } else { PadShape::Oval },
-                kind: PadKind::ThroughHole { drill: mm(1.0) },
+                kind: PadKind::ThroughHole { drill: Size::square(mm(1.0)) },
             })
             .collect(),
         graphics: vec![
@@ -325,7 +325,7 @@ fn add_mounting_hole(lib: &mut Library) {
             rotation: Angle::ZERO,
             size: Size::mm(6.0, 6.0),
             shape: PadShape::Circle,
-            kind: PadKind::ThroughHole { drill: mm(3.2) },
+            kind: PadKind::ThroughHole { drill: Size::square(mm(3.2)) },
         }]
         .into_iter()
         .collect(),

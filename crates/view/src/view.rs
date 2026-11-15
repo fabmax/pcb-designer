@@ -1236,8 +1236,12 @@ fn draw_footprint_at(
         if let Some(layer) = pad_paste_layer(pad, side) {
             draw(layer, rules.paste_margin);
         }
-        if let PadKind::ThroughHole { drill } | PadKind::NonPlatedHole { drill } = pad.kind {
-            p.push(l.holes, Instance::circle(mmf(center), (drill as f64 * 0.5e-6) as f32, pal().hole));
+        if let Some(h) = editor_core::fab::pad_hole(pad, &t) {
+            if h.is_slot() {
+                p.push(l.holes, Instance::line(mmf(h.a), mmf(h.b), (h.diameter as f64 * 1e-6) as f32, pal().hole));
+            } else {
+                p.push(l.holes, Instance::circle(mmf(center), (h.diameter as f64 * 0.5e-6) as f32, pal().hole));
+            }
         }
         let r = Rect::around(center, pad.size.w.max(pad.size.h) / 2);
         body = Some(body.map_or(r, |b| b.union(r)));

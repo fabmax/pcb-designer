@@ -965,7 +965,7 @@ fn pad_fields(ui: &mut egui::Ui, f: &mut Fields, shape: &mut PadShape, kind: &mu
     label(ui, "Type");
     let drill = match kind {
         PadKind::ThroughHole { drill } | PadKind::NonPlatedHole { drill } => *drill,
-        PadKind::Smd => mm(1.0).min(size.w.min(size.h) * 6 / 10),
+        PadKind::Smd => Size::square(mm(1.0).min(size.w.min(size.h) * 6 / 10)),
     };
     let kinds = [
         (PadKind::Smd, "SMD".to_string()),
@@ -977,8 +977,9 @@ fn pad_fields(ui: &mut egui::Ui, f: &mut Fields, shape: &mut PadShape, kind: &mu
     }
     ui.end_row();
     if let PadKind::ThroughHole { drill } | PadKind::NonPlatedHole { drill } = kind {
-        label(ui, "Drill");
-        if let Some(v) = f.length(ui, *drill, 0.05) {
+        // Equal width and height: a round hole; else an oval slot.
+        label(ui, if drill.w == drill.h { "Drill" } else { "Drill (slot)" });
+        if let Some(v) = f.size(ui, *drill) {
             *drill = v;
         }
         ui.end_row();

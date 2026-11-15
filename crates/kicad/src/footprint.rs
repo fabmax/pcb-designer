@@ -305,15 +305,14 @@ fn pad(cx: &mut Ctx, n: &Node, fp: &mut Footprint, seen: &mut std::collections::
     };
 
     // Drill.
-    let mut drill = 0;
+    let mut drill = Size::square(0);
     if let Some(d) = n.child("drill") {
         let v = numbers(d);
         let oval = d.items().iter().skip(1).any(|i| i.as_atom() == Some("oval"));
-        if oval && v.len() >= 2 && v[0] != v[1] {
-            cx.warn("oval drill imported as round hole");
-            drill = nm(v[0].min(v[1]));
+        if oval && v.len() >= 2 {
+            drill = Size::new(nm(v[0]), nm(v[1]));
         } else if let Some(&dv) = v.first() {
-            drill = nm(dv);
+            drill = Size::square(nm(dv));
         }
         if d.child("offset").and_then(|o| o.num(0).zip(o.num(1))).is_some_and(|(a, b)| a != 0.0 || b != 0.0) {
             cx.warn("drill offset ignored");
@@ -388,8 +387,8 @@ fn pad(cx: &mut Ctx, n: &Node, fp: &mut Footprint, seen: &mut std::collections::
     };
 
     let kind = match typ {
-        "np_thru_hole" => PadKind::NonPlatedHole { drill: drill.max(1) },
-        "thru_hole" => PadKind::ThroughHole { drill: drill.max(1) },
+        "np_thru_hole" => PadKind::NonPlatedHole { drill: Size::new(drill.w.max(1), drill.h.max(1)) },
+        "thru_hole" => PadKind::ThroughHole { drill: Size::new(drill.w.max(1), drill.h.max(1)) },
         _ => {
             if !any_copper {
                 // Aperture-only pad (paste or mask opening): a filled graphic.
@@ -471,8 +470,8 @@ mod tests {
         let p2 = fp.pads.iter().find(|p| p.name == "2").unwrap();
         assert_eq!(p2.rotation.degrees(), 90.0);
         let p3 = fp.pads.iter().find(|p| p.name == "3").unwrap();
-        assert_eq!(p3.kind, PadKind::ThroughHole { drill: 800_000 });
-        assert!(fp.pads.iter().any(|p| p.kind == PadKind::NonPlatedHole { drill: 1_000_000 }));
+        assert_eq!(p3.kind, PadKind::ThroughHole { drill: Size::new(800_000, 1_200_000) }, "an oval slot");
+        assert!(fp.pads.iter().any(|p| p.kind == PadKind::NonPlatedHole { drill: Size::square(1_000_000) }));
         // Reference flipped to y-up: -1.43 → +1.43.
         let r = fp.texts.iter().find(|t| t.text.text == "${REF}" && t.layer == FootprintLayer::Silkscreen).unwrap();
         assert_eq!(r.text.pos, Point::new(0, 1_430_000));
@@ -484,7 +483,7 @@ mod tests {
         assert!(fp.graphics.iter().any(|g| g.layer == FootprintLayer::SolderPaste));
         let back: Vec<_> = fp.graphics.iter().filter(|g| g.back).collect();
         assert!(matches!(back[..], [g] if g.layer == FootprintLayer::Silkscreen));
-        assert!(k.warnings.iter().any(|w| w.contains("oval drill")));
+        assert!(k.warnings.is_empty(), "{:?}", k.warnings);
         // Stable ids.
         assert_eq!(fp.id, parse("Resistor_SMD", R0603).unwrap().footprint.id);
     }

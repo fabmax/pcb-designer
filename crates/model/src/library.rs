@@ -116,9 +116,20 @@ pub enum PadKind {
     /// Surface mount pad on the footprint's side.
     Smd,
     /// Plated through hole on all copper layers.
-    ThroughHole { drill: Coord },
+    ThroughHole { drill: Size },
     /// Non-plated hole (mounting holes).
-    NonPlatedHole { drill: Coord },
+    NonPlatedHole { drill: Size },
+}
+
+impl PadKind {
+    /// The drill of a hole: round when width and height are equal, else an oval slot
+    /// along the longer side (turning with the pad).
+    pub fn drill(&self) -> Option<Size> {
+        match self {
+            PadKind::Smd => None,
+            PadKind::ThroughHole { drill } | PadKind::NonPlatedHole { drill } => Some(*drill),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]

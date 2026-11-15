@@ -785,11 +785,20 @@ fn draw_pad(l: &Layers, pad: &Pad, p: &mut Painter, color: Option<Color>) {
             }
         }
     }
-    if let PadKind::ThroughHole { drill } | PadKind::NonPlatedHole { drill } = pad.kind {
+    if let Some(h) = editor_core::fab::pad_hole(pad, &Transform::IDENTITY) {
         let hole = if color.is_some() && !has_copper { copper } else { pal().hole };
-        p.push(l.holes, Instance::circle(c, (drill as f64 * 0.5e-6) as f32, hole));
-        if !has_copper {
-            p.push(l.holes, Instance::circle_outline(c, (drill as f64 * 0.5e-6) as f32, 0.05, copper));
+        let r = (h.diameter as f64 * 0.5e-6) as f32;
+        if h.is_slot() {
+            // A non-plated slot gets a thin rim in the copper colour, like a round hole.
+            if !has_copper {
+                p.line(l.holes, h.a, h.b, h.diameter + 100_000, copper);
+            }
+            p.line(l.holes, h.a, h.b, h.diameter, hole);
+        } else {
+            p.push(l.holes, Instance::circle(c, r, hole));
+            if !has_copper {
+                p.push(l.holes, Instance::circle_outline(c, r, 0.05, copper));
+            }
         }
     }
     // Bounds of the rotated pad.
