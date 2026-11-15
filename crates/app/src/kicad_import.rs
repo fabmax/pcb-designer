@@ -175,7 +175,16 @@ pub struct KicadImport {
     error: Option<String>,
     /// The selected row (`None`: the previews show the active pick).
     selected: Option<Selected>,
+    /// Scroll the "To import" list to this item next frame (just added).
+    reveal: Option<Reveal>,
     previews: Previews,
+}
+
+/// An item of the "To import" list to scroll into view.
+#[derive(Clone, PartialEq, Eq)]
+enum Reveal {
+    Pick(String),
+    Lone(String),
 }
 
 /// The search field (lists hand the focus back to it on Esc).
@@ -202,6 +211,7 @@ impl KicadImport {
             target: None,
             error: None,
             selected: None,
+            reveal: None,
             previews: Previews::default(),
         }
     }
@@ -411,7 +421,10 @@ impl KicadImport {
 
     /// Add a symbol to the selection with its suggested footprint.
     pub fn pick_symbol(&mut self, full: &str) {
-        if self.picks.iter().any(|p| p.symbol == full) {
+        // Picked already: make it the active one.
+        self.reveal = Some(Reveal::Pick(full.to_string()));
+        if let Some(i) = self.picks.iter().position(|p| p.symbol == full) {
+            self.active = Some(i);
             return;
         }
         let catalog = self.catalog();
@@ -449,6 +462,7 @@ impl KicadImport {
     }
 
     pub fn pick_footprint(&mut self, full: &str) {
+        self.reveal = Some(Reveal::Lone(full.to_string()));
         if !self.footprints.iter().any(|f| f == full) {
             self.footprints.push(full.to_string());
         }
@@ -790,6 +804,12 @@ impl KicadImport {
         let mut select = None;
         let mut escape = false;
         let selected = self.selected.clone();
+        let reveal = self.reveal.take();
+        // Scrolls so the whole item shows, its top if it is taller than the list.
+        let scroll_to = |ui: &mut egui::Ui, rect: egui::Rect| {
+            let fits = rect.height() <= ui.clip_rect().height();
+            ui.scroll_to_rect(rect, (!fits).then_some(egui::Align::Min));
+        };
         egui::ScrollArea::vertical()
             .id_salt("kicad_picks")
             .max_height(ui.available_height())
@@ -833,6 +853,9 @@ impl KicadImport {
                             }
                         })
                     });
+                    if reveal.as_ref() == Some(&Reveal::Pick(p.symbol.clone())) {
+                        scroll_to(ui, r.response.rect);
+                    }
                     if active {
                         // Drawn over the card's own 1 pt border, so the layout doesn't move.
                         let radius = ui.visuals().widgets.noninteractive.corner_radius;
@@ -847,7 +870,7 @@ impl KicadImport {
                     }
                 }
                 for (i, f) in self.footprints.iter().enumerate() {
-                    ui.horizontal(|ui| {
+                    let row = ui.horizontal(|ui| {
                         if ui.small_button("Remove").clicked() {
                             remove_fp = Some(i);
                         }
@@ -858,6 +881,9 @@ impl KicadImport {
                             select = Some(Selected::Lone(f.clone()));
                         }
                     });
+                    if reveal.as_ref() == Some(&Reveal::Lone(f.clone())) {
+                        scroll_to(ui, row.response.rect);
+                    }
                 }
             });
         if let Some(i) = remove {

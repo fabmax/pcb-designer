@@ -369,7 +369,9 @@ things to do **later**.
   Space too), ↑↓ Home End PgUp PgDn move, Esc returns to the search field, whose ↑↓ and
   Enter drive the results. One selection (`Selected`) across the lists is what the
   previews show (captioned with the names); without one they show the active pick.
-  Adding keeps the row selected, so ↓ Enter ↓ Enter adds several. A list's focus is a
+  Adding keeps the row selected, so ↓ Enter ↓ Enter adds several. An added item (or an
+  already picked symbol added again, which becomes active) is scrolled into view
+  (`Reveal`, the next time the list is drawn). A list's focus is a
   widget under its rows with a focus lock filter, as in the Project tree.
 - Download (`kicad::download`): official GitLab release archives of `SUPPORTED_MAJOR`
   (10), unpacked into `<config>/kicad/<version>` via a temp folder and rename. Gotcha:
