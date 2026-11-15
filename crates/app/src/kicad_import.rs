@@ -697,38 +697,45 @@ impl KicadImport {
                     let frame = egui::Frame::group(ui.style())
                         .fill(if active { theme::panel() } else { theme::panel_dark() })
                         .inner_margin(egui::Margin::same(6));
-                    let r = frame.show(ui, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.horizontal(|ui| {
-                            if ui.small_button("Remove").clicked() {
-                                remove = Some(i);
+                    // The card senses clicks before its children are added, so its buttons
+                    // and combo stay on top (the widget added last wins).
+                    let sense = egui::UiBuilder::new().sense(egui::Sense::click());
+                    let r = ui.scope_builder(sense, |ui| {
+                        frame.show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.horizontal(|ui| {
+                                if ui.small_button("Remove").clicked() {
+                                    remove = Some(i);
+                                }
+                                ui.label(RichText::new(&p.symbol).strong());
+                                let units = if p.units > 1 { format!(", {} units", p.units) } else { String::new() };
+                                let pins = if p.pins == 1 { "1 pin".to_string() } else { format!("{} pins", p.pins) };
+                                ui.label(RichText::new(format!("{pins}{units}")).color(theme::text_dim()));
+                            });
+                            if !p.description.is_empty() {
+                                ui.label(RichText::new(&p.description).color(theme::text_dim()).small());
                             }
-                            ui.label(RichText::new(&p.symbol).strong());
-                            let units = if p.units > 1 { format!(", {} units", p.units) } else { String::new() };
-                            let pins = if p.pins == 1 { "1 pin".to_string() } else { format!("{} pins", p.pins) };
-                            ui.label(RichText::new(format!("{pins}{units}")).color(theme::text_dim()));
-                        });
-                        if !p.description.is_empty() {
-                            ui.label(RichText::new(&p.description).color(theme::text_dim()).small());
-                        }
-                        if let Some(why) = &p.refused {
-                            ui.label(RichText::new(why).color(theme::warn()));
-                            return;
-                        }
-                        ui.horizontal(|ui| {
-                            ui.label("Footprint");
-                            let mut options: Vec<(Option<String>, String)> =
-                                vec![(None, "— none (not on board) —".to_string())];
-                            options.extend(p.candidates.iter().map(|c| (Some(c.clone()), c.clone())));
-                            if let Some(f) = fields::combo(ui, ("kicad_fp", i), &p.footprint, &options) {
-                                p.footprint = f;
+                            if let Some(why) = &p.refused {
+                                ui.label(RichText::new(why).color(theme::warn()));
+                                return;
                             }
-                        });
-                        if p.candidates.is_empty() {
-                            hint(ui, "No matching footprint; search one under Footprints and press Use.");
-                        }
+                            ui.horizontal(|ui| {
+                                ui.label("Footprint");
+                                let mut options: Vec<(Option<String>, String)> =
+                                    vec![(None, "— none (not on board) —".to_string())];
+                                options.extend(p.candidates.iter().map(|c| (Some(c.clone()), c.clone())));
+                                if let Some(f) = fields::combo(ui, ("kicad_fp", i), &p.footprint, &options) {
+                                    p.footprint = f;
+                                }
+                            });
+                            if p.candidates.is_empty() {
+                                hint(ui, "No matching footprint; search one under Footprints and press Use.");
+                            }
+                        })
                     });
-                    if r.response.interact(egui::Sense::click()).clicked() {
+                    // Any click inside the card (also on its widgets) makes it the active pick.
+                    let pressed = ui.input(|i| i.pointer.primary_clicked().then(|| i.pointer.interact_pos()).flatten());
+                    if r.response.clicked() || pressed.is_some_and(|p| r.response.rect.contains(p)) {
                         self.active = Some(i);
                         self.previews.focus = None;
                     }
@@ -749,15 +756,9 @@ impl KicadImport {
             });
         if let Some(i) = remove {
             self.picks.remove(i);
-            self.active = self.active.and_then(|a| {
-                if a == i {
-                    None
-                } else if a > i {
-                    Some(a - 1)
-                } else {
-                    Some(a)
-                }
-            });
+            // The active pick moves with the list; removing it activates its neighbour.
+            let n = self.picks.len();
+            self.active = self.active.map(|a| if a > i { a - 1 } else { a }).filter(|&a| a < n);
         }
         if let Some(f) = focus_fp {
             self.previews.focus = Some((None, Some(f)));

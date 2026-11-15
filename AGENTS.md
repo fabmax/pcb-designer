@@ -86,6 +86,9 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), and `kic
 - **Hit testing:** the widget added last on top wins, judged against the previous
   frame's rects. Overlays on a canvas are drawn after it and sense `click_and_drag`.
   A click-only widget lets the canvas underneath still receive drags (`toolbar.rs`).
+  A clickable container (a card with buttons inside) senses through
+  `UiBuilder::new().sense(…)` in `scope_builder`, which registers it before its children;
+  `response.interact(…)` afterwards puts it on top and its buttons stop working.
 - **GPU canvases** are paint callbacks that egui can't clip. Rounded corners are masked
   afterwards (`theme::round_corners`).
 - **egui 0.37 deprecations:** use `Id::unique` / `IdSalt` instead of `Id::new`, and
