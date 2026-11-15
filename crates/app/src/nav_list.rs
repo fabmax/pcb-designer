@@ -158,6 +158,7 @@ pub fn show(
             let layout = egui::Layout::left_to_right(egui::Align::Center);
             ui.scope_builder(egui::UiBuilder::new().max_rect(inner).layout(layout), |ui| {
                 ui.set_clip_rect(inner.intersect(clip));
+                theme::on_inset(ui);
                 row(ui, i)
             });
         }

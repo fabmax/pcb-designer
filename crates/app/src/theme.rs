@@ -151,6 +151,14 @@ pub fn window<R>(
     r
 }
 
+/// Adjust `ui` for widgets on an inset area (`panel_dark`): in the light theme buttons
+/// would otherwise have about the inset's colour.
+pub fn on_inset(ui: &mut egui::Ui) {
+    if !dark() {
+        ui.visuals_mut().widgets.inactive.weak_bg_fill = panel();
+    }
+}
+
 /// Text in a bolder weight. egui ships no bold face, so the text is drawn three times,
 /// smeared sideways by `BOLD` points.
 pub fn bold_label(ui: &mut egui::Ui, text: &str, size: f32, color: Color32) {

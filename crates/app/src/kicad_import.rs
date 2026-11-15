@@ -728,30 +728,44 @@ impl KicadImport {
         });
         let active = self.active.and_then(|i| self.picks.get(i)).map(|p| p.symbol.clone());
         let results = &self.results;
-        let out = nav_list::show(
-            ui,
-            egui::Id::unique("kicad_results"),
-            results.len(),
-            selected,
-            ui.available_height(),
-            false,
-            field_keys,
-            |ui, i| {
-                let r = &results[i];
-                if ui.small_button("Add").clicked() {
-                    add = Some(r.clone());
-                }
-                if kind == Kind::Footprints
-                    && let Some(sym) = &active
-                    && ui.small_button("Use").on_hover_text(format!("Add as a footprint variant of {sym}")).clicked()
-                {
-                    assign = Some(r.clone());
-                }
-                let (lib, name) = r.split_once(':').unwrap_or(("", r));
-                nav_list::dim(ui, lib);
-                nav_list::name(ui, name);
-            },
-        );
+        // The results on an inset filling the column's height.
+        const MARGIN: i8 = 2;
+        let height = ui.available_height() - 2.0 * f32::from(MARGIN);
+        let out = egui::Frame::NONE
+            .fill(theme::panel_dark())
+            .corner_radius(4)
+            .inner_margin(egui::Margin::same(MARGIN))
+            .show(ui, |ui| {
+                ui.set_min_height(height);
+                nav_list::show(
+                    ui,
+                    egui::Id::unique("kicad_results"),
+                    results.len(),
+                    selected,
+                    height,
+                    false,
+                    field_keys,
+                    |ui, i| {
+                        let r = &results[i];
+                        if ui.small_button("Add").clicked() {
+                            add = Some(r.clone());
+                        }
+                        if kind == Kind::Footprints
+                            && let Some(sym) = &active
+                            && ui
+                                .small_button("Use")
+                                .on_hover_text(format!("Add as a footprint variant of {sym}"))
+                                .clicked()
+                        {
+                            assign = Some(r.clone());
+                        }
+                        let (lib, name) = r.split_once(':').unwrap_or(("", r));
+                        nav_list::dim(ui, lib);
+                        nav_list::name(ui, name);
+                    },
+                )
+            })
+            .inner;
         if out.escape {
             ui.memory_mut(|m| m.request_focus(search_id()));
         }
