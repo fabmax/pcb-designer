@@ -17,6 +17,9 @@ fn every_object_kind_round_trips() {
     );
     let text = Text::new("REV A", Point::mm(3.0, 3.0), mm(1.0));
     p.put(Object::BoardText(BoardText { id: Id::new(), layer: LayerId::TOP_SILK, text }), None);
+    let mut k = Keepout::new(vec![LayerId::TOP_COPPER], vec![Point::ZERO, Point::mm(1.0, 0.0), Point::mm(0.0, 1.0)]);
+    k.holes = vec![vec![Point::mm(0.1, 0.1), Point::mm(0.3, 0.1), Point::mm(0.1, 0.3)]];
+    p.put(Object::Keepout(k), None);
 
     for &kind in ObjectKind::ALL {
         let objects: Vec<Object> = p.objects(kind).collect();

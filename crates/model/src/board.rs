@@ -170,14 +170,154 @@ pub struct Via {
 pub struct Zone {
     pub id: Id,
     pub layer: LayerId,
-    /// Name of the net the zone connects to.
+    /// Name of the net the zone connects to. Empty: a zone without a net (isolated
+    /// copper), which keeps clearance to all copper.
     pub net: String,
     pub outline: Vec<Point>,
+    /// Cutouts: areas inside the outline this zone leaves empty (other zones may fill
+    /// them; a [`Keepout`] keeps every zone out).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub holes: Vec<Vec<Point>>,
     #[serde(default)]
     pub priority: u32,
     /// Overrides the design rule clearance when set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clearance: Option<Coord>,
+    /// How pads of the zone's net connect to it.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub connection: ZoneConnection,
+    /// Override the design rules' thermal relief gap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal_gap: Option<Coord>,
+    /// Override the design rules' thermal spoke width.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thermal_spoke: Option<Coord>,
+    /// Which fill pieces that reach no copper of the zone's net are removed.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub islands: IslandRemoval,
+}
+
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
+}
+
+impl Zone {
+    /// A thermal-relief zone with default settings.
+    pub fn new(layer: LayerId, net: impl Into<String>, outline: Vec<Point>) -> Self {
+        Zone {
+            id: Id::new(),
+            layer,
+            net: net.into(),
+            outline,
+            holes: Vec::new(),
+            priority: 0,
+            clearance: None,
+            connection: ZoneConnection::default(),
+            thermal_gap: None,
+            thermal_spoke: None,
+            islands: IslandRemoval::default(),
+        }
+    }
+}
+
+/// How pads of a zone's own net connect to its fill.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ZoneConnection {
+    /// A gap around the pad bridged by four spokes (easier to solder).
+    #[default]
+    Thermal,
+    /// Thermal reliefs for through-hole pads, SMD pads flooded.
+    ThermalThroughHole,
+    /// Pads flooded.
+    Solid,
+    /// Pads keep the clearance (connect by tracks).
+    None,
+}
+
+impl ZoneConnection {
+    pub const ALL: [ZoneConnection; 4] =
+        [ZoneConnection::Thermal, ZoneConnection::ThermalThroughHole, ZoneConnection::Solid, ZoneConnection::None];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ZoneConnection::Thermal => "Thermal reliefs",
+            ZoneConnection::ThermalThroughHole => "Thermal reliefs (through-hole only)",
+            ZoneConnection::Solid => "Solid",
+            ZoneConnection::None => "Not connected",
+        }
+    }
+}
+
+/// Which pieces of a zone's fill that reach no copper of its net are removed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum IslandRemoval {
+    #[default]
+    Always,
+    Never,
+    /// Those smaller than this area (nm²).
+    BelowArea(i64),
+}
+
+/// An area where copper (or footprints) must not be (KiCad: rule area). Zone fills leave
+/// it out (`no_pour`); the other flags are checked by DRC.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Keepout {
+    pub id: Id,
+    /// Copper layers it applies to; empty: all copper layers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub layers: Vec<LayerId>,
+    pub outline: Vec<Point>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub holes: Vec<Vec<Point>>,
+    #[serde(default)]
+    pub no_tracks: bool,
+    #[serde(default)]
+    pub no_vias: bool,
+    #[serde(default)]
+    pub no_pads: bool,
+    #[serde(default)]
+    pub no_pour: bool,
+    #[serde(default)]
+    pub no_footprints: bool,
+}
+
+impl Keepout {
+    /// A keepout for tracks, vias, pads and zone fills (KiCad's defaults) on `layers`.
+    pub fn new(layers: Vec<LayerId>, outline: Vec<Point>) -> Self {
+        Keepout {
+            id: Id::new(),
+            layers,
+            outline,
+            holes: Vec::new(),
+            no_tracks: true,
+            no_vias: true,
+            no_pads: true,
+            no_pour: true,
+            no_footprints: false,
+        }
+    }
+
+    /// Does it apply to copper layer `layer`?
+    pub fn on_layer(&self, layer: LayerId) -> bool {
+        self.layers.is_empty() || self.layers.contains(&layer)
+    }
+
+    /// What it keeps out, for messages ("tracks, vias").
+    pub fn rules_text(&self) -> String {
+        let names: Vec<&str> = [
+            (self.no_tracks, "tracks"),
+            (self.no_vias, "vias"),
+            (self.no_pads, "pads"),
+            (self.no_pour, "zone fills"),
+            (self.no_footprints, "footprints"),
+        ]
+        .into_iter()
+        .filter_map(|(on, n)| on.then_some(n))
+        .collect();
+        if names.is_empty() { "nothing".into() } else { names.join(", ") }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -240,7 +380,7 @@ impl FootprintField {
     }
 }
 
-has_id!(FootprintInstance, FootprintField, Track, Via, Zone, BoardGraphic, BoardText);
+has_id!(FootprintInstance, FootprintField, Track, Via, Zone, Keepout, BoardGraphic, BoardText);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DesignRules {
@@ -309,6 +449,8 @@ pub struct Board {
     pub vias: Store<Via>,
     #[serde(default)]
     pub zones: Store<Zone>,
+    #[serde(default)]
+    pub keepouts: Store<Keepout>,
     /// Board outline (on [`LayerId::OUTLINE`]) and other drawings.
     #[serde(default)]
     pub graphics: Store<BoardGraphic>,
@@ -360,6 +502,7 @@ impl Board {
             tracks: Store::default(),
             vias: Store::default(),
             zones: Store::default(),
+            keepouts: Store::default(),
             graphics: Store::default(),
             texts: Store::default(),
         }

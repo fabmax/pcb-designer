@@ -296,7 +296,8 @@ impl Properties {
                 });
             }
             Object::Zone(mut z) => {
-                heading(ui, "Copper zone", "Filling arrives with DRC (milestone 9)");
+                let rules = cx.doc.project().board.rules.clone();
+                heading(ui, "Copper zone", if z.net.is_empty() { "no net" } else { &z.net });
                 grid(ui, |ui| {
                     label(ui, "Net");
                     if let Some(net) = self.text(ui, id, "net", &z.net) {
@@ -317,8 +318,144 @@ impl Properties {
                         self.update(cx, Object::Zone(z.clone()), true);
                     }
                     ui.end_row();
+                    label(ui, "Pads");
+                    let mut connection = z.connection;
+                    egui::ComboBox::from_id_salt("zone_connection").selected_text(connection.label()).show_ui(
+                        ui,
+                        |ui| {
+                            for c in ZoneConnection::ALL {
+                                ui.selectable_value(&mut connection, c, c.label());
+                            }
+                        },
+                    );
+                    if connection != z.connection {
+                        z.connection = connection;
+                        self.update(cx, Object::Zone(z.clone()), false);
+                    }
+                    ui.end_row();
+                    // Overrides of the design rules: the rule's value until edited.
+                    let overrides: [(&str, ZoneField, Coord, f64); 3] = [
+                        ("Clearance", |z| &mut z.clearance, rules.clearance, 0.0),
+                        ("Thermal gap", |z| &mut z.thermal_gap, rules.thermal_gap, 0.01),
+                        ("Spoke width", |z| &mut z.thermal_spoke, rules.thermal_spoke, 0.01),
+                    ];
+                    for (name, field, rule, min) in overrides {
+                        label(ui, name);
+                        ui.horizontal(|ui| {
+                            let current = *field(&mut z);
+                            if let Some(v) = self.length(ui, current.unwrap_or(rule), min) {
+                                *field(&mut z) = Some(v);
+                                self.update(cx, Object::Zone(z.clone()), true);
+                            }
+                            if current.is_some() {
+                                if ui.small_button("Rule").on_hover_text("Use the design rule").clicked() {
+                                    *field(&mut z) = None;
+                                    self.update(cx, Object::Zone(z.clone()), false);
+                                }
+                            } else {
+                                ui.label(RichText::new("rule").color(theme::text_dim()));
+                            }
+                        });
+                        ui.end_row();
+                    }
+                    label(ui, "Remove islands");
+                    let names = |i: IslandRemoval| match i {
+                        IslandRemoval::Always => "Always",
+                        IslandRemoval::Never => "Never",
+                        IslandRemoval::BelowArea(_) => "Below an area",
+                    };
+                    let mut islands = z.islands;
+                    egui::ComboBox::from_id_salt("zone_islands").selected_text(names(islands)).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut islands, IslandRemoval::Always, "Always");
+                        ui.selectable_value(&mut islands, IslandRemoval::Never, "Never");
+                        let below = match z.islands {
+                            b @ IslandRemoval::BelowArea(_) => b,
+                            _ => IslandRemoval::BelowArea(10_000_000_000_000),
+                        };
+                        ui.selectable_value(&mut islands, below, "Below an area");
+                    });
+                    if islands != z.islands {
+                        z.islands = islands;
+                        self.update(cx, Object::Zone(z.clone()), false);
+                    }
+                    ui.end_row();
+                    if let IslandRemoval::BelowArea(area) = z.islands {
+                        label(ui, "Minimum area");
+                        let mut mm2 = area as f64 * 1e-12;
+                        let drag = egui::DragValue::new(&mut mm2).range(0.0..=1e6).speed(0.1).suffix(" mm²");
+                        if ui.add(drag).changed() {
+                            z.islands = IslandRemoval::BelowArea((mm2 * 1e12).round() as i64);
+                            self.update(cx, Object::Zone(z.clone()), true);
+                        }
+                        ui.end_row();
+                    }
                     row(ui, "Corners", z.outline.len().to_string());
+                    if !z.holes.is_empty() {
+                        row(ui, "Holes", z.holes.len().to_string());
+                    }
                 });
+                ui.add_space(6.0);
+                crate::fields::hint(
+                    ui,
+                    "An empty net makes isolated copper: it keeps the clearance to all pads and tracks.",
+                );
+            }
+            Object::Keepout(mut k) => {
+                heading(ui, "Keepout", "");
+                grid(ui, |ui| {
+                    label(ui, "Layers");
+                    let mut all = k.layers.is_empty();
+                    if ui.checkbox(&mut all, "All copper layers").changed() {
+                        k.layers = if all { Vec::new() } else { vec![LayerId::TOP_COPPER] };
+                        self.update(cx, Object::Keepout(k.clone()), false);
+                    }
+                    ui.end_row();
+                    if !all {
+                        let layers: Vec<(LayerId, String)> =
+                            cx.doc.project().board.copper_layers().map(|l| (l.id, l.name.clone())).collect();
+                        for (layer, name) in layers {
+                            ui.label("");
+                            let mut on = k.layers.contains(&layer);
+                            if ui.checkbox(&mut on, name).changed() {
+                                k.layers.retain(|&l| l != layer);
+                                if on {
+                                    k.layers.push(layer);
+                                    k.layers.sort();
+                                }
+                                // No layer left means all of them: keep at least one.
+                                if !k.layers.is_empty() {
+                                    self.update(cx, Object::Keepout(k.clone()), false);
+                                }
+                            }
+                            ui.end_row();
+                        }
+                    }
+                    let mut changed = false;
+                    let flags = [
+                        (&mut k.no_tracks, "Tracks"),
+                        (&mut k.no_vias, "Vias"),
+                        (&mut k.no_pads, "Pads"),
+                        (&mut k.no_pour, "Zone fills"),
+                        (&mut k.no_footprints, "Footprints"),
+                    ];
+                    for (i, (flag, name)) in flags.into_iter().enumerate() {
+                        label(ui, if i == 0 { "Keep out" } else { "" });
+                        changed |= ui.checkbox(flag, name).changed();
+                        ui.end_row();
+                    }
+                    if changed {
+                        self.update(cx, Object::Keepout(k.clone()), false);
+                    }
+                    row(ui, "Corners", k.outline.len().to_string());
+                    if !k.holes.is_empty() {
+                        row(ui, "Holes", k.holes.len().to_string());
+                    }
+                });
+                ui.add_space(6.0);
+                crate::fields::hint(
+                    ui,
+                    "Zone fills leave the area out; DRC reports tracks, vias, pads and footprints (courtyards) in it.",
+                );
             }
             Object::BoardGraphic(g) => {
                 heading(ui, "Graphic", "");
@@ -752,3 +889,6 @@ pub fn project_summary(ui: &mut egui::Ui, doc: &Document) {
         row(ui, "Library parts", p.library.parts.len().to_string());
     });
 }
+
+/// A zone setting that overrides a design rule.
+type ZoneField = fn(&mut Zone) -> &mut Option<Coord>;

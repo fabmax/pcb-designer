@@ -52,6 +52,7 @@ pub enum Action {
     PcbVia,
     PcbOutline,
     PcbZone,
+    PcbKeepout,
     PcbNextLayer,
     Settings,
     PanelProject,
@@ -109,6 +110,7 @@ impl Action {
         Action::PcbVia,
         Action::PcbOutline,
         Action::PcbZone,
+        Action::PcbKeepout,
         Action::PcbNextLayer,
         Action::Settings,
         Action::PanelProject,
@@ -158,6 +160,7 @@ impl Action {
             Action::PcbVia => "Via tool (PCB)",
             Action::PcbOutline => "Board outline tool (PCB)",
             Action::PcbZone => "Copper zone tool (PCB)",
+            Action::PcbKeepout => "Keepout tool (PCB)",
             Action::PcbNextLayer => "Next copper layer; adds a via while routing (PCB)",
             Action::Settings => "Settings",
             Action::PanelProject => "Show/hide Project panel",
@@ -182,9 +185,12 @@ impl Action {
             | Action::SchPower
             | Action::SchJunction
             | Action::SchNoConnect => Some(Context::Schematic),
-            Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => {
-                Some(Context::Board)
-            }
+            Action::PcbRoute
+            | Action::PcbVia
+            | Action::PcbOutline
+            | Action::PcbZone
+            | Action::PcbKeepout
+            | Action::PcbNextLayer => Some(Context::Board),
             _ => None,
         }
     }
@@ -372,6 +378,7 @@ impl Default for Keymap {
             (Action::PcbVia, vec![S::shift(Key::V)]),
             (Action::PcbOutline, vec![S::key(Key::O)]),
             (Action::PcbZone, vec![S::key(Key::Z)]),
+            (Action::PcbKeepout, vec![S::key(Key::K)]),
             (Action::PcbNextLayer, vec![S::key(Key::L)]),
             (Action::Settings, vec![S::cmd(Key::Comma)]),
             (Action::PanelProject, vec![S::cmd(Key::Num1)]),

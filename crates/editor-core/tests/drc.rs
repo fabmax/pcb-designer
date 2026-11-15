@@ -139,14 +139,11 @@ fn zone_on_a_renamed_net_is_flagged() {
         })
         .unwrap();
     let label = changes.ids().find_map(|id| if let ObjectId::Label(l) = id { Some(l) } else { None }).unwrap();
-    let zone = Zone {
-        id: Id::new(),
-        layer: LayerId::BOTTOM_COPPER,
-        net: "/MID".into(), // local labels are qualified by their sheet path
-        outline: vec![Point::mm(1.0, 1.0), Point::mm(29.0, 1.0), Point::mm(29.0, 19.0), Point::mm(1.0, 19.0)],
-        priority: 0,
-        clearance: None,
-    };
+    let zone = Zone::new(
+        LayerId::BOTTOM_COPPER,
+        "/MID", // local labels are qualified by their sheet path
+        vec![Point::mm(1.0, 1.0), Point::mm(29.0, 1.0), Point::mm(29.0, 19.0), Point::mm(1.0, 19.0)],
+    );
     ed.execute(Command::Insert { objects: vec![Object::Zone(zone.clone())] }).unwrap();
     assert!(!kinds(&check(&ed)).contains(&K::ZoneNet));
 

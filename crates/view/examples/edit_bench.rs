@@ -46,8 +46,7 @@ fn main() {
     let net = (0..counts.len()).max_by_key(|&i| counts[i]).map(|i| copper.nets[i].clone()).unwrap_or_default();
     let r = Rect::union_all(copper.items.iter().map(|c| c.geo.bounds())).unwrap().grow(mm(2.0));
     let outline = vec![r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
-    let zone =
-        Zone { id: Id::new(), layer: LayerId::TOP_COPPER, net: net.clone(), outline, priority: 0, clearance: None };
+    let zone = Zone::new(LayerId::TOP_COPPER, net.clone(), outline);
     let t = Instant::now();
     doc.execute(editor_core::Command::Insert { objects: vec![Object::Zone(zone)] }).unwrap();
     let b = doc.current_copper();

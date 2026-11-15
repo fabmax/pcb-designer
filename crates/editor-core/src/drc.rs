@@ -1,6 +1,6 @@
 //! Design rule check: clearance between copper of different nets, shorts, unrouted
-//! connections, copper not touching any pad, courtyard overlaps, copper at or outside
-//! the board edge, and minimum track width and drill.
+//! connections, copper not touching any pad, keepouts, courtyard overlaps, copper at or
+//! outside the board edge, and minimum track width and drill.
 //!
 //! Zone fills are not checked for clearance: they are built to keep it (see
 //! [`crate::zones`]).
@@ -9,13 +9,15 @@ use model::*;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use serde::Serialize;
 
-use crate::copper::{BoardConnectivity, CopperItem, Flag, Geo, Grid};
+use crate::copper::{BoardConnectivity, CopperItem, Flag, Geo, Grid, RegionIndex, layer_bit};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ViolationKind {
     Short,
     Clearance,
+    /// Copper or a footprint inside a keepout that forbids it.
+    Keepout,
     BoardEdge,
     Courtyard,
     TrackWidth,
@@ -32,6 +34,7 @@ impl ViolationKind {
         match self {
             ViolationKind::Short => "Short",
             ViolationKind::Clearance => "Clearance",
+            ViolationKind::Keepout => "Keepout",
             ViolationKind::BoardEdge => "Board edge",
             ViolationKind::Courtyard => "Courtyard overlap",
             ViolationKind::TrackWidth => "Track width",
@@ -146,6 +149,53 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
         }
     });
 
+    // Keepouts.
+    for k in board.keepouts.iter().filter(|k| k.outline.len() >= 3) {
+        let region = RegionIndex::new(&k.outline, &k.holes);
+        let kb = Rect::union_all(k.outline.iter().map(|&p| Rect::from_points(p, p))).unwrap();
+        let bits = board.copper_layers().filter(|l| k.on_layer(l.id)).fold(0, |a, l| a | layer_bit(l.id));
+        for c in copper.items.iter().filter(|c| c.layers & bits != 0 && c.geo.bounds().intersects(&kb)) {
+            let forbidden = match c.item {
+                CopperItem::Pad { .. } => k.no_pads,
+                CopperItem::Track(_) => k.no_tracks,
+                CopperItem::Via(_) => k.no_vias,
+                CopperItem::Zone { .. } => false,
+            };
+            if forbidden && region.touches(&c.geo) {
+                out.push(Violation {
+                    kind: ViolationKind::Keepout,
+                    message: format!("{} is inside a keepout", name(c)),
+                    pos: c.anchors[0],
+                    objects: vec![c.item.object(), ObjectId::Keepout(k.id)],
+                });
+            }
+        }
+        if k.no_footprints {
+            for f in board.footprints.iter() {
+                let copper_layer = if f.side == Side::Top { LayerId::TOP_COPPER } else { LayerId::BOTTOM_COPPER };
+                let Some(def) = crate::query::footprint_of_instance(project, f) else { continue };
+                let t = f.transform();
+                let Some(r) = Rect::union_all(
+                    def.graphics
+                        .iter()
+                        .filter(|g| g.layer == FootprintLayer::Courtyard && !g.back)
+                        .map(|g| g.shape.transformed(&t).bounds()),
+                ) else {
+                    continue;
+                };
+                let rect = Geo::Polygon(vec![r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)]);
+                if k.on_layer(copper_layer) && r.intersects(&kb) && region.touches(&rect) {
+                    out.push(Violation {
+                        kind: ViolationKind::Keepout,
+                        message: format!("{} is inside a keepout", refdes(f)),
+                        pos: f.pos,
+                        objects: vec![ObjectId::Footprint(f.id), ObjectId::Keepout(k.id)],
+                    });
+                }
+            }
+        }
+    }
+
     // Board edge.
     if let Some(area) = crate::zones::board_area(board) {
         let rings: Vec<Vec<Point>> = area
@@ -216,7 +266,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
     });
 
     // Zones bind to a net by name; a renamed net leaves them on none.
-    for z in board.zones.iter().filter(|z| copper.net_index(&z.net).is_none()) {
+    for z in board.zones.iter().filter(|z| !z.net.is_empty() && copper.net_index(&z.net).is_none()) {
         out.push(Violation {
             kind: ViolationKind::ZoneNet,
             message: format!("Zone net {:?} has no pads on the board", z.net),

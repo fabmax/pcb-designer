@@ -21,6 +21,7 @@ pub enum Icon {
     Via,
     Outline,
     Zone,
+    Keepout,
     Measure,
     Pin,
     Pad,
@@ -168,6 +169,19 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             // A pad with its clearance in the fill.
             ring(p(0.42, 0.5), 0.17, Stroke::new(w * 1.6, Color32::from_black_alpha(90)));
             dot(p(0.42, 0.5), 0.1);
+        }
+        Icon::Keepout => {
+            // A hatched area with a no-entry outline.
+            let r = rect_of(0.14, 0.18, 0.86, 0.82);
+            painter.rect_stroke(r, 0.06 * s, line, egui::StrokeKind::Middle);
+            let clip = painter.with_clip_rect(r.shrink(w));
+            for i in -3..=3 {
+                let x = 0.5 + i as f32 * 0.2;
+                clip.line_segment(
+                    [p(x - 0.4, 0.86), p(x + 0.4, 0.14)],
+                    Stroke::new(w * 0.8, color.gamma_multiply(0.7)),
+                );
+            }
         }
         Icon::Measure => {
             // A ruler, diagonal, with ticks.

@@ -195,14 +195,11 @@ pub fn demo_project() -> Project {
     ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![gnd, via], width: Some(mm(0.4)) }).unwrap();
     ed.execute(Command::AddVia { pos: via, diameter: None, drill: None }).unwrap();
     ed.execute(Command::Insert {
-        objects: vec![Object::Zone(Zone {
-            id: Id::new(),
-            layer: LayerId::BOTTOM_COPPER,
-            net: "GND".into(),
-            outline: vec![Point::mm(1.0, 1.0), Point::mm(39.0, 1.0), Point::mm(39.0, 29.0), Point::mm(1.0, 29.0)],
-            priority: 0,
-            clearance: None,
-        })],
+        objects: vec![Object::Zone(Zone::new(
+            LayerId::BOTTOM_COPPER,
+            "GND",
+            vec![Point::mm(1.0, 1.0), Point::mm(39.0, 1.0), Point::mm(39.0, 29.0), Point::mm(1.0, 29.0)],
+        ))],
     })
     .unwrap();
     ed.into_project()

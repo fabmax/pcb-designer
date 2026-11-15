@@ -1,5 +1,5 @@
 //! Board creation tools: route tracks (45° or 90°), place vias, draw the board outline
-//! and copper zones, measure, place board parts.
+//! copper zones and keepouts, measure, place board parts.
 //! Independent of the GUI toolkit.
 
 use editor_core::Command;
@@ -16,14 +16,22 @@ pub enum PcbTool {
     Via,
     Outline,
     Zone,
+    Keepout,
     Measure,
     /// Place board parts (see [`PcbPlacer::placing`]); started from the project tree.
     Place,
 }
 
 impl PcbTool {
-    pub const ALL: &[PcbTool] =
-        &[PcbTool::Select, PcbTool::Route, PcbTool::Via, PcbTool::Outline, PcbTool::Zone, PcbTool::Measure];
+    pub const ALL: &[PcbTool] = &[
+        PcbTool::Select,
+        PcbTool::Route,
+        PcbTool::Via,
+        PcbTool::Outline,
+        PcbTool::Zone,
+        PcbTool::Keepout,
+        PcbTool::Measure,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -32,6 +40,7 @@ impl PcbTool {
             PcbTool::Via => "Via",
             PcbTool::Outline => "Outline",
             PcbTool::Zone => "Zone",
+            PcbTool::Keepout => "Keepout",
             PcbTool::Measure => "Measure",
             PcbTool::Place => "Place",
         }
@@ -46,6 +55,9 @@ impl PcbTool {
             PcbTool::Via => "Click to place a via · Esc done",
             PcbTool::Outline => "Click two corners of the board outline · Esc done",
             PcbTool::Zone => "Click the zone's corners · click the first or last corner again to close · Esc cancels",
+            PcbTool::Keepout => {
+                "Click the keepout's corners · click the first or last corner again to close · Esc cancels"
+            }
             PcbTool::Measure => crate::measure::HINT,
             PcbTool::Place => "Click to place · R rotate · F flip side · Esc done",
         }
@@ -70,6 +82,8 @@ pub struct PcbSettings {
     pub bend_first: bool,
     /// Net of new zones; empty: the net of the copper under the first corner.
     pub zone_net: String,
+    /// New keepouts cover all copper layers (else the active one).
+    pub keepout_all_layers: bool,
     /// Rotation and side of board parts being placed.
     pub rotation: Angle,
     pub side: Side,
@@ -83,6 +97,7 @@ impl Default for PcbSettings {
             corners: Corners::Deg45,
             bend_first: false,
             zone_net: String::new(),
+            keepout_all_layers: true,
             rotation: Angle::ZERO,
             side: Side::Top,
         }
@@ -377,6 +392,13 @@ impl PcbPlacer {
                 Ok(false)
             }
             PcbTool::Zone => self.zone_click(doc, p),
+            PcbTool::Keepout => {
+                let Some(outline) = self.polygon_click(p, "a keepout")? else { return Ok(false) };
+                let layers = if self.settings.keepout_all_layers { Vec::new() } else { vec![self.settings.layer] };
+                let k = Keepout::new(layers, outline);
+                doc.execute(Command::Insert { objects: vec![Object::Keepout(k)] }).map_err(|e| e.to_string())?;
+                Ok(true)
+            }
             PcbTool::Outline => {
                 let Some(a) = self.start.take() else {
                     self.start = Some(p);
@@ -406,19 +428,25 @@ impl PcbPlacer {
             };
             self.net = Some(net);
         }
+        let Some(outline) = self.polygon_click(p, "a zone")? else { return Ok(false) };
+        let net = self.net.take().unwrap_or_default();
+        let zone = Zone::new(layer, net, outline);
+        doc.execute(Command::Insert { objects: vec![Object::Zone(zone)] }).map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    /// Add a corner; clicking the first or last corner again closes the polygon and
+    /// returns its corners.
+    fn polygon_click(&mut self, p: Point, what: &str) -> Result<Option<Vec<Point>>, String> {
         let closes = self.corners.first() == Some(&p) || self.corners.last() == Some(&p);
         if !closes {
             self.corners.push(p);
-            return Ok(false);
+            return Ok(None);
         }
         if self.corners.len() < 3 {
-            return Err("a zone needs at least three corners".into());
+            return Err(format!("{what} needs at least three corners"));
         }
-        let outline = std::mem::take(&mut self.corners);
-        let net = self.net.take().unwrap_or_default();
-        let zone = Zone { id: Id::new(), layer, net, outline, priority: 0, clearance: None };
-        doc.execute(Command::Insert { objects: vec![Object::Zone(zone)] }).map_err(|e| e.to_string())?;
-        Ok(true)
+        Ok(Some(std::mem::take(&mut self.corners)))
     }
 
     /// Net of the zone being drawn.
@@ -456,7 +484,7 @@ impl PcbPlacer {
                 }
                 g.push(PcbGhost::Target(p));
             }
-            PcbTool::Zone => {
+            PcbTool::Zone | PcbTool::Keepout => {
                 if !self.corners.is_empty() {
                     let mut points = self.corners.clone();
                     points.push(p);

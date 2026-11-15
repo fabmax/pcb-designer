@@ -152,7 +152,10 @@ fn board(ui: &mut egui::Ui, doc: &mut Document) -> Option<Show> {
         }
     });
     let Some(report) = doc.drc() else {
-        hint(ui, "Checks clearances, shorts, unrouted nets, the board edge, courtyards, track widths and drills.");
+        hint(
+            ui,
+            "Checks clearances, shorts, unrouted nets, keepouts, the board edge, courtyards, track widths and drills.",
+        );
         return show;
     };
     let outdated = report.revision != doc.revision;

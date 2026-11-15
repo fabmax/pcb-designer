@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::board::{BoardGraphic, BoardText, FootprintField, FootprintInstance, Track, Via, Zone};
+use crate::board::{BoardGraphic, BoardText, FootprintField, FootprintInstance, Keepout, Track, Via, Zone};
 use crate::id::Id;
 use crate::library::{Footprint, Part, Symbol};
 use crate::project::Project;
@@ -133,6 +133,7 @@ objects! {
     Track(Track) => board.tracks;
     Via(Via) => board.vias;
     Zone(Zone) => board.zones;
+    Keepout(Keepout) => board.keepouts;
     BoardGraphic(BoardGraphic) => board.graphics;
     BoardText(BoardText) => board.texts;
     LibSymbol(Symbol) => library.symbols;
@@ -166,6 +167,7 @@ impl ObjectKind {
                 | ObjectKind::Track
                 | ObjectKind::Via
                 | ObjectKind::Zone
+                | ObjectKind::Keepout
                 | ObjectKind::BoardGraphic
                 | ObjectKind::BoardText
         )

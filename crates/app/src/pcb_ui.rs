@@ -39,6 +39,12 @@ pub fn toolbar(
     let board = [
         b(PcbTool::Outline, Icon::Outline, "Draw the board outline.", Action::PcbOutline),
         b(PcbTool::Zone, Icon::Zone, "Draw a copper zone, filled around other nets.", Action::PcbZone),
+        b(
+            PcbTool::Keepout,
+            Icon::Keepout,
+            "Draw a keepout: an area zone fills leave out and where DRC forbids tracks, vias or pads.",
+            Action::PcbKeepout,
+        ),
     ];
     let measure = [b(PcbTool::Measure, Icon::Measure, "Measure distances between two points.", Action::ToolMeasure)];
     let place = [ToolButton {
@@ -193,7 +199,26 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
             hint(
                 ui,
                 "Zones fill their outline (inside the board) with copper, keeping the clearance to other nets. \
-                 Pads of the zone's net connect through thermal spokes. Islands without the net are removed.",
+                 Pads of the zone's net connect through thermal spokes. Islands without the net are removed. \
+                 Properties change how pads connect, the thermal sizes and which islands stay.",
+            );
+        }
+        PcbTool::Keepout => {
+            grid(ui, "pcb_tool", |ui| {
+                label(ui, "Layers");
+                ui.checkbox(&mut s.keepout_all_layers, "All copper layers");
+                ui.end_row();
+                if !s.keepout_all_layers {
+                    label(ui, "Layer");
+                    layer_combo(ui, "pcb_tool_layer", &mut s.layer, doc);
+                    ui.end_row();
+                }
+            });
+            ui.add_space(6.0);
+            hint(
+                ui,
+                "A keepout forbids tracks, vias, pads and zone fills inside it; change what it forbids in \
+                 Properties. Zone fills leave it out, DRC reports the rest.",
             );
         }
     }

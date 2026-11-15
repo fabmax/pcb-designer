@@ -1,10 +1,12 @@
 //! Copper zone filling.
 //!
-//! A zone fills its outline (clipped to the board outline, minus the edge clearance)
-//! except around copper of other nets, which keeps the clearance. Pads of the zone's
-//! own net connect through thermal reliefs (a gap with four spokes); its tracks and vias
-//! are simply flooded. Higher-priority zones of other nets keep the clearance too.
-//! Fill islands that touch no copper of the zone's net are removed.
+//! A zone fills its outline minus its holes (clipped to the board outline, minus the edge
+//! clearance, and minus `no_pour` keepouts) except around copper of other nets, which
+//! keeps the clearance. Pads of the zone's own net connect as its [`ZoneConnection`]
+//! says (thermal reliefs: a gap with four spokes); its tracks and vias are simply
+//! flooded. Higher-priority zones of other nets keep the clearance too. Fill islands
+//! that touch no copper of the zone's net are removed ([`IslandRemoval`]). A zone
+//! without a net keeps clearance to all copper and keeps all its islands.
 //!
 //! Fills are derived data (like connectivity), computed from the project; they are not
 //! stored in the project files.
@@ -38,6 +40,12 @@ fn unpt(p: [f64; 2]) -> Point {
 fn area(c: &[[f64; 2]]) -> f64 {
     let n = c.len();
     (0..n).map(|i| c[i][0] * c[(i + 1) % n][1] - c[(i + 1) % n][0] * c[i][1]).sum::<f64>() / 2.0
+}
+
+/// Area of a shape `[outline, holes…]` (nm²).
+fn shape_area(s: &[Vec<Point>]) -> f64 {
+    let a = |c: &Vec<Point>| area(&c.iter().map(|&p| pt(p)).collect::<Vec<_>>()).abs();
+    s.split_first().map_or(0.0, |(o, holes)| a(o) - holes.iter().map(a).sum::<f64>())
 }
 
 /// The contour with the given winding (counterclockwise: outlines, clockwise: holes).
@@ -167,10 +175,22 @@ pub fn fill_zones(project: &Project, copper: &BoardConnectivity) -> Vec<ZoneFill
     for z in zones {
         let clearance = z.clearance.unwrap_or(rules.clearance);
         let bit = layer_bit(z.layer);
-        let net = copper.net_index(&z.net);
-        let outline: Contour = oriented(z.outline.iter().map(|&p| pt(p)).collect(), true);
-        let mut base: Vec<Vec<Contour>> = vec![vec![outline]];
+        let net = if z.net.is_empty() { None } else { copper.net_index(&z.net) };
+        let (gap, spoke) = (z.thermal_gap.unwrap_or(rules.thermal_gap), z.thermal_spoke.unwrap_or(rules.thermal_spoke));
+        let through_hole = |c: &crate::copper::Copper| match c.item {
+            CopperItem::Pad { footprint, pad } => board
+                .footprints
+                .get(footprint)
+                .and_then(|f| crate::query::footprint_of_instance(project, f))
+                .and_then(|d| d.pads.get(pad))
+                .is_some_and(|p| p.kind.drill().is_some()),
+            _ => false,
+        };
+        let mut base: Vec<Vec<Contour>> = vec![grown(&z.outline, &z.holes, 0)];
         let mut clip: Vec<Contour> = Vec::new();
+        for k in board.keepouts.iter().filter(|k| k.no_pour && k.on_layer(z.layer) && k.outline.len() >= 3) {
+            clip.extend(grown(&k.outline, &k.holes, 0));
+        }
         if let Some(area) = &outline_area {
             base = base.overlay(&vec![area.clone()], OverlayRule::Intersect, FillRule::NonZero);
             // Edge clearance.
@@ -185,12 +205,18 @@ pub fn fill_zones(project: &Project, copper: &BoardConnectivity) -> Vec<ZoneFill
         for c in copper.items.iter().filter(|c| c.layers & bit != 0 && c.geo.bounds().intersects(&zb)) {
             let same = net.is_some() && c.net == net;
             match c.item {
-                CopperItem::Pad { .. } if same => {
-                    clip.extend(thermal_cut(&c.geo, c.anchors[0], rules.thermal_gap, rules.thermal_spoke))
-                }
+                CopperItem::Pad { .. } if same => match z.connection {
+                    ZoneConnection::Thermal => clip.extend(thermal_cut(&c.geo, c.anchors[0], gap, spoke)),
+                    ZoneConnection::ThermalThroughHole if through_hole(c) => {
+                        clip.extend(thermal_cut(&c.geo, c.anchors[0], gap, spoke))
+                    }
+                    ZoneConnection::ThermalThroughHole | ZoneConnection::Solid => {}
+                    ZoneConnection::None => clip.extend(inflate(&c.geo, clearance)),
+                },
                 CopperItem::Pad { .. } => clip.extend(inflate(&c.geo, clearance)),
-                // Own tracks and vias are flooded; so is copper without a net (stitching vias).
-                _ if same || c.net.is_none() => {}
+                // Own tracks and vias are flooded; so is copper without a net (stitching
+                // vias), unless the zone has no net either.
+                _ if same || (net.is_some() && c.net.is_none()) => {}
                 _ => clip.extend(inflate(&c.geo, clearance)),
             }
         }
@@ -203,7 +229,7 @@ pub fn fill_zones(project: &Project, copper: &BoardConnectivity) -> Vec<ZoneFill
         let filled =
             if clip.is_empty() { base } else { base.overlay(&vec![clip], OverlayRule::Difference, FillRule::NonZero) };
 
-        // Keep the islands that reach copper of the zone's net.
+        // Keep the islands that reach copper of the zone's net (or are large enough).
         let own: Vec<&Geo> = copper
             .items
             .iter()
@@ -215,9 +241,17 @@ pub fn fill_zones(project: &Project, copper: &BoardConnectivity) -> Vec<ZoneFill
             .filter(|s| !s.is_empty() && area(&s[0]).abs() > 1e6)
             .map(|s| s.into_iter().map(|c| c.into_iter().map(unpt).collect()).collect::<Vec<Vec<Point>>>())
             .filter(|s| {
-                let b = Rect::union_all(s[0].iter().map(|&p| Rect::from_points(p, p))).unwrap();
-                let region = RegionIndex::new(&s[0], &s[1..]);
-                own.iter().any(|g| g.bounds().intersects(&b) && region.touches(g))
+                let keep_anyway = match z.islands {
+                    _ if z.net.is_empty() => true,
+                    IslandRemoval::Always => false,
+                    IslandRemoval::Never => true,
+                    IslandRemoval::BelowArea(min) => shape_area(s) >= min as f64,
+                };
+                keep_anyway || {
+                    let b = Rect::union_all(s[0].iter().map(|&p| Rect::from_points(p, p))).unwrap();
+                    let region = RegionIndex::new(&s[0], &s[1..]);
+                    own.iter().any(|g| g.bounds().intersects(&b) && region.touches(g))
+                }
             })
             .collect();
         fills.push(ZoneFill { zone: z.id, layer: z.layer, net: z.net.clone(), shapes });

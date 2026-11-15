@@ -159,14 +159,23 @@ and hierarchical sheets.
   pieces form islands (grid broad phase). Nets come from pads; an island with two nets
   is a short; copper touching no pad is unconnected. Ratsnest: MST per net over pads,
   vias and track ends (Delaunay for large nets).
-- **Zones** (`zones`, i_overlay on nm): clip to the board outline minus edge clearance,
-  keep clearance to other nets, thermal reliefs to own pads, flood own tracks/vias and
-  netless vias, priority order, drop dead islands. Fills are derived, never saved.
+- **Zones** (`zones`, i_overlay on nm): outline minus `holes`, clipped to the board
+  outline minus edge clearance and minus `no_pour` keepouts; keep clearance to other
+  nets, own pads per `ZoneConnection` (thermal, thermal for through-hole only, solid,
+  none; thermal gap/spoke overridable per zone), flood own tracks/vias and netless vias,
+  priority order, drop islands per `IslandRemoval`. A zone with net `""` is isolated
+  copper: clearance to everything, all islands kept, no `ZoneNet`. Fills are derived,
+  never saved.
   Two-pass connectivity: copper without zones → fill → rebuild with fills.
   `RegionIndex` grids fill edges (without it, touch tests on 80k vertices took 0.7 s).
 - **DRC** (`drc::run`, pure, most severe first): shorts, clearance (pads within one
-  footprint and fills skipped), board edge, courtyard overlaps (bounding boxes), track
-  width and drill minimums, zone net, unconnected copper, unrouted.
+  footprint and fills skipped), keepouts, board edge, courtyard overlaps (bounding
+  boxes), track width and drill minimums, zone net, unconnected copper, unrouted.
+- **Keepouts** (`Keepout`, KiCad rule areas) are separate from zone holes on purpose: a
+  hole is part of one zone's shape (other zones may fill it, it moves with the zone), a
+  keepout is a rule for all zones on its layers (`layers` empty = all copper layers).
+  `no_pour` is enforced by the fill; tracks, vias, pads and footprints (front courtyard
+  bounding box, on the footprint's side) by DRC only, not while routing.
 - Gotcha: a `Zone` binds to its net by *name* (`Zone.net`, sheet-qualified for local
   labels: `/MID`), unlike everything else, whose nets come from pads. Renaming a label
   or removing the net's last pad leaves the zone on no net (as in KiCad); DRC reports it
@@ -466,8 +475,8 @@ defers.
   UUIDs kept as ids; opens as an unsaved project; best effort with an import report).
   Symbols without footprint get a "No footprint" variant; "exclude from board" adds one
   to the part; footprints without symbol become board parts. Model prerequisites first,
-  in order: zones (holes,
-  keepouts, connection mode); arc tracks. `in_bom` / `dnp` become component properties
+  in order: arc tracks. Zones on several layers become one zone per layer; zone
+  minimum width, hatched fill and footprint zones/keepouts are skipped with a note. `in_bom` / `dnp` become component properties
   until a BOM exists. Power symbols become power labels; the style comes from the
   `power:` library name, else from the symbol's graphics; custom glyphs get the closest
   style, noted in the report. Legacy hidden power pins fail the import with their
@@ -501,6 +510,9 @@ defers.
 - Blind and buried vias in the UI.
 - Copper graphics inside footprints (from KiCad custom pads) counting as connections.
 - Incremental or background zone refill (only zones near the change).
+- Zones: drawing holes into an existing zone (cutout tool), editing corners on the
+  canvas, minimum width, hatched fill, a per-pad zone connection override; zones and
+  keepouts inside footprints; keepouts enforced while routing.
 - Arc outlines in zone fills (circles are 16–64-segment polygons today).
 - Exact courtyard polygons in DRC (bounding boxes today).
 - Per-net clearance classes.

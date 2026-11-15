@@ -83,7 +83,14 @@ add_bus_entry) only group signals: name a bus with a label whose name is a bus n
 (D[0..7], {SDA SCL}, I2C{SDA SCL} with members I2C.SDA, I2C.SCL) placed on a bus wire; signals \
 leave through bus entries on wires labelled with a member name. Bus wires never connect \
 to wires or pins. Pins left open on purpose get a no-connect flag (add_no_connect at the pin \
-end; it moves and is deleted with the symbol); other unconnected pins are reported as problems.";
+end; it moves and is deleted with the symbol); other unconnected pins are reported as problems.
+
+Copper zones and keepouts are inserted with execute (command insert, object zone or keepout). \
+A zone fills its outline minus its holes on one layer with its net (empty net: isolated \
+copper); connection thermal/thermal_through_hole/solid/none says how its own pads join, \
+islands always/never/below_area which unconnected fill pieces go. A keepout (layers: copper \
+layers, empty for all) forbids tracks, vias, pads, zone fills (no_pour) or footprints \
+(courtyards) inside its outline; fills leave it out and DRC reports the rest.";
 
 #[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

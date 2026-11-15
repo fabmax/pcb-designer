@@ -458,6 +458,7 @@ pub fn reference_point(project: &Project, id: ObjectId) -> Option<Point> {
         ObjectId::Track(i) => b.tracks.get(i).map(|o| o.a),
         ObjectId::Via(i) => b.vias.get(i).map(|o| o.pos),
         ObjectId::Zone(i) => b.zones.get(i).and_then(|o| o.outline.first().copied()),
+        ObjectId::Keepout(i) => b.keepouts.get(i).and_then(|o| o.outline.first().copied()),
         ObjectId::BoardGraphic(i) => b.graphics.get(i).map(|o| match &o.shape {
             Shape::Line { a, .. } | Shape::Rect { a, .. } => *a,
             Shape::Arc { center, .. } | Shape::Circle { center, .. } => *center,

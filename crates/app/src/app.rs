@@ -1421,6 +1421,7 @@ impl PcbApp {
             Action::PcbVia => PcbTool::Via,
             Action::PcbOutline => PcbTool::Outline,
             Action::PcbZone => PcbTool::Zone,
+            Action::PcbKeepout => PcbTool::Keepout,
             Action::ToolMeasure => PcbTool::Measure,
             Action::ToolSelect => PcbTool::Select,
             Action::Posture => {
@@ -1644,6 +1645,7 @@ impl PcbApp {
             | Action::PcbVia
             | Action::PcbOutline
             | Action::PcbZone
+            | Action::PcbKeepout
             | Action::PcbNextLayer
             | Action::PanelProject
             | Action::PanelMessages
@@ -1731,7 +1733,12 @@ impl PcbApp {
             | Action::SchJunction
             | Action::SchNoConnect
             | Action::Posture => None,
-            Action::PcbRoute | Action::PcbVia | Action::PcbOutline | Action::PcbZone | Action::PcbNextLayer => None,
+            Action::PcbRoute
+            | Action::PcbVia
+            | Action::PcbOutline
+            | Action::PcbZone
+            | Action::PcbKeepout
+            | Action::PcbNextLayer => None,
             Action::PanelProject
             | Action::PanelMessages
             | Action::PanelProperties

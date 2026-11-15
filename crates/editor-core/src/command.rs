@@ -634,6 +634,10 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
                         z.id = Id::new();
                         Object::Zone(z)
                     }
+                    Object::Keepout(mut k) => {
+                        k.id = Id::new();
+                        Object::Keepout(k)
+                    }
                     Object::BoardGraphic(mut g) => {
                         g.id = Id::new();
                         Object::BoardGraphic(g)
@@ -1105,7 +1109,11 @@ fn transform_objects(tx: &mut Transaction, ids: &[ObjectId], t: Transform, edit:
                 }
                 Object::Zone(z) => {
                     reject_mirror_on_board(edit)?;
-                    z.outline.iter_mut().for_each(|p| *p = t.point(*p));
+                    z.outline.iter_mut().chain(z.holes.iter_mut().flatten()).for_each(|p| *p = t.point(*p));
+                }
+                Object::Keepout(k) => {
+                    reject_mirror_on_board(edit)?;
+                    k.outline.iter_mut().chain(k.holes.iter_mut().flatten()).for_each(|p| *p = t.point(*p));
                 }
                 Object::BoardGraphic(g) => {
                     reject_mirror_on_board(edit)?;
@@ -1362,6 +1370,7 @@ fn set_copper_layers(tx: &mut Transaction, count: u16) -> Result<(), CommandErro
         .filter(|&&id| {
             board.tracks.iter().any(|t| t.layer == id)
                 || board.zones.iter().any(|z| z.layer == id)
+                || board.keepouts.iter().any(|k| k.layers.contains(&id))
                 || board.graphics.iter().any(|g| g.layer == id)
                 || board.texts.iter().any(|t| t.layer == id)
         })

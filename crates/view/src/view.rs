@@ -338,6 +338,7 @@ impl View {
                     .chain(b.tracks.ids().map(ObjectId::Track))
                     .chain(b.vias.ids().map(ObjectId::Via))
                     .chain(b.zones.ids().map(ObjectId::Zone))
+                    .chain(b.keepouts.ids().map(ObjectId::Keepout))
                     .chain(b.graphics.ids().map(ObjectId::BoardGraphic))
                     .chain(b.texts.ids().map(ObjectId::BoardText))
                     .collect()
@@ -927,10 +928,32 @@ impl View {
                 .zones
                 .get(i)
                 .map(|z| {
-                    // The outline; fills are derived (see `set_copper`).
+                    // The outline and holes; fills are derived (see `set_copper`).
                     if let Some(&layer) = l.map.get(&z.layer) {
-                        let shape = Shape::Polygon { points: z.outline.clone(), width: 100_000, fill: false };
-                        p.shape(layer, &shape, board_layer_color(z.layer).with_alpha(0xa0), None);
+                        for ring in std::iter::once(&z.outline).chain(&z.holes) {
+                            let shape = Shape::Polygon { points: ring.clone(), width: 100_000, fill: false };
+                            p.shape(layer, &shape, board_layer_color(z.layer).with_alpha(0xa0), None);
+                        }
+                    }
+                })
+                .is_some(),
+            (Layers::Board(l), ObjectId::Keepout(i)) => project
+                .board
+                .keepouts
+                .get(i)
+                .map(|k| {
+                    // Outline and holes, hatched inside, on every copper layer it covers.
+                    let hatch = keepout_hatch(&k.outline, &k.holes, KEEPOUT_HATCH);
+                    for bl in project.board.copper_layers().filter(|bl| k.on_layer(bl.id)) {
+                        let Some(&layer) = l.map.get(&bl.id) else { continue };
+                        let color = board_layer_color(bl.id).with_alpha(0xc0);
+                        for ring in std::iter::once(&k.outline).chain(&k.holes) {
+                            let shape = Shape::Polygon { points: ring.clone(), width: 100_000, fill: false };
+                            p.shape(layer, &shape, color, None);
+                        }
+                        for &(a, b) in &hatch {
+                            p.line(layer, a, b, 50_000, color.with_alpha(0x80));
+                        }
                     }
                 })
                 .is_some(),
@@ -1342,4 +1365,51 @@ fn push_pad(p: &mut Painter, rl: RLayer, outline: &PadOutline, color: Color) {
 fn region_instances(shape: &[Vec<Point>], color: Color) -> Vec<Instance> {
     let contours: Vec<Vec<[f32; 2]>> = shape.iter().map(|c| c.iter().map(|&p| mmf(p)).collect()).collect();
     render::tess::fill_region(&contours, color)
+}
+
+/// Spacing of a keepout's hatch lines.
+const KEEPOUT_HATCH: Coord = 1_000_000;
+
+/// Diagonal hatch lines (rising at 45°) inside a polygon with holes (even-odd), `step`
+/// apart.
+pub fn keepout_hatch(outline: &[Point], holes: &[Vec<Point>], step: Coord) -> Vec<(Point, Point)> {
+    let rings: Vec<&[Point]> = std::iter::once(outline).chain(holes.iter().map(Vec::as_slice)).collect();
+    let edges: Vec<(Point, Point)> = rings
+        .iter()
+        .filter(|r| r.len() >= 3)
+        .flat_map(|r| (0..r.len()).map(move |i| (r[i], r[(i + 1) % r.len()])))
+        .collect();
+    let Some((lo, hi)) = edges
+        .iter()
+        .map(|(a, _)| a.x - a.y)
+        .fold(None, |m: Option<(Coord, Coord)>, u| Some(m.map_or((u, u), |(lo, hi)| (lo.min(u), hi.max(u)))))
+    else {
+        return Vec::new();
+    };
+    // Lines x - y = u; the parameter along a line is x + y.
+    let mut out = Vec::new();
+    let mut u = lo.div_euclid(step) * step + step;
+    while u < hi && out.len() < 100_000 {
+        let mut ts: Vec<f64> = edges
+            .iter()
+            .filter_map(|&(a, b)| {
+                let (ua, ub) = ((a.x - a.y) as f64, (b.x - b.y) as f64);
+                let uf = u as f64;
+                if (ua <= uf) == (ub <= uf) {
+                    return None;
+                }
+                let f = (uf - ua) / (ub - ua);
+                Some((a.x + a.y) as f64 + f * ((b.x + b.y) - (a.x + a.y)) as f64)
+            })
+            .collect();
+        ts.sort_by(f64::total_cmp);
+        for pair in ts.as_chunks::<2>().0 {
+            // x = (t + u) / 2, y = (t - u) / 2
+            let at =
+                |t: f64| Point::new(((t + u as f64) / 2.0).round() as Coord, ((t - u as f64) / 2.0).round() as Coord);
+            out.push((at(pair[0]), at(pair[1])));
+        }
+        u += step;
+    }
+    out
 }

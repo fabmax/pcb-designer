@@ -352,7 +352,7 @@ fn flipping_a_footprint_disconnects_top_tracks() {
 fn add_zone(b: &mut B, layer: LayerId, net: &str, r: Rect, priority: u32) -> Id {
     let id = Id::new();
     let outline = vec![r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
-    let zone = Zone { id, layer, net: net.into(), outline, priority, clearance: None };
+    let zone = Zone { id, priority, ..Zone::new(layer, net, outline) };
     b.ed.execute(Command::Insert { objects: vec![Object::Zone(zone)] }).unwrap();
     id
 }
@@ -487,4 +487,154 @@ fn stitching_vias_join_the_zone() {
     let bc = b.bc();
     assert_eq!(bc.net_of(CopperItem::Via(via)), Some("GND"));
     assert!(bc.flagged().next().is_none());
+}
+
+// ---- Zone settings and keepouts
+
+fn rect_points(a: (f64, f64), b: (f64, f64)) -> Vec<Point> {
+    vec![Point::mm(a.0, a.1), Point::mm(b.0, a.1), Point::mm(b.0, b.1), Point::mm(a.0, b.1)]
+}
+
+fn update_zone(b: &mut B, z: Id, f: impl FnOnce(&mut Zone)) {
+    let mut zone = b.ed.project().board.zones.get(z).unwrap().clone();
+    f(&mut zone);
+    b.ed.execute(Command::Update { objects: vec![Object::Zone(zone)] }).unwrap();
+}
+
+fn filled(bc: &BoardConnectivity, zone: Id, p: Point) -> bool {
+    bc.items.iter().any(|c| matches!(c.item, CopperItem::Zone { zone: z, .. } if z == zone) && c.geo.contains(p))
+}
+
+fn add_keepout(b: &mut B, k: Keepout) -> Id {
+    let id = k.id;
+    b.ed.execute(Command::Insert { objects: vec![Object::Keepout(k)] }).unwrap();
+    id
+}
+
+fn drc(b: &B) -> Vec<editor_core::drc::Violation> {
+    editor_core::drc::run(b.ed.project(), &b.bc())
+}
+
+#[test]
+fn zone_holes_and_keepouts() {
+    let (mut b, _, gnd) = grounded();
+    let inside = Point::mm(4.0, 4.0);
+    assert!(filled(&b.bc(), gnd, inside));
+    update_zone(&mut b, gnd, |z| z.holes = vec![rect_points((2.0, 2.0), (6.0, 6.0))]);
+    let bc = b.bc();
+    assert!(!filled(&bc, gnd, inside), "the hole stays empty");
+    assert!(filled(&bc, gnd, Point::mm(7.0, 4.0)));
+
+    // A lower-priority zone without a net fills the hole, it's not a keepout.
+    let isolated =
+        add_zone(&mut b, LayerId::TOP_COPPER, "", Rect::from_points(Point::mm(1.0, 1.0), Point::mm(7.0, 7.0)), 0);
+    update_zone(&mut b, gnd, |z| z.priority = 1);
+    assert!(filled(&b.bc(), isolated, inside), "zones without a net keep all their islands");
+    assert!(drc(&b).iter().all(|v| v.kind != editor_core::drc::ViolationKind::ZoneNet), "no net on purpose");
+
+    // A keepout keeps every zone out, on its layers only.
+    let k = add_keepout(&mut b, Keepout::new(vec![LayerId::BOTTOM_COPPER], rect_points((2.0, 2.0), (6.0, 6.0))));
+    assert!(filled(&b.bc(), isolated, inside), "other layer");
+    let mut keepout = b.ed.project().board.keepouts.get(k).unwrap().clone();
+    keepout.layers.clear();
+    b.ed.execute(Command::Update { objects: vec![Object::Keepout(keepout)] }).unwrap();
+    assert!(!filled(&b.bc(), isolated, inside), "all layers");
+
+    // Holes and keepouts move with their object.
+    let delta = Point::mm(1.0, 0.0);
+    b.ed.execute(Command::Move { ids: vec![ObjectId::Zone(gnd), ObjectId::Keepout(k)], delta, keep_connected: false })
+        .unwrap();
+    let board = &b.ed.project().board;
+    assert_eq!(board.zones.get(gnd).unwrap().holes[0][0], Point::mm(3.0, 2.0));
+    assert_eq!(board.keepouts.get(k).unwrap().outline[0], Point::mm(3.0, 2.0));
+}
+
+#[test]
+fn zone_connection_modes() {
+    let (mut b, [f1, _], gnd) = grounded();
+    let c = b.pad(f1, "1");
+    let fp = b.ed.project().board.footprints.get(f1).unwrap();
+    let pad = editor_core::query::footprint_of_instance(b.ed.project(), fp)
+        .unwrap()
+        .pads
+        .iter()
+        .find(|p| p.name == "1")
+        .unwrap()
+        .clone();
+    let (hw, hh) = (pad.size.w / 2, pad.size.h / 2);
+    let gap = b.ed.project().board.rules.thermal_gap;
+    let diagonal = c + Point::new(hw + gap / 2, hh + gap / 2);
+    assert!(!filled(&b.bc(), gnd, diagonal), "thermal relief");
+
+    // SMD pads are flooded with solid and through-hole-only reliefs.
+    for mode in [ZoneConnection::Solid, ZoneConnection::ThermalThroughHole] {
+        update_zone(&mut b, gnd, |z| z.connection = mode);
+        let bc = b.bc();
+        assert!(filled(&bc, gnd, diagonal), "{mode:?}");
+        assert_eq!(bc.unrouted(), 1, "{mode:?}");
+    }
+    // Not connected: the pads keep the clearance, GND is unrouted again.
+    update_zone(&mut b, gnd, |z| z.connection = ZoneConnection::None);
+    let bc = b.bc();
+    assert!(!filled(&bc, gnd, c + Point::new(hw + gap / 2, 0)), "no spoke");
+    assert_eq!(bc.unrouted(), 2);
+
+    // A wider relief gap of its own.
+    update_zone(&mut b, gnd, |z| {
+        z.connection = ZoneConnection::Thermal;
+        z.thermal_gap = Some(gap * 3);
+    });
+    assert!(!filled(&b.bc(), gnd, c + Point::new(hw + gap * 2, hh + gap * 2)), "inside the wider gap");
+}
+
+#[test]
+fn island_removal_modes() {
+    let (mut b, _) = series();
+    // IN has copper, but not inside this zone: its whole fill is one island without it.
+    let z =
+        add_zone(&mut b, LayerId::TOP_COPPER, "IN", Rect::from_points(Point::mm(50.0, 50.0), Point::mm(60.0, 60.0)), 0);
+    let shapes = |b: &B| b.bc().fills.iter().find(|f| f.zone == z).unwrap().shapes.len();
+    assert_eq!(shapes(&b), 0);
+    update_zone(&mut b, z, |z| z.islands = IslandRemoval::Never);
+    assert_eq!(shapes(&b), 1);
+    // 10 × 10 mm = 1e14 nm².
+    update_zone(&mut b, z, |z| z.islands = IslandRemoval::BelowArea(50_000_000_000_000));
+    assert_eq!(shapes(&b), 1);
+    update_zone(&mut b, z, |z| z.islands = IslandRemoval::BelowArea(200_000_000_000_000));
+    assert_eq!(shapes(&b), 0);
+}
+
+#[test]
+fn keepouts_are_checked_by_drc() {
+    use editor_core::drc::ViolationKind;
+    let (mut b, [f1, f2]) = series();
+    let (p1, p2) = (b.pad(f1, "2"), b.pad(f2, "1"));
+    b.track(LayerId::TOP_COPPER, &[p1, p1 + Point::mm(0.0, 4.0), p2 + Point::mm(0.0, 4.0), p2]);
+    let keepouts = |b: &B| drc(b).into_iter().filter(|v| v.kind == ViolationKind::Keepout).collect::<Vec<_>>();
+    assert!(keepouts(&b).is_empty());
+
+    // Across the track's middle, below the pads.
+    let area = rect_points((14.0, 12.0), (16.0, 16.0));
+    let k = add_keepout(&mut b, Keepout::new(vec![LayerId::BOTTOM_COPPER], area.clone()));
+    assert!(keepouts(&b).is_empty(), "bottom only");
+    b.ed.execute(Command::Delete { ids: vec![ObjectId::Keepout(k)] }).unwrap();
+    let k = add_keepout(&mut b, Keepout::new(vec![], area));
+    let v = keepouts(&b);
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(v[0].message.contains("track"), "{}", v[0].message);
+    assert!(v[0].objects.contains(&ObjectId::Keepout(k)));
+
+    // Footprints: by courtyard, only when the keepout says so.
+    let mut keepout = b.ed.project().board.keepouts.get(k).unwrap().clone();
+    keepout.no_tracks = false;
+    keepout.outline = rect_points((9.0, 9.0), (11.0, 11.0));
+    b.ed.execute(Command::Update { objects: vec![Object::Keepout(keepout.clone())] }).unwrap();
+    let v = keepouts(&b);
+    assert!(v.iter().all(|v| v.message.starts_with("pad")), "{v:?}");
+    keepout.no_pads = false;
+    keepout.no_footprints = true;
+    b.ed.execute(Command::Update { objects: vec![Object::Keepout(keepout)] }).unwrap();
+    let v = keepouts(&b);
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert_eq!(v[0].objects[0], ObjectId::Footprint(f1));
 }

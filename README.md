@@ -34,11 +34,25 @@ side to compare. Agents can look too: `screenshot` with target `gerber`.
 duplicates it without touching the clipboard. A paste follows the pointer (R rotates,
 X mirrors) until you click; Esc cancels it. Works in the schematic (symbols, wires,
 buses, labels, texts; across sheets, and into other projects and app instances, since
-clips carry their parts), on the board (tracks, vias, zones, graphics, texts; they keep
+clips carry their parts), on the board (tracks, vias, zones, keepouts, graphics, texts; they keep
 their layers) and in the symbol and footprint editors (pins, pads, graphics, texts;
 pins and pads get the next free numbers). Pasted components get the next free
 reference unless theirs is free (after a cut). Clips are JSON text on the system
 clipboard.
+
+## Zones and keepouts
+
+The Zone tool (**Z**) draws a copper zone corner by corner (click the first or last corner
+again to close it). Its net comes from the copper under the first corner or from the tool
+settings. Zones fill around other nets with the clearance and refill on every change.
+In Properties, choose how pads of the zone's net connect (thermal reliefs, reliefs for
+through-hole pads only, solid, or not at all), override the clearance and thermal sizes,
+and choose which unconnected islands are removed (always, never, or below an area). An
+empty net makes isolated copper. Zones can have holes that only that zone leaves empty.
+
+The Keepout tool (**K**) draws an area, on all copper layers or one, that zone fills leave
+out. DRC reports tracks, vias, pads and, if enabled, footprint courtyards inside it.
+Properties set what it keeps out and its layers.
 
 ## Measuring
 

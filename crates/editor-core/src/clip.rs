@@ -182,7 +182,12 @@ fn is_schematic_copyable(kind: ObjectKind) -> bool {
 fn is_board_copyable(kind: ObjectKind) -> bool {
     matches!(
         kind,
-        ObjectKind::Track | ObjectKind::Via | ObjectKind::Zone | ObjectKind::BoardGraphic | ObjectKind::BoardText
+        ObjectKind::Track
+            | ObjectKind::Via
+            | ObjectKind::Zone
+            | ObjectKind::Keepout
+            | ObjectKind::BoardGraphic
+            | ObjectKind::BoardText
     )
 }
 
