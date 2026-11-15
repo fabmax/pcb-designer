@@ -38,7 +38,9 @@ things to do **later**.
   are off the board (power flags, logos, KiCad's "exclude from board"). Off-board is a
   choice the part offers, never a free per-component switch.
 - Schematic: design-wide `Component`s (refdes, value, part, variant), units placed as
-  `SymbolInstance`s; every graphic carries its sheet id. Buses: `BusWire`, `BusEntry
+  `SymbolInstance`s; every graphic carries its sheet id. A unit of a part with several
+  units shows its reference as `U1-A` (`Part::unit_reference`: the unit's name, its
+  letter when unnamed); drawing only, `refdes` and netlists stay `U1`. Buses: `BusWire`, `BusEntry
   {pos, dir}` (wire end = `pos + dir.offset()`, a fixed 2.54 mm diagonal).
 - Sheets (KiCad's model): one root sheet (no `parent`, named "Schematic") and sub-sheets
   with a `parent`, each drawn once on its parent as a sheet symbol (`pos` = bottom left

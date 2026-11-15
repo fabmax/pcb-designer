@@ -780,20 +780,8 @@ fn unit(work: &Library, i: usize, u: &Value, what: &str) -> Result<PartUnit, Str
         .iter()
         .find(|s| s.name == spec || Some(s.id) == id)
         .ok_or_else(|| format!("{what}: no symbol {spec:?} in the library (add it in the same edit or before)"))?;
-    let name = str_field(u, "name").map(str::to_string).unwrap_or_else(|| unit_name(i));
+    let name = str_field(u, "name").map(str::to_string).unwrap_or_else(|| model::unit_letters(i));
     Ok(PartUnit { name, symbol: symbol.id })
-}
-
-fn unit_name(i: usize) -> String {
-    let mut name = String::new();
-    let mut n = i;
-    loop {
-        name.insert(0, (b'A' + (n % 26) as u8) as char);
-        if n < 26 {
-            return name;
-        }
-        n = n / 26 - 1;
-    }
 }
 
 /// Variant: `{"footprint": NAME or id, "name"?, "connections"?}`; without a footprint a
@@ -871,11 +859,6 @@ fn connection(work: &Library, part: &Part, fp: &Footprint, c: &Value, what: &str
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn unit_names() {
-        assert_eq!([0, 1, 25, 26, 27].map(unit_name), ["A", "B", "Z", "AA", "AB"]);
-    }
 
     #[test]
     fn lookup_by_kind_name_and_id() {

@@ -1037,9 +1037,13 @@ fn seg_dist(p: Point, a: Point, b: Point) -> f64 {
 fn draw_symbol(project: &Project, inst: &SymbolInstance, l: &SchLayers, p: &mut Painter) {
     let Some(sym) = symbol_of_instance(project, inst) else { return };
     let component = project.schematic.components.get(inst.component);
+    let part = component.and_then(|c| project.library.parts.get(c.part));
     let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
+    // Units of a multi-unit part show which one they are: U1-A.
+    let refdes = part.map_or_else(|| refdes.to_string(), |part| part.unit_reference(refdes, inst.unit));
+    let refdes = refdes.as_str();
     // Pad names per pin for the component's variant.
-    let variant = component.and_then(|c| project.library.parts.get(c.part).and_then(|part| part.variant(c.variant)));
+    let variant = component.and_then(|c| part.and_then(|part| part.variant(c.variant)));
     let footprint = component.and_then(|c| project.library.footprint_of(c.part, c.variant));
     let pads = variant.zip(footprint);
     draw_symbol_graphics(sym, inst.unit, &inst.transform(), refdes, value, pads, l, p);

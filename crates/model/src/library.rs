@@ -311,6 +311,30 @@ impl Part {
     pub fn is_board_part(&self) -> bool {
         self.units.is_empty()
     }
+
+    /// The reference shown on a unit's symbol: `U1-A` when the part has several units
+    /// (the unit's name, or its letter when unnamed), else the plain `refdes`.
+    pub fn unit_reference(&self, refdes: &str, unit: u32) -> String {
+        if self.units.len() < 2 {
+            return refdes.to_string();
+        }
+        let name = self.units.get(unit as usize).map_or("", |u| u.name.as_str());
+        let name = if name.is_empty() { unit_letters(unit as usize) } else { name.to_string() };
+        format!("{refdes}-{name}")
+    }
+}
+
+/// Letters of unit `i`: A, B, … Z, AA, AB, …
+pub fn unit_letters(i: usize) -> String {
+    let mut name = String::new();
+    let mut n = i;
+    loop {
+        name.insert(0, (b'A' + (n % 26) as u8) as char);
+        if n < 26 {
+            return name;
+        }
+        n = n / 26 - 1;
+    }
 }
 
 has_id!(Pin, Symbol, Pad, Footprint, Part);
@@ -517,7 +541,19 @@ impl Library {
 
 #[cfg(test)]
 mod tests {
-    use super::natural_cmp;
+    use super::*;
+
+    #[test]
+    fn unit_references() {
+        assert_eq!([0, 1, 25, 26, 27].map(unit_letters), ["A", "B", "Z", "AA", "AB"]);
+        let unit = |name: &str| PartUnit { name: name.into(), symbol: Id::new() };
+        let mut part = crate::builtin::builtin_library().parts.get(crate::builtin::PART_RESISTOR).unwrap().clone();
+        assert_eq!(part.unit_reference("R1", 0), "R1", "a single unit has no suffix");
+        part.units = vec![unit("A"), unit(""), unit("Power")];
+        assert_eq!(part.unit_reference("U1", 0), "U1-A");
+        assert_eq!(part.unit_reference("U1", 1), "U1-B", "unnamed: the unit's letter");
+        assert_eq!(part.unit_reference("U1", 2), "U1-Power");
+    }
 
     #[test]
     fn natural_order() {
