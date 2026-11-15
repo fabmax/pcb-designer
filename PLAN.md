@@ -124,7 +124,10 @@ and hierarchical sheets.
   local and hierarchical ones on their sheet, global and power ones on all sheets
   (`LabelKind::is_global`). Net name as in KiCad: power, then global, then local, then
   hierarchical as `{sheet path}/{name}` (`/A`, `/Power/A`; `Schematic::sheet_path`),
-  fewest `/` first, else `Net-(R1-1)`. "Several names" is reported per sheet only (a net
+  fewest `/` first, else `Net-(R1-1)`. Power ports are labels, not symbols: their
+  `style` (`PowerStyle`, KiCad's power glyphs) is drawing only; `None` means the one the
+  name suggests (`PowerStyle::for_name`: *GND* or EARTH → ground, CHASSIS, PE, else a
+  bar). There are no hidden pins: pins connect only by wire. "Several names" is reported per sheet only (a net
   may be named differently on each side of a sheet pin). Gotcha: local nets are
   `/NAME`; tests that only need a named net use global labels. Problems are `Problem
   {message, objects, pos}`.
@@ -285,7 +288,10 @@ and hierarchical sheets.
 ## Libraries and KiCad (`kicad`)
 
 - Imports `.kicad_sym`, `.kicad_symdir` (KiCad 10) and `.pretty` (KiCad 6–10). Units
-  from sub-symbols, `extends` merged, power symbols skipped, footprints y-flipped and
+  from sub-symbols, `extends` merged, power symbols skipped (they are power labels
+  here), symbols with hidden `power_in` pins refused (KiCad joins those implicitly to the
+  global net of the pin name; none in KiCad's current libraries), other hidden pins shown
+  with a warning, footprints y-flipped and
   front layers only. A symbol requested without footprints gets a "No footprint" variant
   (with a warning); one whose footprints all fail to load makes no part. Deterministic ids (FNV of library, name, element), so re-imports
   update in place.
@@ -436,10 +442,17 @@ defers.
   UUIDs kept as ids; opens as an unsaved project; best effort with an import report).
   Symbols without footprint get a "No footprint" variant; "exclude from board" adds one
   to the part; footprints without symbol become board parts. Model prerequisites first,
-  in order: hidden power pins and power symbols; no-connect flags; footprint
+  in order: no-connect flags; footprint
   fidelity (back-side layers, slots, per-instance reference/value text); zones (holes,
   keepouts, connection mode); arc tracks. `in_bom` / `dnp` become component properties
-  until a BOM exists.
+  until a BOM exists. Power symbols become power labels; the style comes from the
+  `power:` library name, else from the symbol's graphics; custom glyphs get the closest
+  style, noted in the report. Legacy hidden power pins fail the import with their
+  symbols named.
+
+- Custom power symbols: power ports drawn from a symbol of their own (a part flagged
+  power, no footprint), for glyphs beyond `PowerStyle`; maps to KiCad custom power
+  symbols on import and export.
 
 **Board**
 - Board parts: copy/paste and duplicate on the board; a "Place board part" picker in the

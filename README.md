@@ -127,7 +127,10 @@ Double-click a sheet symbol (or the sheet in the tree) to open the sheet in its 
 Rename or delete sheets with right-click; deleting takes everything on the sheet and its
 sub-sheets along (after asking). Reference designators are unique across all sheets.
 Local labels connect on their sheet only (nets are named `/Sheet/NAME`), global and power
-labels everywhere. Hierarchical labels on a sheet become pins of its symbol on the parent
+labels everywhere. Power ports (Power tool, P) are drawn like KiCad's power symbols: pick
+the glyph (bar, arrow, circle, ground, signal ground, chassis, protective earth) in the
+tool settings or Properties, or leave it on Auto, which goes by the name (GND, AGND, … get
+ground). Pins connect only through wires; there are no hidden pins. Hierarchical labels on a sheet become pins of its symbol on the parent
 sheet (inputs on the left, the others on the right, in name order; the symbol grows to
 fit them); wire them there like component pins. The Messages panel lists sheet pins left
 unwired.
@@ -173,6 +176,10 @@ the configuration folder, e.g. `~/Library/Application Support/pcb-designer/kicad
 on macOS. The window offers the download when no libraries are found, and "Check for
 updates" afterwards; the app only goes online when you click one of these. Agents use
 `download_kicad_libraries`. `--kicad DIR` adds more library folders.
+
+Power symbols aren't imported: they are power ports here. Symbols with hidden power pins
+(older parts that connect VCC and GND implicitly) are refused; KiCad's current libraries
+have none.
 
 KiCad's libraries are licensed CC-BY-SA 4.0, with an exception that allows using them in
 your designs without restrictions (see the KiCad library license).

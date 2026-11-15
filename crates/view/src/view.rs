@@ -1053,6 +1053,7 @@ fn draw_sheet_symbol(s: &Schematic, sheet: &Sheet, l: &SchLayers, p: &mut Painte
             name: pin.name,
             kind: LabelKind::Hierarchical,
             shape: pin.shape.reversed(),
+            style: None,
             rotation: if pin.right { Angle::DEG180 } else { Angle::ZERO },
         };
         draw_label(&lab, l, p);
@@ -1105,23 +1106,69 @@ fn draw_label(lab: &NetLabel, l: &SchLayers, p: &mut Painter) {
                 .upright();
             p.text(l.labels, &text, color, &|s| s.to_string(), true);
         }
-        LabelKind::Power if lab.name.to_uppercase().contains("GND") => {
-            line(p, (0.0, 0.0), (0.0, -1.27), pal().sch_power);
-            for (y, w) in [(-1.27, 1.27), (-1.78, 0.76), (-2.29, 0.25)] {
-                line(p, (-w, y), (w, y), pal().sch_power);
-            }
-            let text = Text::new(lab.name.clone(), Point::mm(0.0, -2.8), 1_270_000)
-                .aligned(HAlign::Center, VAlign::Top)
-                .transformed(&t);
-            p.text(l.labels, &text, pal().sch_power, &|s| s.to_string(), true);
-        }
         LabelKind::Power => {
-            line(p, (0.0, 0.0), (0.0, 1.27), pal().sch_power);
-            line(p, (-1.27, 1.27), (1.27, 1.27), pal().sch_power);
-            let text = Text::new(lab.name.clone(), Point::mm(0.0, 1.8), 1_270_000)
-                .aligned(HAlign::Center, VAlign::Bottom)
+            let c = pal().sch_power;
+            let ring = |p: &mut Painter, y: f64, r: f64| {
+                let shape =
+                    Shape::Circle { center: t.point(Point::mm(0.0, y)), radius: mm(r), width: WIRE_WIDTH, fill: false };
+                p.shape(l.labels, &shape, c, None);
+            };
+            let style = lab.power_style();
+            // Where the name goes: past the glyph's far end.
+            let text_y = match style {
+                PowerStyle::Bar => {
+                    line(p, (0.0, 0.0), (0.0, 1.27), c);
+                    line(p, (-1.27, 1.27), (1.27, 1.27), c);
+                    1.8
+                }
+                PowerStyle::Arrow => {
+                    line(p, (0.0, 0.0), (0.0, 2.54), c);
+                    line(p, (-0.76, 1.52), (0.0, 2.54), c);
+                    line(p, (0.76, 1.52), (0.0, 2.54), c);
+                    3.05
+                }
+                PowerStyle::Circle => {
+                    line(p, (0.0, 0.0), (0.0, 1.27), c);
+                    ring(p, 1.905, 0.635);
+                    3.05
+                }
+                PowerStyle::Ground => {
+                    line(p, (0.0, 0.0), (0.0, -1.27), c);
+                    for (y, w) in [(-1.27, 1.27), (-1.78, 0.76), (-2.29, 0.25)] {
+                        line(p, (-w, y), (w, y), c);
+                    }
+                    -2.8
+                }
+                PowerStyle::SignalGround => {
+                    line(p, (0.0, 0.0), (0.0, -1.27), c);
+                    let tri = [(-1.27, -1.27), (1.27, -1.27), (0.0, -2.54), (-1.27, -1.27)];
+                    for w in tri.windows(2) {
+                        line(p, w[0], w[1], c);
+                    }
+                    -3.05
+                }
+                PowerStyle::Chassis => {
+                    line(p, (0.0, 0.0), (0.0, -1.27), c);
+                    line(p, (-1.27, -1.27), (1.27, -1.27), c);
+                    for x in [-1.27, 0.0, 1.27] {
+                        line(p, (x, -1.27), (x - 0.76, -2.29), c);
+                    }
+                    -2.8
+                }
+                PowerStyle::ProtectiveEarth => {
+                    line(p, (0.0, 0.0), (0.0, -1.65), c);
+                    for (y, w) in [(-1.65, 0.76), (-2.08, 0.46), (-2.51, 0.15)] {
+                        line(p, (-w, y), (w, y), c);
+                    }
+                    ring(p, -2.03, 1.27);
+                    -3.6
+                }
+            };
+            let v = if style.points_down() { VAlign::Top } else { VAlign::Bottom };
+            let text = Text::new(lab.name.clone(), Point::mm(0.0, text_y), 1_270_000)
+                .aligned(HAlign::Center, v)
                 .transformed(&t);
-            p.text(l.labels, &text, pal().sch_power, &|s| s.to_string(), true);
+            p.text(l.labels, &text, c, &|s| s.to_string(), true);
         }
     }
 }

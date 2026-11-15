@@ -44,6 +44,7 @@ fn label(ed: &mut Editor, pos: Point, name: &str) -> Id {
         name: name.into(),
         kind: LabelKind::Local,
         shape: LabelShape::default(),
+        style: None,
         rotation: Angle::ZERO,
     };
     created(ed, cmd, |id| match id {

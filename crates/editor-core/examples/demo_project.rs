@@ -29,6 +29,7 @@ fn main() {
         name: "GND".into(),
         kind: LabelKind::Power,
         shape: LabelShape::default(),
+        style: None,
         rotation: Angle::ZERO,
     })
     .unwrap();

@@ -58,6 +58,7 @@ fn hierarchical_labels_redraw_the_sheet_symbol() {
             name: format!("A{i}"),
             kind: LabelKind::Hierarchical,
             shape: LabelShape::Input,
+            style: None,
             rotation: Angle::ZERO,
         })
         .unwrap();

@@ -160,13 +160,23 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 ui.add(egui::TextEdit::singleline(&mut s.power).desired_width(f32::INFINITY));
                 ui.end_row();
                 label(ui, "");
-                ui.horizontal_wrapped(|ui| {
-                    for &name in POWER_NAMES {
-                        if ui.selectable_label(s.power == name, name).clicked() {
-                            s.power = name.to_string();
-                        }
+                // Explicit rows: a wrapped layout in a grid cell gets the height of one.
+                ui.vertical(|ui| {
+                    for names in POWER_NAMES.chunks(4) {
+                        ui.horizontal(|ui| {
+                            for &name in names {
+                                if ui.selectable_label(s.power == name, name).clicked() {
+                                    s.power = name.to_string();
+                                }
+                            }
+                        });
                     }
                 });
+                ui.end_row();
+                label(ui, "Style");
+                if let Some(style) = fields::power_style_combo(ui, "power_style", s.power_style, &s.power) {
+                    s.power_style = style;
+                }
                 ui.end_row();
                 label(ui, "Rotation");
                 if let Some(a) = fields::rotation_combo(ui, "sch_rot", s.rotation, LABEL_SIDES) {

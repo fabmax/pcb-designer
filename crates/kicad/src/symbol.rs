@@ -32,6 +32,9 @@ pub struct KiSymbol {
     pub fp_filters: Vec<String>,
     /// Power symbols (GND, +5V) are net labels in this application; they are not imported.
     pub power: bool,
+    /// Names of hidden `power_in` pins. KiCad connects them implicitly to the global net
+    /// of their name (legacy parts); this application doesn't, so such symbols are refused.
+    pub hidden_power_pins: Vec<String>,
     /// One symbol per unit.
     pub units: Vec<Symbol>,
     pub unit_names: Vec<String>,
@@ -41,6 +44,19 @@ pub struct KiSymbol {
 impl KiSymbol {
     pub fn full_name(&self) -> String {
         format!("{}:{}", self.lib, self.name)
+    }
+
+    /// Why this symbol can't be imported because of hidden power pins, if so.
+    pub fn hidden_power_error(&self) -> Option<String> {
+        if self.power || self.hidden_power_pins.is_empty() {
+            return None;
+        }
+        let s = if self.hidden_power_pins.len() == 1 { "" } else { "s" };
+        Some(format!(
+            "hidden power pin{s} {} would connect implicitly to the global net{s} of that name, which isn't \
+             supported; use a symbol with visible power pins",
+            self.hidden_power_pins.join(", ")
+        ))
     }
 }
 
@@ -101,6 +117,7 @@ pub fn convert(lib: &str, node: &Node, parent: Option<&Node>) -> KiSymbol {
 
     let mut units = Vec::new();
     let mut unit_names = Vec::new();
+    let mut hidden_power_pins = Vec::new();
     for u in 1..=unit_count {
         let letter = unit_letter(u as usize - 1);
         let unit_name = subs
@@ -121,6 +138,13 @@ pub fn convert(lib: &str, node: &Node, parent: Option<&Node>) -> KiSymbol {
                             continue;
                         }
                         if let Some(mut pin) = convert_pin(item, names_hidden, numbers_hidden) {
+                            if item.flag("hide") {
+                                if pin.kind == PinKind::PowerIn {
+                                    hidden_power_pins.push(pin.name.clone());
+                                } else {
+                                    warnings.push(format!("hidden pin {} ({}) is shown", pin.number, pin.name));
+                                }
+                            }
                             let k = (pin.number.clone(), pin.name.clone());
                             let n = seen.entry(k).or_default();
                             *n += 1;
@@ -169,6 +193,7 @@ pub fn convert(lib: &str, node: &Node, parent: Option<&Node>) -> KiSymbol {
         keywords: prop_value(&props, "ki_keywords").to_string(),
         fp_filters: prop_value(&props, "ki_fp_filters").split_whitespace().map(str::to_string).collect(),
         power,
+        hidden_power_pins,
         units,
         unit_names,
         warnings,
@@ -376,6 +401,29 @@ mod tests {
         // Filled triangle body, reference and value texts.
         assert!(matches!(&s.units[0].graphics[0], Shape::Polygon { points, fill: true, .. } if points.len() == 3));
         assert_eq!(s.units[0].texts.iter().filter(|t| t.text.starts_with("${")).count(), 2);
+    }
+
+    #[test]
+    fn hidden_pins() {
+        const LEGACY: &str = r##"(kicad_symbol_lib (version 20211014) (generator kicad_symbol_editor)
+  (symbol "74LS00" (in_bom yes) (on_board yes)
+    (property "Reference" "U" (id 0) (at 0 0 0) (effects (font (size 1.27 1.27))))
+    (symbol "74LS00_1_1"
+      (pin input line (at -7.62 2.54 0) (length 3.81) (name "A" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+      (pin no_connect line (at -7.62 0 0) (length 3.81) hide (name "NC" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+      (pin power_in line (at 0 7.62 270) (length 3.81) hide (name "VCC" (effects (font (size 1.27 1.27)))) (number "14" (effects (font (size 1.27 1.27)))))
+      (pin power_in line (at 0 -7.62 90) (length 3.81) (hide yes) (name "GND" (effects (font (size 1.27 1.27)))) (number "7" (effects (font (size 1.27 1.27)))))))
+)"##;
+        let s = load(LEGACY, "74LS00");
+        assert_eq!(s.hidden_power_pins, ["VCC", "GND"]);
+        let e = s.hidden_power_error().unwrap();
+        assert!(e.contains("hidden power pins VCC, GND"), "{e}");
+        assert!(s.warnings.iter().any(|w| w == "hidden pin 2 (NC) is shown"), "{:?}", s.warnings);
+        assert_eq!(s.units[0].pins.len(), 4);
+        // A power symbol's own hidden pin is how KiCad names the net; not an error.
+        let gnd = load(KICAD6, "GND");
+        assert!(gnd.power && gnd.hidden_power_error().is_none());
+        assert!(load(KICAD6, "LM358").hidden_power_error().is_none(), "visible power pins");
     }
 
     #[test]

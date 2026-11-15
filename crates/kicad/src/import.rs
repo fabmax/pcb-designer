@@ -60,7 +60,13 @@ pub fn import(catalog: &mut Catalog, req: &Request) -> Imported {
             }
         };
         if sym.power {
-            out.errors.push(format!("{sym_name}: power symbols are net labels in this application"));
+            out.errors.push(format!(
+                "{sym_name}: power symbols are power labels in this application; place them with the Power tool (P)"
+            ));
+            continue;
+        }
+        if let Some(e) = sym.hidden_power_error() {
+            out.errors.push(format!("{sym_name}: {e}"));
             continue;
         }
         let mut variants = Vec::new();

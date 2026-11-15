@@ -159,6 +159,21 @@ pub fn rotation_combo(ui: &mut egui::Ui, salt: &str, current: Angle, names: [&st
     out
 }
 
+/// The glyph of a power port named `name`: "Auto" (what the name suggests) or a fixed
+/// style. Returns the newly chosen value.
+pub fn power_style_combo(
+    ui: &mut egui::Ui,
+    salt: &str,
+    current: Option<model::PowerStyle>,
+    name: &str,
+) -> Option<Option<model::PowerStyle>> {
+    let auto = format!("Auto ({})", model::PowerStyle::for_name(name).label().to_lowercase());
+    let options: Vec<_> = std::iter::once((None, auto))
+        .chain(model::PowerStyle::ALL.into_iter().map(|s| (Some(s), s.label().to_string())))
+        .collect();
+    combo(ui, salt, &current, &options)
+}
+
 /// Generic combo over `options`; returns the newly chosen value.
 pub fn combo<T: PartialEq + Clone>(
     ui: &mut egui::Ui,

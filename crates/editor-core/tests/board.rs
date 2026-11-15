@@ -60,6 +60,7 @@ impl B {
             name: name.into(),
             kind: LabelKind::Global,
             shape: LabelShape::default(),
+            style: None,
             rotation: Angle::ZERO,
         };
         self.ed.execute(cmd).unwrap();

@@ -66,8 +66,16 @@ fn stub(ed: &mut Editor, component: Id, pin: &str, net: &str, kind: LabelKind) {
     ed.execute(Command::AddWire { sheet, points: vec![at, end] }).unwrap();
     // Labels on the left of their wire face left.
     let rotation = if step.x < 0 && kind != LabelKind::Power { Angle::DEG180 } else { Angle::ZERO };
-    ed.execute(Command::AddLabel { sheet, pos: end, name: net.into(), kind, shape: LabelShape::Input, rotation })
-        .unwrap();
+    ed.execute(Command::AddLabel {
+        sheet,
+        pos: end,
+        name: net.into(),
+        kind,
+        shape: LabelShape::Input,
+        style: None,
+        rotation,
+    })
+    .unwrap();
 }
 
 fn pad(p: &Project, footprint: Id, name: &str) -> Point {
@@ -135,6 +143,7 @@ pub fn demo_project() -> Project {
         name: "+5V".into(),
         kind: LabelKind::Power,
         shape: LabelShape::Input,
+        style: None,
         rotation: Angle::ZERO,
     })
     .unwrap();
@@ -228,6 +237,7 @@ pub fn stress_project(n: usize) -> Project {
                 name,
                 kind,
                 shape: LabelShape::default(),
+                style: None,
                 rotation: Angle::ZERO,
             })
             .unwrap();

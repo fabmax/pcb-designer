@@ -294,6 +294,7 @@ fn random_command(rng: &mut Rng, p: &Project) -> Command {
             name: "GND".into(),
             kind: LabelKind::Power,
             shape: LabelShape::default(),
+            style: None,
             rotation: Angle::ZERO,
         },
     }

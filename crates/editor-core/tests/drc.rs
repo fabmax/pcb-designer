@@ -134,6 +134,7 @@ fn zone_on_a_renamed_net_is_flagged() {
             name: "MID".into(),
             kind: LabelKind::default(),
             shape: LabelShape::default(),
+            style: None,
             rotation: Angle::ZERO,
         })
         .unwrap();

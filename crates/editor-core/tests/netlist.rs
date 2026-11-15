@@ -59,7 +59,7 @@ impl Sch {
 
     fn label_on(&mut self, sheet: Option<Id>, pos: Point, name: &str, kind: LabelKind) {
         let shape = LabelShape::default();
-        let cmd = Command::AddLabel { sheet, pos, name: name.into(), kind, shape, rotation: Angle::ZERO };
+        let cmd = Command::AddLabel { sheet, pos, name: name.into(), kind, shape, style: None, rotation: Angle::ZERO };
         self.ed.execute(cmd).unwrap();
     }
 
@@ -482,7 +482,15 @@ fn sheet_pins_connect_hierarchical_labels() {
     for (pin, name, shape) in [("1", "IN", LabelShape::Input), ("2", "OUT", LabelShape::Output)] {
         let pos = s.pin(r2, pin);
         let kind = LabelKind::Hierarchical;
-        let cmd = Command::AddLabel { sheet: Some(sub), pos, name: name.into(), kind, shape, rotation: Angle::ZERO };
+        let cmd = Command::AddLabel {
+            sheet: Some(sub),
+            pos,
+            name: name.into(),
+            kind,
+            shape,
+            style: None,
+            rotation: Angle::ZERO,
+        };
         s.ed.execute(cmd).unwrap();
     }
 
@@ -523,8 +531,15 @@ fn sheet_pins_connect_hierarchical_labels() {
         let pos = Point::mm(30.0, i as f64 * 2.54);
         let kind = LabelKind::Hierarchical;
         let shape = LabelShape::Input;
-        let cmd =
-            Command::AddLabel { sheet: Some(sub), pos, name: format!("D{i}"), kind, shape, rotation: Angle::ZERO };
+        let cmd = Command::AddLabel {
+            sheet: Some(sub),
+            pos,
+            name: format!("D{i}"),
+            kind,
+            shape,
+            style: None,
+            rotation: Angle::ZERO,
+        };
         s.ed.execute(cmd).unwrap();
     }
     let (rect, pins) = s.ed.project().schematic.sheet_symbol(sub).unwrap();

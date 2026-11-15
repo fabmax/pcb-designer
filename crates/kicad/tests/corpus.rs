@@ -87,11 +87,16 @@ fn all_symbols_convert_into_valid_parts() {
     let mut failures = Vec::new();
     let mut power = 0;
     let mut no_fp = 0;
+    let mut hidden = Vec::new();
     for full in &names {
         match c.load_symbol(full) {
             Ok(sym) => {
                 if sym.power {
                     power += 1;
+                    continue;
+                }
+                if sym.hidden_power_error().is_some() {
+                    hidden.push(full.clone());
                     continue;
                 }
                 assert!(!sym.units.is_empty(), "{full}");
@@ -105,8 +110,11 @@ fn all_symbols_convert_into_valid_parts() {
         }
     }
     eprintln!(
-        "converted {} symbols ({power} power symbols skipped, {no_fp} without a footprint) in {:?}",
+        "converted {} symbols ({power} power symbols skipped, {} with hidden power pins refused, e.g. {:?}, \
+         {no_fp} without a footprint) in {:?}",
         names.len() - failures.len(),
+        hidden.len(),
+        &hidden[..hidden.len().min(5)],
         t.elapsed()
     );
     assert!(failures.is_empty(), "{} failures, e.g. {:?}", failures.len(), &failures[..failures.len().min(5)]);
@@ -135,7 +143,8 @@ fn all_symbols_convert_into_valid_parts() {
     let mut pinless = Vec::new();
     for p in imported.parts {
         let v = &p.variants[0];
-        let fp = lib.footprints.get(v.footprint.unwrap()).unwrap();
+        let Some(fp) = v.footprint else { continue }; // a "No footprint" variant
+        let fp = lib.footprints.get(fp).unwrap();
         let mut missing = Vec::new();
         for (u, unit) in p.units.iter().enumerate() {
             for pin in lib.symbols.get(unit.symbol).unwrap().pins.iter() {

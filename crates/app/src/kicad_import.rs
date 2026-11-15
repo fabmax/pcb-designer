@@ -38,7 +38,8 @@ struct Pick {
     footprint: Option<String>,
     /// Footprints offered in the picker: the default, then filter matches.
     candidates: Vec<String>,
-    power: bool,
+    /// Why this symbol won't be imported (power symbols, hidden power pins).
+    refused: Option<String>,
 }
 
 /// Outcome of the last import, shown in the window.
@@ -248,7 +249,11 @@ impl KicadImport {
                     pins: pin_numbers(&sym).len(),
                     footprint: suggested.first().cloned(),
                     candidates,
-                    power: sym.power,
+                    refused: if sym.power {
+                        Some("Power symbol: place it with the Power tool (P); it will not be imported.".into())
+                    } else {
+                        sym.hidden_power_error().map(|e| format!("Not imported: {e}."))
+                    },
                 });
                 self.active = Some(self.picks.len() - 1);
                 self.error = None;
@@ -268,7 +273,7 @@ impl KicadImport {
             symbols: self
                 .picks
                 .iter()
-                .filter(|p| !p.power)
+                .filter(|p| p.refused.is_none())
                 .map(|p| (p.symbol.clone(), p.footprint.iter().cloned().collect()))
                 .collect(),
             footprints: self.footprints.clone(),
@@ -608,11 +613,8 @@ impl KicadImport {
                         if !p.description.is_empty() {
                             ui.label(RichText::new(&p.description).color(theme::text_dim()).small());
                         }
-                        if p.power {
-                            ui.label(
-                                RichText::new("Power symbol: use a net label instead; it will not be imported.")
-                                    .color(theme::warn()),
-                            );
+                        if let Some(why) = &p.refused {
+                            ui.label(RichText::new(why).color(theme::warn()));
                             return;
                         }
                         ui.horizontal(|ui| {

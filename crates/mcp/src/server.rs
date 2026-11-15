@@ -74,7 +74,8 @@ copper of a net touching them is a short. Schematic connectivity is \
 by wire endpoints touching pin ends and by labels with equal names, scoped as in KiCad: add_label \
 kind local (default; same sheet, net named /NAME, or /Sheet/NAME below the root), global (all \
 sheets, plain name; shape input/output/bidirectional/tri_state/passive), hierarchical (to the \
-sheet's pin on the parent sheet) or power (global, plain name). Buses (add_bus, \
+sheet's pin on the parent sheet) or power (global, plain name; style bar/arrow/circle/ground/\
+signal_ground/chassis/protective_earth picks the glyph, default from the name: GND → ground). Buses (add_bus, \
 add_bus_entry) only group signals: name a bus with a label whose name is a bus name \
 (D[0..7], {SDA SCL}, I2C{SDA SCL} with members I2C.SDA, I2C.SCL) placed on a bus wire; signals \
 leave through bus entries on wires labelled with a member name. Bus wires never connect \
@@ -404,7 +405,7 @@ impl PcbTools {
 
     #[tool(description = "Import KiCad symbols and footprints into an open library. Each symbol \
         becomes a part with one variant per footprint (pads mapped to pins by number; power \
-        symbols like GND are skipped, use net labels). Returns the new part ids (for \
+        symbols like GND are skipped, use power labels; symbols with hidden power pins are refused). Returns the new part ids (for \
         import_parts), the chosen footprints and conversion notes. Re-importing updates \
         the library objects in place. In headless mode the parts are also added to the \
         project, ready to place.")]

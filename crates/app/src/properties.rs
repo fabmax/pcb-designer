@@ -210,6 +210,14 @@ impl Properties {
                         }
                         ui.end_row();
                     }
+                    if l.kind == LabelKind::Power {
+                        label(ui, "Style");
+                        if let Some(style) = crate::fields::power_style_combo(ui, "power_style", l.style, &l.name) {
+                            l.style = style;
+                            self.update(cx, Object::Label(l.clone()), false);
+                        }
+                        ui.end_row();
+                    }
                     row(ui, "Position", fmt_point(l.pos));
                     if bus {
                         bus_rows(ui, cx.doc, id);

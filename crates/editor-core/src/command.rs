@@ -115,6 +115,9 @@ pub enum Command {
         /// Drawn for global and hierarchical labels.
         #[serde(default)]
         shape: LabelShape,
+        /// Glyph of a power port; default: the one its name suggests (GND → ground).
+        #[serde(default)]
+        style: Option<PowerStyle>,
         #[serde(default)]
         rotation: Angle,
     },
@@ -330,12 +333,12 @@ impl Command {
                 let sheet = resolve_sheet(tx, sheet)?;
                 tx.insert(Object::Junction(Junction { id: Id::new(), sheet, pos })).map(drop)
             }
-            Command::AddLabel { sheet, pos, name, kind, shape, rotation } => {
+            Command::AddLabel { sheet, pos, name, kind, shape, style, rotation } => {
                 if name.trim().is_empty() {
                     return Err(CommandError::Invalid("label name must not be empty".into()));
                 }
                 let sheet = resolve_sheet(tx, sheet)?;
-                let label = NetLabel { id: Id::new(), sheet, pos, name, kind, shape, rotation };
+                let label = NetLabel { id: Id::new(), sheet, pos, name, kind, shape, style, rotation };
                 tx.insert(Object::Label(label)).map(drop)
             }
             Command::SetComponent { id, refdes, value, variant } => {

@@ -300,6 +300,75 @@ impl LabelShape {
     }
 }
 
+/// The glyph of a power port, modelled on KiCad's power symbols. Documentation only;
+/// the net comes from the name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PowerStyle {
+    /// A bar across the wire (+5V, VCC).
+    Bar,
+    /// An arrow head.
+    Arrow,
+    /// A small circle.
+    Circle,
+    /// Three bars getting shorter (GND).
+    Ground,
+    /// An open triangle (signal ground).
+    SignalGround,
+    /// A rake (chassis ground).
+    Chassis,
+    /// Ground bars in a circle (protective earth).
+    ProtectiveEarth,
+}
+
+impl PowerStyle {
+    pub const ALL: [PowerStyle; 7] = [
+        PowerStyle::Bar,
+        PowerStyle::Arrow,
+        PowerStyle::Circle,
+        PowerStyle::Ground,
+        PowerStyle::SignalGround,
+        PowerStyle::Chassis,
+        PowerStyle::ProtectiveEarth,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            PowerStyle::Bar => "Bar",
+            PowerStyle::Arrow => "Arrow",
+            PowerStyle::Circle => "Circle",
+            PowerStyle::Ground => "Ground",
+            PowerStyle::SignalGround => "Signal ground",
+            PowerStyle::Chassis => "Chassis",
+            PowerStyle::ProtectiveEarth => "Protective earth",
+        }
+    }
+
+    /// The glyph a power port named `name` gets unless one is chosen: ground for names
+    /// containing GND or EARTH (GND, AGND, GNDD, …), chassis for CHASSIS, protective earth
+    /// for PE, else a bar.
+    pub fn for_name(name: &str) -> PowerStyle {
+        let n = name.to_uppercase();
+        if n == "PE" {
+            PowerStyle::ProtectiveEarth
+        } else if n.contains("CHASSIS") {
+            PowerStyle::Chassis
+        } else if n.contains("GND") || n.contains("EARTH") {
+            PowerStyle::Ground
+        } else {
+            PowerStyle::Bar
+        }
+    }
+
+    /// Ground glyphs hang below the connection point, the others stand above it.
+    pub fn points_down(self) -> bool {
+        matches!(
+            self,
+            PowerStyle::Ground | PowerStyle::SignalGround | PowerStyle::Chassis | PowerStyle::ProtectiveEarth
+        )
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct NetLabel {
     pub id: Id,
@@ -311,8 +380,19 @@ pub struct NetLabel {
     /// Drawn for global and hierarchical labels only.
     #[serde(default)]
     pub shape: LabelShape,
+    /// The glyph of a power port; without one it's the one its name suggests
+    /// ([`PowerStyle::for_name`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<PowerStyle>,
     #[serde(default)]
     pub rotation: Angle,
+}
+
+impl NetLabel {
+    /// The glyph drawn for this power port.
+    pub fn power_style(&self) -> PowerStyle {
+        self.style.unwrap_or_else(|| PowerStyle::for_name(&self.name))
+    }
 }
 
 /// Free text on a sheet.

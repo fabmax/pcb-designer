@@ -87,6 +87,8 @@ pub struct SchSettings {
     /// Shape of global and hierarchical labels.
     pub shape: LabelShape,
     pub power: String,
+    /// Glyph of new power ports; `None`: the one the name suggests.
+    pub power_style: Option<PowerStyle>,
     pub rotation: Angle,
     pub mirror: bool,
     /// Wire corners go vertical first (toggled with `/`).
@@ -102,6 +104,7 @@ impl Default for SchSettings {
             label_kind: LabelKind::Local,
             shape: LabelShape::Input,
             power: "GND".into(),
+            power_style: None,
             rotation: Angle::ZERO,
             mirror: false,
             vertical_first: false,
@@ -180,6 +183,7 @@ impl SchPrompt {
             name: name.trim().to_string(),
             kind: LabelKind::Local,
             shape: LabelShape::default(),
+            style: None,
             rotation: *rotation,
         })
     }
@@ -517,6 +521,7 @@ impl SchPlacer {
                 name: s.label.clone(),
                 kind: s.label_kind,
                 shape: s.shape,
+                style: None,
                 rotation: s.rotation,
             },
             SchTool::Power => Command::AddLabel {
@@ -525,6 +530,7 @@ impl SchPlacer {
                 name: s.power.clone(),
                 kind: LabelKind::Power,
                 shape: LabelShape::default(),
+                style: s.power_style,
                 rotation: s.rotation,
             },
             SchTool::Junction => Command::AddJunction { sheet: Some(sheet), pos: p },
@@ -660,7 +666,16 @@ impl SchPlacer {
                 };
                 let (id, sheet) = (GHOST_ID, GHOST_ID);
                 let shape = s.shape;
-                vec![SchGhost::Label(NetLabel { id, sheet, pos: p, name, kind, shape, rotation: s.rotation })]
+                vec![SchGhost::Label(NetLabel {
+                    id,
+                    sheet,
+                    pos: p,
+                    name,
+                    kind,
+                    shape,
+                    style: if self.tool == SchTool::Power { s.power_style } else { None },
+                    rotation: s.rotation,
+                })]
             }
             SchTool::Junction => vec![SchGhost::Junction(p)],
             SchTool::Sheet => self
