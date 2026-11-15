@@ -747,9 +747,7 @@ impl KicadImport {
             .show(ui, |ui| {
                 for (i, p) in self.picks.iter_mut().enumerate() {
                     let active = self.active == Some(i);
-                    let frame = egui::Frame::group(ui.style())
-                        .fill(if active { theme::panel() } else { theme::panel_dark() })
-                        .inner_margin(egui::Margin::same(6));
+                    let frame = egui::Frame::group(ui.style()).fill(theme::panel()).inner_margin(egui::Margin::same(6));
                     // The card senses clicks before its children are added, so its buttons
                     // and combo stay on top (the widget added last wins).
                     let sense = egui::UiBuilder::new().sense(egui::Sense::click());
@@ -778,6 +776,12 @@ impl KicadImport {
                             }
                         })
                     });
+                    if active {
+                        // Drawn over the card's own 1 pt border, so the layout doesn't move.
+                        let radius = ui.visuals().widgets.noninteractive.corner_radius;
+                        let stroke = egui::Stroke::new(2.0, theme::accent());
+                        ui.painter().rect_stroke(r.response.rect, radius, stroke, egui::StrokeKind::Inside);
+                    }
                     // Any click inside the card (also on its widgets) makes it the active pick.
                     let pressed = ui.input(|i| i.pointer.primary_clicked().then(|| i.pointer.interact_pos()).flatten());
                     if r.response.clicked() || pressed.is_some_and(|p| r.response.rect.contains(p)) {

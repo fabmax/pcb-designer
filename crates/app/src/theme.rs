@@ -221,6 +221,9 @@ pub fn apply(ctx: &egui::Context) {
         v.faint_bg_color = Color32::from_rgb(0xea, 0xeb, 0xee);
         v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, Color32::from_rgb(0xd2, 0xd4, 0xda));
         v.widgets.inactive.weak_bg_fill = Color32::from_rgb(0xe2, 0xe4, 0xe9);
+        // Check boxes and radio buttons: visible on inset areas too (egui's default is
+        // about the inset colour).
+        v.widgets.inactive.bg_fill = Color32::from_rgb(0xcc, 0xcf, 0xd6);
         v.widgets.hovered.weak_bg_fill = Color32::from_rgb(0xd6, 0xd9, 0xe0);
     }
     v.widgets.active.weak_bg_fill = accent.gamma_multiply(0.6);
