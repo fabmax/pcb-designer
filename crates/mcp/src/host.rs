@@ -96,6 +96,10 @@ pub enum Request {
     },
     /// Create, open, read, edit, save or render libraries.
     Library(LibraryRequest),
+    /// Replace the open project by an imported KiCad project (`.kicad_pro`).
+    ImportKicadProject {
+        path: PathBuf,
+    },
 }
 
 /// A view as an agent names it: the board, or a schematic sheet by id, name or path
@@ -188,6 +192,7 @@ impl Request {
             Request::KicadDownload { update: false } => "download KiCad libraries".into(),
             Request::KicadDownload { update: true } => "update KiCad libraries".into(),
             Request::Library(r) => r.describe(),
+            Request::ImportKicadProject { path } => format!("import KiCad project {}", path.display()),
         }
     }
 
@@ -202,6 +207,7 @@ impl Request {
                 | Request::Redo
                 | Request::Save { .. }
                 | Request::KicadImport(_)
+                | Request::ImportKicadProject { .. }
         ) || matches!(self, Request::Library(r) if r.modifies())
     }
 }
@@ -258,6 +264,23 @@ pub trait Host {
     fn library_request(&mut self, _request: LibraryRequest, reply: Responder) {
         let _ = reply.send(Err("libraries can't be edited in this host".into()));
     }
+    /// Replace the open project by an imported one. The app asks about unsaved changes
+    /// first (and may answer later); this default replaces it right away.
+    fn replace_project(&mut self, import: kicad::ProjectImport, reply: Responder) {
+        *self.document_mut() = Document::new(import.project);
+        let _ = reply.send(Ok(Reply::Json(project_import_reply(&import.report))));
+    }
+}
+
+/// Reply to a project import: the report.
+pub fn project_import_reply(report: &kicad::Report) -> Value {
+    json!({
+        "imported": true,
+        "saved": false,
+        "warnings": report.warnings,
+        "notes": report.notes,
+        "skipped": report.skipped,
+    })
 }
 
 /// Resolve an agent's import: symbols without footprints get their suggested ones.
@@ -333,6 +356,14 @@ pub fn handle(call: Call, host: &mut dyn Host) {
         Request::KicadImport(k) => return host.kicad_import(k, reply),
         Request::KicadDownload { update } => return host.kicad_download(update, reply),
         Request::Library(r) => return host.library_request(r, reply),
+        Request::ImportKicadProject { path } => {
+            return match kicad::import_project(&path) {
+                Ok(import) => host.replace_project(import, reply),
+                Err(e) => {
+                    let _ = reply.send(Err(e));
+                }
+            };
+        }
         r => r,
     };
     let result = respond(request, host);
@@ -442,7 +473,10 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             })
         }
         Request::KicadSearch { query, footprints, limit } => host.kicad_search(&query, footprints, limit)?,
-        Request::KicadImport(_) | Request::KicadDownload { .. } | Request::Library(_) => {
+        Request::KicadImport(_)
+        | Request::KicadDownload { .. }
+        | Request::Library(_)
+        | Request::ImportKicadProject { .. } => {
             unreachable!("answered by the host")
         }
         Request::Execute { commands } => execute_json(host.document_mut(), commands)?,

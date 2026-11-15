@@ -21,6 +21,9 @@ pub const DEFAULT_PORT: u16 = 7340;
 pub enum Job {
     Kicad(KicadJob, Responder),
     Library(LibraryRequest, Responder),
+    /// An imported KiCad project to replace the open one (after asking about unsaved
+    /// changes).
+    ReplaceProject(Box<kicad::ProjectImport>, Responder),
 }
 
 /// Server state owned by the app.
@@ -153,6 +156,10 @@ impl Host for AppHost<'_> {
 
     fn library_request(&mut self, request: LibraryRequest, reply: Responder) {
         self.jobs.push(Job::Library(request, reply));
+    }
+
+    fn replace_project(&mut self, import: kicad::ProjectImport, reply: Responder) {
+        self.jobs.push(Job::ReplaceProject(Box::new(import), reply));
     }
 
     fn kicad_download(&mut self, update: bool, reply: Responder) {

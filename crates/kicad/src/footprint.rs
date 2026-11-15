@@ -35,7 +35,7 @@ pub fn parse(lib: &str, text: &str) -> Result<KiFootprint, sexpr::ParseError> {
 }
 
 /// Footprint layer of a KiCad layer name, and whether it's on the back (`B.*`).
-fn layer(name: &str) -> Option<(FootprintLayer, bool)> {
+pub(crate) fn layer(name: &str) -> Option<(FootprintLayer, bool)> {
     let (back, rest) = match name.split_once('.') {
         Some(("F", rest)) => (false, rest),
         Some(("B", rest)) => (true, rest),
@@ -176,7 +176,7 @@ fn fp_text(cx: &mut Ctx, n: &Node, content: String) -> Option<FootprintText> {
 }
 
 /// A graphic item (also pad primitives: `gr_*` relative to the pad at `origin`/`rot`).
-fn graphic(n: &Node, origin: Point, rot: Angle) -> Vec<Shape> {
+pub(crate) fn graphic(n: &Node, origin: Point, rot: Angle) -> Vec<Shape> {
     let tp = |p: Point| origin + p.rotated(rot);
     let at = |head: &str| child_point(n, head, true).map(tp);
     let width = width_of(n);

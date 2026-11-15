@@ -152,7 +152,7 @@ pub fn add_menu() -> Vec<Entry> {
     vec![
         Entry::Act("New library…", Act::NewLibrary),
         Entry::Act("Add library…", Act::AddLibrary),
-        Entry::Act("Import from KiCad…", Act::ImportKicad),
+        Entry::Act("Import KiCad parts…", Act::ImportKicad),
     ]
 }
 

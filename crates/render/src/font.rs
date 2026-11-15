@@ -89,14 +89,23 @@ pub enum VAlign {
     Top,
 }
 
-/// Width of `text` in world units for the given cap height.
+/// Distance between the baselines of two lines, in cap heights.
+pub const LINE_SPACING: f32 = 1.6;
+
+/// Width of `text` in world units for the given cap height: its widest line.
 pub fn text_width(text: &str, height: f32) -> f32 {
-    let n = text.chars().count() as f32;
+    text.split('\n').map(|l| line_width(l, height)).fold(0.0, f32::max)
+}
+
+fn line_width(line: &str, height: f32) -> f32 {
+    let n = line.chars().count() as f32;
     if n == 0.0 { 0.0 } else { (n * ADVANCE_UNITS - 1.0) * height / CAP_UNITS }
 }
 
 /// Line segments for `text` with cap `height`, anchored at `origin`, rotated by
-/// `rotation` radians around the anchor.
+/// `rotation` radians around the anchor. Lines (split at `\n`) stack downwards, each
+/// aligned by `halign`; `valign` places the whole block (`Top`: the first line's top,
+/// `Bottom`: the last line's baseline).
 pub fn text_segments(
     text: &str,
     origin: [f32; 2],
@@ -107,39 +116,45 @@ pub fn text_segments(
     mut out: impl FnMut([f32; 2], [f32; 2]),
 ) {
     let unit = height / CAP_UNITS;
-    let width = text_width(text, height);
-    let dx = match halign {
-        HAlign::Left => 0.0,
-        HAlign::Center => -width * 0.5,
-        HAlign::Right => -width,
-    };
-    let dy = match valign {
-        VAlign::Bottom => 0.0,
-        VAlign::Center => -height * 0.5,
+    let lines: Vec<&str> = text.split('\n').collect();
+    let pitch = height * LINE_SPACING;
+    // Baseline of the first line, relative to the anchor.
+    let below = (lines.len() - 1) as f32 * pitch;
+    let first = match valign {
+        VAlign::Bottom => below,
+        VAlign::Center => (below - height) * 0.5,
         VAlign::Top => -height,
     };
     let (s, c) = rotation.sin_cos();
-    let xf = |x: f32, y: f32| {
-        let (x, y) = (x + dx, y + dy);
-        [origin[0] + x * c - y * s, origin[1] + x * s + y * c]
-    };
-
-    for (i, ch) in text.chars().enumerate() {
-        let Some(g) = glyph(ch).or_else(|| glyph('?')) else {
-            continue;
+    for (row, line) in lines.iter().enumerate() {
+        let width = line_width(line, height);
+        let dx = match halign {
+            HAlign::Left => 0.0,
+            HAlign::Center => -width * 0.5,
+            HAlign::Right => -width,
         };
-        let x0 = i as f32 * ADVANCE_UNITS * unit;
-        for stroke in g.split('|') {
-            let mut prev: Option<[f32; 2]> = None;
-            for pt in stroke.split_whitespace() {
-                let b = pt.as_bytes();
-                let p = xf(x0 + (b[0] - b'0') as f32 * unit, (b[1] - b'0') as f32 * unit);
-                match prev {
-                    Some(q) => out(q, p),
-                    None if stroke.split_whitespace().count() == 1 => out(p, p),
-                    None => {}
+        let dy = first - row as f32 * pitch;
+        let xf = |x: f32, y: f32| {
+            let (x, y) = (x + dx, y + dy);
+            [origin[0] + x * c - y * s, origin[1] + x * s + y * c]
+        };
+        for (i, ch) in line.chars().enumerate() {
+            let Some(g) = glyph(ch).or_else(|| glyph('?')) else {
+                continue;
+            };
+            let x0 = i as f32 * ADVANCE_UNITS * unit;
+            for stroke in g.split('|') {
+                let mut prev: Option<[f32; 2]> = None;
+                for pt in stroke.split_whitespace() {
+                    let b = pt.as_bytes();
+                    let p = xf(x0 + (b[0] - b'0') as f32 * unit, (b[1] - b'0') as f32 * unit);
+                    match prev {
+                        Some(q) => out(q, p),
+                        None if stroke.split_whitespace().count() == 1 => out(p, p),
+                        None => {}
+                    }
+                    prev = Some(p);
                 }
-                prev = Some(p);
             }
         }
     }
@@ -162,6 +177,17 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn lines_stack_downwards() {
+        let mut ys = vec![];
+        text_segments("I\nI", [0.0, 0.0], 6.0, 0.0, HAlign::Left, VAlign::Top, |a, b| ys.extend([a[1], b[1]]));
+        let top = ys.iter().copied().fold(f32::MIN, f32::max);
+        let bottom = ys.iter().copied().fold(f32::MAX, f32::min);
+        assert!(top.abs() < 1e-4, "the first line hangs from the anchor: {top}");
+        assert!((bottom + 6.0 + 6.0 * LINE_SPACING).abs() < 1e-4, "{bottom}");
+        assert_eq!(text_width("II\nIIII", 6.0), text_width("IIII", 6.0));
     }
 
     #[test]

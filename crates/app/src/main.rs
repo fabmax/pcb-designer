@@ -1,6 +1,6 @@
 //! PCB Designer desktop application.
 //!
-//! Usage: pcb-designer [PROJECT_DIR | --demo | --new | --stress N] [--no-vsync]
+//! Usage: pcb-designer [PROJECT_DIR | PROJECT.kicad_pro | --demo | --new | --stress N] [--no-vsync]
 //!                     [--keymap FILE.json] [--mcp] [--mcp-port PORT] [--side-by-side]
 //!                     [--library FILE.pcblib]... [--show [part:|symbol:|footprint:]NAME]...
 //!                     [--kicad DIR]... [--kicad-pick [footprint:]LIB:NAME]... [--kicad-import]
@@ -9,9 +9,14 @@
 //!                     [--panel NAME]... [--script STEPS]
 //!        pcb-designer --mcp-stdio [PROJECT_DIR | --demo]
 //!        pcb-designer export-gerber PROJECT_DIR
+//!        pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR
 //!
 //! `export-gerber` writes the Gerber and drill files into `PROJECT_DIR/output/gerber/`
 //! without a window, listing design rule violations as warnings.
+//!
+//! `import-kicad` imports a KiCad project (schematic and board) and saves it as a project
+//! folder, printing the import report. A `.kicad_pro` given to the app opens its import
+//! as an unsaved project.
 //!
 //! `--mcp-stdio` runs without a window: an MCP server on stdin/stdout for agents. A
 //! project folder that doesn't exist yet becomes a new project saved there.
@@ -91,6 +96,17 @@ fn main() -> eframe::Result {
         }
         return Ok(());
     }
+    if std::env::args().nth(1).as_deref() == Some("import-kicad") {
+        let (Some(pro), Some(out)) = (std::env::args().nth(2), std::env::args().nth(3)) else {
+            eprintln!("usage: pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR");
+            std::process::exit(2);
+        };
+        if let Err(e) = import_kicad(pro.as_ref(), out.as_ref()) {
+            eprintln!("pcb-designer: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     while let Some(a) = args.next() {
         match a.as_str() {
             "--demo" => (opts.startup, startup_given) = (Startup::Demo, true),
@@ -126,6 +142,9 @@ fn main() -> eframe::Result {
                     }
                     Err(e) => eprintln!("keymap {path:?} not loaded: {e}"),
                 }
+            }
+            other if other.ends_with(".kicad_pro") => {
+                (opts.startup, startup_given) = (Startup::ImportKicad(other.into()), true)
             }
             other if !other.starts_with("--") => (opts.startup, startup_given) = (Startup::Open(other.into()), true),
             other => eprintln!("ignoring unknown argument {other:?}"),
@@ -185,6 +204,18 @@ fn export_gerber(dir: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+/// `import-kicad`: a KiCad project saved as a project folder, without a window.
+fn import_kicad(pro: &std::path::Path, out: &std::path::Path) -> Result<(), String> {
+    let import = kicad::import_project(pro)?;
+    for line in import.report.lines() {
+        eprintln!("{line}");
+    }
+    let mut doc = view::Document::new(import.project);
+    doc.save_as(out).map_err(|e| format!("cannot save {}: {e}", out.display()))?;
+    println!("{}", out.display());
+    Ok(())
+}
+
 /// Headless MCP server on stdin/stdout.
 fn run_stdio(startup: Startup, kicad_paths: Vec<std::path::PathBuf>) -> Result<(), String> {
     use model::Project;
@@ -198,6 +229,13 @@ fn run_stdio(startup: Startup, kicad_paths: Vec<std::path::PathBuf>) -> Result<(
             let mut doc = Document::new(Project::new(&name));
             doc.path = Some(path);
             doc
+        }
+        Startup::ImportKicad(path) => {
+            let import = kicad::import_project(&path)?;
+            for line in import.report.lines() {
+                log::info!("{line}");
+            }
+            Document::new(import.project)
         }
         Startup::Demo => Document::new(view::demo::demo_project()),
         Startup::Empty => Document::new(Project::new("Untitled")),

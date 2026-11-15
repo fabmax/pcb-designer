@@ -1,0 +1,290 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "10000000-0000-4000-8000-000000000000")
+	(paper "A4")
+	(lib_symbols
+(symbol "Device:R"
+		(pin_numbers
+			(hide yes)
+		)
+		(pin_names
+			(offset 0)
+		)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(duplicate_pin_numbers_are_jumpers no)
+		(property "Reference" "R"
+			(at 2.032 0 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "R"
+			(at 0 0 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at -1.778 0 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "ki_keywords" "R res resistor"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "ki_fp_filters" "R_*"
+			(at 0 0 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(symbol "R_0_1"
+			(rectangle
+				(start -1.016 -2.54)
+				(end 1.016 2.54)
+				(stroke
+					(width 0.254)
+					(type default)
+				)
+				(fill
+					(type none)
+				)
+			)
+		)
+		(symbol "R_1_1"
+			(pin passive line
+				(at 0 3.81 270)
+				(length 1.27)
+				(name ""
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "1"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+			(pin passive line
+				(at 0 -3.81 90)
+				(length 1.27)
+				(name ""
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+				(number "2"
+					(effects
+						(font
+							(size 1.27 1.27)
+						)
+					)
+				)
+			)
+		)
+		(embedded_fonts no)
+	)
+(symbol "power:GND"
+			(power)
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "#PWR"
+				(at 0 -6.35 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Value" "GND"
+				(at 0 -3.81 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "global power"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "GND_0_1"
+				(polyline
+					(pts
+						(xy 0 0) (xy 0 -1.27) (xy 1.27 -1.27) (xy 0 -2.54) (xy -1.27 -1.27) (xy 0 -1.27)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "GND_1_1"
+				(pin power_in line
+					(at 0 0 270)
+					(length 0)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+	)
+	(sheet (at 50 50) (size 20 15) (fields_autoplaced yes) (stroke (width 0.1524) (type solid)) (fill (color 0 0 0 0.0000)) (uuid "10000000-0000-4000-8000-000000000001")
+		(property "Sheetname" "amp" (at 50 49.3 0) (effects (font (size 1.27 1.27)) (justify left bottom)))
+		(property "Sheetfile" "amp.kicad_sch" (at 50 65.6 0) (effects (font (size 1.27 1.27)) (justify left top)))
+		(pin "IN" input (at 50 55 180) (uuid "20000000-0000-4000-8000-000000000108") (effects (font (size 1.27 1.27)) (justify left)))
+		(pin "OUT" output (at 70 55 0) (uuid "20000000-0000-4000-8000-000000000109") (effects (font (size 1.27 1.27)) (justify right)))
+		(instances (project "hier" (path "/10000000-0000-4000-8000-000000000000" (page "2"))))
+	)
+	(sheet (at 100 50) (size 20 15) (fields_autoplaced yes) (stroke (width 0.1524) (type solid)) (fill (color 0 0 0 0.0000)) (uuid "10000000-0000-4000-8000-000000000002")
+		(property "Sheetname" "amp2" (at 100 49.3 0) (effects (font (size 1.27 1.27)) (justify left bottom)))
+		(property "Sheetfile" "amp.kicad_sch" (at 100 65.6 0) (effects (font (size 1.27 1.27)) (justify left top)))
+		(pin "IN" input (at 100 57.15 180) (uuid "20000000-0000-4000-8000-000000000110") (effects (font (size 1.27 1.27)) (justify left)))
+		(pin "OUT" output (at 120 57.15 0) (uuid "20000000-0000-4000-8000-000000000111") (effects (font (size 1.27 1.27)) (justify right)))
+		(instances (project "hier" (path "/10000000-0000-4000-8000-000000000000" (page "3"))))
+	)
+	(wire (pts (xy 70 55) (xy 85 55)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000112"))
+	(wire (pts (xy 85 55) (xy 85 57.15)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000113"))
+	(wire (pts (xy 85 57.15) (xy 100 57.15)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000114"))
+	(global_label "VIN" (shape input) (at 40 55 180) (fields_autoplaced yes) (effects (font (size 1.27 1.27)) (justify right)) (uuid "20000000-0000-4000-8000-000000000115"))
+	(wire (pts (xy 40 55) (xy 50 55)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000116"))
+	(wire (pts (xy 120 57.15) (xy 130 57.15)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000117"))
+	(wire (pts (xy 130 57.15) (xy 130 61.19)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000118"))
+	(wire (pts (xy 130 68.81) (xy 130 72)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000119"))
+	(symbol (lib_id "Device:R") (at 130 65 0) (unit 1) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no) (uuid "20000000-0000-4000-8000-000000000120")
+		(property "Reference" "R3" (at 132 65 0) (effects (font (size 1.27 1.27))))
+		(property "Value" "1k" (at 132 67 0) (effects (font (size 1.27 1.27))))
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 130 65 0) (effects (font (size 1.27 1.27)) (hide yes)))
+		(property "Datasheet" "~" (at 130 65 0) (effects (font (size 1.27 1.27)) (hide yes)))
+		(pin "1" (uuid "20000000-0000-4000-8000-000000000121")) (pin "2" (uuid "20000000-0000-4000-8000-000000000122"))
+		(instances (project "hier" (path "/10000000-0000-4000-8000-000000000000" (reference "R3") (unit 1))))
+	)
+	(symbol (lib_id "power:GND") (at 130 72 0) (unit 1) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no) (uuid "20000000-0000-4000-8000-000000000123")
+		(property "Reference" "#PWR01" (at 130 78 0) (effects (font (size 1.27 1.27)) (hide yes)))
+		(property "Value" "GND" (at 130 76 0) (effects (font (size 1.27 1.27))))
+		(property "Footprint" "" (at 130 72 0) (effects (font (size 1.27 1.27)) (hide yes)))
+		(property "Datasheet" "" (at 130 72 0) (effects (font (size 1.27 1.27)) (hide yes)))
+		(pin "1" (uuid "20000000-0000-4000-8000-000000000124"))
+		(instances (project "hier" (path "/10000000-0000-4000-8000-000000000000" (reference "#PWR01") (unit 1))))
+	)
+	(polyline (pts (xy 20 20) (xy 40 20)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000125"))
+	(sheet_instances (path "/" (page "1")))
+)

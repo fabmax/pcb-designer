@@ -255,8 +255,9 @@ things to do **later**.
   show no seams (but a fan's hairline gaps can show: see the app icon).
 - Polygons: ear clipping (`render::tess`) for small ones, i_triangle for zone fills
   (holes, O(n log n); earcut took 1.9 s on a fill with thousands of holes).
-- Stroke font → capsules (also usable for Gerber later). Small details hide when zoomed
-  out. Per-layer buffers; only dirty items upload; pan/zoom is a uniform.
+- Stroke font → capsules (also used by Gerber); `\n` starts a line (`LINE_SPACING`).
+  Small details hide when zoomed out. Per-layer buffers; only dirty items upload;
+  pan/zoom is a uniform.
 - `Scene::set_item` gives up a shrunk item's tail as garbage (else `instance_count`
   drifts from a rebuild). `Scene::snapshot` doesn't consume the incremental upload.
 - `Offscreen` renders to PNG (tests, MCP screenshots, `render_board`, the app icon). Its
@@ -339,6 +340,36 @@ things to do **later**.
 - Verified against the full KiCad 9 and 10 libraries (`kicad/tests/corpus.rs`, enabled
   by `KICAD_SYMBOL_DIR`/`KICAD_FOOTPRINT_DIR`). 3.6% of parts have a pin without a pad,
   from KiCad's own data.
+- Project import (`kicad::import_project`, `sch.rs` + `pcb.rs` → `project.rs`): a
+  `.kicad_pro` with its `.kicad_sch` (KiCad 6+, `MIN_VERSION` 20211014; a legacy `.sch`
+  fails with a message) and `.kicad_pcb` becomes a new, unsaved `Project`, checked with
+  `validate`, plus a `Report` (warnings, notes, skipped features with counts). Entry
+  points: File → "Import KiCad project…" (report window), a `.kicad_pro` argument,
+  `pcb-designer import-kicad PRO OUT`, MCP `import_kicad_project` (the app asks about
+  unsaved changes first; the agent gets an error if the user keeps the project).
+  - Parts: one per symbol `lib_id` from the schematic's `lib_symbols`, all local to the
+    project; one variant per distinct board footprint (content key: pads, sorted
+    graphics, non-field texts with rotation mod 180). Footprints edited on the board
+    become `Name (2)`. Symbols not on the board get a "No footprint" variant; footprints
+    without symbol become board parts (duplicate or `REF**` references renumbered).
+  - Schematic: KiCad files are y-down (`common::point(.., true)`), libraries y-up.
+    `(mirror y)` → (−angle, mirrored), `(mirror x)` → (180 − angle, mirrored). Single
+    `power_in` symbols become power labels (style from `power_style`), `PWR_FLAG` is
+    dropped. Every sheet instance becomes a sheet (reused files get ids derived from the
+    instance path); sheet pins are laid out by name here, so wires ending on KiCad's pin
+    positions are stretched to ours. Refdes from the symbol's `instances`, else the root
+    `symbol_instances` (KiCad 6), else the Reference property.
+  - Board: pad and text angles in `.kicad_pcb` are absolute (minus the footprint's
+    orientation). Back footprints are stored mirrored: un-mirrored (negate y and angles,
+    swap F./B. layers and chamfer corners), then placed with rotation + 180 on the
+    bottom. Reference/Value become `${REF}`/`${VALUE}` templates plus per-instance
+    fields. Zone nets are resolved through the pads of the KiCad net (KiCad names like
+    `Net-(R3-Pad1)` differ from ours), else kept with a warning. Rules from the Default
+    net class and board setup.
+  - Tests (`kicad/tests/project_import.rs`): a hierarchical, routed fixture; with
+    `KICAD_CLI` and `KICAD_TEMPLATE_DIR` set, every KiCad template is compared against
+    `kicad-cli`: schematic nets (`sch export netlist`) and pad positions (`pcb export
+    ipcd356`, after removing its constant origin offset).
 
 ## MCP (`mcp`)
 
@@ -474,8 +505,12 @@ defers.
 - macOS: When clicking in the title bar of the unfocused window, the window also maximizes (it should only gain focus)
 
 **Schematic**
-- KiCad import/export of hierarchical schematics: reused KiCad sheets get duplicated on
-  import (no reuse here); stored sheet pin positions would be recomputed.
+- KiCad project export. Import gaps (counted in the import report today): schematic
+  graphics, images, text boxes, tables and rule areas; title block and text variables;
+  bus aliases; directive labels (net class flags); per-instance symbol field positions
+  (fields follow the symbol); stored sheet pin positions (laid out by name); reused
+  sheets are duplicated (no reuse here); bus entries of unusual sizes.
+- Multi-line text: the font stacks lines, but the Text properties field is single-line.
 - GPU scenes of closed sheet canvases stay allocated until the app quits
   (`CanvasResources::scenes` is never pruned).
 - After sheets: re-parenting sheets, moving objects between sheets, hierarchical bus
@@ -488,17 +523,6 @@ defers.
 - Double click on a wire to select entire wire instead of only the clicked segment
 - When wires overlap during drag they should not connect.
 - Editing text on the canvas.
-- KiCad project import (File → "Import KiCad project…", from a `.kicad_pro`; KiCad
-  6–10; parts from the project's embedded `lib_symbols` and board footprints; KiCad
-  UUIDs kept as ids; opens as an unsaved project; best effort with an import report).
-  Symbols without footprint get a "No footprint" variant; "exclude from board" adds one
-  to the part; footprints without symbol become board parts. Arc tracks keep their mid point. Zones
-  on several layers become one zone per layer; zone minimum width, hatched fill and
-  footprint zones/keepouts are skipped with a note. `in_bom` / `dnp` become component
-  properties until a BOM exists. Power symbols become power labels; the style comes from the
-  `power:` library name, else from the symbol's graphics; custom glyphs get the closest
-  style, noted in the report. Legacy hidden power pins fail the import with their
-  symbols named.
 - Per-pad mask and paste margins (board-wide today); inner-layer footprint graphics.
 - Footprint texts: re-sync fields when the library footprint's templates change; keep
   texts upright (readable) when a footprint turns past 90°; fields of other texts than
@@ -538,7 +562,11 @@ defers.
   keepouts inside footprints; keepouts enforced while routing.
 - Arc outlines in zone fills (circles are 16–64-segment polygons today).
 - Exact courtyard polygons in DRC (bounding boxes today).
-- Per-net clearance classes.
+- Per-net clearance classes (KiCad net classes other than Default are only listed by the
+  import).
+- From KiCad board import (skipped and counted today): dimensions, groups, images, text
+  boxes, tables, alignment targets, graphics and texts on documentation and user layers
+  (user layers in general), net ties, tuning patterns (their tracks are kept).
 - Autoplacement and autorouting.
 
 **Libraries and parts**

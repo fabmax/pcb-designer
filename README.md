@@ -85,7 +85,7 @@ The server only listens on 127.0.0.1 and rejects requests from web pages (browse
 open project, so only turn it on when you need it.
 
 Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
-`search_kicad`, `import_kicad`, `download_kicad_libraries`, `list_objects`, `get_objects`, `get_component`,
+`search_kicad`, `import_kicad`, `download_kicad_libraries`, `import_kicad_project`, `list_objects`, `get_objects`, `get_component`,
 `get_netlist` (nets, buses and their members, schematic problems), `get_routing`,
 `run_drc`, `export_gerber`, `execute` (any editor command, as one undo step), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
 or the whole window) and `save_project`. Sheets are added, renamed and deleted with
@@ -165,7 +165,7 @@ create, duplicate, rename or delete items, and save, reveal or remove libraries.
 - **Search:** type, or click the search button, to filter the tree. ↑/↓ step through the
   matches and Esc ends the search.
 - **+ button:** New sheet…, New library… (asks for its file right away), Add library…,
-  Import from KiCad… (the library entries are also on right-click of External Libraries
+  Import KiCad parts… (the library entries are also on right-click of External Libraries
   and in the File menu).
 
 The project lists its library files in `project.json`, relative to the project folder,
@@ -189,7 +189,7 @@ rendered offscreen.
 
 ## KiCad libraries
 
-**File → Import from KiCad** imports symbols (as parts, with a footprint, or a "No
+**File → Import KiCad parts** imports symbols (as parts, with a footprint, or a "No
 footprint" variant for parts that stay off the board) and footprints from KiCad's libraries. It uses an installed KiCad's libraries, or downloads KiCad's
 official symbol and footprint libraries (about 24 MB, 450 MB on disk, no 3D models) into
 the configuration folder, e.g. `~/Library/Application Support/pcb-designer/kicad/10.0.8/`
@@ -203,6 +203,21 @@ have none.
 
 KiCad's libraries are licensed CC-BY-SA 4.0, with an exception that allows using them in
 your designs without restrictions (see the KiCad library license).
+
+## KiCad projects
+
+**File → Import KiCad project…** picks a `.kicad_pro` (KiCad 6 or newer) and opens its
+schematic (with all sheets) and board (footprints, tracks, vias, zones, keepouts,
+outline, design rules) as a new, unsaved project. A report window lists warnings, notes
+on conversions, and what wasn't imported (e.g. dimensions, title block, user-layer
+graphics). Parts come from the project itself, so no libraries are needed; they land in
+the Project Library. Projects from KiCad 5 or older (`.sch`) are refused: open and save
+them in a current KiCad first.
+
+`pcb-designer PROJECT.kicad_pro` opens an import at startup.
+`pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR` imports without a window, saves
+the project folder and prints the report. Agents use `import_kicad_project`; in the app
+you're asked to save unsaved changes first, as with Open.
 
 ## Panels
 

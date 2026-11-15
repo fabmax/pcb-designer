@@ -47,6 +47,8 @@ use crate::units::{self, GridKind};
 
 pub enum Startup {
     Open(PathBuf),
+    /// Import a KiCad project (`.kicad_pro`) as a new, unsaved project.
+    ImportKicad(PathBuf),
     Demo,
     Empty,
     Stress(usize),
@@ -257,6 +259,8 @@ pub struct PcbApp {
     keymap: Keymap,
     settings: Settings,
     show_settings: bool,
+    /// The report of the last KiCad project import, shown until dismissed.
+    import_report: Option<ImportReport>,
     /// Action whose new shortcut is being recorded in the settings window.
     recording: Option<Action>,
     agent: Agent,
@@ -308,6 +312,7 @@ impl PcbApp {
         CanvasResources::install(rs);
 
         let mut status = None;
+        let mut import_report = None;
         let doc = match opts.startup {
             Startup::Open(path) => match Document::open(&path) {
                 Ok(doc) => {
@@ -317,6 +322,16 @@ impl PcbApp {
                 }
                 Err(e) => {
                     status = Some((format!("Could not open {}: {e}", path.display()), Instant::now()));
+                    Document::new(Project::new("Untitled"))
+                }
+            },
+            Startup::ImportKicad(path) => match kicad::import_project(&path) {
+                Ok(import) => {
+                    import_report = Some(ImportReport::new(&path, import.report));
+                    Document::new(import.project)
+                }
+                Err(e) => {
+                    status = Some((format!("KiCad import failed: {e}"), Instant::now()));
                     Document::new(Project::new("Untitled"))
                 }
             },
@@ -359,6 +374,7 @@ impl PcbApp {
             keymap,
             settings,
             show_settings: false,
+            import_report,
             recording: None,
             agent: Agent::new(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
             kicad: KicadImport::new(opts.kicad_paths.clone(), crate::settings::kicad_dir()),
@@ -632,6 +648,78 @@ impl PcbApp {
                 self.remember_project(dir);
             }
             Err(e) => self.set_status(format!("Open failed: {e}")),
+        }
+    }
+
+    /// File → Import KiCad project: the result opens as a new, unsaved project.
+    fn import_kicad_project(&mut self) {
+        if !self.confirm_discard() {
+            return;
+        }
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Import KiCad project")
+            .add_filter("KiCad project", &["kicad_pro"])
+            .pick_file()
+        else {
+            return;
+        };
+        match kicad::import_project(&path) {
+            Ok(import) => self.open_import(&path, import),
+            Err(e) => self.set_status(format!("KiCad import failed: {e}")),
+        }
+    }
+
+    /// Open an imported project (after unsaved changes were dealt with) and show its report.
+    fn open_import(&mut self, path: &std::path::Path, import: kicad::ProjectImport) {
+        self.replace_document(Document::new(import.project));
+        self.set_status(format!("Imported {} (not saved yet)", path.display()));
+        self.import_report = Some(ImportReport::new(path, import.report));
+    }
+
+    /// An agent's project import: replaces the project unless the user cancels.
+    fn agent_replace_project(&mut self, import: kicad::ProjectImport) -> Result<serde_json::Value, String> {
+        if !self.confirm_discard() {
+            return Err("the user kept the open project (it has unsaved changes)".into());
+        }
+        let reply = mcp::host::project_import_reply(&import.report);
+        let name = import.project.name.clone();
+        self.open_import(std::path::Path::new(&name), import);
+        Ok(reply)
+    }
+
+    /// The report of the last KiCad project import.
+    fn import_report_ui(&mut self, ctx: &egui::Context) {
+        let Some(r) = &self.import_report else { return };
+        let mut close = false;
+        let modal = theme::dialog(ctx, egui::Id::unique("kicad_import_report"), &r.title, 520.0, |ui| {
+            egui::ScrollArea::vertical().max_height(480.0).show(ui, |ui| {
+                let report = &r.report;
+                if report.is_empty() {
+                    ui.label("Everything was imported.");
+                }
+                let section = |ui: &mut egui::Ui, title: &str, lines: &[String], color: Option<egui::Color32>| {
+                    if lines.is_empty() {
+                        return;
+                    }
+                    ui.add_space(6.0);
+                    ui.strong(title);
+                    for l in lines {
+                        let text = RichText::new(format!("• {l}"));
+                        ui.label(if let Some(c) = color { text.color(c) } else { text });
+                    }
+                };
+                section(ui, "Warnings", &report.warnings, Some(theme::warn()));
+                section(ui, "Notes", &report.notes, None);
+                let skipped: Vec<String> = report.skipped.iter().map(|(what, n)| format!("{what}: {n}")).collect();
+                section(ui, "Not imported", &skipped, Some(theme::text_dim()));
+            });
+            ui.add_space(12.0);
+            if ui.button("OK").clicked() {
+                close = true;
+            }
+        });
+        if close || modal.should_close() {
+            self.import_report = None;
         }
     }
 
@@ -1835,6 +1923,7 @@ impl PcbApp {
             Cmd::NewLibrary => self.new_library(),
             Cmd::AddLibrary => self.open_library(),
             Cmd::ImportKicad => self.kicad.open = true,
+            Cmd::ImportKicadProject => self.import_kicad_project(),
             Cmd::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             Cmd::Layout { side_by_side } => {
                 if side_by_side != self.is_side_by_side() {
@@ -3405,6 +3494,10 @@ impl eframe::App for PcbApp {
                         let result = self.agent_kicad_import(job).map(mcp::Reply::Json);
                         let _ = reply.send(result);
                     }
+                    Job::ReplaceProject(import, reply) => {
+                        let result = self.agent_replace_project(*import).map(mcp::Reply::Json);
+                        let _ = reply.send(result);
+                    }
                     Job::Library(request, reply) => {
                         self.sync_libraries();
                         let _ = reply.send(mcp::library::respond(request, &mut AgentLibraries(self)));
@@ -3436,6 +3529,7 @@ impl eframe::App for PcbApp {
         self.name_prompt_ui(&ctx);
         self.rename_ui(&ctx);
         self.settings_window(&ctx);
+        self.import_report_ui(&ctx);
         let libs: Vec<(u64, String)> = self.libraries.iter().map(|l| (l.key, l.lib.name().to_string())).collect();
         self.kicad.poll();
         if let Some(ImportAction::Import(target, req)) = self.kicad.ui(&ctx, &libs) {
@@ -3443,6 +3537,19 @@ impl eframe::App for PcbApp {
         }
         self.update_title(&ctx);
         self.screenshot_tick(&ctx);
+    }
+}
+
+/// What a KiCad project import reported, for its window.
+struct ImportReport {
+    title: String,
+    report: kicad::Report,
+}
+
+impl ImportReport {
+    fn new(path: &std::path::Path, report: kicad::Report) -> Self {
+        let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
+        ImportReport { title: format!("Imported {name}"), report }
     }
 }
 

@@ -142,7 +142,7 @@ pub fn make_part(sym: &KiSymbol, footprints: &[KiFootprint]) -> Part {
 
 /// Pads to pins with the same number. Several pads may share a number (thermal pads
 /// split into pieces); they all connect to that pin.
-fn connect(sym: &KiSymbol, fp: &Footprint) -> Vec<PadConnection> {
+pub(crate) fn connect(sym: &KiSymbol, fp: &Footprint) -> Vec<PadConnection> {
     let mut by_number: BTreeMap<&str, (u32, Id)> = BTreeMap::new();
     for (u, unit) in sym.units.iter().enumerate() {
         for pin in unit.pins.iter() {

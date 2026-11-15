@@ -257,6 +257,12 @@ pub struct ScreenshotParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct ImportProjectParams {
+    /// The KiCad project file (`.kicad_pro`); its `.kicad_sch` and `.kicad_pcb` sit next to it.
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SaveParams {
     /// Project folder to save to. Defaults to the current folder.
     #[serde(default)]
@@ -654,6 +660,18 @@ impl PcbTools {
             height: p.height.unwrap_or(800),
         };
         self.call(Request::Library(request)).await
+    }
+
+    #[tool(description = "Replace the open project by a KiCad 6+ project (schematic with its \
+        sheets, board with footprints, tracks, vias, zones and outline, design rules). The \
+        result is unsaved: save_project with a path writes it. In the app the user is asked to \
+        save unsaved changes first and may cancel. Returns the report: warnings, notes and \
+        what was skipped (e.g. dimensions, title block).")]
+    async fn import_kicad_project(
+        &self,
+        Parameters(p): Parameters<ImportProjectParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::ImportKicadProject { path: p.path.into() }).await
     }
 
     #[tool(description = "Save the project folder (to its current location or to `path`).")]

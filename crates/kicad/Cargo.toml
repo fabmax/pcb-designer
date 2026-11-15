@@ -7,6 +7,7 @@ description = "Import of KiCad symbol and footprint libraries"
 
 [dependencies]
 model.workspace = true
+editor-core.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
 ureq.workspace = true

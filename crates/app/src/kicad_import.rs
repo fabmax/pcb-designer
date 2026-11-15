@@ -1,4 +1,4 @@
-//! "Import from KiCad" window: search KiCad's symbol and footprint libraries, pick symbols
+//! "Import KiCad parts" window: search KiCad's symbol and footprint libraries, pick symbols
 //! (each with a footprint, making a part) and lone footprints, and import them into a
 //! library.
 //!
@@ -323,7 +323,7 @@ impl KicadImport {
         }
         let mut open = self.open;
         let mut action = None;
-        egui::Window::new("Import from KiCad")
+        egui::Window::new("Import KiCad parts")
             .open(&mut open)
             .default_size([980.0, 620.0])
             .resizable(true)
