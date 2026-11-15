@@ -692,27 +692,38 @@ impl PcbApp {
         let Some(r) = &self.import_report else { return };
         let mut close = false;
         let modal = theme::dialog(ctx, egui::Id::unique("kicad_import_report"), &r.title, 520.0, |ui| {
-            egui::ScrollArea::vertical().max_height(480.0).show(ui, |ui| {
-                let report = &r.report;
-                if report.is_empty() {
-                    ui.label("Everything was imported.");
-                }
-                let section = |ui: &mut egui::Ui, title: &str, lines: &[String], color: Option<egui::Color32>| {
-                    if lines.is_empty() {
-                        return;
-                    }
-                    ui.add_space(6.0);
-                    ui.strong(title);
-                    for l in lines {
-                        let text = RichText::new(format!("• {l}"));
-                        ui.label(if let Some(c) = color { text.color(c) } else { text });
-                    }
-                };
-                section(ui, "Warnings", &report.warnings, Some(theme::warn()));
-                section(ui, "Notes", &report.notes, None);
-                let skipped: Vec<String> = report.skipped.iter().map(|(what, n)| format!("{what}: {n}")).collect();
-                section(ui, "Not imported", &skipped, Some(theme::text_dim()));
-            });
+            // Long reports scroll inside a framed area, at most half the window tall.
+            let max_height = (ctx.content_rect().height() * 0.5).max(120.0);
+            egui::Frame::NONE.fill(theme::panel_dark()).corner_radius(6).inner_margin(egui::Margin::same(8)).show(
+                ui,
+                |ui| {
+                    egui::ScrollArea::vertical().max_height(max_height).auto_shrink([false, true]).show(ui, |ui| {
+                        let report = &r.report;
+                        if report.is_empty() {
+                            ui.label("Everything was imported.");
+                        }
+                        let section =
+                            |ui: &mut egui::Ui, title: &str, lines: &[String], color: Option<egui::Color32>| {
+                                if lines.is_empty() {
+                                    return;
+                                }
+                                if ui.min_rect().height() > 0.0 {
+                                    ui.add_space(6.0);
+                                }
+                                ui.strong(title);
+                                for l in lines {
+                                    let text = RichText::new(format!("• {l}"));
+                                    ui.label(if let Some(c) = color { text.color(c) } else { text });
+                                }
+                            };
+                        section(ui, "Warnings", &report.warnings, Some(theme::warn()));
+                        section(ui, "Notes", &report.notes, None);
+                        let skipped: Vec<String> =
+                            report.skipped.iter().map(|(what, n)| format!("{what}: {n}")).collect();
+                        section(ui, "Not imported", &skipped, Some(theme::text_dim()));
+                    });
+                },
+            );
             ui.add_space(12.0);
             if ui.button("OK").clicked() {
                 close = true;

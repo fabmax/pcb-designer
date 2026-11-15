@@ -463,7 +463,13 @@ impl Loader<'_> {
             }
         }
         if reference.is_empty() || reference.ends_with('?') {
-            self.report.warn(format!("{lib_id} at {pos:?} has no reference designator (not annotated); skipped"));
+            // Where KiCad shows it: its own coordinates, in mm.
+            let at = item.child("at");
+            let (x, y) = (at.and_then(|a| a.num(0)).unwrap_or(0.0), at.and_then(|a| a.num(1)).unwrap_or(0.0));
+            let on = self.out.sheets.iter().find(|s| s.id == sheet).map_or("", |s| s.name.as_str());
+            self.report.warn(format!(
+                "{lib_id} at ({x}, {y}) mm on sheet {on} has no reference designator (not annotated); skipped"
+            ));
             return;
         }
 
