@@ -90,7 +90,9 @@ A zone fills its outline minus its holes on one layer with its net (empty net: i
 copper); connection thermal/thermal_through_hole/solid/none says how its own pads join, \
 islands always/never/below_area which unconnected fill pieces go. A keepout (layers: copper \
 layers, empty for all) forbids tracks, vias, pads, zone fills (no_pour) or footprints \
-(courtyards) inside its outline; fills leave it out and DRC reports the rest.";
+(courtyards) inside its outline; fills leave it out and DRC reports the rest. Arc tracks are \
+track objects with a mid point (any point on the arc between a and b), inserted with execute; \
+add_track draws straight segments.";
 
 #[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

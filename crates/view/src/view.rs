@@ -624,9 +624,15 @@ impl View {
         out.extend(c.ratsnest.iter().map(|r| (l.ratsnest, Instance::line(mmf(r.a), mmf(r.b), 0.05, pal().ratsnest))));
         // Flagged copper: a halo around it.
         for item in c.flagged() {
-            if let Geo::Capsule { a, b, r } = item.geo {
-                let w = (r as f64 * 2e-6) as f32 + 0.3;
-                out.push((l.ratsnest, Instance::line(mmf(a), mmf(b), w, pal().flagged)));
+            match &item.geo {
+                Geo::Capsule { a, b, r } => {
+                    let w = (*r as f64 * 2e-6) as f32 + 0.3;
+                    out.push((l.ratsnest, Instance::line(mmf(*a), mmf(*b), w, pal().flagged)));
+                }
+                Geo::Path { points, r } => {
+                    out.extend(path_instance(points, *r, 0.3, pal().flagged).map(|i| (l.ratsnest, i)))
+                }
+                _ => {}
             }
         }
         self.scene.set_item(CONNECTIVITY_ITEM, out);
@@ -671,6 +677,9 @@ impl View {
             match &item.geo {
                 Geo::Capsule { a, b, r } => {
                     out.push((layer, Instance::line(mmf(*a), mmf(*b), (*r as f64 * 2e-6) as f32, pal().net_highlight)))
+                }
+                Geo::Path { points, r } => {
+                    out.extend(path_instance(points, *r, 0.0, pal().net_highlight).map(|i| (layer, i)))
                 }
                 Geo::Polygon(points) => {
                     let pts: Vec<[f32; 2]> = points.iter().map(|&p| mmf(p)).collect();
@@ -798,7 +807,9 @@ impl View {
                 ObjectId::Wire(w) => project.schematic.wires.get(w).map(|w| (w.a, w.b, WIRE_WIDTH)),
                 ObjectId::BusWire(w) => project.schematic.bus_wires.get(w).map(|w| (w.a, w.b, BUS_WIDTH)),
                 ObjectId::BusEntry(e) => project.schematic.bus_entries.get(e).map(|e| (e.pos, e.wire_end(), BUS_WIDTH)),
-                ObjectId::Track(t) => project.board.tracks.get(t).map(|t| (t.a, t.b, t.width)),
+                ObjectId::Track(t) => {
+                    project.board.tracks.get(t).filter(|t| t.mid.is_none()).map(|t| (t.a, t.b, t.width))
+                }
                 _ => None,
             }
             .map(|(a, b, width)| seg_dist(p, a, b) - width as f64 / 2.0)
@@ -810,6 +821,10 @@ impl View {
                     project.schematic.no_connects.get(n).map(|n| dist(p, n.pos) - NO_CONNECT_HALF as f64)
                 }
                 ObjectId::Via(v) => project.board.vias.get(v).map(|v| dist(p, v.pos) - v.diameter as f64 / 2.0),
+                ObjectId::Track(t) => project.board.tracks.get(t).map(|t| {
+                    t.path(10_000).windows(2).map(|w| seg_dist(p, w[0], w[1])).fold(f64::MAX, f64::min)
+                        - t.width as f64 / 2.0
+                }),
                 ObjectId::BoardGraphic(g) => match project.board.graphics.get(g).map(|g| &g.shape) {
                     Some(Shape::Line { a, b, width }) => Some(seg_dist(p, *a, *b) - *width as f64 / 2.0),
                     Some(Shape::Rect { a, b, width, fill: false }) => {
@@ -910,7 +925,10 @@ impl View {
                 .get(i)
                 .map(|t| {
                     if let Some(&layer) = l.map.get(&t.layer) {
-                        p.line(layer, t.a, t.b, t.width, board_layer_color(t.layer));
+                        match t.arc() {
+                            Some(arc) => p.shape(layer, &arc, board_layer_color(t.layer), None),
+                            None => p.line(layer, t.a, t.b, t.width, board_layer_color(t.layer)),
+                        }
                     }
                 })
                 .is_some(),
@@ -1412,4 +1430,18 @@ pub fn keepout_hatch(outline: &[Point], holes: &[Vec<Point>], step: Coord) -> Ve
         u += step;
     }
     out
+}
+
+/// One arc instance for an arc track's copper path (its points lie on the arc), `extra`
+/// mm wider.
+fn path_instance(points: &[Point], r: Coord, extra: f32, color: Color) -> Option<Instance> {
+    let g = model::board::arc_through(points[0], points[points.len() / 2], *points.last()?)?;
+    Some(Instance::arc(
+        [(g.center.0 * 1e-6) as f32, (g.center.1 * 1e-6) as f32],
+        (g.radius * 1e-6) as f32,
+        g.start as f32,
+        g.sweep as f32,
+        (r as f64 * 2e-6) as f32 + extra,
+        color,
+    ))
 }

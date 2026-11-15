@@ -250,7 +250,8 @@ impl Properties {
                 });
             }
             Object::Track(mut t) => {
-                heading(ui, "Track", "");
+                let arc = t.arc();
+                heading(ui, if arc.is_some() { "Arc track" } else { "Track" }, "");
                 grid(ui, |ui| {
                     label(ui, "Layer");
                     if let Some(layer) = copper_layer_combo(ui, cx.doc.project(), t.layer) {
@@ -267,6 +268,11 @@ impl Properties {
                     ui.end_row();
                     row(ui, "Start", fmt_point(t.a));
                     row(ui, "End", fmt_point(t.b));
+                    if let Some(Shape::Arc { radius, sweep, .. }) = arc {
+                        row(ui, "Radius", units::fmt(radius));
+                        row(ui, "Angle", format!("{:.1}°", sweep.abs()));
+                    }
+                    row(ui, "Length", units::fmt(t.length().round() as Coord));
                     copper_net_row(ui, cx.doc, CopperItem::Track(t.id));
                 });
             }

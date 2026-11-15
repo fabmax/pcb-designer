@@ -389,7 +389,7 @@ impl Command {
                     return Err(CommandError::Invalid("a track needs two distinct points".into()));
                 }
                 for w in segments {
-                    tx.insert(Object::Track(Track { id: Id::new(), layer, a: w[0], b: w[1], width }))?;
+                    tx.insert(Object::Track(Track::straight(layer, w[0], w[1], width)))?;
                 }
                 Ok(())
             }
@@ -1102,6 +1102,7 @@ fn transform_objects(tx: &mut Transaction, ids: &[ObjectId], t: Transform, edit:
                     reject_mirror_on_board(edit)?;
                     tr.a = t.point(tr.a);
                     tr.b = t.point(tr.b);
+                    tr.mid = tr.mid.map(|m| t.point(m));
                 }
                 Object::Via(v) => {
                     reject_mirror_on_board(edit)?;

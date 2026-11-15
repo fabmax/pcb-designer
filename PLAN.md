@@ -155,6 +155,13 @@ and hierarchical sheets.
   in KiCad, so copper of another net touching them is a short and pads with the same
   number (a mounting hole's via ring) don't short each other. Zones keep clearance from
   them like from any other net.
+- **Arc tracks** are a `Track` with `mid` (a point on the arc, KiCad's start/mid/end);
+  `a`/`b` stay the ends, so anchors, ratsnest and routing don't know about arcs.
+  `Track::arc()` gives the exact `Shape::Arc` (drawing, Gerber G02/G03 with exact ends),
+  `Track::path(err)` chords. Copper uses `Geo::Path` (capsules along chords at most
+  `ARC_ERROR` = 1 µm off, widened by that), split into capsules by `Geo::capsules` for
+  all tests. Gotcha: once board moves drag connected track ends (not yet), an arc's mid
+  must move to keep its bulge (sagitta / chord), not stay put.
 - **Board** (`copper`): pads (through-hole on all layers), tracks, vias and zone fill
   pieces form islands (grid broad phase). Nets come from pads; an island with two nets
   is a short; copper touching no pad is unconnected. Ratsnest: MST per net over pads,
@@ -474,10 +481,10 @@ defers.
   6–10; parts from the project's embedded `lib_symbols` and board footprints; KiCad
   UUIDs kept as ids; opens as an unsaved project; best effort with an import report).
   Symbols without footprint get a "No footprint" variant; "exclude from board" adds one
-  to the part; footprints without symbol become board parts. Model prerequisites first,
-  in order: arc tracks. Zones on several layers become one zone per layer; zone
-  minimum width, hatched fill and footprint zones/keepouts are skipped with a note. `in_bom` / `dnp` become component properties
-  until a BOM exists. Power symbols become power labels; the style comes from the
+  to the part; footprints without symbol become board parts. Arc tracks keep their mid point. Zones
+  on several layers become one zone per layer; zone minimum width, hatched fill and
+  footprint zones/keepouts are skipped with a note. `in_bom` / `dnp` become component
+  properties until a BOM exists. Power symbols become power labels; the style comes from the
   `power:` library name, else from the symbol's graphics; custom glyphs get the closest
   style, noted in the report. Legacy hidden power pins fail the import with their
   symbols named.
@@ -507,6 +514,8 @@ defers.
   `board_points` on huge boards.
 - Per-pad mask and paste overrides; mask/paste openings in the footprint editor.
 - Clearance checking while routing; push-and-shove; dragging tracks that stay connected.
+- Drawing arc tracks: an "Arc" corner style while routing, rounding the corner between
+  two tracks (arcs come from import and MCP today).
 - Blind and buried vias in the UI.
 - Copper graphics inside footprints (from KiCad custom pads) counting as connections.
 - Incremental or background zone refill (only zones near the change).

@@ -153,6 +153,87 @@ pub struct Track {
     pub a: Point,
     pub b: Point,
     pub width: Coord,
+    /// A point on the arc between `a` and `b` (as in KiCad); `None`: straight.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mid: Option<Point>,
+}
+
+impl Track {
+    pub fn straight(layer: LayerId, a: Point, b: Point, width: Coord) -> Track {
+        Track { id: Id::new(), layer, a, b, width, mid: None }
+    }
+
+    /// The arc through `a`, `mid` and `b` as a [`Shape::Arc`]; `None` when straight (no
+    /// mid point, or the three points on a line).
+    pub fn arc(&self) -> Option<Shape> {
+        let ArcGeom { center, radius, start, sweep } = arc_through(self.a, self.mid?, self.b)?;
+        Some(Shape::Arc {
+            center: Point::new(center.0.round() as Coord, center.1.round() as Coord),
+            radius: radius.round() as Coord,
+            start: Angle::deg(start.to_degrees()),
+            sweep: sweep.to_degrees(),
+            width: self.width,
+        })
+    }
+
+    /// Corner points along the track: its ends, and for an arc points in between, at
+    /// most `max_err` from the arc (chords). Starts at `a` and ends at `b` exactly.
+    pub fn path(&self, max_err: Coord) -> Vec<Point> {
+        let Some(g) = self.mid.and_then(|m| arc_through(self.a, m, self.b)) else { return vec![self.a, self.b] };
+        let step = 2.0 * (1.0 - (max_err as f64 / g.radius).min(1.0)).acos();
+        let n = ((g.sweep.abs() / step.max(1e-6)).ceil() as usize).clamp(2, 512);
+        let mut out = Vec::with_capacity(n + 1);
+        out.push(self.a);
+        for i in 1..n {
+            let t = g.start + g.sweep * i as f64 / n as f64;
+            out.push(Point::new(
+                (g.center.0 + g.radius * t.cos()).round() as Coord,
+                (g.center.1 + g.radius * t.sin()).round() as Coord,
+            ));
+        }
+        out.push(self.b);
+        out
+    }
+
+    /// Length along the track.
+    pub fn length(&self) -> f64 {
+        match self.mid.and_then(|m| arc_through(self.a, m, self.b)) {
+            Some(g) => g.radius * g.sweep.abs(),
+            None => (self.b - self.a).length(),
+        }
+    }
+}
+
+/// A circular arc in floating point (nm, radians; sweep positive = counterclockwise in
+/// x/y).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ArcGeom {
+    pub center: (f64, f64),
+    pub radius: f64,
+    pub start: f64,
+    pub sweep: f64,
+}
+
+/// The arc from `a` through `m` to `b`; `None` if the points are on a line (or equal).
+pub fn arc_through(a: Point, m: Point, b: Point) -> Option<ArcGeom> {
+    let (ax, ay, mx, my, bx, by) = (a.x as f64, a.y as f64, m.x as f64, m.y as f64, b.x as f64, b.y as f64);
+    let d = 2.0 * (ax * (my - by) + mx * (by - ay) + bx * (ay - my));
+    // Collinear (within a nanometre of bulge over the chord).
+    let chord = ((bx - ax).powi(2) + (by - ay).powi(2)).sqrt();
+    if d.abs() <= chord.max(1.0) * 2.0 || a == b {
+        return None;
+    }
+    let (a2, m2, b2) = (ax * ax + ay * ay, mx * mx + my * my, bx * bx + by * by);
+    let cx = (a2 * (my - by) + m2 * (by - ay) + b2 * (ay - my)) / d;
+    let cy = (a2 * (bx - mx) + m2 * (ax - bx) + b2 * (mx - ax)) / d;
+    let radius = ((ax - cx).powi(2) + (ay - cy).powi(2)).sqrt();
+    let angle = |x: f64, y: f64| (y - cy).atan2(x - cx);
+    let tau = std::f64::consts::TAU;
+    let start = angle(ax, ay);
+    let ccw_to_end = (angle(bx, by) - start).rem_euclid(tau);
+    let ccw_to_mid = (angle(mx, my) - start).rem_euclid(tau);
+    let sweep = if ccw_to_mid < ccw_to_end { ccw_to_end } else { ccw_to_end - tau };
+    Some(ArcGeom { center: (cx, cy), radius, start, sweep })
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]

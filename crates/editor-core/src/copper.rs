@@ -51,6 +51,11 @@ pub enum Geo {
         r: Coord,
     },
     Polygon(Vec<Point>),
+    /// Capsules along a polyline (arc tracks, as chords).
+    Path {
+        points: Vec<Point>,
+        r: Coord,
+    },
     /// Polygon with holes (zone fills).
     Region {
         outer: Vec<Point>,
@@ -62,6 +67,9 @@ impl Geo {
     pub fn bounds(&self) -> Rect {
         match self {
             Geo::Capsule { a, b, r } => Rect::from_points(*a, *b).grow(*r),
+            Geo::Path { points, r } => Rect::union_all(points.iter().map(|&q| Rect::from_points(q, q)))
+                .unwrap_or(Rect::from_points(Point::ZERO, Point::ZERO))
+                .grow(*r),
             Geo::Polygon(p) | Geo::Region { outer: p, .. } => {
                 Rect::union_all(p.iter().map(|&q| Rect::from_points(q, q)))
                     .unwrap_or(Rect::from_points(Point::ZERO, Point::ZERO))
@@ -72,6 +80,8 @@ impl Geo {
     /// Do the two shapes touch or overlap?
     pub fn touches(&self, other: &Geo) -> bool {
         match (self, other) {
+            (Geo::Path { .. }, _) => self.capsules().any(|c| c.touches(other)),
+            (_, Geo::Path { .. }) => other.capsules().any(|c| self.touches(&c)),
             (Geo::Capsule { a, b, r }, Geo::Capsule { a: c, b: d, r: s }) => {
                 seg_seg_dist(*a, *b, *c, *d) <= (r + s) as f64
             }
@@ -114,8 +124,19 @@ impl Geo {
     fn edges_and_radius(&self) -> (Vec<(Point, Point)>, Coord) {
         match self {
             Geo::Capsule { a, b, r } => (vec![(*a, *b)], *r),
+            Geo::Path { points, r } => (points.windows(2).map(|w| (w[0], w[1])).collect(), *r),
             Geo::Polygon(p) => (edges(p).collect(), 0),
             Geo::Region { outer, holes } => (edges(outer).chain(holes.iter().flat_map(|h| edges(h))).collect(), 0),
+        }
+    }
+
+    /// A path as its capsules; other shapes as themselves.
+    pub fn capsules(&self) -> Box<dyn Iterator<Item = Geo> + '_> {
+        match self {
+            Geo::Path { points, r } => {
+                Box::new(points.windows(2).map(move |w| Geo::Capsule { a: w[0], b: w[1], r: *r }))
+            }
+            other => Box::new(std::iter::once(other.clone())),
         }
     }
 
@@ -123,6 +144,7 @@ impl Geo {
     pub fn contains(&self, p: Point) -> bool {
         match self {
             Geo::Capsule { a, b, r } => point_seg_dist(p, *a, *b) <= *r as f64,
+            Geo::Path { points, r } => points.windows(2).any(|w| point_seg_dist(p, w[0], w[1]) <= *r as f64),
             Geo::Polygon(poly) => point_in_polygon(p, poly),
             Geo::Region { outer, holes } => {
                 point_in_polygon(p, outer)
@@ -254,7 +276,7 @@ impl BoardConnectivity {
             bc.items.push(Copper {
                 item: CopperItem::Track(tr.id),
                 layers: layer_bit(tr.layer),
-                geo: Geo::Capsule { a: tr.a, b: tr.b, r: tr.width / 2 },
+                geo: track_geo(tr),
                 anchors: vec![tr.a, tr.b],
                 island: 0,
                 net: None,
@@ -450,6 +472,25 @@ impl BoardConnectivity {
     }
 }
 
+/// Largest distance of an arc track's chords from the true arc; their capsules are
+/// that much wider so the copper covers the arc.
+pub const ARC_ERROR: Coord = 1_000;
+
+/// Copper of a track: a capsule, or for arcs capsules along chords.
+pub fn track_geo(tr: &Track) -> Geo {
+    match tr.mid {
+        None => Geo::Capsule { a: tr.a, b: tr.b, r: tr.width / 2 },
+        Some(_) => {
+            let points = tr.path(ARC_ERROR);
+            if points.len() == 2 {
+                Geo::Capsule { a: tr.a, b: tr.b, r: tr.width / 2 }
+            } else {
+                Geo::Path { points, r: tr.width / 2 + ARC_ERROR }
+            }
+        }
+    }
+}
+
 /// Outline of a placed pad.
 pub fn pad_geo(pad: &Pad, t: &Transform) -> Geo {
     let (w, h) = (pad.size.w, pad.size.h);
@@ -608,9 +649,13 @@ impl RegionIndex {
 
     /// Does the shape overlap the region (not just lie in a hole)?
     pub fn touches(&self, g: &Geo) -> bool {
+        if let Geo::Path { .. } = g {
+            return g.capsules().any(|c| self.touches(&c));
+        }
         let b = g.bounds();
         let crosses = match g {
             Geo::Capsule { a, b: c, r } => self.edges_near(b.grow(1), |(p, q)| seg_seg_dist(*a, *c, p, q) <= *r as f64),
+            Geo::Path { .. } => unreachable!("split into capsules above"),
             Geo::Polygon(poly) | Geo::Region { outer: poly, .. } => edges(poly)
                 .any(|(p, q)| self.edges_near(Rect::from_points(p, q), |(c, d)| seg_seg_dist(p, q, c, d) < 0.5)),
         };
@@ -620,6 +665,7 @@ impl RegionIndex {
         // No boundary contact: entirely inside, entirely outside, or the region inside it.
         let probe = match g {
             Geo::Capsule { a, .. } => *a,
+            Geo::Path { points, .. } => points[0],
             Geo::Polygon(p) | Geo::Region { outer: p, .. } => p[0],
         };
         self.contains(probe) || g.contains(self.first)
@@ -645,6 +691,7 @@ fn geo_in_hole(g: &Geo, hole: &[Point]) -> bool {
         Geo::Capsule { a, b, r } => {
             point_in_polygon(*a, hole) && edges(hole).all(|(c, d)| seg_seg_dist(*a, *b, c, d) > *r as f64)
         }
+        Geo::Path { .. } => g.capsules().all(|c| geo_in_hole(&c, hole)),
         Geo::Polygon(p) | Geo::Region { outer: p, .. } => polygon_in_hole(p, hole),
     }
 }

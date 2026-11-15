@@ -104,8 +104,12 @@ pub fn layer_file(project: &Project, copper: &BoardConnectivity, layer: LayerId)
             }
         }
         for t in board.tracks.iter().filter(|t| t.layer == layer) {
+            // Arcs: exact ends, the centre rounded to the nanometre.
             w.aperture(Aperture::Circle(t.width), Some("Conductor"));
-            w.line(t.a, t.b);
+            match t.arc() {
+                Some(Shape::Arc { center, sweep, .. }) => w.arc(t.a, t.b, center, sweep > 0.0),
+                _ => w.line(t.a, t.b),
+            }
         }
         for v in board.vias.iter().filter(|v| v.from.0 <= layer.0 && layer.0 <= v.to.0) {
             w.aperture(Aperture::Circle(v.diameter), Some("ViaPad"));

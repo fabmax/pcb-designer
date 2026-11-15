@@ -95,6 +95,7 @@ pub fn capsule_contour(a: Point, b: Point, r: Coord) -> Contour {
 fn inflate(g: &Geo, d: Coord) -> Vec<Contour> {
     match g {
         Geo::Capsule { a, b, r } => vec![capsule_contour(*a, *b, r + d)],
+        Geo::Path { points, r } => points.windows(2).map(|w| capsule_contour(w[0], w[1], r + d)).collect(),
         Geo::Polygon(p) => grown(p, &[], d),
         Geo::Region { outer, holes } => grown(outer, holes, d),
     }
