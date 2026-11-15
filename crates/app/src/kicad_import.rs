@@ -1,6 +1,6 @@
 //! "Import KiCad parts" window: search KiCad's symbol and footprint libraries, pick symbols
-//! (each with a footprint, making a part) and lone footprints, and import them into a
-//! library.
+//! (each with the footprints of its variants, making a part) and lone footprints, and
+//! import them into a library.
 //!
 //! The libraries searched are KiCad's downloaded ones (see [`kicad::download`]) or else an
 //! installed KiCad's, plus folders added by hand or with `--kicad`. Downloads and update
@@ -15,7 +15,7 @@ use egui::RichText;
 use kicad::download::{self, DownloadError, Installed, Source};
 use kicad::import::{Request, pin_numbers, suggested_footprints};
 use kicad::preview::PreviewCache;
-use kicad::{Catalog, Imported};
+use kicad::{Catalog, Fit, Imported};
 use mcp::host::{Reply, Responder};
 use view::LibraryDoc;
 use view::item::Item;
@@ -59,12 +59,54 @@ struct Pick {
     description: String,
     units: usize,
     pins: usize,
-    /// Chosen footprint (`None`: a part without footprint, kept off the board).
-    footprint: Option<String>,
-    /// Footprints offered in the picker: the default, then filter matches.
-    candidates: Vec<String>,
+    /// Footprints offered: the default and those used by hand, then the filter matches
+    /// best first. Each checked one becomes a variant; none checked: a part without
+    /// footprint, kept off the board.
+    candidates: Vec<Candidate>,
+    /// Also list footprints missing pins (always when none fits).
+    show_missing: bool,
     /// Why this symbol won't be imported (power symbols, hidden power pins).
     refused: Option<String>,
+}
+
+struct Candidate {
+    name: String,
+    /// How its pads fit the pins (`None`: not readable).
+    fit: Option<Fit>,
+    checked: bool,
+}
+
+impl Candidate {
+    /// Listed unless it misses pins and those are hidden (checked ones always are).
+    fn listed(&self, show_missing: bool) -> bool {
+        self.checked || show_missing || self.fit.is_none_or(Fit::fits)
+    }
+}
+
+impl Pick {
+    /// The footprints of the variants, in list order.
+    fn chosen(&self) -> impl Iterator<Item = &String> {
+        self.candidates.iter().filter(|c| c.checked).map(|c| &c.name)
+    }
+
+    /// Add a footprint (chosen in the footprint search) at the top, checked.
+    fn use_footprint(&mut self, name: String, fit: Option<Fit>) {
+        match self.candidates.iter_mut().find(|c| c.name == name) {
+            Some(c) => c.checked = true,
+            None => self.candidates.insert(0, Candidate { name, fit, checked: true }),
+        }
+    }
+}
+
+/// Short note on a footprint's pad fit.
+fn fit_note(fit: Option<Fit>) -> Option<String> {
+    match fit? {
+        Fit::Exact => None,
+        Fit::Extra(1) => Some("+1 pad".into()),
+        Fit::Extra(n) => Some(format!("+{n} pads")),
+        Fit::Missing(1) => Some("1 pin without pad".into()),
+        Fit::Missing(n) => Some(format!("{n} pins without pad")),
+    }
 }
 
 /// What the application should do after the window was drawn.
@@ -260,7 +302,7 @@ impl KicadImport {
             return t.clone();
         }
         match self.active.and_then(|i| self.picks.get(i)) {
-            Some(p) => (Some(p.symbol.clone()), p.footprint.clone()),
+            Some(p) => (Some(p.symbol.clone()), p.chosen().next().cloned()),
             None => (None, None),
         }
     }
@@ -331,20 +373,24 @@ impl KicadImport {
         let catalog = self.catalog();
         match catalog.load_symbol(full) {
             Ok(sym) => {
-                let suggested = suggested_footprints(catalog, &sym);
-                let mut candidates = suggested.clone();
-                for (_, c) in catalog.footprint_candidates(&sym.fp_filters, 60) {
-                    if !candidates.contains(&c) {
-                        candidates.push(c);
+                let pins = pin_numbers(&sym);
+                let mut candidates: Vec<Candidate> = suggested_footprints(catalog, &sym)
+                    .into_iter()
+                    .map(|name| Candidate { fit: catalog.footprint_fit(&name, &pins), name, checked: true })
+                    .collect();
+                for (name, fit) in catalog.ranked_footprints(&sym.fp_filters, &pins) {
+                    if !candidates.iter().any(|c| c.name == name) {
+                        candidates.push(Candidate { name, fit: Some(fit), checked: false });
                     }
                 }
+                let show_missing = !candidates.iter().any(|c| c.fit.is_none_or(Fit::fits));
                 self.picks.push(Pick {
                     symbol: full.to_string(),
                     description: sym.description.clone(),
                     units: sym.units.len(),
-                    pins: pin_numbers(&sym).len(),
-                    footprint: suggested.first().cloned(),
+                    pins: pins.len(),
                     candidates,
+                    show_missing,
                     refused: if sym.power {
                         Some("Power symbol: place it with the Power tool (P); it will not be imported.".into())
                     } else {
@@ -371,7 +417,7 @@ impl KicadImport {
                 .picks
                 .iter()
                 .filter(|p| p.refused.is_none())
-                .map(|p| (p.symbol.clone(), p.footprint.iter().cloned().collect()))
+                .map(|p| (p.symbol.clone(), p.chosen().cloned().collect()))
                 .collect(),
             footprints: self.footprints.clone(),
         }
@@ -629,7 +675,10 @@ impl KicadImport {
                         }
                         if self.kind == Kind::Footprints
                             && let Some(sym) = &active
-                            && ui.small_button("Use").on_hover_text(format!("Footprint of {sym}")).clicked()
+                            && ui
+                                .small_button("Use")
+                                .on_hover_text(format!("Add as a footprint variant of {sym}"))
+                                .clicked()
                         {
                             assign = Some(r.clone());
                         }
@@ -639,7 +688,8 @@ impl KicadImport {
                             Kind::Symbols => f.0.as_ref() == Some(r),
                             Kind::Footprints => f.0.is_none() && f.1.as_ref() == Some(r),
                         });
-                        if ui.selectable_label(selected, name).on_hover_text("Click to preview").clicked() {
+                        let b = egui::Button::selectable(selected, name).truncate();
+                        if ui.add(b).on_hover_text("Click to preview").clicked() {
                             focus = Some(r.clone());
                         }
                     });
@@ -659,12 +709,12 @@ impl KicadImport {
             _ => {}
         }
         if let (Some(f), Some(i)) = (assign, self.active)
-            && let Some(p) = self.picks.get_mut(i)
+            && i < self.picks.len()
         {
-            if !p.candidates.contains(&f) {
-                p.candidates.insert(0, f.clone());
-            }
-            p.footprint = Some(f);
+            let symbol = self.picks[i].symbol.clone();
+            let catalog = self.catalog();
+            let fit = catalog.load_symbol(&symbol).ok().and_then(|sym| catalog.footprint_fit(&f, &pin_numbers(&sym)));
+            self.picks[i].use_footprint(f, fit);
         }
     }
 
@@ -681,12 +731,15 @@ impl KicadImport {
     fn picks_ui(&mut self, ui: &mut egui::Ui) {
         ui.label(RichText::new("To import").strong());
         if self.picks.is_empty() && self.footprints.is_empty() {
-            hint(ui, "Add symbols (they become parts with the chosen footprint) or lone footprints.");
+            hint(ui, "Add symbols (they become parts, a variant per checked footprint) or lone footprints.");
             return;
         }
         let mut remove = None;
         let mut remove_fp = None;
         let mut focus_fp = None;
+        let mut focus_candidate = None;
+        // The previewed symbol and footprint, to highlight the footprint in its pick.
+        let target = self.preview_target();
         egui::ScrollArea::vertical()
             .id_salt("kicad_picks")
             .max_height(ui.available_height())
@@ -707,10 +760,10 @@ impl KicadImport {
                                 if ui.small_button("Remove").clicked() {
                                     remove = Some(i);
                                 }
-                                ui.label(RichText::new(&p.symbol).strong());
                                 let units = if p.units > 1 { format!(", {} units", p.units) } else { String::new() };
                                 let pins = if p.pins == 1 { "1 pin".to_string() } else { format!("{} pins", p.pins) };
                                 ui.label(RichText::new(format!("{pins}{units}")).color(theme::text_dim()));
+                                ui.add(egui::Label::new(RichText::new(&p.symbol).strong()).truncate());
                             });
                             if !p.description.is_empty() {
                                 ui.label(RichText::new(&p.description).color(theme::text_dim()).small());
@@ -719,17 +772,9 @@ impl KicadImport {
                                 ui.label(RichText::new(why).color(theme::warn()));
                                 return;
                             }
-                            ui.horizontal(|ui| {
-                                ui.label("Footprint");
-                                let mut options: Vec<(Option<String>, String)> =
-                                    vec![(None, "— none (not on board) —".to_string())];
-                                options.extend(p.candidates.iter().map(|c| (Some(c.clone()), c.clone())));
-                                if let Some(f) = fields::combo(ui, ("kicad_fp", i), &p.footprint, &options) {
-                                    p.footprint = f;
-                                }
-                            });
-                            if p.candidates.is_empty() {
-                                hint(ui, "No matching footprint; search one under Footprints and press Use.");
+                            let focused = target.1.as_deref().filter(|_| target.0.as_ref() == Some(&p.symbol));
+                            if let Some(f) = footprints_ui(ui, i, p, focused) {
+                                focus_candidate = Some((p.symbol.clone(), f));
                             }
                         })
                     });
@@ -748,7 +793,8 @@ impl KicadImport {
                         ui.label(RichText::new("Footprint").color(theme::text_dim()));
                         let selected =
                             self.previews.focus.as_ref().is_some_and(|p| p.0.is_none() && p.1.as_ref() == Some(f));
-                        if ui.selectable_label(selected, f).on_hover_text("Click to preview").clicked() {
+                        let b = egui::Button::selectable(selected, f.as_str()).truncate();
+                        if ui.add(b).on_hover_text("Click to preview").clicked() {
                             focus_fp = Some(f.clone());
                         }
                     });
@@ -763,8 +809,69 @@ impl KicadImport {
         if let Some(f) = focus_fp {
             self.previews.focus = Some((None, Some(f)));
         }
+        if let Some((symbol, f)) = focus_candidate {
+            self.previews.focus = Some((Some(symbol), Some(f)));
+        }
         if let Some(i) = remove_fp {
             self.footprints.remove(i);
         }
     }
+}
+
+/// Height of a pick's footprint list.
+const FOOTPRINT_LIST_HEIGHT: f32 = 132.0;
+
+/// A pick's footprints with a check box each (a variant per checked one), best fitting
+/// first. Returns a footprint whose name was clicked (to preview it).
+fn footprints_ui(ui: &mut egui::Ui, i: usize, p: &mut Pick, focused: Option<&str>) -> Option<String> {
+    let chosen = p.chosen().count();
+    let missing = p.candidates.iter().filter(|c| !c.listed(false)).count();
+    ui.horizontal(|ui| {
+        ui.label("Footprints");
+        let text = match chosen {
+            0 => "none checked: its components stay off the board".to_string(),
+            1 => "1 variant".to_string(),
+            n => format!("{n} variants"),
+        };
+        ui.label(RichText::new(text).color(if chosen == 0 { theme::warn() } else { theme::text_dim() }));
+    });
+    if p.candidates.is_empty() {
+        hint(ui, "No footprint matches; search one under Footprints and press Use.");
+        return None;
+    }
+    let mut clicked = None;
+    egui::Frame::NONE.fill(theme::panel_dark()).corner_radius(4).inner_margin(egui::Margin::same(4)).show(ui, |ui| {
+        egui::ScrollArea::vertical()
+            .id_salt(("kicad_fps", i))
+            .max_height(FOOTPRINT_LIST_HEIGHT)
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                let show_missing = p.show_missing;
+                for c in p.candidates.iter_mut().filter(|c| c.listed(show_missing)) {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut c.checked, "");
+                        let selected = focused == Some(c.name.as_str());
+                        let name = RichText::new(&c.name).color(if c.fit.is_none_or(Fit::fits) {
+                            ui.visuals().text_color()
+                        } else {
+                            theme::warn()
+                        });
+                        if let Some(note) = fit_note(c.fit) {
+                            ui.label(RichText::new(note).color(theme::text_dim()).small());
+                        }
+                        // Long names are cut, so the list never widens the window.
+                        let b = egui::Button::selectable(selected, name).truncate();
+                        if ui.add(b).on_hover_text(&c.name).clicked() {
+                            clicked = Some(c.name.clone());
+                        }
+                    });
+                }
+            });
+    });
+    if missing > 0 && missing < p.candidates.len() {
+        ui.checkbox(&mut p.show_missing, format!("Show {missing} footprint(s) missing pins"));
+    } else if missing > 0 {
+        hint(ui, "No footprint has a pad for every pin.");
+    }
+    clicked
 }

@@ -16,6 +16,6 @@ pub mod sch;
 pub mod sexpr;
 pub mod symbol;
 
-pub use catalog::{Catalog, Error, default_paths};
+pub use catalog::{Catalog, Error, Fit, default_paths};
 pub use import::{Imported, Request, import};
 pub use project::{ProjectImport, Report, import_project};

@@ -186,3 +186,32 @@ fn preview_cache_converts_and_evicts() {
     cache.clear();
     assert!(cache.is_empty());
 }
+
+#[test]
+fn footprints_ranked_by_pad_fit() {
+    use kicad::Fit;
+    let tmp = tempfile::tempdir().unwrap();
+    setup(tmp.path(), false);
+    // An extra (exposed) pad, and a footprint with one pad only.
+    let fp = tmp.path().join("Resistor_SMD.pretty");
+    let ep = footprint("R_0402_EP", 0.5)
+        .replace("\n)", "\n  (pad \"3\" smd rect (at 0 0) (size 0.3 0.3) (layers \"F.Cu\" \"F.Mask\"))\n)");
+    fs::write(fp.join("R_0402_EP.kicad_mod"), ep).unwrap();
+    let one = footprint("R_Half", 0.5).replace("(pad \"2\"", "(pad \"\"");
+    fs::write(fp.join("R_Half.kicad_mod"), one).unwrap();
+    let mut cat = Catalog::scan(&[tmp.path().to_path_buf()]);
+
+    let ranked = cat.ranked_footprints(&["R_*".to_string()], &["1", "2"]);
+    let names: Vec<(&str, Fit)> = ranked.iter().map(|(n, f)| (n.as_str(), *f)).collect();
+    assert_eq!(
+        names,
+        [
+            ("Resistor_SMD:R_0603_1608Metric", Fit::Exact),
+            ("Resistor_SMD:R_0805_2012Metric", Fit::Exact),
+            ("Resistor_SMD:R_0402_EP", Fit::Extra(1)),
+            ("Resistor_SMD:R_Half", Fit::Missing(1)),
+        ]
+    );
+    assert_eq!(cat.footprint_fit("Resistor_SMD:R_0402_EP", &["1", "2"]), Some(Fit::Extra(1)));
+    assert_eq!(cat.footprint_fit("Resistor_SMD:Nope", &["1"]), None);
+}

@@ -358,7 +358,12 @@ things to do **later**.
   anything never grows the window. The import result (summary, failures, notes) opens
   in the same report dialog as a project import (`ImportReport`).
 - The catalog indexes names only (~0.1 s) and parses lazily. Footprint suggestion: the
-  default footprint, else the best `ki_fp_filters` match.
+  default footprint, else the best `ki_fp_filters` match. `Catalog::ranked_footprints`
+  orders up to 300 filter matches by `Fit` (exact, extra pads, missing pins), then
+  filter, pad count difference, everyday packages; it reads their pads (cached, ~30 ms
+  for 180 footprints). A pick lists them with check boxes (one variant each), hiding
+  those missing pins unless asked or none fits; long names truncate so nothing widens
+  the window.
 - Download (`kicad::download`): official GitLab release archives of `SUPPORTED_MAJOR`
   (10), unpacked into `<config>/kicad/<version>` via a temp folder and rename. Gotcha:
   cancel has its own error; `io::ErrorKind::Interrupted` would be retried forever by

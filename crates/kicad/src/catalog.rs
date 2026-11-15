@@ -229,25 +229,71 @@ impl Catalog {
     }
 
     /// The best footprint for a symbol with the given (sorted, distinct) pin numbers:
-    /// one whose pads are exactly the pins if possible (earlier filters first), else one
-    /// with all pins and the fewest extra pads (unconnected pins are often not drawn).
+    /// the first of [`Catalog::ranked_footprints`].
     pub fn best_footprint(&mut self, filters: &[String], pins: &[&str]) -> Option<String> {
-        let candidates = self.footprint_candidates(filters, 300);
-        let mut best: Option<(Score, String)> = None;
+        self.ranked_footprints(filters, pins).into_iter().next().map(|r| r.0)
+    }
+
+    /// The footprints matching a symbol's filters, best first: pads exactly the pins,
+    /// then all pins plus extra pads (exposed or mounting pads; unconnected pins are often
+    /// not drawn), then those missing pins. Within a class: earlier filters first, then
+    /// the closest pad count, everyday packages, plainest name.
+    pub fn ranked_footprints(&mut self, filters: &[String], pins: &[&str]) -> Vec<(String, Fit)> {
+        let candidates = self.footprint_candidates(filters, RANK_LIMIT);
+        let mut ranked: Vec<(Score, String, Fit)> = Vec::new();
         for (i, (filter, full)) in candidates.into_iter().enumerate() {
-            let Some(pads) = self.pad_names(&full) else { continue };
-            let all = pins.iter().all(|p| pads.binary_search_by(|x| x.as_str().cmp(p)).is_ok());
-            let class = match (all, pads.len() == pins.len()) {
-                (true, true) => 0,
-                (true, false) => 1,
-                _ => 2,
-            };
-            let key = (class, filter, pads.len().abs_diff(pins.len()), common_rank(&full), i);
-            if best.as_ref().is_none_or(|(k, _)| key < *k) {
-                best = Some((key, full));
-            }
+            let Some((fit, pads)) = self.fit_and_pads(&full, pins) else { continue };
+            let key = (fit.class(), filter, pads.abs_diff(pins.len()), common_rank(&full), i);
+            ranked.push((key, full, fit));
         }
-        best.map(|b| b.1)
+        ranked.sort_by_key(|r| r.0);
+        ranked.into_iter().map(|(_, full, fit)| (full, fit)).collect()
+    }
+
+    /// How a footprint's pads fit the (sorted, distinct) pin numbers (`None`: no such
+    /// footprint).
+    pub fn footprint_fit(&mut self, full: &str, pins: &[&str]) -> Option<Fit> {
+        self.fit_and_pads(full, pins).map(|f| f.0)
+    }
+
+    fn fit_and_pads(&mut self, full: &str, pins: &[&str]) -> Option<(Fit, usize)> {
+        let pads = self.pad_names(full)?;
+        let missing = pins.iter().filter(|p| pads.binary_search_by(|x| x.as_str().cmp(p)).is_err()).count();
+        let fit = match missing {
+            0 if pads.len() == pins.len() => Fit::Exact,
+            0 => Fit::Extra(pads.len() - pins.len()),
+            n => Fit::Missing(n),
+        };
+        Some((fit, pads.len()))
+    }
+}
+
+/// Footprints considered for a symbol (their pads are read, so this bounds the work).
+const RANK_LIMIT: usize = 300;
+
+/// How a footprint's pads fit a symbol's pins.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fit {
+    /// One pad per pin.
+    Exact,
+    /// Every pin has a pad, plus this many pads without pin.
+    Extra(usize),
+    /// This many pins have no pad.
+    Missing(usize),
+}
+
+impl Fit {
+    fn class(self) -> u8 {
+        match self {
+            Fit::Exact => 0,
+            Fit::Extra(_) => 1,
+            Fit::Missing(_) => 2,
+        }
+    }
+
+    /// Every pin has a pad.
+    pub fn fits(self) -> bool {
+        !matches!(self, Fit::Missing(_))
     }
 }
 
