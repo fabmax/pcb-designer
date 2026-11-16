@@ -86,6 +86,23 @@ the current design of each area with the gotchas a change needs to know, the pla
   instead of panicking.
   `Change::affects_connectivity`: schematic changes always; library edits only when
   pins, pads, units or variants change.
+- `keep_connected` on `Move` / `Rotate` / `Mirror` / `FlipSide`: a plan is made from the
+  geometry *before* the move, then applied after it. `rubber_band` (wires, buses
+  separately): unmoved wires at moving points follow (orthogonal ones shift sideways,
+  far end stretched or doglegged); an end of a moved wire on something staying put (pin,
+  label, junction, entry, sheet pin, branch, a collinear or diagonal neighbour, a wire's
+  inside) is *held*: an orthogonal wire keeps its direction and a dogleg joins it back,
+  others stretch; a single perpendicular neighbour follows instead. Unmoved wire ends,
+  labels and junctions on a moved wire's inside slide across with it. Afterwards
+  collinear wires meeting with nothing else there are merged (the moved one's id wins,
+  then an untouched one's). `track_band`: track ends inside moved pad/via copper
+  (`copper::footprint_copper`, grid-indexed ends) follow; a straight follower moves
+  along and its far end slides along a single straight, non-parallel, unmoved neighbour
+  (`slide_point`, refused if either would turn around), else it stretches; ends of
+  moved tracks on staying copper or neighbours slide the same way or get a joining
+  track. Sheet symbols drag their pins' wires. Gotcha: everything scanned per command
+  is limited to the points involved (`attach_counts` with a `wanted` set) — a full pin
+  scan per step made symbol drags 10× slower.
 - `Document::read_only` (Built-in Library) makes every command fail with a reason.
 - Sync (`sync.rs`): a component is on the board exactly when its variant has a footprint.
   It checks changed components *and* the components of changed parts (a part edit can
@@ -169,8 +186,8 @@ the current design of each area with the gotchas a change needs to know, the pla
   `Track::arc()` gives the exact `Shape::Arc` (drawing, Gerber G02/G03 with exact ends),
   `Track::path(err)` chords. Copper uses `Geo::Path` (capsules along chords at most
   `ARC_ERROR` = 1 µm off, widened by that), split into capsules by `Geo::capsules` for
-  all tests. Gotcha: once board moves drag connected track ends (not yet), an arc's mid
-  must move to keep its bulge (sagitta / chord), not stay put.
+  all tests. Moving an end goes through `Track::set_ends`, which keeps the bulge (mid in
+  chord coordinates, scaled).
 - **Board** (`copper`): pads (through-hole on all layers), tracks, vias and zone fill
   pieces form islands (grid broad phase). Nets come from pads; an island with two nets
   is a short; copper touching no pad is unconnected. Ratsnest: MST per net over pads,
@@ -310,9 +327,20 @@ the current design of each area with the gotchas a change needs to know, the pla
   dragging), `snap` toggle. Locked footprints don't move. A press becomes a drag when
   the *hand* moves the pointer 4 points on screen (`PointerInput::screen`), not when the
   view shifts under it (a panel changing width); the drag then follows the hand's motion.
-- Dragging keeps schematic wires attached (`keep_connected`; `rubber_band` over wires and
-  buses): orthogonal wires shift and stay orthogonal, the far end stretches or gets a
-  dogleg; rotate/mirror stretch.
+- A drag *replays* itself: each step retracts the previous one (`Target::retract` →
+  `Editor::retract`: pops the open group without a redo entry) and runs the whole
+  rotation (about the start anchor) and offset from the start. So what stays attached
+  is decided by the geometry at drag start (passing over wires never picks them up),
+  doglegs never pile up, and a drag equals one MCP `Move`. Carried pastes still move by
+  steps (their group holds the paste). Esc retracts too. Gotcha: a step costs an undo
+  plus a full move (~2 ms for a symbol with wires on a 10k sheet).
+- `Target::drag_axis`: a single straight segment (horizontal/vertical wire, any straight
+  track; 45° as a unit diagonal for whole grid steps) moves only across itself.
+  `Target::chain` + `Interaction::double_click`: wire and track chains
+  (`query::wire_chain` / `track_chain`). A double click can arrive while the second
+  press is still pending (script input): it uses the press up.
+- The GUI sets `keep_connected` for every move, rotate, mirror and flip except carries;
+  the commands default to false (MCP gets exact moves unless it asks).
 - Tools: `tools::Placer` (library: pin/pad, line, rect, circle, text; names
   auto-increment), `sch_tools` (wire, bus, bus entry, label, power, junction, no connect, place;
   `/` flips the corner; `SchPlacer::sheet` is the sheet they work on, `set_sheet` ends a
@@ -555,6 +583,8 @@ Budget: about 10k footprints at 60 fps, an edit → board → GPU update within 
 | DRC | 8.5 ms (2k) / 13 ms (10k) |
 | Redraw users of one library edit (3,333 capacitors) | ~21 ms + 18 ms (old full rebuild ~200 ms) |
 | Drag step | ~0.035 ms |
+| Drag step, symbol with wires (replayed from the start) | ~2.2 ms |
+| Drag step, footprint with tracks (connectivity deferred while dragging) | ~0.2 ms |
 | Both canvases animated, ~3 M primitives | 90–170 fps uncapped |
 
 Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
@@ -564,14 +594,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
-
-**M11: Wires and tracks: select and drag**
-- Double click on a wire selects the whole wire instead of the clicked segment; the
-  same for a routed track on the board.
-- Dragging wire segments themselves (the neighbours stretch and stay orthogonal, like
-  `rubber_band`).
-- Dragging tracks that stay connected.
-- Wires that overlap while being dragged don't connect.
 
 **M12: Drawing wires and tracks**
 - Wire posture that flips automatically with the cursor (`/` stays as the override).
@@ -638,6 +660,7 @@ defers.
 - After sheets: hierarchical bus pins (bus-named hierarchical labels are drawn as pins
   but don't connect), ERC of pin directions across sheet pins.
 - KiCad's "unfold bus".
+- Pins lying on a moved wire's inside (not at its ends) are left behind.
 - Inner-layer footprint graphics.
 - Footprint texts: re-sync fields when the library footprint's templates change; fields
   of other texts than `${REF}` / `${VALUE}`.
@@ -654,6 +677,10 @@ defers.
 - Clipboard: carrying a paste between the schematic and the board.
 - Measure tool: an index for `board_points` on huge boards.
 - Push-and-shove routing.
+- Track drags: a 45° fix-up where a joining track is added (two segments instead of one
+  at any angle); tees of other tracks onto a moved track's inside don't follow;
+  re-selecting "expand" (through vias, then the whole net) on a second double click.
+- A move that detaches (KiCad's M versus G): drags always keep connections today.
 - Copper graphics inside footprints (from KiCad custom pads) counting as connections.
 - Incremental or background zone refill (only zones near the change).
 - Zones: minimum width, hatched fill, a per-pad zone connection override; zones and

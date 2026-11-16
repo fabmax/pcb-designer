@@ -765,7 +765,8 @@ impl Properties {
                 ui.selectable_value(&mut side, Side::Bottom, "Bottom");
             });
             if side != f.side {
-                let cmd = Command::FlipSide { ids: vec![ObjectId::Footprint(f.id)], axis_x: f.pos.x };
+                let cmd =
+                    Command::FlipSide { ids: vec![ObjectId::Footprint(f.id)], axis_x: f.pos.x, keep_connected: true };
                 self.run(cx, cmd, false);
                 return;
             }

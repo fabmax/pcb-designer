@@ -237,7 +237,6 @@ impl BoardConnectivity {
             }
         }
         let board = &project.board;
-        let all_copper: LayerMask = board.copper_layers().map(|l| layer_bit(l.id)).fold(0, |a, b| a | b);
 
         // Items.
         let mut pad_nets: Vec<u32> = Vec::new();
@@ -249,11 +248,7 @@ impl BoardConnectivity {
             let refdes = component.map_or("?", |c| c.refdes.as_str());
             let t = f.transform();
             for pad in fp.pads.iter() {
-                let layers = match pad.kind {
-                    PadKind::Smd => layer_bit(LayerId::for_footprint(FootprintLayer::Copper, pad.side(f.side))),
-                    PadKind::ThroughHole { .. } => all_copper,
-                    PadKind::NonPlatedHole { .. } => continue,
-                };
+                let Some(layers) = pad_layers(board, f, pad) else { continue };
                 let center = t.point(pad.pos);
                 // Pads without a pin (and all pads of board parts) get a net of their own.
                 let net = match pad_net.get(&(f.component, pad.name.as_str())) {
@@ -285,12 +280,9 @@ impl BoardConnectivity {
             });
         }
         for v in board.vias.iter() {
-            let (lo, hi) = (v.from.0.min(v.to.0), v.from.0.max(v.to.0));
-            let span =
-                board.copper_layers().filter(|l| (lo..=hi).contains(&l.id.0)).fold(0, |a, l| a | layer_bit(l.id));
             bc.items.push(Copper {
                 item: CopperItem::Via(v.id),
-                layers: span,
+                layers: via_layers(board, v),
                 geo: Geo::Capsule { a: v.pos, b: v.pos, r: v.diameter / 2 },
                 anchors: vec![v.pos],
                 island: 0,
@@ -486,6 +478,33 @@ pub fn track_geo(tr: &Track) -> Geo {
             }
         }
     }
+}
+
+/// Copper layers of a placed pad; `None` for non-plated holes.
+pub fn pad_layers(board: &Board, f: &FootprintInstance, pad: &Pad) -> Option<LayerMask> {
+    match pad.kind {
+        PadKind::Smd => Some(layer_bit(LayerId::for_footprint(FootprintLayer::Copper, pad.side(f.side)))),
+        PadKind::ThroughHole { .. } => Some(board.copper_layers().fold(0, |a, l| a | layer_bit(l.id))),
+        PadKind::NonPlatedHole { .. } => None,
+    }
+}
+
+/// Copper layers a via spans.
+pub fn via_layers(board: &Board, v: &Via) -> LayerMask {
+    let (lo, hi) = (v.from.0.min(v.to.0), v.from.0.max(v.to.0));
+    board.copper_layers().filter(|l| (lo..=hi).contains(&l.id.0)).fold(0, |a, l| a | layer_bit(l.id))
+}
+
+/// Copper of a via.
+pub fn via_geo(v: &Via) -> Geo {
+    Geo::Capsule { a: v.pos, b: v.pos, r: v.diameter / 2 }
+}
+
+/// The copper of every pad of a placed footprint: (pad id, layers, outline).
+pub fn footprint_copper(project: &Project, f: &FootprintInstance) -> Vec<(Id, LayerMask, Geo)> {
+    let Some(fp) = crate::query::footprint_of_instance(project, f) else { return Vec::new() };
+    let t = f.transform();
+    fp.pads.iter().filter_map(|pad| Some((pad.id, pad_layers(&project.board, f, pad)?, pad_geo(pad, &t)))).collect()
 }
 
 /// Outline of a placed pad.

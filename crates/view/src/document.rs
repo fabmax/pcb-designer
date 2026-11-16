@@ -325,6 +325,13 @@ impl Document {
         Some(changes)
     }
 
+    /// See [`Editor::retract`].
+    pub fn retract(&mut self, group: u64) -> Option<ChangeSet> {
+        let changes = self.editor.retract(group)?;
+        self.changed(&changes);
+        Some(changes)
+    }
+
     pub fn redo(&mut self) -> Option<ChangeSet> {
         let changes = self.editor.redo()?;
         self.changed(&changes);
@@ -432,25 +439,25 @@ impl Target for ProjectTarget<'_> {
 
     fn edit(&mut self, edit: Edit<ObjectId>, group: Option<u64>) -> Result<Option<String>, String> {
         let is_fp = |id: &ObjectId| matches!(id, ObjectId::Footprint(_));
-        // Wires stay attached to what moves in the schematic (not to a carried paste).
         let (edit, carry) = match edit {
             Edit::Carry(e) => (*e, true),
             e => (e, false),
         };
-        let sch = self.view.kind() == ViewKind::Schematic && !carry;
+        // What is attached stays attached, except to a carried paste.
+        let keep = !carry;
         match edit {
-            Edit::Move { ids, delta } => self.run(Command::Move { ids, delta, keep_connected: sch }, group)?,
+            Edit::Move { ids, delta } => self.run(Command::Move { ids, delta, keep_connected: keep }, group)?,
             Edit::Rotate { ids, center, angle } => {
-                self.run(Command::Rotate { ids, center, angle, keep_connected: sch }, group)?
+                self.run(Command::Rotate { ids, center, angle, keep_connected: keep }, group)?
             }
             Edit::Mirror { ids, axis_x } | Edit::Flip { ids, axis_x } => match self.view.kind() {
-                ViewKind::Schematic => self.run(Command::Mirror { ids, axis_x, keep_connected: !carry }, group)?,
+                ViewKind::Schematic => self.run(Command::Mirror { ids, axis_x, keep_connected: keep }, group)?,
                 ViewKind::Board => {
                     let ids: Vec<ObjectId> = ids.into_iter().filter(is_fp).collect();
                     if ids.is_empty() {
                         return Err("Only footprints can be flipped".into());
                     }
-                    self.run(Command::FlipSide { ids, axis_x }, group)?
+                    self.run(Command::FlipSide { ids, axis_x, keep_connected: keep }, group)?
                 }
             },
             Edit::Delete { ids } => {
@@ -492,6 +499,40 @@ impl Target for ProjectTarget<'_> {
 
     fn undo(&mut self) {
         self.doc.undo();
+    }
+
+    fn retract(&mut self, group: u64) {
+        self.doc.retract(group);
+    }
+
+    fn chain(&self, id: ObjectId) -> Vec<ObjectId> {
+        let p = self.doc.project();
+        match id {
+            ObjectId::Wire(_) | ObjectId::BusWire(_) => editor_core::query::wire_chain(p, id),
+            ObjectId::Track(t) => editor_core::query::track_chain(p, t).into_iter().map(ObjectId::Track).collect(),
+            _ => vec![id],
+        }
+    }
+
+    fn drag_axis(&self, ids: &[ObjectId]) -> Option<Point> {
+        let p = self.doc.project();
+        let (a, b) = match ids {
+            [ObjectId::Wire(i)] => p.schematic.wires.get(*i).map(|w| (w.a, w.b))?,
+            [ObjectId::BusWire(i)] => p.schematic.bus_wires.get(*i).map(|w| (w.a, w.b))?,
+            [ObjectId::Track(i)] => p.board.tracks.get(*i).filter(|t| t.mid.is_none()).map(|t| (t.a, t.b))?,
+            _ => return None,
+        };
+        let d = b - a;
+        // Wires: only horizontal and vertical ones; tracks: any straight one.
+        let orthogonal = d.x == 0 || d.y == 0;
+        if d == Point::ZERO || (!orthogonal && !matches!(ids, [ObjectId::Track(_)])) {
+            return None;
+        }
+        // 45° tracks as a unit diagonal, so dragging can snap to whole grid steps.
+        if d.x.abs() == d.y.abs() {
+            return Some(Point::new(d.x.signum(), d.y.signum()));
+        }
+        Some(d)
     }
 
     fn highlight(&mut self, selection: &[ObjectId], hover: Option<ObjectId>) {

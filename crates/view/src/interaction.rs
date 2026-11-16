@@ -97,7 +97,19 @@ pub trait Target {
     fn edit(&mut self, edit: Edit<Self::Id>, group: Option<u64>) -> Result<Option<String>, String>;
     fn close_group(&mut self);
     fn undo(&mut self);
+    /// Take back the open undo group `group` without a redo step (see
+    /// [`Document::retract`](crate::Document::retract)).
+    fn retract(&mut self, group: u64);
     fn highlight(&mut self, selection: &[Self::Id], hover: Option<Self::Id>);
+    /// What a double click on `id` selects (a wire: its whole chain).
+    fn chain(&self, id: Self::Id) -> Vec<Self::Id> {
+        vec![id]
+    }
+    /// The only direction dragging `ids` may move them in (a single straight segment
+    /// moves perpendicular to itself): a vector along it, or `None` if free.
+    fn drag_axis(&self, _ids: &[Self::Id]) -> Option<Point> {
+        None
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -126,6 +138,10 @@ struct Drag<I> {
     anchor: Point,
     /// Total offset applied so far.
     moved: Point,
+    /// Rotation applied so far (about `anchor`, before the offset).
+    angle: Angle,
+    /// Direction a single segment is constrained to (see [`Target::drag_axis`]).
+    axis: Option<Point>,
     group: u64,
     /// Something was executed in `group` (and can be undone on cancel).
     executed: bool,
@@ -201,6 +217,8 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
             start: pointer,
             anchor,
             moved: Point::ZERO,
+            angle: Angle::ZERO,
+            axis: None,
             group,
             executed: true,
             carry: true,
@@ -344,25 +362,118 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
             return None;
         }
         let anchor = t.anchor(grabbed).unwrap_or(start);
-        Some(Drag { ids, start, anchor, moved: Point::ZERO, group: new_group(), executed: false, carry: false })
+        let axis = t.drag_axis(&ids);
+        Some(Drag {
+            ids,
+            start,
+            anchor,
+            moved: Point::ZERO,
+            angle: Angle::ZERO,
+            axis,
+            group: new_group(),
+            executed: false,
+            carry: false,
+        })
+    }
+
+    /// Offset of a drag to pointer `p`: snapped, and along the segment's axis if any.
+    fn drag_offset(&self, drag: &Drag<I>, p: Point) -> Point {
+        let free = p - drag.start;
+        let Some(axis) = drag.axis.filter(|_| drag.angle == Angle::ZERO) else {
+            return self.snap(drag.anchor + free) - drag.anchor;
+        };
+        // Perpendicular to the segment.
+        let n = Point::new(-axis.y, axis.x);
+        if n.x == 0 || n.y == 0 {
+            let snapped = self.snap(drag.anchor + free) - drag.anchor;
+            return if n.x == 0 { Point::new(0, snapped.y) } else { Point::new(snapped.x, 0) };
+        }
+        let (nx, ny) = (n.x as f64, n.y as f64);
+        let k = (free.x as f64 * nx + free.y as f64 * ny) / (nx * nx + ny * ny);
+        if n.x.abs() == n.y.abs() && self.snap && self.grid > 0 {
+            // 45°: whole grid steps on both axes.
+            let unit = Point::new(n.x.signum(), n.y.signum());
+            let steps = (k * nx.abs() / self.grid as f64).round() as Coord;
+            return Point::new(unit.x * steps * self.grid, unit.y * steps * self.grid);
+        }
+        Point::new((k * nx).round() as Coord, (k * ny).round() as Coord)
     }
 
     fn drag_to<T: Target<Id = I>>(&mut self, t: &mut T, drag: &mut Drag<I>, p: Point) {
-        let target = self.snap(drag.anchor + (p - drag.start)) - drag.anchor;
-        let step = target - drag.moved;
-        if step == Point::ZERO {
+        let target = self.drag_offset(drag, p);
+        if target == drag.moved {
             return;
         }
-        match t.edit(Edit::Move { ids: drag.ids.clone(), delta: step }.carried(drag.carry), Some(drag.group)) {
-            Ok(note) => {
-                drag.moved = target;
-                drag.executed = true;
-                if note.is_some() {
-                    self.message = note;
+        if drag.carry {
+            // A carried paste moves by steps: its undo group holds the paste itself.
+            let step = target - drag.moved;
+            match t.edit(Edit::Move { ids: drag.ids.clone(), delta: step }.carried(true), Some(drag.group)) {
+                Ok(note) => {
+                    drag.moved = target;
+                    drag.executed = true;
+                    if note.is_some() {
+                        self.message = note;
+                    }
+                }
+                Err(e) => self.message = Some(e),
+            }
+            return;
+        }
+        drag.moved = target;
+        self.replay(t, drag);
+    }
+
+    /// Redo a drag from its start: undo what it did so far and apply its whole rotation
+    /// and offset at once. What stays attached is then decided by the geometry at the
+    /// start, never by what the drag passed over.
+    fn replay<T: Target<Id = I>>(&mut self, t: &mut T, drag: &mut Drag<I>) {
+        if drag.executed {
+            t.retract(drag.group);
+            drag.executed = false;
+        }
+        let mut edits = Vec::new();
+        if drag.angle != Angle::ZERO {
+            edits.push(Edit::Rotate { ids: drag.ids.clone(), center: drag.anchor, angle: drag.angle });
+        }
+        if drag.moved != Point::ZERO {
+            edits.push(Edit::Move { ids: drag.ids.clone(), delta: drag.moved });
+        }
+        for edit in edits {
+            match t.edit(edit, Some(drag.group)) {
+                Ok(note) => {
+                    drag.executed = true;
+                    if note.is_some() {
+                        self.message = note;
+                    }
+                }
+                Err(e) => {
+                    self.message = Some(e);
+                    break;
                 }
             }
-            Err(e) => self.message = Some(e),
         }
+    }
+
+    /// Double click: select the chain of the item under the pointer (with `add`, add it
+    /// to the selection).
+    pub fn double_click<T: Target<Id = I>>(&mut self, t: &mut T, add: bool) {
+        let Some(h) = self.hover else { return };
+        match self.state {
+            State::Idle => {}
+            // The second press may not have been released yet: the double click uses it up.
+            State::Pressed { .. } => self.state = State::Idle,
+            _ => return,
+        }
+        let chain = t.chain(h);
+        if !add {
+            self.selection.clear();
+        }
+        for id in chain {
+            if !self.selection.contains(&id) {
+                self.selection.push(id);
+            }
+        }
+        self.refresh(t);
     }
 
     pub fn key<T: Target<Id = I>>(&mut self, t: &mut T, action: KeyAction) {
@@ -370,10 +481,10 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
         match action {
             KeyAction::Escape => match std::mem::replace(&mut self.state, State::Idle) {
                 State::Dragging(drag) => {
-                    t.close_group();
                     if drag.executed {
-                        t.undo();
+                        t.retract(drag.group);
                     }
+                    t.close_group();
                 }
                 State::Boxing { .. } | State::Pressed { .. } => {}
                 State::Idle => self.selection.clear(),
@@ -392,11 +503,20 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
             KeyAction::Rotate => {
                 let angle = Angle::DEG90;
                 if let State::Dragging(drag) = &mut self.state {
-                    let center = drag.anchor + drag.moved;
-                    let edit = Edit::Rotate { ids: drag.ids.clone(), center, angle }.carried(drag.carry);
-                    match t.edit(edit, Some(drag.group)) {
-                        Ok(_) => drag.executed = true,
-                        Err(e) => self.message = Some(e),
+                    if drag.carry {
+                        let center = drag.anchor + drag.moved;
+                        let edit = Edit::Carry(Box::new(Edit::Rotate { ids: drag.ids.clone(), center, angle }));
+                        match t.edit(edit, Some(drag.group)) {
+                            Ok(_) => drag.executed = true,
+                            Err(e) => self.message = Some(e),
+                        }
+                    } else {
+                        // Rotating about the anchor, then moving, is the same as moving,
+                        // then rotating about the moved anchor.
+                        drag.angle = drag.angle.rotated_by(angle);
+                        let mut drag = drag.clone();
+                        self.replay(t, &mut drag);
+                        self.state = State::Dragging(drag);
                     }
                 } else if let Some(center) = self.pivot(t) {
                     let ids = self.selection.clone();

@@ -81,6 +81,7 @@ fn drag_a_reference_then_move_its_footprint() {
     doc.execute(Command::FlipSide {
         ids: vec![ObjectId::Footprint(fp_before), ObjectId::FootprintField(field)],
         axis_x: center.x,
+        keep_connected: false,
     })
     .unwrap();
     let p = doc.project();

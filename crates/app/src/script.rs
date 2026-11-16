@@ -1,6 +1,7 @@
 //! Scripted input for screenshots and manual testing (development aid):
 //! `--script "key W; click 0,0; move 10.16,5.08; wait 5"`. Coordinates are schematic
-//! world millimetres (`board` switches to the board tab and coordinates, `schematic` back; `ui-click
+//! world millimetres (`board` switches to the board tab and coordinates, `schematic` back;
+//! `press x,y`, `move x,y`, `release x,y` drag, `double-click x,y`; `ui-click
 //! x,y` clicks at a screen position in points, `ui-double-click x,y` / `ui-right-click x,y`
 //! likewise, `ui-move x,y` hovers there, `type TEXT` types text); each step runs a few
 //! frames after the previous one.
@@ -29,6 +30,8 @@ enum Step {
     Move([f64; 2]),
     Press([f64; 2]),
     Release([f64; 2]),
+    /// Two clicks in one frame (a double-click).
+    Double([f64; 2]),
     /// Screen position in points (for clicking widgets).
     Screen(Step2),
     Wait(u32),
@@ -76,6 +79,12 @@ impl Script {
                     let p = point()?;
                     steps.extend([Step::Move(p), Step::Press(p), Step::Release(p)]);
                 }
+                "press" => steps.push_back(Step::Press(point()?)),
+                "release" => steps.push_back(Step::Release(point()?)),
+                "double-click" => {
+                    let p = point()?;
+                    steps.extend([Step::Move(p), Step::Double(p)]);
+                }
                 "ui-click" => {
                     let [x, y] = point()?;
                     let p = Pos2::new(x as f32, y as f32);
@@ -120,6 +129,14 @@ impl Script {
             return Vec::new();
         }
         let Some(step) = self.steps.pop_front() else { return Vec::new() };
+        // A view that isn't laid out yet (just switched to) maps to no position: wait.
+        if let Step::Move(p) | Step::Press(p) | Step::Release(p) | Step::Double(p) = step
+            && !to_screen(p).is_finite()
+        {
+            self.steps.push_front(step);
+            self.wait = 1;
+            return Vec::new();
+        }
         self.wait = GAP;
         let m = Modifiers::NONE;
         match step {
@@ -138,6 +155,14 @@ impl Script {
                 pressed: matches!(step, Step::Press(_)),
                 modifiers: m,
             }],
+            Step::Double(p) => [true, false, true, false]
+                .map(|pressed| Event::PointerButton {
+                    pos: to_screen(p),
+                    button: PointerButton::Primary,
+                    pressed,
+                    modifiers: m,
+                })
+                .to_vec(),
             Step::Text(t) => vec![Event::Text(t)],
             Step::Screen(Step2::Move(p)) => vec![Event::PointerMoved(p)],
             Step::Screen(Step2::Double(pos)) => [true, false, true, false]
@@ -172,8 +197,12 @@ mod tests {
 
     #[test]
     fn parse_steps() {
-        let s = Script::parse("key W; click 1.27,-2.54; wait 4; ui-move 10,20; type abc; ui-double-click 1,2").unwrap();
-        assert_eq!(s.steps.len(), 10);
+        let s = Script::parse(
+            "key W; click 1.27,-2.54; wait 4; ui-move 10,20; type abc; ui-double-click 1,2; press 0,0; release 1,1; \
+             double-click 2,2",
+        )
+        .unwrap();
+        assert_eq!(s.steps.len(), 14);
         assert!(Script::parse("jump 1,2").is_err());
         assert!(Script::parse("click 1").is_err());
         assert!(Script::parse("key NoSuchKey").is_err());

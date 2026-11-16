@@ -3,6 +3,7 @@
 
 mod arc_tracks;
 mod clipboard;
+mod drag;
 mod footprint_fields;
 mod frames;
 mod gerber;

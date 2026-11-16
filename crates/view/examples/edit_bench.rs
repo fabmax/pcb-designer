@@ -95,6 +95,30 @@ fn main() {
         times[times.len() - 1]
     );
 
+    // The same on the board: a footprint, with its tracks kept attached (each step
+    // replays the drag from its start).
+    let fp = doc.project().board.footprints.iter().nth(n / 2).unwrap().clone();
+    let mut it_b = Interaction::new(mm(0.5));
+    it_b.set_selection(&mut doc.target(ViewId::Board), vec![ObjectId::Footprint(fp.id)]);
+    it_b.pointer(&mut doc.target(ViewId::Board), &input(fp.pos, true, true, false));
+    let mut times = Vec::new();
+    for i in 1..=100 {
+        let p = fp.pos + Point::mm(i as f64 * 0.3, (i % 5) as f64 * 0.5);
+        let t = Instant::now();
+        it_b.pointer(&mut doc.target(ViewId::Board), &input(p, false, true, false));
+        // As the app does while dragging.
+        doc.update_connectivity(true);
+        times.push(t.elapsed().as_secs_f64() * 1e3);
+    }
+    it_b.pointer(&mut doc.target(ViewId::Board), &input(fp.pos, false, false, true));
+    times.sort_by(f64::total_cmp);
+    println!(
+        "drag one footprint + connectivity (per frame): p50 {:.3} ms  p95 {:.3} ms  max {:.3} ms",
+        times[times.len() / 2],
+        times[times.len() * 95 / 100],
+        times[times.len() - 1]
+    );
+
     let t = Instant::now();
     let mut hits = 0;
     for i in 0..1000 {

@@ -165,10 +165,13 @@ pub enum Command {
         #[serde(default)]
         drill: Option<Coord>,
     },
-    /// Move objects. With `keep_connected`, schematic wires attached to moved pins,
-    /// wire ends, labels and junctions follow: horizontal and vertical wires stay so by
-    /// shifting sideways (stretching the wires at their other end, or adding a short
-    /// wire there if needed); other wires stretch.
+    /// Move objects. With `keep_connected`, what is attached stays attached. Schematic
+    /// wires attached to moved pins, wire ends, labels and junctions follow: horizontal and
+    /// vertical wires stay so by shifting sideways (stretching the wires at their other
+    /// end, or adding a short wire there if needed); other wires stretch. Ends of moved
+    /// wires on things that stay put are held there (a short wire joins them). On the
+    /// board, tracks ending on moved pads and vias move along, and moved tracks stay on
+    /// the copper they ended on (sliding along the next track, or joined by a new one).
     Move {
         ids: Vec<ObjectId>,
         delta: Point,
@@ -179,7 +182,7 @@ pub enum Command {
         ids: Vec<ObjectId>,
         center: Point,
         angle: Angle,
-        /// Attached schematic wires stretch to stay connected.
+        /// Attached schematic wires and tracks stretch to stay connected.
         #[serde(default)]
         keep_connected: bool,
     },
@@ -191,10 +194,13 @@ pub enum Command {
         #[serde(default)]
         keep_connected: bool,
     },
-    /// Move footprints to the other board side, mirrored across `x = axis_x`.
+    /// Move footprints to the other board side, mirrored across `x = axis_x`. With
+    /// `keep_connected`, tracks ending on their pads stretch to stay on them.
     FlipSide {
         ids: Vec<ObjectId>,
         axis_x: Coord,
+        #[serde(default)]
+        keep_connected: bool,
     },
     Delete {
         ids: Vec<ObjectId>,
@@ -458,7 +464,7 @@ impl Command {
                 let t = Transform::new(Point::new(2 * axis_x, 0), Angle::ZERO, true);
                 transform_connected(tx, &ids, t, Edit::Mirror, keep_connected)
             }
-            Command::FlipSide { ids, axis_x } => {
+            Command::FlipSide { ids, axis_x, keep_connected } => {
                 // Footprint texts flip with their footprint.
                 let ids: Vec<ObjectId> =
                     ids.into_iter().filter(|id| !matches!(id, ObjectId::FootprintField(_))).collect();
@@ -466,7 +472,12 @@ impl Command {
                     return Err(CommandError::Invalid(format!("only footprints can change sides, got {bad:?}")));
                 }
                 let t = Transform::new(Point::new(2 * axis_x, 0), Angle::ZERO, true);
-                transform_objects(tx, &ids, t, Edit::Flip)
+                if !keep_connected {
+                    return transform_objects(tx, &ids, t, Edit::Flip);
+                }
+                let tracks = crate::track_band::plan(tx.project(), &ids, &t);
+                transform_objects(tx, &ids, t, Edit::Flip)?;
+                crate::track_band::apply(tx, tracks, &t)
             }
             Command::Delete { ids } => delete(tx, &ids),
             Command::Insert { objects } => {
@@ -991,42 +1002,14 @@ fn transform_connected(
     if !keep_connected {
         return transform_objects(tx, ids, t, edit);
     }
-    use crate::rubber_band::{Kind, follow};
-    let wire_points = connection_points(tx.project(), ids, Kind::Wire);
-    let bus_points = connection_points(tx.project(), ids, Kind::Bus);
+    use crate::rubber_band::{Kind, apply, plan};
+    let wires = plan(tx.project(), Kind::Wire, ids, &t);
+    let buses = plan(tx.project(), Kind::Bus, ids, &t);
+    let tracks = crate::track_band::plan(tx.project(), ids, &t);
     transform_objects(tx, ids, t, edit)?;
-    follow(tx, Kind::Wire, ids, &wire_points, &t)?;
-    follow(tx, Kind::Bus, ids, &bus_points, &t)
-}
-
-/// Points of schematic objects where wires (or bus wires) attach: (sheet, point).
-fn connection_points(p: &Project, ids: &[ObjectId], kind: crate::rubber_band::Kind) -> Vec<(Id, Point)> {
-    use crate::rubber_band::Kind;
-    let s = &p.schematic;
-    let mut out = Vec::new();
-    for &id in ids {
-        match (kind, id) {
-            (Kind::Wire, ObjectId::Symbol(i)) => {
-                if let Some(inst) = s.symbols.get(i) {
-                    out.extend(crate::query::pin_positions(p, i).into_iter().map(|(_, _, pt)| (inst.sheet, pt)));
-                }
-            }
-            (Kind::Wire, ObjectId::Wire(i)) => {
-                out.extend(s.wires.get(i).into_iter().flat_map(|w| [(w.sheet, w.a), (w.sheet, w.b)]))
-            }
-            (Kind::Bus, ObjectId::BusWire(i)) => {
-                out.extend(s.bus_wires.get(i).into_iter().flat_map(|w| [(w.sheet, w.a), (w.sheet, w.b)]))
-            }
-            (Kind::Wire, ObjectId::BusEntry(i)) => out.extend(s.bus_entries.get(i).map(|e| (e.sheet, e.wire_end()))),
-            (Kind::Bus, ObjectId::BusEntry(i)) => out.extend(s.bus_entries.get(i).map(|e| (e.sheet, e.pos))),
-            (_, ObjectId::Label(i)) => out.extend(s.labels.get(i).map(|l| (l.sheet, l.pos))),
-            (_, ObjectId::Junction(i)) => out.extend(s.junctions.get(i).map(|j| (j.sheet, j.pos))),
-            _ => {}
-        }
-    }
-    out.sort_by_key(|&(s, p)| (s, p.x, p.y));
-    out.dedup();
-    out
+    apply(tx, wires, &t)?;
+    apply(tx, buses, &t)?;
+    crate::track_band::apply(tx, tracks, &t)
 }
 
 fn transform_objects(tx: &mut Transaction, ids: &[ObjectId], t: Transform, edit: Edit) -> Result<(), CommandError> {

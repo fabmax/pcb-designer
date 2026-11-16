@@ -28,6 +28,19 @@ holes); double-clicking a single file shows only that one, the layers button tog
 them, and hovering names the file, aperture and its function. Open the PCB tab side by
 side to compare. Agents can look too: `screenshot` with target `gerber`.
 
+## Selecting and dragging
+
+Dragging keeps things connected, in the schematic and on the board. Wires attached to a
+moved symbol follow it, and horizontal and vertical wires stay so. A wire end that sat on
+something that stays put (a pin, a label, a branch) stays there, with a short wire joining
+it. A single horizontal or vertical wire segment only moves across itself, and its
+neighbours stretch. On the board, tracks follow a moved footprint or via, and a dragged
+track segment moves across itself; track ends slide along the next track to keep 45° and
+90° corners. Collinear wires a drag leaves end to end become one. Esc cancels a drag.
+
+Double-click a wire to select its whole run up to branches and pins, or a track up to
+pads, vias and branches; with ⇧ or ⌘ it's added to the selection.
+
 ## Copy and paste
 
 ⌘C / ⌘X / ⌘V (Ctrl on Windows and Linux) copy, cut and paste the selection; ⌘D

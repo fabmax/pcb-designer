@@ -163,6 +163,29 @@ impl Track {
         Track { id: Id::new(), layer, a, b, width, mid: None }
     }
 
+    /// Move the ends to `a` and `b`. An arc keeps its bulge: the mid point's offset from
+    /// the chord, relative to the chord's length (a translation moves it along).
+    pub fn set_ends(&mut self, a: Point, b: Point) {
+        if let Some(m) = self.mid {
+            let (old, new) = (self.b - self.a, b - a);
+            let (ol, nl) = (old.length(), new.length());
+            self.mid = if ol == 0.0 || nl == 0.0 {
+                None
+            } else {
+                // Mid point in chord coordinates (along, across), scaled to the new chord.
+                let rel = m - self.a;
+                let (ox, oy) = (old.x as f64 / ol, old.y as f64 / ol);
+                let along = (rel.x as f64 * ox + rel.y as f64 * oy) / ol;
+                let across = (-rel.x as f64 * oy + rel.y as f64 * ox) / ol;
+                let (nx, ny) = (new.x as f64 / nl, new.y as f64 / nl);
+                let (u, v) = (along * nl, across * nl);
+                Some(a + Point::new((u * nx - v * ny).round() as Coord, (u * ny + v * nx).round() as Coord))
+            };
+        }
+        self.a = a;
+        self.b = b;
+    }
+
     /// The arc through `a`, `mid` and `b` as a [`Shape::Arc`]; `None` when straight (no
     /// mid point, or the three points on a line).
     pub fn arc(&self) -> Option<Shape> {

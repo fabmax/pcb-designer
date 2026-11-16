@@ -343,7 +343,7 @@ fn changing_the_footprint_variant_updates_copper() {
 fn flipping_a_footprint_disconnects_top_tracks() {
     let (mut b, [f1, _], _) = routed_series();
     let x = b.ed.project().board.footprints.get(f1).unwrap().pos.x;
-    b.ed.execute(Command::FlipSide { ids: vec![ObjectId::Footprint(f1)], axis_x: x }).unwrap();
+    b.ed.execute(Command::FlipSide { ids: vec![ObjectId::Footprint(f1)], axis_x: x, keep_connected: false }).unwrap();
     assert_eq!(b.bc().unrouted(), 1, "SMD pads moved to the bottom");
 }
 

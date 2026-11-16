@@ -64,6 +64,11 @@ impl History {
         Some(e)
     }
 
+    /// The undo group of the top entry, while it is open.
+    pub fn open_group(&self) -> Option<u64> {
+        self.undo.last().and_then(|e| e.group)
+    }
+
     /// Stop merging into the current top entry.
     pub fn close_group(&mut self) {
         if let Some(top) = self.undo.last_mut() {

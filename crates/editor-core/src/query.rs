@@ -156,3 +156,123 @@ pub fn part_statuses(project: &Project, libraries: &[&Library]) -> Vec<PartStatu
         })
         .collect()
 }
+
+/// Positions of the pins of sub-sheet `sheet`'s symbol (on its parent sheet).
+pub fn sheet_pin_points(project: &Project, sheet: Id) -> Vec<Point> {
+    project.schematic.sheet_symbol(sheet).map(|(_, pins)| pins.into_iter().map(|p| p.pos).collect()).unwrap_or_default()
+}
+
+/// The wires (or bus wires) of the chain through `id`: from segment to segment through
+/// points where exactly two of them meet, stopping at branches (three or more ends, or an
+/// end on the inside of another segment), dangling ends, pins, bus entries and sheet pins.
+/// Labels and junctions don't stop it. Includes `id`; empty if `id` isn't a wire.
+pub fn wire_chain(project: &Project, id: ObjectId) -> Vec<ObjectId> {
+    use crate::rubber_band::Kind;
+    let Some((kind, start)) = Kind::of(id) else { return Vec::new() };
+    let Some(first) = kind.get(project, start) else { return Vec::new() };
+    let sheet = first.sheet;
+    let segs: Vec<_> = kind.segments(project).into_iter().filter(|s| s.sheet == sheet).collect();
+    let mut ends: std::collections::HashMap<Point, Vec<usize>> = Default::default();
+    for (i, s) in segs.iter().enumerate() {
+        ends.entry(s.a).or_default().push(i);
+        ends.entry(s.b).or_default().push(i);
+    }
+    // Things that end a chain.
+    let s = &project.schematic;
+    let mut stops: std::collections::HashSet<Point> = Default::default();
+    match kind {
+        Kind::Wire => {
+            for i in s.symbols.iter().filter(|i| i.sheet == sheet) {
+                stops.extend(pin_positions(project, i.id).into_iter().map(|(_, _, p)| p));
+            }
+            stops.extend(s.bus_entries.iter().filter(|e| e.sheet == sheet).map(|e| e.wire_end()));
+            for sub in s.sheets.iter().filter(|x| x.parent == Some(sheet)) {
+                stops.extend(sheet_pin_points(project, sub.id));
+            }
+        }
+        Kind::Bus => stops.extend(s.bus_entries.iter().filter(|e| e.sheet == sheet).map(|e| e.pos)),
+    }
+    let passes = |q: Point| {
+        !stops.contains(&q)
+            && ends[&q].len() == 2
+            && !segs.iter().any(|o| crate::connectivity::on_segment_inside(q, o.a, o.b))
+    };
+    let Some(first) = segs.iter().position(|s| s.id == start) else { return Vec::new() };
+    let mut seen = vec![false; segs.len()];
+    seen[first] = true;
+    let mut work = vec![first];
+    let mut out = Vec::new();
+    while let Some(i) = work.pop() {
+        out.push(kind.object_id(segs[i].id));
+        for q in [segs[i].a, segs[i].b] {
+            if !passes(q) {
+                continue;
+            }
+            for &j in &ends[&q] {
+                if !seen[j] {
+                    seen[j] = true;
+                    work.push(j);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The tracks of the chain through track `id` on its layer: from track to track through
+/// points where exactly two track ends meet, stopping at pads, vias, branches and
+/// dangling ends. Includes `id`; empty if there is no such track.
+pub fn track_chain(project: &Project, id: Id) -> Vec<Id> {
+    let b = &project.board;
+    let Some(first) = b.tracks.get(id) else { return Vec::new() };
+    let layer = first.layer;
+    let bit = crate::copper::layer_bit(layer);
+    let tracks: Vec<&Track> = b.tracks.iter().filter(|t| t.layer == layer).collect();
+    let mut ends: std::collections::HashMap<Point, Vec<usize>> = Default::default();
+    for (i, t) in tracks.iter().enumerate() {
+        ends.entry(t.a).or_default().push(i);
+        ends.entry(t.b).or_default().push(i);
+    }
+    // Copper that ends a chain: pads and vias on the layer.
+    let mut copper: Vec<(Rect, crate::copper::Geo)> = Vec::new();
+    for f in b.footprints.iter() {
+        for (_, layers, geo) in crate::copper::footprint_copper(project, f) {
+            if layers & bit != 0 {
+                copper.push((geo.bounds(), geo));
+            }
+        }
+    }
+    for v in b.vias.iter().filter(|v| crate::copper::via_layers(b, v) & bit != 0) {
+        let geo = crate::copper::via_geo(v);
+        copper.push((geo.bounds(), geo));
+    }
+    let passes = |q: Point| ends[&q].len() == 2 && !copper.iter().any(|(r, g)| r.contains(q) && g.contains(q));
+    let Some(first) = tracks.iter().position(|t| t.id == id) else { return Vec::new() };
+    let mut seen = vec![false; tracks.len()];
+    seen[first] = true;
+    let mut work = vec![first];
+    let mut out = Vec::new();
+    while let Some(i) = work.pop() {
+        out.push(tracks[i].id);
+        for q in [tracks[i].a, tracks[i].b] {
+            if !passes(q) {
+                continue;
+            }
+            for &j in &ends[&q] {
+                if !seen[j] {
+                    seen[j] = true;
+                    work.push(j);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// World positions of the pins of a placed symbol (cheaper than [`pin_positions`]).
+pub fn pin_points(project: &Project, symbol: Id) -> Vec<Point> {
+    let Some(inst) = project.schematic.symbols.get(symbol) else { return Vec::new() };
+    let Some(sym) = symbol_of_instance(project, inst) else { return Vec::new() };
+    let t = inst.transform();
+    sym.pins.iter().map(|p| t.point(p.pos)).collect()
+}

@@ -174,7 +174,7 @@ fn footprint_flip_mirrors_pads() {
     let pads = |ed: &Editor| pad_positions(ed.project(), fp);
     let x0 = ed.project().board.footprints.get(fp).unwrap().pos.x;
     let before = pads(&ed);
-    ed.execute(Command::FlipSide { ids: vec![ObjectId::Footprint(fp)], axis_x: x0 }).unwrap();
+    ed.execute(Command::FlipSide { ids: vec![ObjectId::Footprint(fp)], axis_x: x0, keep_connected: false }).unwrap();
     let after = pads(&ed);
     assert_eq!(ed.project().board.footprints.get(fp).unwrap().side, Side::Bottom);
     // Pad 1 moved from the left to the right of the footprint origin.

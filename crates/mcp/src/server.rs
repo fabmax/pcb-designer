@@ -85,7 +85,11 @@ add_bus_entry) only group signals: name a bus with a label whose name is a bus n
 (D[0..7], {SDA SCL}, I2C{SDA SCL} with members I2C.SDA, I2C.SCL) placed on a bus wire; signals \
 leave through bus entries on wires labelled with a member name. Bus wires never connect \
 to wires or pins. Pins left open on purpose get a no-connect flag (add_no_connect at the pin \
-end; it moves and is deleted with the symbol); other unconnected pins are reported as problems.
+end; it moves and is deleted with the symbol); other unconnected pins are reported as problems. \
+move, rotate, mirror and flip_side take keep_connected (default false), as a drag in the GUI: \
+wires attached to what moves follow (keeping horizontal and vertical wires so), ends of moved \
+wires stay on what stays put (joined by a short wire), and on the board tracks ending on moved \
+pads and vias move along, sliding along the next track to keep their angles.
 
 Copper zones and keepouts are inserted with execute (command insert, object zone or keepout). \
 A zone fills its outline minus its holes on one layer with its net (empty net: isolated \

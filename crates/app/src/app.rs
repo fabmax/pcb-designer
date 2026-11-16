@@ -3134,11 +3134,15 @@ impl TreeBehavior<'_> {
             {
                 pane.it.pointer(&mut doc.target(view), &input);
             }
-            // Double-clicking a sheet symbol opens the sheet.
-            if response.double_clicked()
-                && let Some(ObjectId::Sheet(s)) = pane.it.hover
-            {
-                self.deferred.push(Deferred::EnterSheet(s));
+            // Double-clicking a sheet symbol opens the sheet; on a wire or track it
+            // selects the whole chain.
+            if response.double_clicked() {
+                if let Some(ObjectId::Sheet(s)) = pane.it.hover {
+                    self.deferred.push(Deferred::EnterSheet(s));
+                } else {
+                    let add = ui.input(|i| i.modifiers.shift || i.modifiers.command);
+                    pane.it.double_click(&mut doc.target(view), add);
+                }
             }
             if pane.it.is_dragging() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);

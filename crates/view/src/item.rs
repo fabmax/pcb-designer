@@ -913,6 +913,11 @@ impl Target for ItemTarget<'_> {
         self.view.sync(self.doc);
     }
 
+    fn retract(&mut self, group: u64) {
+        self.doc.retract(group);
+        self.view.sync(self.doc);
+    }
+
     fn highlight(&mut self, selection: &[Elem], hover: Option<Elem>) {
         self.view.sync(self.doc);
         self.view.set_highlight(selection, hover);

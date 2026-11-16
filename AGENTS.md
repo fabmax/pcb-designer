@@ -122,10 +122,13 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
     export)
   - `--panel messages` (repeatable; shows a panel for this run only, see `dock.rs`)
   - `--script "board; ui-click X,Y; ui-move X,Y; key W; click X,Y; wait N"`, plus
-    `ui-double-click X,Y`, `ui-right-click X,Y` and `type TEXT`. Keys take modifiers
+    `press X,Y` / `move X,Y` / `release X,Y` (a drag), `double-click X,Y`,
+    `ui-double-click X,Y`, `ui-right-click X,Y` and `type TEXT`. Hover the canvas
+    (`move X,Y`) before keys meant for it. Keys take modifiers
     (`key Cmd+D`); `key Cmd+C` / `Cmd+V` use the real system clipboard. Put a `wait 30` before a
     double-click: egui counts clicks less than 0.3 s apart as one triple-click.
-  - World coordinates are in mm (schematic and board only); `ui-*` steps take screen
+  - World coordinates are in mm (schematic and board only; a sheet's origin is its page's
+    lower left corner, the demo's parts sit around 100,100); `ui-*` steps take screen
     points (use them in library and Gerber tabs).
   - A script brings the schematic tab to the front at its start (unless `--show` opened
     a tab) and on `board` / `schematic` steps; clicks may switch tabs afterwards.

@@ -73,6 +73,16 @@ impl Editor {
         Some(effective)
     }
 
+    /// Take back the top undo step if it is the open group `group`, without a redo step
+    /// (a drag replaying itself from its start).
+    pub fn retract(&mut self, group: u64) -> Option<ChangeSet> {
+        if self.history.open_group() != Some(group) {
+            return None;
+        }
+        let entry = self.history.pop_undo()?;
+        Some(apply_reverse(&mut self.project, &entry.changes))
+    }
+
     pub fn redo(&mut self) -> Option<ChangeSet> {
         let entry = self.history.pop_redo()?;
         let effective = apply_forward(&mut self.project, &entry.changes);

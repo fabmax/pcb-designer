@@ -172,7 +172,12 @@ fn copper_touching_a_board_part_pad_is_a_short() {
     };
     assert!(check(&ed).iter().all(|v| v.kind != ViolationKind::Short), "nothing touches yet");
     // Flip it to the top, where the resistor's pads are, and run a track between them.
-    ed.execute(Command::FlipSide { ids: vec![ObjectId::Footprint(f)], axis_x: Point::mm(5.0, 5.0).x }).unwrap();
+    ed.execute(Command::FlipSide {
+        ids: vec![ObjectId::Footprint(f)],
+        axis_x: Point::mm(5.0, 5.0).x,
+        keep_connected: false,
+    })
+    .unwrap();
     let (a, b) = (pad_of(&ed, rf), pad_of(&ed, f));
     ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![a, b], width: None }).unwrap();
     let v = check(&ed);

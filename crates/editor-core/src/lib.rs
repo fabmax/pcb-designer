@@ -17,6 +17,7 @@ pub mod history;
 pub mod query;
 mod rubber_band;
 mod sync;
+mod track_band;
 pub mod transaction;
 mod union_find;
 pub mod zones;
