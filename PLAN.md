@@ -1,8 +1,8 @@
 # PCB Designer – Plan and design notes
 
 Requirements are in [pcb-designer.md](pcb-designer.md). This file holds the decisions,
-the current design of each area with the gotchas a change needs to know, and the list of
-things to do **later**.
+the current design of each area with the gotchas a change needs to know, the planned
+**next milestones**, and the list of things to do **later**.
 
 ## Decisions
 
@@ -560,6 +560,66 @@ Budget: about 10k footprints at 60 fps, an edit → board → GPU update within 
 Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 `sync_bench` (`spike`) and `--stress N`.
 
+## Next milestones
+
+Usability work collected from the Later list, in the suggested order. Remove a milestone
+when it's done; what it defers goes back to **Later**.
+
+**M11: Wires and tracks: select and drag**
+- Double click on a wire selects the whole wire instead of the clicked segment; the
+  same for a routed track on the board.
+- Dragging wire segments themselves (the neighbours stretch and stay orthogonal, like
+  `rubber_band`).
+- Dragging tracks that stay connected.
+- Wires that overlap while being dragged don't connect.
+
+**M12: Drawing wires and tracks**
+- Wire posture that flips automatically with the cursor (`/` stays as the override).
+- More corner styles for wires and buses, chosen with icon buttons in the tool panel.
+- Drawing arc tracks: an "Arc" corner style while routing, rounding the corner between
+  two tracks (arcs come from import and MCP today).
+- Clearance checking while routing; keepouts enforced while routing.
+- Blind and buried vias in the UI.
+
+**M13: Texts**
+- Editing text on the canvas.
+- Multi-line text: the font stacks lines, but the Text properties field is single-line.
+- Footprint texts stay upright (readable) when a footprint turns past 90°.
+- Highlight the part a text belongs to while dragging the text.
+- Replace the placeholder stroke font.
+
+**M14: Clipboard, board parts and sheets**
+- Board parts: copy/paste and duplicate on the board; a "Place board part" picker in the
+  PCB tool bar; editing their reference and value on the board (read-only today).
+- Copying sheet symbols (a deep copy of the sub-sheet).
+- Moving objects between sheets; re-parenting sheets.
+
+**M15: Measuring and zone editing**
+- Measure tool: edge-to-edge (clearance) measuring, snapping to a pad's centre from
+  anywhere inside it.
+- Zones: drawing holes into an existing zone (cutout tool), editing corners on the
+  canvas.
+
+**M16: Part editors**
+- Drawing tools for arcs and polygons (numeric editing only today).
+- Pad arrays.
+- Per-pad mask and paste overrides (board-wide margins today), with the openings shown
+  and edited in the footprint editor.
+
+**M17: ERC review**
+- Excluding single findings (kept in the project).
+- Configurable severities and a pin conflict matrix.
+- A PWR_FLAG equivalent (a power input fed from a connector's passive pin needs a power
+  port today).
+
+**M18: Workspace and settings**
+- Save the window layout and pane sizes (eframe persistence is off).
+- UI scale; per-layer colour customisation.
+- MCP in settings: port, enable on startup.
+- Tool window bars: drag buttons to reorder or move between bars, two panels stacked on
+  one side.
+- A Nets panel; an MCP activity log panel listing agent edits.
+
 ## Later
 
 Things decided to do later, by area. Remove an entry when it's done; add what a change
@@ -572,56 +632,32 @@ defers.
   bus aliases; directive labels (net class flags); per-instance symbol field positions
   (fields follow the symbol); stored sheet pin positions (laid out by name); reused
   sheets are duplicated (no reuse here); bus entries of unusual sizes.
-- Multi-line text: the font stacks lines, but the Text properties field is single-line.
 - Drawing frames: custom KiCad drawing sheets (`.kicad_wks`; the default frame is used),
   an "update the date on save" option, text variables in schematic texts, printing and
   PDF export of the pages.
-- After sheets: re-parenting sheets, moving objects between sheets, hierarchical bus
-  pins (bus-named hierarchical labels are drawn as pins but don't connect), ERC of pin
-  directions across sheet pins.
-- ERC: a PWR_FLAG equivalent (a power input fed from a connector's passive pin needs a
-  power port today), configurable severities and a pin conflict matrix, and excluding
-  single findings.
+- After sheets: hierarchical bus pins (bus-named hierarchical labels are drawn as pins
+  but don't connect), ERC of pin directions across sheet pins.
 - KiCad's "unfold bus".
-- Wire posture that flips automatically with the cursor.
-- Dragging wire segments themselves.
-- Double click on a wire to select entire wire instead of only the clicked segment
-- When wires overlap during drag they should not connect.
-- Editing text on the canvas.
-- Per-pad mask and paste margins (board-wide today); inner-layer footprint graphics.
-- Footprint texts: re-sync fields when the library footprint's templates change; keep
-  texts upright (readable) when a footprint turns past 90°; fields of other texts than
-  `${REF}` / `${VALUE}`.
+- Inner-layer footprint graphics.
+- Footprint texts: re-sync fields when the library footprint's templates change; fields
+  of other texts than `${REF}` / `${VALUE}`.
 - Custom power symbols: power ports drawn from a symbol of their own (a part flagged
   power, no footprint), for glyphs beyond `PowerStyle`; maps to KiCad custom power
   symbols on import and export.
-- More corner styles for wires and buses
-- Icon buttons for corner styles in tool panel
 
 **Board**
-- Board parts: copy/paste and duplicate on the board; a "Place board part" picker in the
-  PCB tool bar; editing their reference and value on the board (read-only today).
 - Fabrication outputs: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel
   file extensions, `%TO` object attributes (nets, pads),
   silkscreen clipped at mask openings, mirrored bottom text in the editor; in the viewer:
   the mask area from the outline's contour (bounding box today), true clear polarity,
   G74 arcs, LM, thermal primitives, slots in drill files.
-- Clipboard: copying sheet symbols (a deep copy of the sub-sheet), carrying a paste
-  between the schematic and the board.
-- Measure tool: edge-to-edge (clearance) measuring, snapping to a pad's centre from anywhere inside it, an index for
-  `board_points` on huge boards.
-- Per-pad mask and paste overrides; mask/paste openings in the footprint editor.
-- Clearance checking while routing; push-and-shove; dragging tracks that stay connected.
-- Double click on a routed track to select entire track instead of only the clicked segment
-- Drawing arc tracks: an "Arc" corner style while routing, rounding the corner between
-  two tracks (arcs come from import and MCP today).
-- Blind and buried vias in the UI.
-- Highlight corresponding part when draging texts
+- Clipboard: carrying a paste between the schematic and the board.
+- Measure tool: an index for `board_points` on huge boards.
+- Push-and-shove routing.
 - Copper graphics inside footprints (from KiCad custom pads) counting as connections.
 - Incremental or background zone refill (only zones near the change).
-- Zones: drawing holes into an existing zone (cutout tool), editing corners on the
-  canvas, minimum width, hatched fill, a per-pad zone connection override; zones and
-  keepouts inside footprints; keepouts enforced while routing.
+- Zones: minimum width, hatched fill, a per-pad zone connection override; zones and
+  keepouts inside footprints.
 - Arc outlines in zone fills (circles are 16–64-segment polygons today).
 - Exact courtyard polygons in DRC (bounding boxes today).
 - A board drawing frame / fabrication drawing.
@@ -633,8 +669,7 @@ defers.
 - Autoplacement and autorouting.
 
 **Libraries and parts**
-- Drawing tools for arcs and polygons (numeric editing only today).
-- Pad arrays and footprint wizards.
+- Footprint wizards.
 - KiCad import: back-side footprint content, text boxes, De Morgan bodies, alternate pin
   functions, exact oval drills, 3D models.
 
@@ -649,17 +684,10 @@ defers.
 - Cache the project tree nodes if big libraries make the per-frame rebuild slow.
 
 **GUI**
-- Save the window layout and pane sizes (eframe persistence is off).
-- Per-layer colour customisation; UI scale.
-- Tool window bars: drag buttons to reorder or move between bars, a Nets panel, two
-  panels stacked on one side.
-- MCP in settings: Port, enable on startup
-- Replace the placeholder stroke font.
 - UI icons as SVG files instead of code (`icons.rs`): `egui_extras` `svg` feature
   (resvg) with `install_image_loaders`. Monochrome icons drawn white and tinted
   (`Image::tint`) to follow the theme; multi-colour ones (tab icons) as stacked tinted
   layers or with colours substituted before parsing. Possibly the app icon too.
-- An MCP activity log panel listing agent edits.
 - macOS: a Liquid Glass app icon made with Icon Composer (needs Xcode's `actool`); more
   content in the title strip; "Fill" on title double-click (no public API, zooms today).
 - Native menus don't show shortcuts without ⌘ (they would steal typing).
