@@ -17,3 +17,4 @@ mod pcb_tools;
 mod probe;
 mod sch_tools;
 mod sheets;
+mod text_edit;

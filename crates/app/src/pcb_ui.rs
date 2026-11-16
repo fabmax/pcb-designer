@@ -46,7 +46,10 @@ pub fn toolbar(
             Action::PcbKeepout,
         ),
     ];
-    let measure = [b(PcbTool::Measure, Icon::Measure, "Measure distances between two points.", Action::ToolMeasure)];
+    let measure = [
+        b(PcbTool::Text, Icon::Text, "Write a text on a silkscreen, copper or other layer.", Action::PcbText),
+        b(PcbTool::Measure, Icon::Measure, "Measure distances between two points.", Action::ToolMeasure),
+    ];
     let place = [ToolButton {
         tool: PcbTool::Place,
         icon: Icon::Place,
@@ -175,6 +178,46 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 } else {
                     "Through vias connect all copper layers. Sizes come from the design rules."
                 },
+            );
+        }
+        PcbTool::Text => {
+            grid(ui, "pcb_tool", |ui| {
+                label(ui, "Layer");
+                let board = &doc.project().board;
+                let name = |id: LayerId| {
+                    board.layers.iter().find(|l| l.id == id).map_or(format!("{id:?}"), |l| l.name.clone())
+                };
+                egui::ComboBox::from_id_salt("pcb_text_layer").selected_text(name(s.text_layer)).show_ui(ui, |ui| {
+                    for l in board.layers.iter().filter(|l| l.id != LayerId::OUTLINE) {
+                        ui.selectable_value(&mut s.text_layer, l.id, &l.name);
+                    }
+                });
+                ui.end_row();
+                label(ui, "Size");
+                if let (_, Some(v)) = units::drag(ui, s.text_size, mm(0.1), mm(100.0)) {
+                    s.text_size = v;
+                }
+                ui.end_row();
+                label(ui, "Stroke width");
+                if let (_, Some(v)) = units::drag(ui, s.text_width, mm(0.01), mm(10.0)) {
+                    s.text_width = v;
+                }
+                ui.end_row();
+                label(ui, "Alignment");
+                fields::halign_row(ui, &mut s.text_align);
+                ui.end_row();
+                label(ui, "Rotation");
+                if let Some(a) = fields::rotation_combo(ui, "pcb_text_rot", s.rotation, ["0°", "90°", "180°", "270°"])
+                {
+                    s.rotation = a;
+                }
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            hint(
+                ui,
+                "Click where the text goes and type. Shift+Enter starts a new line, Enter finishes. R rotates, \
+                 F moves it to the other side. Texts on copper have no net.",
             );
         }
         PcbTool::Outline => hint(ui, "Click two corners. The outline is a graphic on the Board Outline layer."),

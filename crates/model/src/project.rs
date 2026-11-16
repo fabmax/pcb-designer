@@ -44,6 +44,11 @@ impl Project {
             }
             *footprints_per_component.entry(f.component).or_default() += 1;
         }
+        for f in self.schematic.fields.iter() {
+            if !self.schematic.symbols.contains(f.symbol) {
+                issues.push(format!("symbol text {:?} references missing symbol", f.id));
+            }
+        }
         for f in self.board.fields.iter() {
             if !self.board.footprints.contains(f.footprint) {
                 issues.push(format!("footprint text {:?} references missing footprint", f.id));

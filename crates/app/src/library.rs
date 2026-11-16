@@ -5,6 +5,7 @@ use editor_core::clip::Clip;
 use egui::RichText;
 use model::*;
 use view::item::{Content, Elem, Item, ItemTarget, ItemView, update_item};
+use view::text_edit::EditSite;
 use view::tools::{Placer, Tool};
 use view::{Interaction, KeyAction, LibraryDoc};
 
@@ -47,6 +48,8 @@ pub struct LibraryEditor {
     pub message: Option<String>,
     /// "Save a copy…" was clicked (read-only built-in library).
     pub save_copy: bool,
+    /// The pointer went down on the text being edited and selects while it is held.
+    text_drag: bool,
 }
 
 impl view::project_libs::HasLibrary for LibraryEditor {
@@ -77,6 +80,7 @@ impl LibraryEditor {
             issues: (u64::MAX, Vec::new()),
             message: None,
             save_copy: false,
+            text_drag: false,
         }
     }
 
@@ -119,6 +123,9 @@ impl LibraryEditor {
     }
 
     fn set_open(&mut self, open: Open) {
+        if let Err(e) = self.lib.doc.commit_text_edit() {
+            self.message = Some(e);
+        }
         self.open = open;
         let item = match open {
             Open::Item(item) => Some(item),
@@ -143,6 +150,9 @@ impl LibraryEditor {
 
     pub fn set_tool(&mut self, tool: Tool) {
         let Open::Item(item) = self.open else { return };
+        if let Err(e) = self.lib.doc.commit_text_edit() {
+            self.message = Some(e);
+        }
         if !Tool::for_item(item).contains(&tool) {
             // Pin and pad share a shortcut.
             let alt = match tool {
@@ -421,6 +431,7 @@ impl LibraryEditor {
         let canvas = &mut self.canvas;
         let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
         self.item_toolbar(ui, rect, item, keymap);
+        let on_edit = self.text_edit_pointer(ui, &response, item);
         if self.placer.tool == Tool::Measure {
             let fp = match item {
                 Item::Footprint(f) => self.lib.doc.project().library.footprints.get(f),
@@ -453,6 +464,7 @@ impl LibraryEditor {
             self.placer.hover(world);
             if let Some(p) = world
                 && response.hovered()
+                && !on_edit
                 && ui.input(|i| i.pointer.primary_pressed())
             {
                 let r = self.placer.click(&mut self.lib.doc, &mut self.view, p);
@@ -467,9 +479,20 @@ impl LibraryEditor {
             let carried_off = self.it.is_carrying() && !response.hovered();
             if let Some(input) = canvas::pointer_input(ui, &response, &self.canvas, engaged, self.it.hover.is_some())
                 && !carried_off
+                && !on_edit
             {
                 let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
                 self.it.pointer(&mut t, &input);
+            }
+            // Double-clicking a text edits it in place.
+            if response.double_clicked()
+                && !on_edit
+                && !self.is_builtin()
+                && let Some(Elem::Text(i)) = self.it.hover
+                && self.lib.doc.begin_item_text_edit(item, i)
+            {
+                let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
+                self.it.set_selection(&mut t, Vec::new());
             }
             if self.it.is_dragging() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -483,9 +506,47 @@ impl LibraryEditor {
                 self.message = Some(m);
             }
         }
+        if on_edit && response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+        }
+        self.view.set_text_edit(self.lib.doc.item_text_edit(item));
         if !self.it.is_idle() {
             ui.ctx().request_repaint();
         }
+    }
+
+    /// Pointer on the text being edited in place: a press on it places the caret (a drag
+    /// selects, a double-click selects a word); a press elsewhere commits it. Returns true
+    /// if the pointer is on the edit, so the tools leave it alone.
+    fn text_edit_pointer(&mut self, ui: &egui::Ui, response: &egui::Response, item: Item) -> bool {
+        let (pressed, down, shift) =
+            ui.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.modifiers.shift));
+        let mut on_edit = false;
+        let doc = &mut self.lib.doc;
+        let editing = doc.text_edit().is_some_and(|(site, _)| site == EditSite::Item(item));
+        if editing && let Some(pos) = response.hover_pos() {
+            let [x, y] = self.canvas.screen_to_world(pos);
+            let p = Point::mm(x, y);
+            let inside = doc.text_edit().is_some_and(|(_, e)| e.contains(p));
+            if pressed && response.hovered() {
+                if inside {
+                    doc.with_text_edit(|e| e.click(p, shift));
+                    self.text_drag = true;
+                } else if let Err(e) = doc.commit_text_edit() {
+                    self.message = Some(e);
+                }
+            } else if self.text_drag && down {
+                doc.with_text_edit(|e| e.drag(p));
+            }
+            if response.double_clicked() && inside {
+                doc.with_text_edit(|e| e.select_word(p));
+            }
+            on_edit = inside || self.text_drag;
+        }
+        if !down {
+            self.text_drag = false;
+        }
+        on_edit
     }
 
     // ------------------------------------------------------------------------------------

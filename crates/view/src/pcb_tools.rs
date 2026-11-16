@@ -21,6 +21,8 @@ pub enum PcbTool {
     Zone,
     Keepout,
     Measure,
+    /// Free text on a board layer: a click starts typing it in place.
+    Text,
     /// Place board parts (see [`PcbPlacer::placing`]); started from the project tree.
     Place,
 }
@@ -33,6 +35,7 @@ impl PcbTool {
         PcbTool::Outline,
         PcbTool::Zone,
         PcbTool::Keepout,
+        PcbTool::Text,
         PcbTool::Measure,
     ];
 
@@ -45,6 +48,7 @@ impl PcbTool {
             PcbTool::Zone => "Zone",
             PcbTool::Keepout => "Keepout",
             PcbTool::Measure => "Measure",
+            PcbTool::Text => "Text",
             PcbTool::Place => "Place",
         }
     }
@@ -62,6 +66,9 @@ impl PcbTool {
                 "Click the keepout's corners · click the first or last corner again to close · Esc cancels"
             }
             PcbTool::Measure => crate::measure::HINT,
+            PcbTool::Text => {
+                "Click to place, then type · Shift+Enter new line · Enter done · Esc cancel · R rotate · F other side"
+            }
             PcbTool::Place => "Click to place · R rotate · F flip side · Esc done",
         }
     }
@@ -90,7 +97,12 @@ pub struct PcbSettings {
     pub zone_net: String,
     /// New keepouts cover all copper layers (else the active one).
     pub keepout_all_layers: bool,
-    /// Rotation and side of board parts being placed.
+    /// Layer, cap height, stroke width and alignment of new texts.
+    pub text_layer: LayerId,
+    pub text_size: Coord,
+    pub text_width: Coord,
+    pub text_align: HAlign,
+    /// Rotation of board parts and texts being placed; the side of board parts.
     pub rotation: Angle,
     pub side: Side,
 }
@@ -108,6 +120,10 @@ impl Default for PcbSettings {
             via_span: [LayerId::TOP_COPPER, LayerId::BOTTOM_COPPER],
             zone_net: String::new(),
             keepout_all_layers: true,
+            text_layer: LayerId::TOP_SILK,
+            text_size: 1_000_000,
+            text_width: 150_000,
+            text_align: HAlign::Left,
             rotation: Angle::ZERO,
             side: Side::Top,
         }
@@ -134,6 +150,11 @@ pub enum PcbGhost {
     },
     /// Where the copper being added breaks a rule.
     Clash(Point),
+    /// Where a new text goes.
+    Text {
+        layer: LayerId,
+        text: Text,
+    },
     Outline(Rect),
     /// A zone being drawn (the last point is the cursor).
     Zone {
@@ -250,6 +271,9 @@ impl PcbPlacer {
             self.settings.rotation = Angle::ZERO;
             self.settings.side = Side::Top;
         }
+        if tool == PcbTool::Text && self.tool != PcbTool::Text {
+            self.settings.rotation = Angle::ZERO;
+        }
         self.tool = tool;
         self.start = None;
         self.net = None;
@@ -271,8 +295,12 @@ impl PcbPlacer {
         self.settings.rotation = self.settings.rotation.rotated_by(Angle::DEG90);
     }
 
-    /// Put the board part being placed on the other side.
+    /// Put the board part or text being placed on the other side.
     pub fn flip(&mut self) {
+        if self.tool == PcbTool::Text {
+            self.settings.text_layer = self.settings.text_layer.other_side();
+            return;
+        }
         self.settings.side = match self.settings.side {
             Side::Top => Side::Bottom,
             Side::Bottom => Side::Top,
@@ -297,6 +325,15 @@ impl PcbPlacer {
     fn leg(&self, start: Point, p: Point) -> Vec<(Point, Point, Option<Point>)> {
         let s = &self.settings;
         bend::segments(start, p, s.corners, self.posture.second(s.bend))
+    }
+
+    /// A new text at `p` as the settings say (empty).
+    fn new_text(&self, p: Point) -> Text {
+        let s = &self.settings;
+        let mut t = Text::new("", p, s.text_size).aligned(s.text_align, VAlign::Bottom);
+        t.width = s.text_width;
+        t.rotation = s.rotation;
+        t
     }
 
     /// Escape: end the track being routed, or leave the tool. Returns true if the tool
@@ -428,6 +465,7 @@ impl PcbPlacer {
     /// Track the cursor: `raw` position and grid-snapped position. Routing snaps to
     /// copper within `tol` (a few pixels).
     pub fn hover(&mut self, doc: &mut Document, p: Option<(Point, Point)>, tol: Coord) {
+        let p = p.filter(|_| self.tool != PcbTool::Text || doc.text_edit().is_none());
         let Some((raw, snapped)) = p else {
             self.cursor = None;
             self.measure.hover(None, false);
@@ -522,6 +560,17 @@ impl PcbPlacer {
                 Ok(false)
             }
             PcbTool::Zone => self.zone_click(doc, p),
+            PcbTool::Text => {
+                let t = BoardText { id: Id::new(), layer: self.settings.text_layer, text: self.new_text(p) };
+                let (shape, color) = (t.text.clone(), crate::style::board_layer_color(t.layer));
+                doc.begin_new_text(
+                    crate::view::ViewId::Board,
+                    crate::text_edit::TextTarget::NewBoardText(t),
+                    shape,
+                    color,
+                );
+                Ok(false)
+            }
             PcbTool::Keepout => {
                 let Some(outline) = self.polygon_click(p, "a keepout")? else { return Ok(false) };
                 let layers = if self.settings.keepout_all_layers { Vec::new() } else { vec![self.settings.layer] };
@@ -607,6 +656,9 @@ impl PcbPlacer {
                 if self.on_copper {
                     g.push(PcbGhost::Target(p));
                 }
+            }
+            PcbTool::Text => {
+                g.push(PcbGhost::Text { layer: s.text_layer, text: Text { text: "Text".into(), ..self.new_text(p) } })
             }
             PcbTool::Via => g.push(PcbGhost::Via {
                 pos: p,

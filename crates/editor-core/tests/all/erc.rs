@@ -153,7 +153,13 @@ fn reused_references_are_reported() {
     let (r2, _) = place(&mut ed, PART_RESISTOR, 30.0);
     assert_eq!(problems(&ed), Vec::<String>::new());
     let c = ed.project().schematic.symbols.get(r2).unwrap().component;
-    ed.execute(Command::SetComponent { id: c, refdes: Some("R1".into()), value: None, variant: None }).unwrap();
+    // SetComponent refuses a used reference; other edits (imports, raw updates) may not.
+    assert!(
+        ed.execute(Command::SetComponent { id: c, refdes: Some("R1".into()), value: None, variant: None }).is_err()
+    );
+    let mut comp = ed.project().schematic.components.get(c).unwrap().clone();
+    comp.refdes = "R1".into();
+    ed.execute(Command::Update { objects: vec![Object::Component(comp)] }).unwrap();
     let problems = Connectivity::build(ed.project()).problems;
     let dup = problems.iter().find(|p| p.message == "Reference R1 is used by 2 parts").expect("reported");
     assert_eq!(dup.objects.len(), 2);

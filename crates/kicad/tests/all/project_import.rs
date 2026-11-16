@@ -103,6 +103,16 @@ fn hierarchical_routed_project() {
     for f in p.board.footprints.iter() {
         assert_eq!(p.board.fields.iter().filter(|x| x.footprint == f.id).count(), 2);
     }
+    // So does each symbol: R1's texts sit 2 mm right of it, the value 2 mm lower (KiCad's
+    // y points down).
+    let r1 = p.schematic.component_by_refdes("R1").unwrap().id;
+    let sym = p.schematic.symbols.iter().find(|s| s.component == r1).unwrap();
+    let field = |t: &str| p.schematic.fields.iter().find(|f| f.symbol == sym.id && f.text.text == t).unwrap();
+    assert_eq!(field("${REF}").text.pos, Point::mm(2.0, 0.0));
+    assert_eq!(field("${VALUE}").text.pos, Point::mm(2.0, -2.0));
+    for s in p.schematic.symbols.iter() {
+        assert_eq!(p.schematic.fields.iter().filter(|f| f.symbol == s.id).count(), 2, "{s:?}");
+    }
 }
 
 fn projects() -> Option<(PathBuf, Vec<PathBuf>)> {

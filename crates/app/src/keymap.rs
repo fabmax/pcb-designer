@@ -44,6 +44,7 @@ pub enum Action {
     SchBus,
     SchBusEntry,
     SchLabel,
+    SchText,
     SchPower,
     SchJunction,
     SchNoConnect,
@@ -55,6 +56,7 @@ pub enum Action {
     PcbOutline,
     PcbZone,
     PcbKeepout,
+    PcbText,
     PcbNextLayer,
     Settings,
     PanelProject,
@@ -104,6 +106,7 @@ impl Action {
         Action::SchBus,
         Action::SchBusEntry,
         Action::SchLabel,
+        Action::SchText,
         Action::SchPower,
         Action::SchJunction,
         Action::SchNoConnect,
@@ -115,6 +118,7 @@ impl Action {
         Action::PcbOutline,
         Action::PcbZone,
         Action::PcbKeepout,
+        Action::PcbText,
         Action::PcbNextLayer,
         Action::Settings,
         Action::PanelProject,
@@ -156,6 +160,7 @@ impl Action {
             Action::SchBus => "Bus tool (schematic)",
             Action::SchBusEntry => "Bus entry tool (schematic)",
             Action::SchLabel => "Label tool (schematic)",
+            Action::SchText => "Text tool (schematic)",
             Action::SchPower => "Power port tool (schematic)",
             Action::SchJunction => "Junction tool (schematic)",
             Action::SchNoConnect => "No-connect flag tool (schematic)",
@@ -167,6 +172,7 @@ impl Action {
             Action::PcbOutline => "Board outline tool (PCB)",
             Action::PcbZone => "Copper zone tool (PCB)",
             Action::PcbKeepout => "Keepout tool (PCB)",
+            Action::PcbText => "Text tool (PCB)",
             Action::PcbNextLayer => "Next copper layer; adds a via while routing (PCB)",
             Action::Settings => "Settings",
             Action::PanelProject => "Show/hide Project panel",
@@ -188,6 +194,7 @@ impl Action {
             | Action::SchBus
             | Action::SchBusEntry
             | Action::SchLabel
+            | Action::SchText
             | Action::SchPower
             | Action::SchJunction
             | Action::SchNoConnect => Some(Context::Schematic),
@@ -196,6 +203,7 @@ impl Action {
             | Action::PcbOutline
             | Action::PcbZone
             | Action::PcbKeepout
+            | Action::PcbText
             | Action::PcbNextLayer
             | Action::RoundCorners => Some(Context::Board),
             _ => None,
@@ -377,6 +385,7 @@ impl Default for Keymap {
             (Action::SchBus, vec![S::key(Key::B)]),
             (Action::SchBusEntry, vec![S::key(Key::E)]),
             (Action::SchLabel, vec![S::key(Key::L)]),
+            (Action::SchText, vec![S::key(Key::T)]),
             (Action::SchPower, vec![S::key(Key::P)]),
             (Action::SchJunction, vec![S::key(Key::J)]),
             (Action::SchNoConnect, vec![S::key(Key::Q)]),
@@ -387,6 +396,7 @@ impl Default for Keymap {
             (Action::PcbOutline, vec![S::key(Key::O)]),
             (Action::PcbZone, vec![S::key(Key::Z)]),
             (Action::PcbKeepout, vec![S::key(Key::K)]),
+            (Action::PcbText, vec![S::shift(Key::T)]),
             (Action::PcbNextLayer, vec![S::key(Key::L)]),
             (Action::Settings, vec![S::cmd(Key::Comma)]),
             (Action::PanelProject, vec![S::cmd(Key::Num1)]),

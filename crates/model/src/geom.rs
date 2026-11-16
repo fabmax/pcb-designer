@@ -447,6 +447,12 @@ impl Text {
     }
 }
 
+/// A reference or value template (exactly `${REF}` or `${VALUE}`), which placed symbols
+/// and footprints copy into fields of their own.
+pub fn is_field_text(text: &str) -> bool {
+    matches!(text, "${REF}" | "${VALUE}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

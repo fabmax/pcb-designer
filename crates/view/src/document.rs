@@ -9,9 +9,10 @@ use editor_core::drc::{self, Violation};
 use editor_core::route_check;
 use editor_core::{ChangeSet, Command, CommandError, Editor};
 use model::io::{FileError, load_project, save_project};
-use model::{Coord, Id, LayerId, ObjectId, ObjectKind, Point, Project, Rect};
+use model::{Component, Coord, Id, LayerId, ObjectId, ObjectKind, Point, Project, Rect, Text};
 
 use crate::interaction::{Edit, Target, reference_point};
+use crate::text_edit::{EditGeometry, EditKey, EditSite, Mods, Outcome, TextEdit, TextTarget};
 use crate::view::{View, ViewId, ViewKind};
 
 pub struct Document {
@@ -45,6 +46,8 @@ pub struct Document {
     pub slow: Duration,
     /// Why edits are refused (e.g. the built-in library); `None`: editable.
     pub read_only: Option<String>,
+    /// A text being edited in place, in a view, and the colour it's drawn in.
+    text_edit: Option<(EditSite, TextEdit, render::Color)>,
 }
 
 /// Result of the last design rule check.
@@ -90,6 +93,7 @@ impl Document {
             busy: false,
             slow: Duration::from_millis(4),
             read_only: None,
+            text_edit: None,
         };
         doc.update_connectivity(false);
         doc
@@ -116,6 +120,128 @@ impl Document {
     pub fn current_copper(&mut self) -> &BoardConnectivity {
         self.update_connectivity(false);
         &self.copper
+    }
+
+    /// The text being edited in place, and where.
+    pub fn text_edit(&self) -> Option<(EditSite, &TextEdit)> {
+        self.text_edit.as_ref().map(|(v, e, _)| (*v, e))
+    }
+
+    /// The text being edited in the editor of `item`, to draw.
+    pub fn item_text_edit(&self, item: crate::item::Item) -> Option<(EditGeometry, render::Color)> {
+        let (site, e, color) = self.text_edit.as_ref()?;
+        (*site == EditSite::Item(item)).then(|| (e.geometry(), *color))
+    }
+
+    /// Start editing text `index` of a symbol or footprint (library editors). Returns
+    /// false if there is no such text.
+    pub fn begin_item_text_edit(&mut self, item: crate::item::Item, index: usize) -> bool {
+        use crate::item::Content;
+        self.commit_text_edit().ok();
+        let (text, color) = match Content::get(self.editor.project(), item) {
+            Some(Content::Symbol(s)) => match s.texts.get(index) {
+                Some(t) => (t.clone(), crate::style::pal().sch_text),
+                None => return false,
+            },
+            Some(Content::Footprint(f)) => match f.texts.get(index) {
+                Some(t) => (t.text.clone(), crate::style::board_layer_color(t.board_layer(model::Side::Top))),
+                None => return false,
+            },
+            None => return false,
+        };
+        let edit = TextEdit::new(TextTarget::ItemText { item, index }, text.text.clone(), text);
+        self.text_edit = Some((EditSite::Item(item), edit, color));
+        true
+    }
+
+    /// Start editing the text of `id` in `view`, double-clicked at `at` (a sheet's name
+    /// only when `at` is on it). Returns false if it has no editable text.
+    pub fn begin_text_edit(&mut self, view: ViewId, id: ObjectId, at: Point) -> bool {
+        self.commit_text_edit().ok();
+        let project = self.editor.project();
+        let Some((shape, color)) = self.view(view).object_text(project, id) else { return false };
+        let s = &project.schematic;
+        let (target, text) = match id {
+            ObjectId::SchText(i) => (TextTarget::SchText(i), s.texts.get(i).map(|t| t.text.text.clone())),
+            ObjectId::BoardText(i) => {
+                (TextTarget::BoardText(i), project.board.texts.get(i).map(|t| t.text.text.clone()))
+            }
+            ObjectId::Label(i) => (TextTarget::Label(i), s.labels.get(i).map(|l| l.name.clone())),
+            ObjectId::Sheet(i) => (TextTarget::Sheet(i), s.sheets.get(i).map(|x| x.name.clone())),
+            ObjectId::SymbolField(i) => {
+                let f = s.fields.get(i);
+                let c = f.and_then(|f| s.symbols.get(f.symbol)).and_then(|x| s.components.get(x.component));
+                field_target(f.map(|f| f.text.text.as_str()), c)
+            }
+            ObjectId::FootprintField(i) => {
+                let f = project.board.fields.get(i);
+                let c = f
+                    .and_then(|f| project.board.footprints.get(f.footprint))
+                    .and_then(|x| s.components.get(x.component));
+                field_target(f.map(|f| f.text.text.as_str()), c)
+            }
+            _ => return false,
+        };
+        let Some(text) = text else { return false };
+        let edit = TextEdit::new(target, text, shape);
+        if matches!(id, ObjectId::Sheet(_)) && !edit.contains(at) {
+            return false;
+        }
+        self.text_edit = Some((EditSite::View(view), edit, color));
+        self.show_text_edit();
+        true
+    }
+
+    /// Start editing a new text (placed by a text tool), drawn like `shape`.
+    pub fn begin_new_text(&mut self, view: ViewId, target: TextTarget, shape: Text, color: render::Color) {
+        self.commit_text_edit().ok();
+        self.text_edit = Some((EditSite::View(view), TextEdit::new(target, String::new(), shape), color));
+        self.show_text_edit();
+    }
+
+    /// Change the text being edited (keys, typing, pointer); it is redrawn.
+    pub fn with_text_edit<R>(&mut self, f: impl FnOnce(&mut TextEdit) -> R) -> Option<R> {
+        let r = f(&mut self.text_edit.as_mut()?.1);
+        self.show_text_edit();
+        Some(r)
+    }
+
+    /// A key for the text being edited: Enter commits, Esc cancels.
+    pub fn text_edit_key(&mut self, key: EditKey, mods: Mods) -> Result<(), String> {
+        match self.with_text_edit(|e| e.key(key, mods)) {
+            Some(Outcome::Commit) => self.commit_text_edit(),
+            Some(Outcome::Cancel) => {
+                self.cancel_text_edit();
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Apply the text being edited (one undo step) and stop editing. On an error the
+    /// edit ends too, with the old text kept.
+    pub fn commit_text_edit(&mut self) -> Result<(), String> {
+        let Some((site, edit, _)) = self.text_edit.take() else { return Ok(()) };
+        if let EditSite::View(view) = site {
+            self.view_mut(view).set_text_edit(None);
+        }
+        let command = edit.commit(self.editor.project())?;
+        if let Some(c) = command {
+            self.execute(c).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    pub fn cancel_text_edit(&mut self) {
+        if let Some((EditSite::View(view), _, _)) = self.text_edit.take() {
+            self.view_mut(view).set_text_edit(None);
+        }
+    }
+
+    fn show_text_edit(&mut self) {
+        let Some((EditSite::View(view), edit, color)) = &self.text_edit else { return };
+        let (view, g, color) = (*view, edit.geometry(), *color);
+        self.view_mut(view).set_text_edit(Some((&g, color)));
     }
 
     /// The rule copper about to be added breaks (see [`route_check::check`]).
@@ -474,8 +600,9 @@ impl Target for ProjectTarget<'_> {
             },
             Edit::Delete { ids } => {
                 // Footprint texts can only be hidden (in Properties).
-                let (fields, ids): (Vec<ObjectId>, Vec<ObjectId>) =
-                    ids.into_iter().partition(|id| matches!(id, ObjectId::FootprintField(_)));
+                let (fields, ids): (Vec<ObjectId>, Vec<ObjectId>) = ids
+                    .into_iter()
+                    .partition(|id| matches!(id, ObjectId::FootprintField(_) | ObjectId::SymbolField(_)));
                 if !fields.is_empty() && ids.is_empty() {
                     return Ok(Some("Reference and value texts can't be deleted: hide them in Properties".into()));
                 }
@@ -550,5 +677,14 @@ impl Target for ProjectTarget<'_> {
     fn highlight(&mut self, selection: &[ObjectId], hover: Option<ObjectId>) {
         let (project, view) = self.doc.project_and_view(self.view);
         view.set_highlight(project, selection, hover);
+    }
+}
+
+/// The target and text of a reference or value field (`template` `${REF}` or `${VALUE}`).
+fn field_target(template: Option<&str>, c: Option<&Component>) -> (TextTarget, Option<String>) {
+    match (template, c) {
+        (Some("${VALUE}"), Some(c)) => (TextTarget::Value(c.id), Some(c.value.clone())),
+        (_, Some(c)) => (TextTarget::Reference(c.id), Some(c.refdes.clone())),
+        _ => (TextTarget::Reference(Id::from_u128(0)), None),
     }
 }

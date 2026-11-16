@@ -261,6 +261,9 @@ fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report)
     for i in sch.instances {
         p.schematic.symbols.insert(i);
     }
+    for f in sch.fields {
+        p.schematic.fields.insert(f);
+    }
     for w in sch.wires {
         p.schematic.wires.insert(w);
     }

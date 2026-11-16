@@ -17,12 +17,16 @@ pub(crate) struct Painter {
     pub out: Vec<(LayerId, Instance)>,
     /// Bounds used for hit testing (text is excluded unless added explicitly).
     pub bounds: Option<Rect>,
+    /// Texts drawn for hit testing (an object's own text: a label's name, a field), with
+    /// variables substituted, and their colour: what in-place editing edits.
+    pub texts: Vec<(Text, Color)>,
 }
 
 impl Painter {
     pub fn clear(&mut self) {
         self.out.clear();
         self.bounds = None;
+        self.texts.clear();
     }
 
     pub fn grow(&mut self, r: Rect) {
@@ -137,6 +141,9 @@ impl Painter {
         });
         for (a, b) in segs {
             self.push(layer, Instance::line(a, b, width, color));
+        }
+        if hit {
+            self.texts.push((Text { text: s.clone(), ..t.clone() }, color));
         }
         if hit && min[0] <= max[0] {
             self.grow(Rect::from_points(

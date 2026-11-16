@@ -64,6 +64,7 @@ impl ViewKind {
                     | ObjectKind::NoConnect
                     | ObjectKind::Label
                     | ObjectKind::SchText
+                    | ObjectKind::SymbolField
             ),
             ViewKind::Board => kind.is_board(),
         }
@@ -157,6 +158,8 @@ const PROBE_ITEM: u64 = (3 << 62) | 3;
 const DRC_ITEM: u64 = (3 << 62) | 4;
 /// The drawing frame of a schematic sheet.
 const FRAME_ITEM: u64 = (3 << 62) | 5;
+/// A text being edited in place.
+const TEXT_EDIT_ITEM: u64 = (3 << 62) | 6;
 
 fn overlay_item(id: ObjectId, hover: bool) -> u64 {
     item(id) | if hover { 2 << 62 } else { 1 << 62 }
@@ -332,6 +335,7 @@ impl View {
                     .chain(s.no_connects.ids().map(ObjectId::NoConnect))
                     .chain(s.labels.ids().map(ObjectId::Label))
                     .chain(s.texts.ids().map(ObjectId::SchText))
+                    .chain(s.fields.ids().map(ObjectId::SymbolField))
                     .collect()
             }
             ViewKind::Board => {
@@ -411,12 +415,19 @@ impl View {
                 }
             }
         }
-        // Footprint texts move with their footprint and show its component's reference.
+        // Reference and value texts move with their footprint or symbol and show its
+        // component's reference.
         let footprints: FxHashSet<Id> =
             ids.iter().filter_map(|id| if let ObjectId::Footprint(f) = id { Some(*f) } else { None }).collect();
         if !footprints.is_empty() {
             let fields = project.board.fields.iter().filter(|f| footprints.contains(&f.footprint));
             ids.extend(fields.map(|f| ObjectId::FootprintField(f.id)).collect::<Vec<_>>());
+        }
+        let symbols: FxHashSet<Id> =
+            ids.iter().filter_map(|id| if let ObjectId::Symbol(s) = id { Some(*s) } else { None }).collect();
+        if !symbols.is_empty() {
+            let fields = project.schematic.fields.iter().filter(|f| symbols.contains(&f.symbol));
+            ids.extend(fields.map(|f| ObjectId::SymbolField(f.id)).collect::<Vec<_>>());
         }
         let mut seen = FxHashSet::default();
         for id in ids {
@@ -535,6 +546,7 @@ impl View {
                     p.push(l.wires, Instance::circle_outline(mmf(*pos), 0.6, 0.12, pal().hover.with_alpha(0xc0)))
                 }
                 SchGhost::Label(lab) => draw_label(lab, l, &mut p),
+                SchGhost::Text(t) => p.text(l.text, t, pal().sch_text.with_alpha(0x90), &|s| s.to_string(), false),
                 SchGhost::Sheet { rect, name } => {
                     let sheet = Sheet {
                         id: Id::from_u128(0),
@@ -558,7 +570,17 @@ impl View {
                     let value = c.map_or(part.default_value.as_str(), |c| c.value.as_str());
                     let variant = c.map_or(part.variants.first(), |c| part.variant(c.variant));
                     let footprint = variant.and_then(|v| project.library.footprints.get(v.footprint?));
-                    draw_symbol_graphics(sym, *unit, transform, &refdes, value, variant.zip(footprint), l, &mut p);
+                    draw_symbol_graphics(
+                        sym,
+                        *unit,
+                        transform,
+                        &refdes,
+                        value,
+                        variant.zip(footprint),
+                        true,
+                        l,
+                        &mut p,
+                    );
                 }
             }
         }
@@ -638,6 +660,11 @@ impl View {
                     for i in 0..4 {
                         out.push((layer, Instance::line(mmf(c[i]), mmf(c[(i + 1) % 4]), 0.1, color)));
                     }
+                }
+                PcbGhost::Text { layer: l, ref text } => {
+                    let mut p = Painter::default();
+                    p.text(layer, text, board_layer_color(l).with_alpha(0x90), &|s| s.to_string(), false);
+                    out.extend(p.out);
                 }
                 PcbGhost::Target(p) => {
                     out.push((layer, Instance::circle_outline(mmf(p), 0.5, 0.08, pal().hover.with_alpha(0xc0))))
@@ -830,6 +857,18 @@ impl View {
             let size = [(b.width() as f64 * 1e-6) as f32, (b.height() as f64 * 1e-6) as f32];
             out.push((layer, Instance::rect(mmf(b.center()), size, 0.0, 0.0, fill)));
         }
+        // A selected reference or value text shows its owner, tied to it by a thin line.
+        if !hover && let Some((owner, origin, at)) = field_owner(project, id) {
+            let mut q = Painter::default();
+            if self.draw_object(project, owner, &mut q) {
+                let color = pal().hover.with_alpha(0x90);
+                out.extend(q.out.into_iter().filter(|(l, _)| Some(*l) != fill).map(|(_, mut inst)| {
+                    inst.color = color;
+                    (self.hover_layer, inst)
+                }));
+                out.push((self.hover_layer, Instance::line(mmf(origin), mmf(at), 0.05, color)));
+            }
+        }
         self.scene.set_item(key, out);
     }
 
@@ -907,6 +946,25 @@ impl View {
     // ------------------------------------------------------------------------------------
     // Drawing
 
+    /// The object's own text as drawn (a label's name, a field's reference) and its colour.
+    pub fn object_text(&self, project: &Project, id: ObjectId) -> Option<(Text, Color)> {
+        let mut p = Painter::default();
+        self.draw_object(project, id, &mut p);
+        p.texts.into_iter().next()
+    }
+
+    /// Show a text being edited in place (`None` clears): a box over the original, the
+    /// selection, the text and the caret.
+    pub fn set_text_edit(&mut self, edit: Option<(&crate::text_edit::EditGeometry, Color)>) {
+        let Some((g, color)) = edit else {
+            self.scene.remove_item(TEXT_EDIT_ITEM);
+            return;
+        };
+        let mut p = Painter::default();
+        crate::text_edit::draw(&mut p, self.hover_layer, g, color);
+        self.scene.set_item(TEXT_EDIT_ITEM, p.out);
+    }
+
     fn draw_object(&self, project: &Project, id: ObjectId, p: &mut Painter) -> bool {
         if self.kind == ViewKind::Schematic && project.schematic.sheet_of(id) != self.id.sheet() {
             return false; // on another sheet (or not a schematic object)
@@ -953,6 +1011,9 @@ impl View {
                 .is_some(),
             (Layers::Board(l), ObjectId::Footprint(i)) => {
                 project.board.footprints.get(i).map(|f| draw_footprint(project, f, l, p)).is_some()
+            }
+            (Layers::Sch(l), ObjectId::SymbolField(i)) => {
+                project.schematic.fields.get(i).is_some_and(|f| draw_symbol_field(project, f, l, p))
             }
             (Layers::Board(l), ObjectId::FootprintField(i)) => {
                 project.board.fields.get(i).is_some_and(|f| draw_field(project, f, l, p))
@@ -1038,6 +1099,24 @@ impl View {
     }
 }
 
+/// The owner of a reference or value text (symbol or footprint), its origin and where
+/// the text is.
+fn field_owner(project: &Project, id: ObjectId) -> Option<(ObjectId, Point, Point)> {
+    match id {
+        ObjectId::SymbolField(i) => {
+            let f = project.schematic.fields.get(i)?;
+            let s = project.schematic.symbols.get(f.symbol)?;
+            Some((ObjectId::Symbol(s.id), s.pos, s.transform().point(f.text.pos)))
+        }
+        ObjectId::FootprintField(i) => {
+            let f = project.board.fields.get(i)?;
+            let fp = project.board.footprints.get(f.footprint)?;
+            Some((ObjectId::Footprint(fp.id), fp.pos, fp.transform().point(f.text.pos)))
+        }
+        _ => None,
+    }
+}
+
 fn dist(p: Point, q: Point) -> f64 {
     (p - q).length()
 }
@@ -1062,7 +1141,28 @@ fn draw_symbol(project: &Project, inst: &SymbolInstance, l: &SchLayers, p: &mut 
     let variant = component.and_then(|c| part.and_then(|part| part.variant(c.variant)));
     let footprint = component.and_then(|c| project.library.footprint_of(c.part, c.variant));
     let pads = variant.zip(footprint);
-    draw_symbol_graphics(sym, inst.unit, &inst.transform(), refdes, value, pads, l, p);
+    draw_symbol_graphics(sym, inst.unit, &inst.transform(), refdes, value, pads, false, l, p);
+}
+
+/// The displayed reference of a symbol's component (`U1-A` for units).
+fn symbol_refdes(project: &Project, inst: &SymbolInstance) -> (String, String) {
+    let component = project.schematic.components.get(inst.component);
+    let part = component.and_then(|c| project.library.parts.get(c.part));
+    let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
+    let refdes = part.map_or_else(|| refdes.to_string(), |part| part.unit_reference(refdes, inst.unit));
+    (refdes, value.to_string())
+}
+
+/// A symbol's reference or value text, upright.
+fn draw_symbol_field(project: &Project, field: &SymbolField, l: &SchLayers, p: &mut Painter) -> bool {
+    let Some(inst) = project.schematic.symbols.get(field.symbol) else { return false };
+    if field.hidden {
+        return false;
+    }
+    let (refdes, value) = symbol_refdes(project, inst);
+    let text = field.text.transformed(&inst.transform()).upright();
+    p.text(l.text, &text, pal().sch_text, &|s| substitute(s, &refdes, &value), true);
+    true
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1073,6 +1173,7 @@ fn draw_symbol_graphics(
     refdes: &str,
     value: &str,
     pads: Option<(&PartVariant, &Footprint)>,
+    with_fields: bool,
     l: &SchLayers,
     p: &mut Painter,
 ) {
@@ -1121,6 +1222,16 @@ fn draw_symbol_graphics(
     let sideways = t.rotation.quarter_turns().is_some_and(|q| q % 2 == 1);
     let body = Rect::union_all(sym.graphics.iter().map(|g| g.transformed(&t).bounds()));
     for text in &sym.texts {
+        // Placed symbols have their own reference and value texts ([`draw_symbol_field`]).
+        if !with_fields && model::geom::is_field_text(&text.text) {
+            continue;
+        }
+        if model::geom::is_field_text(&text.text) {
+            // As the placed symbol's fields will be.
+            let text = text.transformed(&t).upright();
+            p.text(l.text, &text, pal().sch_text, &|s| substitute(s, refdes, value), false);
+            continue;
+        }
         let mut text = text.transformed(&t);
         if sideways {
             // Keep reference and value horizontal next to vertical symbols.
@@ -1304,7 +1415,7 @@ fn draw_field(project: &Project, field: &FootprintField, l: &BoardLayers, p: &mu
     let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
     let layer = field.board_layer(inst.side);
     let Some(&rl) = l.map.get(&layer) else { return false };
-    let text = field.text.transformed(&inst.transform());
+    let text = field.text.transformed(&inst.transform()).upright();
     p.text(rl, &text, board_layer_color(layer), &|s| substitute(s, refdes, value), true);
     true
 }
@@ -1378,7 +1489,13 @@ fn draw_footprint_at(
     for ft in fp.texts.iter().filter(|ft| with_fields || !ft.is_field()) {
         let layer = ft.board_layer(side);
         if let Some(&rl) = l.map.get(&layer) {
-            p.text(rl, &ft.text.transformed(&t), board_layer_color(layer), &|s| substitute(s, refdes, value), false);
+            p.text(
+                rl,
+                &ft.text.transformed(&t).upright(),
+                board_layer_color(layer),
+                &|s| substitute(s, refdes, value),
+                false,
+            );
         }
     }
     // Hit-test bounds: courtyard if the footprint has one, otherwise pads and graphics.

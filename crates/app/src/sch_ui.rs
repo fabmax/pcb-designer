@@ -37,6 +37,7 @@ pub fn toolbar(ui: &mut egui::Ui, canvas: egui::Rect, sch: &SchPlacer, keymap: &
             Action::SchBusEntry,
         ),
         b(SchTool::Label, Icon::Label, "Name a net: local, global or hierarchical labels.", Action::SchLabel),
+        b(SchTool::Text, Icon::Text, "Write a free text: a note on the sheet.", Action::SchText),
         b(SchTool::Power, Icon::Power, "Place a power port (GND, +3V3, ...): connects to its net.", Action::SchPower),
         b(SchTool::Junction, Icon::Junction, "Connect crossing wires with a junction dot.", Action::SchJunction),
         b(
@@ -108,6 +109,25 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 ui,
                 "Click on a bus. Wiring an unnamed net to the entry asks which of the bus's signals it is. R rotates.",
             );
+        }
+        SchTool::Text => {
+            grid(ui, "sch_tool", |ui| {
+                label(ui, "Size");
+                if let (_, Some(v)) = crate::units::drag(ui, s.text_size, model::mm(0.1), model::mm(100.0)) {
+                    s.text_size = v;
+                }
+                ui.end_row();
+                label(ui, "Alignment");
+                crate::fields::halign_row(ui, &mut s.text_align);
+                ui.end_row();
+                label(ui, "Rotation");
+                if let Some(a) = fields::rotation_combo(ui, "sch_text_rot", s.rotation, LABEL_SIDES) {
+                    s.rotation = a;
+                }
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            hint(ui, "Click where the text goes and type. Shift+Enter starts a new line, Enter finishes. R rotates.");
         }
         SchTool::Label => {
             grid(ui, "sch_tool", |ui| {

@@ -21,6 +21,8 @@ pub enum SchTool {
     Junction,
     /// No-connect flags on pin ends.
     NoConnect,
+    /// Free text: a click starts typing it in place.
+    Text,
     /// Place parts (see [`SchPlacer::placing`]).
     Place,
     /// Place the symbol of a new sheet (see [`SchPlacer::place_sheet`]).
@@ -38,6 +40,7 @@ impl SchTool {
         SchTool::Power,
         SchTool::Junction,
         SchTool::NoConnect,
+        SchTool::Text,
     ];
 
     pub fn label(self) -> &'static str {
@@ -50,6 +53,7 @@ impl SchTool {
             SchTool::Power => "Power",
             SchTool::Junction => "Junction",
             SchTool::NoConnect => "No connect",
+            SchTool::Text => "Text",
             SchTool::Place => "Place",
             SchTool::Sheet => "Sheet",
         }
@@ -69,6 +73,7 @@ impl SchTool {
             SchTool::Label | SchTool::Power => "Click to place · R rotate · Esc done",
             SchTool::Junction => "Click to place a junction · Esc done",
             SchTool::NoConnect => "Click a pin end to mark it unconnected on purpose · Esc done",
+            SchTool::Text => "Click to place, then type · Shift+Enter new line · Enter done · Esc cancel · R rotate",
             SchTool::Place => "Click to place · R rotate · X mirror · Esc done",
             SchTool::Sheet => "Click to place the sheet's top left corner · Esc cancels",
         }
@@ -105,6 +110,9 @@ pub struct SchSettings {
     pub bend: Bend,
     /// Direction of new bus entries.
     pub entry: EntryDir,
+    /// Cap height and alignment of new texts.
+    pub text_size: Coord,
+    pub text_align: HAlign,
 }
 
 impl Default for SchSettings {
@@ -120,6 +128,8 @@ impl Default for SchSettings {
             corners: Corners::Deg90,
             bend: Bend::Auto,
             entry: EntryDir::UpRight,
+            text_size: 1_270_000,
+            text_align: HAlign::Left,
         }
     }
 }
@@ -150,6 +160,8 @@ pub enum SchGhost {
         rect: Rect,
         name: String,
     },
+    /// Where a new text goes.
+    Text(Text),
 }
 
 /// A name the editor asks for after drawing (see [`SchPlacer::take_prompt`]). Answering
@@ -454,6 +466,14 @@ impl SchPlacer {
         self.settings.mirror = !self.settings.mirror;
     }
 
+    /// A new text at `p` as the settings say (empty).
+    fn new_text(&self, p: Point) -> Text {
+        let s = &self.settings;
+        let mut t = Text::new("", p, s.text_size).aligned(s.text_align, VAlign::Bottom);
+        t.rotation = s.rotation;
+        t
+    }
+
     /// `/`: flip which leg comes first.
     pub fn toggle_posture(&mut self) {
         bend::flip(&mut self.settings.bend, &mut self.posture);
@@ -486,6 +506,8 @@ impl SchPlacer {
 
     /// Track the (snapped) cursor.
     pub fn hover(&mut self, doc: &mut Document, p: Option<Point>) {
+        // No "Text" ghost over the text being typed.
+        let p = p.filter(|_| self.tool != SchTool::Text || doc.text_edit().is_none());
         if p != self.cursor {
             self.cursor = p;
             if let (Some(start), Some(p)) = (self.start, p) {
@@ -565,6 +587,13 @@ impl SchPlacer {
                 rotation: s.rotation,
             },
             SchTool::Junction => Command::AddJunction { sheet: Some(sheet), pos: p },
+            SchTool::Text => {
+                let t = SchText { id: Id::new(), sheet, text: self.new_text(p) };
+                let shape = t.text.clone();
+                let target = crate::text_edit::TextTarget::NewSchText(t);
+                doc.begin_new_text(crate::view::ViewId::Sheet(sheet), target, shape, crate::style::pal().sch_text);
+                return Ok(placed);
+            }
             SchTool::NoConnect => {
                 // One flag per point: clicking an existing one does nothing.
                 if doc.project().schematic.no_connects.iter().any(|n| n.sheet == sheet && n.pos == p) {
@@ -716,6 +745,7 @@ impl SchPlacer {
                 })]
             }
             SchTool::Junction => vec![SchGhost::Junction(p)],
+            SchTool::Text => vec![SchGhost::Text(Text { text: "Text".into(), ..self.new_text(p) })],
             SchTool::NoConnect => vec![SchGhost::NoConnect(p)],
             SchTool::Sheet => self
                 .new_sheet

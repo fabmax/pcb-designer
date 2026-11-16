@@ -247,15 +247,21 @@ the current design of each area with the gotchas a change needs to know, the pla
   tented. Explicit footprint mask/paste graphics add to that. `fab::pad_outline` is the
   one placed pad shape (rotation includes mirroring; grown rectangles keep sharp
   corners, polygons offset with round joins) for the board view and the Gerber export.
-- **Reference and value texts** (`FootprintField`, `board.fields`): a placed footprint
-  gets its own copy of each library footprint text that is exactly `${REF}` / `${VALUE}`
-  (`FootprintText::is_field`), in footprint coordinates, so it moves, turns and flips
-  with the footprint but can be dragged and turned on its own. Created and removed with
-  the footprint (`insert_fields` / `remove_fields`: sync and board parts); deleting one
-  is refused, hide it instead. `draw_footprint_at` skips the templates for placed
-  footprints (the place ghost draws them); Gerber exports the fields. Hit testing is the
-  text's bounding box, which beats the footprint's courtyard. Gotcha: a library edit of
-  the templates doesn't reach footprints already placed.
+- **Reference and value texts** (`FootprintField`, `board.fields`; `SymbolField`,
+  `schematic.fields`): a placed footprint or symbol gets its own copy of each library
+  text that is exactly `${REF}` / `${VALUE}` (`is_field_text`), in owner coordinates,
+  so it moves, turns and flips with its owner but can be dragged and turned on its own
+  (`transform_objects` moves a field alone in its owner's frame; mirroring one alone is
+  refused). Created and removed with the owner (`insert_fields` / `remove_fields`,
+  `insert_symbol` / `remove_symbol`: placing, units, sync, board parts, paste); deleting
+  one is refused, hide it instead. Copy takes a symbol's fields along; pasted symbols
+  without fields get fresh ones. The drawing skips the templates for placed owners (the
+  place ghosts draw them). Fields and footprint texts are drawn `Text::upright` (in
+  Gerber too). Hit testing is the text's bounding box, which beats the owner's body.
+  Saves from before `SymbolField` load without schematic fields (no fix-up). Gotcha: a
+  library edit of the templates doesn't reach owners already placed.
+- `SetComponent` refuses an empty or already used reference (except ones ending in `?`,
+  which annotation numbers later).
 - **Slow rebuilds wait:** when connectivity (or redrawing library users) took over 4 ms
   (`Document::slow`), it is deferred during a drag and caught up afterwards.
 
@@ -308,6 +314,9 @@ the current design of each area with the gotchas a change needs to know, the pla
 - Polygons: ear clipping (`render::tess`) for small ones, i_triangle for zone fills
   (holes, O(n log n); earcut took 1.9 s on a fill with thousands of holes).
 - Stroke font → capsules (also used by Gerber); `\n` starts a line (`LINE_SPACING`).
+  `font::caret_positions` / `line_origins` expose the layout for the text editor; keep
+  them and `text_segments` on the same `advance`. The font is a placeholder: capitals
+  only (lowercase is drawn as capitals), missing glyphs (e.g. `$`) drawn as `?`.
   Small details hide when zoomed out. Per-layer buffers; only dirty items upload;
   pan/zoom is a uniform.
 - `Scene::set_item` gives up a shrunk item's tail as garbage (else `instance_count`
@@ -364,7 +373,8 @@ the current design of each area with the gotchas a change needs to know, the pla
   `AddSheet`), `pcb_tools` (route with copper snapping and the checks above: a clash
   turns the ghost to the flagged colour with a marker and refuses the click unless
   `allow_violations`; L changes layer + via (through, or the two layers with
-  `via_pair`); via (span `via_span`), outline, zone, measure). Bus naming prompts: `SchPlacer::take_prompt`
+  `via_pair`); via (span `via_span`), outline, zone, text (layer, F → `LayerId::
+  other_side`), measure). The Text tools hide their ghost while an edit is open. Bus naming prompts: `SchPlacer::take_prompt`
   returns a `SchPrompt` for unnamed buses and entry signals.
 - `bend`: corner styles (`Corners`: wires 90°/45°/free, tracks 45°/90°/arc 45°/arc
   90°), the two-leg `path`, `segments` (arc styles round the corner with
@@ -387,6 +397,24 @@ the current design of each area with the gotchas a change needs to know, the pla
   `Interaction::carry` is a drag without a button in the paste's undo group (moves,
   R, X join it; a click drops; Esc undoes the paste). Carried edits are wrapped in
   `Edit::Carry` so schematic wires the paste passes over aren't rubber-banded.
+- **In-place text editing** (`text_edit`): `TextEdit` (text, caret and anchor as char
+  indices, `TextTarget` says what a commit changes) is GUI-independent; `geometry`
+  maps the font layout (`font::caret_positions`, `line_origins`, y-up local coordinates
+  rotated about the anchor) to world quads for the frame, selection and caret, and
+  `index_at` back. `Document` holds the one edit (`EditSite`: a view, or an `Item` of a
+  library editor, whose `ItemView` pulls `Document::item_text_edit` each frame) and
+  draws it over the text: a frame filled with the background hides the original.
+  The edit's shape comes from what the painter recorded (`Painter::texts`, via
+  `View::object_text`), so every kind of text edits where it is drawn. `commit`
+  returns one command (free text: update, or delete if emptied; label, sheet: rename;
+  reference, value: `SetComponent`; new texts: insert unless empty; library texts:
+  update, removed if emptied); unchanged commits nothing. Double-click starts an edit;
+  text tools start one with a `New*` target. Gotcha: everything that can change the
+  document (actions, tool switches, library item switches) commits first (`App::
+  commit_text_edit`), and the app feeds keys to the edit before shortcuts, consuming
+  plain keys and ⌘Z/Y/C/X/V (no undo inside an edit).
+- Owner highlight: a selected (or dragged) field draws its owner in the hover colour
+  and a tether line from the owner's origin to the text (`View::draw_overlay`).
 - Labels are drawn KiCad style: local with a dot, global as an outline around the name,
   hierarchical as a small arrow before it; `LabelShape::points` says which ends are
   pointed. Label text goes through `Text::upright` (turned 180° with swapped alignment
@@ -465,7 +493,9 @@ the current design of each area with the gotchas a change needs to know, the pla
     `symbol_instances` (KiCad 6), else the Reference property. Each file's `paper`
     becomes its sheets' page and `to_pages` lifts the content by the page height (KiCad
     pages hang down from the origin). The root file's `title_block` is the project's.
-    `common::plain` also undoes KiCad's `{slash}`-style escapes.
+    `common::plain` also undoes KiCad's `{slash}`-style escapes. Symbol Reference and
+    Value properties (absolute positions) become `SymbolField`s in symbol coordinates
+    (`Transform::inverse_point` / `inverse_angle`), hidden as KiCad hides them.
   - Board: pad and text angles in `.kicad_pcb` are absolute (minus the footprint's
     orientation). Back footprints are stored mirrored: un-mirrored (negate y and angles,
     swap F./B. layers and chamfer corners), then placed with rotation + 180 on the
@@ -620,13 +650,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-**M13: Texts**
-- Editing text on the canvas.
-- Multi-line text: the font stacks lines, but the Text properties field is single-line.
-- Footprint texts stay upright (readable) when a footprint turns past 90°.
-- Highlight the part a text belongs to while dragging the text.
-- Replace the placeholder stroke font.
-
 **M14: Clipboard, board parts and sheets**
 - Board parts: copy/paste and duplicate on the board; a "Place board part" picker in the
   PCB tool bar; editing their reference and value on the board (read-only today).
@@ -670,8 +693,7 @@ defers.
 - KiCad project export. Import gaps (counted in the import report today): schematic
   graphics, images, text boxes, tables and rule areas; text variables (`${TITLE}` etc. in
   texts stay as written; the frame shows the title block);
-  bus aliases; directive labels (net class flags); per-instance symbol field positions
-  (fields follow the symbol); stored sheet pin positions (laid out by name); reused
+  bus aliases; directive labels (net class flags); stored sheet pin positions (laid out by name); reused
   sheets are duplicated (no reuse here); bus entries of unusual sizes.
 - Drawing frames: custom KiCad drawing sheets (`.kicad_wks`; the default frame is used),
   an "update the date on save" option, text variables in schematic texts, printing and
@@ -681,8 +703,13 @@ defers.
 - KiCad's "unfold bus".
 - Pins lying on a moved wire's inside (not at its ends) are left behind.
 - Inner-layer footprint graphics.
-- Footprint texts: re-sync fields when the library footprint's templates change; fields
-  of other texts than `${REF}` / `${VALUE}`.
+- Reference and value texts: re-sync fields when the library templates change; fields
+  of other texts than `${REF}` / `${VALUE}`; a Text tool placed field of a symbol
+  (KiCad's extra fields).
+- Texts: replace the placeholder stroke font (KiCad's newstroke is GPL-2+, so not
+  embeddable in this MIT/Apache project; Hershey Simplex is public domain); undo inside
+  an in-place edit; the library editors' Text tool typing in place (it takes the text
+  from its settings today); text DRC (silkscreen over pads, minimum stroke).
 - Custom power symbols: power ports drawn from a symbol of their own (a part flagged
   power, no footprint), for glyphs beyond `PowerStyle`; maps to KiCad custom power
   symbols on import and export.

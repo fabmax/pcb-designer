@@ -119,6 +119,8 @@ pub(crate) struct Pane {
     pub view: ViewId,
     pub canvas: Canvas,
     pub it: Interaction<ObjectId>,
+    /// A press landed on the text being edited: drags select in it.
+    pub text_drag: bool,
 }
 
 impl Pane {
@@ -128,7 +130,7 @@ impl Pane {
             ViewKind::Board => 0.5,
         };
         let canvas = Canvas::new(view::style::background(grid as f32));
-        Pane { view, canvas, it: Interaction::new(mm(grid)) }
+        Pane { view, canvas, it: Interaction::new(mm(grid)), text_drag: false }
     }
 }
 
@@ -527,6 +529,14 @@ impl PcbApp {
 
     fn doc_mut(&mut self) -> &mut Document {
         &mut self.project.lib.doc
+    }
+
+    /// The document with a text being edited in place: the project's or a library's.
+    fn editing_doc(&mut self) -> Option<&mut Document> {
+        if self.project.lib.doc.text_edit().is_some() {
+            return Some(&mut self.project.lib.doc);
+        }
+        self.libraries.iter_mut().map(|l| &mut l.lib.doc).find(|d| d.text_edit().is_some())
     }
 
     fn lib(&mut self, key: u64) -> Option<&mut LibraryEditor> {
@@ -1429,6 +1439,7 @@ impl PcbApp {
     }
 
     fn set_sch_tool(&mut self, tool: SchTool) {
+        self.commit_text_edit();
         let view = self.sheet_view();
         let pane = self.panes.get(view);
         if tool != SchTool::Select {
@@ -1484,6 +1495,7 @@ impl PcbApp {
             Action::SchBus => SchTool::Bus,
             Action::SchBusEntry => SchTool::BusEntry,
             Action::SchLabel => SchTool::Label,
+            Action::SchText => SchTool::Text,
             Action::SchPower => SchTool::Power,
             Action::SchJunction => SchTool::Junction,
             Action::SchNoConnect => SchTool::NoConnect,
@@ -1518,6 +1530,7 @@ impl PcbApp {
     }
 
     fn set_pcb_tool(&mut self, tool: PcbTool) {
+        self.commit_text_edit();
         let pane = self.panes.get(ViewId::Board);
         if tool != PcbTool::Select {
             pane.it.reset();
@@ -1534,6 +1547,7 @@ impl PcbApp {
             Action::PcbOutline => PcbTool::Outline,
             Action::PcbZone => PcbTool::Zone,
             Action::PcbKeepout => PcbTool::Keepout,
+            Action::PcbText => PcbTool::Text,
             Action::ToolMeasure => PcbTool::Measure,
             Action::ToolSelect => PcbTool::Select,
             Action::Posture => {
@@ -1556,11 +1570,11 @@ impl PcbApp {
                 self.pcb.escape();
                 return true;
             }
-            Action::Rotate if self.pcb.tool() == PcbTool::Place => {
+            Action::Rotate if matches!(self.pcb.tool(), PcbTool::Place | PcbTool::Text) => {
                 self.pcb.rotate();
                 return true;
             }
-            Action::Flip if self.pcb.tool() == PcbTool::Place => {
+            Action::Flip if matches!(self.pcb.tool(), PcbTool::Place | PcbTool::Text) => {
                 self.pcb.flip();
                 return true;
             }
@@ -1716,7 +1730,93 @@ impl PcbApp {
         }
     }
 
+    /// Keys, typing and the clipboard go to the text being edited in place.
+    fn text_edit_input(&mut self, ctx: &egui::Context) {
+        use view::text_edit::{EditKey, Mods};
+        enum Input {
+            Key(EditKey, Mods),
+            Text(String),
+            Copy,
+            Cut,
+        }
+        let mut out: Vec<Input> = Vec::new();
+        ctx.input_mut(|i| {
+            i.events.retain(|e| {
+                match e {
+                    egui::Event::Key { key, pressed, modifiers, .. } => {
+                        let m = Mods { shift: modifiers.shift, word: modifiers.alt, line: modifiers.command };
+                        let k = match key {
+                            egui::Key::ArrowLeft => Some(EditKey::Left),
+                            egui::Key::ArrowRight => Some(EditKey::Right),
+                            egui::Key::ArrowUp => Some(EditKey::Up),
+                            egui::Key::ArrowDown => Some(EditKey::Down),
+                            egui::Key::Home => Some(EditKey::Home),
+                            egui::Key::End => Some(EditKey::End),
+                            egui::Key::Backspace => Some(EditKey::Backspace),
+                            egui::Key::Delete => Some(EditKey::Delete),
+                            egui::Key::Enter => Some(EditKey::Enter),
+                            egui::Key::Escape => Some(EditKey::Escape),
+                            egui::Key::A if modifiers.command => Some(EditKey::SelectAll),
+                            _ => None,
+                        };
+                        if let (true, Some(k)) = (*pressed, k) {
+                            out.push(Input::Key(k, m));
+                        }
+                        // Other keys with ⌘ (save, undo, …) stay shortcuts; plain ones are typing.
+                        let edit_key =
+                            matches!(key, egui::Key::Z | egui::Key::Y | egui::Key::C | egui::Key::X | egui::Key::V);
+                        !(k.is_some() || !modifiers.command || edit_key)
+                    }
+                    egui::Event::Text(t) | egui::Event::Paste(t) => {
+                        out.push(Input::Text(t.clone()));
+                        false
+                    }
+                    egui::Event::Copy => {
+                        out.push(Input::Copy);
+                        false
+                    }
+                    egui::Event::Cut => {
+                        out.push(Input::Cut);
+                        false
+                    }
+                    _ => true,
+                }
+            });
+        });
+        for input in out {
+            let Some(doc) = self.editing_doc() else { break };
+            let r = match input {
+                Input::Key(k, m) => doc.text_edit_key(k, m),
+                Input::Text(t) => {
+                    doc.with_text_edit(|e| e.insert(&t));
+                    Ok(())
+                }
+                Input::Copy => {
+                    self.copy_out = doc.text_edit().map(|(_, e)| e.selected_text()).filter(|s| !s.is_empty());
+                    Ok(())
+                }
+                Input::Cut => {
+                    self.copy_out = doc.with_text_edit(|e| e.cut()).flatten();
+                    Ok(())
+                }
+            };
+            if let Err(e) = r {
+                self.set_status(e);
+            }
+        }
+    }
+
+    /// Finish the text being edited (before other actions and tool changes).
+    fn commit_text_edit(&mut self) {
+        if let Some(doc) = self.editing_doc()
+            && let Err(e) = doc.commit_text_edit()
+        {
+            self.set_status(e);
+        }
+    }
+
     fn run_action(&mut self, action: Action) {
+        self.commit_text_edit();
         if let Some(panel) = Panel::of_action(action) {
             return self.settings.dock.toggle(panel);
         }
@@ -1780,6 +1880,7 @@ impl PcbApp {
             | Action::SchBus
             | Action::SchBusEntry
             | Action::SchLabel
+            | Action::SchText
             | Action::SchPower
             | Action::SchJunction
             | Action::SchNoConnect
@@ -1790,6 +1891,7 @@ impl PcbApp {
             | Action::PcbOutline
             | Action::PcbZone
             | Action::PcbKeepout
+            | Action::PcbText
             | Action::PcbNextLayer
             | Action::PanelProject
             | Action::PanelMessages
@@ -1873,6 +1975,7 @@ impl PcbApp {
             | Action::SchBus
             | Action::SchBusEntry
             | Action::SchLabel
+            | Action::SchText
             | Action::SchPower
             | Action::SchJunction
             | Action::SchNoConnect
@@ -1884,6 +1987,7 @@ impl PcbApp {
             | Action::PcbOutline
             | Action::PcbZone
             | Action::PcbKeepout
+            | Action::PcbText
             | Action::PcbNextLayer => None,
             Action::PanelProject
             | Action::PanelMessages
@@ -3092,7 +3196,6 @@ impl TreeBehavior<'_> {
         if (pane.it.grid, pane.it.snap) != (grid, snap) {
             self.panes.share_grid(view);
         }
-        let pane = self.panes.get(view);
         if response.hovered() {
             *self.hovered = Some(view);
         }
@@ -3108,6 +3211,36 @@ impl TreeBehavior<'_> {
         {
             switch_sheet(self.sch, doc, s);
         }
+        let pane = self.panes.get(view);
+        // The text being edited takes presses on it; a press elsewhere commits it.
+        let pointer = response.hover_pos().map(|p| {
+            let [x, y] = pane.canvas.screen_to_world(p);
+            Point::mm(x, y)
+        });
+        let editing_here = doc.text_edit().is_some_and(|(v, _)| v == view::text_edit::EditSite::View(view));
+        let (pressed, down, shift) =
+            ui.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.modifiers.shift));
+        let mut on_edit = false;
+        if editing_here && let Some(p) = pointer {
+            let inside = doc.text_edit().is_some_and(|(_, e)| e.contains(p));
+            if pressed && response.hovered() {
+                if inside {
+                    doc.with_text_edit(|e| e.click(p, shift));
+                    pane.text_drag = true;
+                } else if let Err(e) = doc.commit_text_edit() {
+                    *self.status = Some((e, Instant::now()));
+                }
+            } else if pane.text_drag && down {
+                doc.with_text_edit(|e| e.drag(p));
+            }
+            if response.double_clicked() && inside {
+                doc.with_text_edit(|e| e.select_word(p));
+            }
+            on_edit = inside || pane.text_drag;
+        }
+        if !down {
+            pane.text_drag = false;
+        }
         let tools_here = sheet.is_some() && self.sch.sheet == sheet;
         if sheet.is_some() && self.sch.is_placing() {
             if tools_here {
@@ -3118,6 +3251,7 @@ impl TreeBehavior<'_> {
                 self.sch.hover(doc, world);
                 if let Some(p) = world
                     && response.hovered()
+                    && !on_edit
                     && ui.input(|i| i.pointer.primary_pressed())
                     && let Err(e) = self.sch.click(doc, p)
                 {
@@ -3138,6 +3272,7 @@ impl TreeBehavior<'_> {
             self.pcb.hover(doc, world, tol);
             if world.is_some()
                 && response.hovered()
+                && !on_edit
                 && ui.input(|i| i.pointer.primary_pressed())
                 && let Err(e) = self.pcb.click(doc)
             {
@@ -3171,13 +3306,20 @@ impl TreeBehavior<'_> {
             let carried_off = pane.it.is_carrying() && !response.hovered();
             if let Some(input) = canvas::pointer_input(ui, &response, &pane.canvas, engaged, pane.it.hover.is_some())
                 && !carried_off
+                && !on_edit
             {
                 pane.it.pointer(&mut doc.target(view), &input);
             }
-            // Double-clicking a sheet symbol opens the sheet; on a wire or track it
-            // selects the whole chain.
-            if response.double_clicked() {
-                if let Some(ObjectId::Sheet(s)) = pane.it.hover {
+            // Double-clicking a text edits it; a sheet symbol opens the sheet; on a wire
+            // or track it selects the whole chain.
+            if response.double_clicked() && !on_edit {
+                let edits = match (pane.it.hover, pointer) {
+                    (Some(h), Some(p)) => doc.begin_text_edit(view, h, p),
+                    _ => false,
+                };
+                if edits {
+                    pane.it.key(&mut doc.target(view), KeyAction::Escape);
+                } else if let Some(ObjectId::Sheet(s)) = pane.it.hover {
                     self.deferred.push(Deferred::EnterSheet(s));
                 } else {
                     let add = ui.input(|i| i.modifiers.shift || i.modifiers.command);
@@ -3192,6 +3334,9 @@ impl TreeBehavior<'_> {
             if let Some((r, crossing)) = pane.it.box_rect() {
                 canvas::draw_box(ui, &pane.canvas, response.rect, r, crossing);
             }
+        }
+        if on_edit && response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
         }
         if tools_here && let Some(ghosts) = self.sch.take_preview() {
             let (project, v) = doc.project_and_view(view);
@@ -3435,6 +3580,9 @@ impl eframe::App for PcbApp {
         self.paste_text = ctx.input(|i| {
             i.events.iter().find_map(|e| if let egui::Event::Paste(t) = e { Some(t.clone()) } else { None })
         });
+        if self.name_prompt.is_none() && !ctx.egui_wants_keyboard_input() && self.editing_doc().is_some() {
+            self.text_edit_input(&ctx);
+        }
         if !self.record_shortcut(&ctx) && self.name_prompt.is_none() {
             for action in self.keymap.triggered(&ctx, self.context()) {
                 self.run_action(action);

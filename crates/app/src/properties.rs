@@ -372,7 +372,7 @@ impl Properties {
                 heading(ui, "Text", "");
                 grid(ui, |ui| {
                     label(ui, "Text");
-                    if let Some(s) = self.text(ui, id, "text", &t.text.text) {
+                    if let Some(s) = self.multiline(ui, id, "text", &t.text.text) {
                         t.text.text = s;
                         self.update(cx, Object::SchText(t.clone()), false);
                     }
@@ -671,12 +671,75 @@ impl Properties {
                     }
                     ui.end_row();
                 });
+                let project = cx.doc.project();
+                let template = editor_core::query::footprint_of_instance(project, &fp).and_then(|def| {
+                    FootprintField::for_footprint(fp.id, def).into_iter().find(|t| t.text.text == f.text.text)
+                });
+                if let Some(t) = template
+                    && (t.text != f.text || t.layer != f.layer || t.back != f.back)
+                    && ui.button("Reset to library position").clicked()
+                {
+                    (f.text, f.layer, f.back) = (t.text, t.layer, t.back);
+                    self.update(cx, Object::FootprintField(f), false);
+                }
+            }
+            Object::SymbolField(mut f) => {
+                let project = cx.doc.project();
+                let Some(sym) = project.schematic.symbols.get(f.symbol).cloned() else { return };
+                let c = project.schematic.components.get(sym.component);
+                let (refdes, value) =
+                    c.map_or(("?".to_string(), String::new()), |c| (c.refdes.clone(), c.value.clone()));
+                heading(ui, &format!("{} text", f.label()), &refdes);
+                ui.label(
+                    RichText::new("Moves with its symbol. Drag it, R to turn it, double-click to edit.")
+                        .color(theme::text_dim()),
+                );
+                ui.add_space(4.0);
+                grid(ui, |ui| {
+                    row(ui, "Text", f.text.text.replace("${REF}", &refdes).replace("${VALUE}", &value));
+                    label(ui, "Size");
+                    if let Some(v) = self.length(ui, f.text.size, 0.1) {
+                        f.text.size = v;
+                        self.update(cx, Object::SymbolField(f.clone()), true);
+                    }
+                    ui.end_row();
+                    label(ui, "Offset");
+                    if let Some(p) = self.point(ui, f.text.pos) {
+                        f.text.pos = p;
+                        self.update(cx, Object::SymbolField(f.clone()), true);
+                    }
+                    ui.end_row();
+                    label(ui, "Rotation");
+                    if let Some(r) = rotation_combo(ui, "sym_field_rot", f.text.rotation) {
+                        f.text.rotation = r;
+                        self.update(cx, Object::SymbolField(f.clone()), false);
+                    }
+                    ui.end_row();
+                    label(ui, "Visible");
+                    let mut visible = !f.hidden;
+                    if ui.checkbox(&mut visible, "").changed() {
+                        f.hidden = !visible;
+                        self.update(cx, Object::SymbolField(f.clone()), false);
+                    }
+                    ui.end_row();
+                });
+                let project = cx.doc.project();
+                let template = editor_core::query::symbol_of_instance(project, &sym).and_then(|def| {
+                    SymbolField::for_symbol(sym.id, def).into_iter().find(|t| t.text.text == f.text.text)
+                });
+                if let Some(t) = template
+                    && t.text != f.text
+                    && ui.button("Reset to library position").clicked()
+                {
+                    f.text = t.text;
+                    self.update(cx, Object::SymbolField(f), false);
+                }
             }
             Object::BoardText(mut t) => {
                 heading(ui, "Board text", "");
                 grid(ui, |ui| {
                     label(ui, "Text");
-                    if let Some(s) = self.text(ui, id, "text", &t.text.text) {
+                    if let Some(s) = self.multiline(ui, id, "text", &t.text.text) {
                         t.text.text = s;
                         self.update(cx, Object::BoardText(t.clone()), false);
                     }
@@ -736,6 +799,18 @@ impl Properties {
                 self.update(cx, Object::Symbol(s.clone()), false);
             }
             ui.end_row();
+            // Show or hide its reference and value texts (hidden ones can't be clicked).
+            let fields: Vec<SymbolField> =
+                cx.doc.project().schematic.fields.iter().filter(|x| x.symbol == s.id).cloned().collect();
+            for mut field in fields {
+                label(ui, &format!("{} text", field.label()));
+                let mut visible = !field.hidden;
+                if ui.checkbox(&mut visible, "visible").changed() {
+                    field.hidden = !visible;
+                    self.update(cx, Object::SymbolField(field), false);
+                }
+                ui.end_row();
+            }
         });
         pin_table(ui, cx.doc, Some(s.id), c.id);
     }

@@ -314,3 +314,59 @@ fn blind_and_buried_vias_get_their_own_drill_files() {
     assert!(gv.errors.is_empty(), "{:?}", gv.errors);
     assert!(gv.files.iter().filter(|f| f.drill).count() >= 3);
 }
+
+/// A footprint turned upside down keeps its reference readable on the silkscreen: the
+/// Gerber strokes are the same as unturned (for a centred text on the footprint's origin).
+#[test]
+fn footprint_texts_stay_upright_in_gerber() {
+    use editor_core::Command;
+    use model::builtin::{self, PART_MOUNTING_HOLE};
+    use model::*;
+    let mut doc = Document::new(Project::new("T"));
+    doc.execute(Command::import_parts(&builtin::builtin_library(), &[PART_MOUNTING_HOLE]).unwrap()).unwrap();
+    let pos = Point::mm(10.0, 10.0);
+    let place = Command::PlaceBoardPart {
+        part: PART_MOUNTING_HOLE,
+        variant: None,
+        pos,
+        rotation: Angle::ZERO,
+        side: Side::Top,
+        refdes: Some("H1".into()),
+        value: None,
+    };
+    doc.execute(place).unwrap();
+    let fp = doc.project().board.footprints.iter().next().unwrap().id;
+    let fields: Vec<Object> = doc
+        .project()
+        .board
+        .fields
+        .iter()
+        .filter(|f| f.footprint == fp)
+        .map(|f| {
+            let mut f = f.clone();
+            f.layer = FootprintLayer::Silkscreen;
+            f.hidden = f.text.text != "${REF}";
+            f.text.pos = Point::ZERO;
+            f.text.rotation = Angle::ZERO;
+            f.text.halign = HAlign::Center;
+            f.text.valign = VAlign::Center;
+            Object::FootprintField(f)
+        })
+        .collect();
+    doc.execute(Command::Update { objects: fields }).unwrap();
+    let strokes = |doc: &mut Document| {
+        let copper = doc.current_copper().clone();
+        let file = gerber::layers::layer_file(doc.project(), &copper, LayerId::TOP_SILK);
+        file.lines().filter(|l| l.starts_with('X') || l.starts_with('Y')).map(str::to_string).collect::<Vec<_>>()
+    };
+    let upright = strokes(&mut doc);
+    assert!(upright.len() > 4, "the reference is drawn: {upright:?}");
+    let turn = Command::Rotate {
+        ids: vec![ObjectId::Footprint(fp)],
+        center: pos,
+        angle: Angle::DEG180,
+        keep_connected: false,
+    };
+    doc.execute(turn).unwrap();
+    assert_eq!(strokes(&mut doc), upright);
+}

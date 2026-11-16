@@ -547,7 +547,36 @@ pub struct SchText {
     pub text: Text,
 }
 
-has_id!(Sheet, Component, SymbolInstance, Wire, BusWire, BusEntry, Junction, NoConnect, NetLabel, SchText);
+/// A placed symbol's own copy of a reference or value text (exactly `${REF}` or
+/// `${VALUE}`) of its library symbol, so it can be moved, turned or hidden per symbol.
+/// Its text is in symbol coordinates: it moves with the symbol. Created and removed
+/// together with the symbol. Drawn upright (never upside down).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct SymbolField {
+    pub id: Id,
+    pub symbol: Id,
+    pub text: Text,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
+}
+
+impl SymbolField {
+    /// Fresh fields for symbol instance `symbol` from the field texts of `def`.
+    pub fn for_symbol(symbol: Id, def: &crate::library::Symbol) -> Vec<SymbolField> {
+        def.texts
+            .iter()
+            .filter(|t| crate::geom::is_field_text(&t.text))
+            .map(|t| SymbolField { id: Id::new(), symbol, text: t.clone(), hidden: false })
+            .collect()
+    }
+
+    /// "Reference" or "Value".
+    pub fn label(&self) -> &'static str {
+        if self.text.text == "${VALUE}" { "Value" } else { "Reference" }
+    }
+}
+
+has_id!(Sheet, Component, SymbolInstance, Wire, BusWire, BusEntry, Junction, NoConnect, NetLabel, SchText, SymbolField);
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Schematic {
@@ -570,6 +599,9 @@ pub struct Schematic {
     pub labels: Store<NetLabel>,
     #[serde(default)]
     pub texts: Store<SchText>,
+    /// Reference and value texts of placed symbols.
+    #[serde(default)]
+    pub fields: Store<SymbolField>,
 }
 
 impl Schematic {
@@ -717,6 +749,7 @@ impl Schematic {
             ObjectId::NoConnect(o) => self.no_connects.get(o).map(|o| o.sheet),
             ObjectId::Label(o) => self.labels.get(o).map(|o| o.sheet),
             ObjectId::SchText(o) => self.texts.get(o).map(|o| o.sheet),
+            ObjectId::SymbolField(o) => self.fields.get(o).and_then(|f| self.symbols.get(f.symbol)).map(|s| s.sheet),
             _ => None,
         }
     }
@@ -734,6 +767,12 @@ impl Schematic {
             .chain(self.no_connects.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::NoConnect(o.id)))
             .chain(self.labels.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::Label(o.id)))
             .chain(self.texts.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::SchText(o.id)))
+            .chain(
+                self.fields
+                    .iter()
+                    .filter(|f| self.symbols.get(f.symbol).is_some_and(|s| on(s.sheet)))
+                    .map(|o| ObjectId::SymbolField(o.id)),
+            )
             .collect()
     }
 

@@ -589,6 +589,10 @@ pub fn reference_point(project: &Project, id: ObjectId) -> Option<Point> {
         ObjectId::Label(i) => s.labels.get(i).map(|o| o.pos),
         ObjectId::SchText(i) => s.texts.get(i).map(|o| o.text.pos),
         ObjectId::Footprint(i) => b.footprints.get(i).map(|o| o.pos),
+        ObjectId::SymbolField(i) => {
+            let f = s.fields.get(i)?;
+            s.symbols.get(f.symbol).map(|sym| sym.transform().point(f.text.pos))
+        }
         ObjectId::FootprintField(i) => {
             let f = b.fields.get(i)?;
             b.footprints.get(f.footprint).map(|fp| fp.transform().point(f.text.pos))

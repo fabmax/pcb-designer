@@ -8,6 +8,7 @@ mod drag;
 mod drc;
 mod editing;
 mod erc;
+mod fields;
 mod footprintless;
 mod library_update;
 mod netlist;

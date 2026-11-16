@@ -213,7 +213,7 @@ impl FootprintText {
     /// The reference or value text (exactly `${REF}` or `${VALUE}`): a template that
     /// placed footprints copy into a [`crate::board::FootprintField`] of their own.
     pub fn is_field(&self) -> bool {
-        matches!(self.text.text.as_str(), "${REF}" | "${VALUE}")
+        crate::geom::is_field_text(&self.text.text)
     }
 
     /// Board layer of this text for a footprint placed on `side`.

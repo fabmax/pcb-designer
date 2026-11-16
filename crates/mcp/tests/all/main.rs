@@ -7,3 +7,4 @@ mod kicad_headless;
 mod kicad_project;
 mod library_tools;
 mod stdio;
+mod texts;

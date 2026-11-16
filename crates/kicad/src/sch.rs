@@ -42,6 +42,8 @@ pub struct SchImport {
     pub components: Vec<SchComponent>,
     /// Symbol instances; their `component` is the [`SchComponent::id`].
     pub instances: Vec<SymbolInstance>,
+    /// Reference and value texts of the instances, where KiCad has them.
+    pub fields: Vec<SymbolField>,
     pub wires: Vec<Wire>,
     pub bus_wires: Vec<BusWire>,
     pub bus_entries: Vec<BusEntry>,
@@ -511,7 +513,30 @@ impl Loader<'_> {
             self.report.warn(format!("{reference}: unit {} placed twice; the copy is skipped", unit + 1));
             return;
         }
-        self.out.instances.push(SymbolInstance { id, sheet, component, unit, pos, rotation, mirror: mirrored });
+        let inst = SymbolInstance { id, sheet, component, unit, pos, rotation, mirror: mirrored };
+        // Reference and value where this instance shows them: absolute sheet positions and
+        // angles in KiCad, symbol coordinates here.
+        let t = inst.transform();
+        for (key, placeholder) in [("Reference", "${REF}"), ("Value", "${VALUE}")] {
+            let Some(p) = item.children("property").find(|p| p.arg(0) == Some(key)) else { continue };
+            let Some(at) = p.child("at") else { continue };
+            let effects = p.child("effects");
+            let hidden = p.flag("hide") || effects.is_some_and(|e| e.flag("hide"));
+            let visible_effects = effects.filter(|_| !hidden);
+            let Some(mut text) = text(placeholder.into(), at, visible_effects, true, 1.0) else { continue };
+            if hidden && let Some(size) = effects.and_then(|e| e.child("font")).and_then(|f| f.child("size")) {
+                text.size = nm(size.num(0).unwrap_or(1.27));
+            }
+            text.pos = t.inverse_point(text.pos);
+            text.rotation = t.inverse_angle(text.rotation);
+            self.out.fields.push(SymbolField {
+                id: kid(&["kicad-field", &id.to_string(), key]),
+                symbol: id,
+                text,
+                hidden,
+            });
+        }
+        self.out.instances.push(inst);
     }
 
     /// A power symbol: a power label at its pin (power flags are skipped).

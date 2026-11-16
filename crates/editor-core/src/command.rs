@@ -128,6 +128,27 @@ pub enum Command {
         #[serde(default)]
         rotation: Angle,
     },
+    /// A free text: on a board `layer` (silkscreen, copper without a net, fab, …), or
+    /// without a layer on a schematic `sheet`. Size defaults to 1.27 mm on the schematic
+    /// and 1 mm on the board, stroke width to 0.15 mm on the board. Newlines break lines.
+    AddText {
+        #[serde(default)]
+        sheet: Option<Id>,
+        #[serde(default)]
+        layer: Option<LayerId>,
+        pos: Point,
+        text: String,
+        #[serde(default)]
+        size: Option<Coord>,
+        #[serde(default)]
+        width: Option<Coord>,
+        #[serde(default)]
+        rotation: Angle,
+        #[serde(default)]
+        halign: HAlign,
+        #[serde(default)]
+        valign: VAlign,
+    },
     SetComponent {
         id: Id,
         #[serde(default)]
@@ -269,6 +290,7 @@ impl Command {
             Command::AddJunction { .. } => "Add junction".into(),
             Command::AddNoConnect { .. } => "Add no-connect flag".into(),
             Command::AddLabel { name, .. } => format!("Add label {name}"),
+            Command::AddText { .. } => "Add text".into(),
             Command::AddSheet { name, .. } => format!("Add sheet {name}"),
             Command::SetComponent { .. } => "Edit component".into(),
             Command::AddTrack { .. } => "Add track".into(),
@@ -345,7 +367,7 @@ impl Command {
                     return Err(CommandError::Invalid(format!("unit {unit} of {} is already placed", c.refdes)));
                 }
                 let symbol = SymbolInstance { id: Id::new(), sheet, component, unit, pos, rotation, mirror };
-                tx.insert(Object::Symbol(symbol)).map(drop)
+                insert_symbol(tx, symbol)
             }
             Command::AddWire { sheet, points } => {
                 let sheet = resolve_sheet(tx, sheet)?;
@@ -392,6 +414,31 @@ impl Command {
                 let label = NetLabel { id: Id::new(), sheet, pos, name, kind, shape, style, rotation };
                 tx.insert(Object::Label(label)).map(drop)
             }
+            Command::AddText { sheet, layer, pos, text, size, width, rotation, halign, valign } => {
+                if text.trim().is_empty() {
+                    return Err(CommandError::Invalid("a text can't be empty".into()));
+                }
+                let default = if layer.is_some() { mm(1.0) } else { 1_270_000 };
+                let mut t = Text::new(text, pos, size.unwrap_or(default)).aligned(halign, valign);
+                t.rotation = rotation;
+                if let Some(w) = width {
+                    t.width = w;
+                } else if layer.is_some() {
+                    t.width = 150_000;
+                }
+                match layer {
+                    Some(layer) => {
+                        if !tx.project().board.layers.iter().any(|l| l.id == layer) || layer == LayerId::OUTLINE {
+                            return Err(CommandError::Invalid(format!("no layer {layer:?} for texts")));
+                        }
+                        tx.insert(Object::BoardText(BoardText { id: Id::new(), layer, text: t })).map(drop)
+                    }
+                    None => {
+                        let sheet = resolve_sheet(tx, sheet)?;
+                        tx.insert(Object::SchText(SchText { id: Id::new(), sheet, text: t })).map(drop)
+                    }
+                }
+            }
             Command::SetComponent { id, refdes, value, variant } => {
                 if let Some(v) = variant {
                     let c = tx.project().schematic.components.get(id);
@@ -399,6 +446,15 @@ impl Command {
                         c.and_then(|c| tx.project().library.parts.get(c.part)).is_some_and(|p| p.variant(v).is_some());
                     if !ok {
                         return Err(CommandError::Invalid("variant does not belong to the part".into()));
+                    }
+                }
+                if let Some(r) = &refdes {
+                    if r.trim().is_empty() {
+                        return Err(CommandError::Invalid("a reference can't be empty".into()));
+                    }
+                    // Unannotated references (`R?`) may repeat.
+                    if !r.ends_with('?') && tx.project().schematic.component_by_refdes(r).is_some_and(|c| c.id != id) {
+                        return Err(CommandError::Invalid(format!("{r} is already used")));
                     }
                 }
                 tx.update(ObjectId::Component(id), |o| {
@@ -632,6 +688,8 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
                 tx.insert(Object::LibPart(part))?;
             }
             let mut components = std::collections::HashMap::new();
+            let mut symbols = std::collections::HashMap::new();
+            let mut with_fields = std::collections::HashSet::new();
             for o in objects {
                 let o = match o {
                     Object::Component(mut c) => {
@@ -657,9 +715,20 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
                         s.component = *components
                             .get(&s.component)
                             .ok_or_else(|| CommandError::Invalid("the clip lacks the component of a symbol".into()))?;
+                        let old = s.id;
                         s.id = Id::new();
                         s.sheet = sheet;
+                        symbols.insert(old, s.id);
                         Object::Symbol(s)
+                    }
+                    Object::SymbolField(mut f) => {
+                        f.symbol = *symbols
+                            .get(&f.symbol)
+                            .ok_or_else(|| CommandError::Invalid("the clip lacks the symbol of a text".into()))?;
+                        f.id = Id::new();
+                        with_fields.insert(f.symbol);
+                        tx.insert(Object::SymbolField(f))?;
+                        continue;
                     }
                     Object::Wire(mut w) => {
                         (w.id, w.sheet) = (Id::new(), sheet);
@@ -698,6 +767,10 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
                 };
                 check_references(tx.project(), &o)?;
                 placed.push(tx.insert(o)?);
+            }
+            // Symbols copied without their texts get fresh ones.
+            for s in symbols.into_values().filter(|s| !with_fields.contains(s)) {
+                insert_symbol_fields(tx, s)?;
             }
         }
         ClipContent::Board { objects } => {
@@ -907,8 +980,35 @@ fn place_part(
     let symbol = SymbolInstance { id: Id::new(), sheet, component: component.id, unit: 0, pos, rotation, mirror };
     // Multi-unit parts: only unit 0 is placed for now (see PLAN.md).
     tx.insert(Object::Component(component))?;
+    insert_symbol(tx, symbol)
+}
+
+/// Insert a symbol with its reference and value texts.
+pub(crate) fn insert_symbol(tx: &mut Transaction, symbol: SymbolInstance) -> Result<(), CommandError> {
+    let id = symbol.id;
     tx.insert(Object::Symbol(symbol))?;
+    insert_symbol_fields(tx, id)
+}
+
+/// Add the reference and value texts of a newly placed symbol.
+pub(crate) fn insert_symbol_fields(tx: &mut Transaction, symbol: Id) -> Result<(), CommandError> {
+    let p = tx.project();
+    let Some(def) = p.schematic.symbols.get(symbol).and_then(|s| crate::query::symbol_of_instance(p, s)) else {
+        return Ok(());
+    };
+    for field in SymbolField::for_symbol(symbol, def) {
+        tx.insert(Object::SymbolField(field))?;
+    }
     Ok(())
+}
+
+/// Remove a symbol and its texts.
+fn remove_symbol(tx: &mut Transaction, symbol: Id) -> Result<(), CommandError> {
+    let fields: Vec<Id> = tx.project().schematic.fields.iter().filter(|f| f.symbol == symbol).map(|f| f.id).collect();
+    for f in fields {
+        tx.remove(ObjectId::SymbolField(f))?;
+    }
+    tx.remove(ObjectId::Symbol(symbol)).map(drop)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1061,34 +1161,53 @@ fn transform_connected(
 
 fn transform_objects(tx: &mut Transaction, ids: &[ObjectId], t: Transform, edit: Edit) -> Result<(), CommandError> {
     let mut seen = std::collections::HashSet::new();
-    // Footprint texts move in their footprint's coordinates; with their footprint, they
+    // Reference and value texts move in their owner's coordinates; with their owner, they
     // just go along. Footprints only flip as a whole.
-    let moved: std::collections::HashSet<Id> =
-        ids.iter().filter_map(|id| if let ObjectId::Footprint(f) = id { Some(*f) } else { None }).collect();
-    let mut frames: std::collections::HashMap<Id, Transform> = Default::default();
+    let moved: std::collections::HashSet<Id> = ids
+        .iter()
+        .filter_map(|id| match id {
+            ObjectId::Footprint(f) | ObjectId::Symbol(f) => Some(*f),
+            _ => None,
+        })
+        .collect();
+    let mut frames: std::collections::HashMap<ObjectId, Transform> = Default::default();
     for &id in ids {
-        if let ObjectId::FootprintField(i) = id {
-            let p = tx.project();
-            let Some(fp) = p.board.fields.get(i).and_then(|f| p.board.footprints.get(f.footprint)) else { continue };
-            if !moved.contains(&fp.id) && edit != Edit::Flip {
-                frames.insert(i, fp.transform());
+        let p = tx.project();
+        let owner = match id {
+            ObjectId::FootprintField(i) => {
+                p.board.fields.get(i).and_then(|f| p.board.footprints.get(f.footprint)).map(|o| (o.id, o.transform()))
             }
+            ObjectId::SymbolField(i) => {
+                p.schematic.fields.get(i).and_then(|f| p.schematic.symbols.get(f.symbol)).map(|o| (o.id, o.transform()))
+            }
+            _ => continue,
+        };
+        if let Some((owner, frame)) = owner
+            && !moved.contains(&owner)
+            && edit != Edit::Flip
+        {
+            frames.insert(id, frame);
         }
     }
     for &id in ids {
         if !seen.insert(id) {
             continue;
         }
-        if let ObjectId::FootprintField(i) = id {
-            let Some(&frame) = frames.get(&i) else { continue };
+        if matches!(id, ObjectId::FootprintField(_) | ObjectId::SymbolField(_)) {
+            let Some(&frame) = frames.get(&id) else { continue };
             if edit == Edit::Mirror {
-                return Err(CommandError::Invalid("footprint texts can't be mirrored".into()));
+                return Err(CommandError::Invalid("reference and value texts can't be mirrored".into()));
             }
+            let move_text = |text: &mut Text| {
+                let world = t.point(frame.point(text.pos));
+                text.pos = frame.inverse_point(world);
+                text.rotation = frame.inverse_angle(t.angle(frame.angle(text.rotation)));
+            };
             tx.update(id, |o| {
-                if let Object::FootprintField(f) = o {
-                    let world = t.point(frame.point(f.text.pos));
-                    f.text.pos = frame.inverse_point(world);
-                    f.text.rotation = frame.inverse_angle(t.angle(frame.angle(f.text.rotation)));
+                match o {
+                    Object::FootprintField(f) => move_text(&mut f.text),
+                    Object::SymbolField(f) => move_text(&mut f.text),
+                    _ => {}
                 }
                 Ok(())
             })?;
@@ -1238,6 +1357,11 @@ fn delete(tx: &mut Transaction, ids: &[ObjectId]) -> Result<(), CommandError> {
                     "reference and value texts belong to their footprint; hide them instead".into(),
                 ));
             }
+            ObjectId::SymbolField(_) => {
+                return Err(CommandError::Forbidden(
+                    "reference and value texts belong to their symbol; hide them instead".into(),
+                ));
+            }
             ObjectId::Sheet(s) => {
                 // A sheet goes with everything on it and its sub-sheets (KiCad does the same).
                 let sch = &tx.project().schematic;
@@ -1261,7 +1385,7 @@ fn delete(tx: &mut Transaction, ids: &[ObjectId]) -> Result<(), CommandError> {
                 for flag in flags_on_pins(tx.project(), s) {
                     tx.remove(flag)?;
                 }
-                tx.remove(id)?;
+                remove_symbol(tx, s)?;
                 // A component without any placed unit is removed with its last symbol.
                 if tx.project().schematic.symbols_of(component).next().is_none() {
                     delete_component(tx, component)?;
@@ -1296,7 +1420,7 @@ fn delete(tx: &mut Transaction, ids: &[ObjectId]) -> Result<(), CommandError> {
 fn delete_component(tx: &mut Transaction, component: Id) -> Result<(), CommandError> {
     let symbols: Vec<Id> = tx.project().schematic.symbols_of(component).map(|s| s.id).collect();
     for s in symbols {
-        tx.remove(ObjectId::Symbol(s))?;
+        remove_symbol(tx, s)?;
     }
     tx.remove(ObjectId::Component(component))?;
     Ok(())
@@ -1355,6 +1479,13 @@ fn check_references(p: &Project, o: &Object) -> Result<(), CommandError> {
                 Ok(())
             } else {
                 missing(ObjectId::Footprint(f.footprint))
+            }
+        }
+        Object::SymbolField(f) => {
+            if p.schematic.symbols.contains(f.symbol) {
+                Ok(())
+            } else {
+                missing(ObjectId::Symbol(f.symbol))
             }
         }
         Object::Track(t) => {

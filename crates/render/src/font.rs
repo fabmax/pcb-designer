@@ -97,15 +97,69 @@ pub fn text_width(text: &str, height: f32) -> f32 {
     text.split('\n').map(|l| line_width(l, height)).fold(0.0, f32::max)
 }
 
+/// Advance of a character, in grid units.
+fn advance(_c: char) -> f32 {
+    ADVANCE_UNITS
+}
+
 fn line_width(line: &str, height: f32) -> f32 {
-    let n = line.chars().count() as f32;
-    if n == 0.0 { 0.0 } else { (n * ADVANCE_UNITS - 1.0) * height / CAP_UNITS }
+    let last = line.chars().last();
+    let w: f32 = line.chars().map(advance).sum();
+    // The last glyph's spacing doesn't count.
+    match last {
+        None => 0.0,
+        Some(_) => (w - 1.0) * height / CAP_UNITS,
+    }
+}
+
+/// Caret positions of a line: the x of every character boundary (`len + 1` values, the
+/// first 0), in world units for cap `height`, before alignment.
+pub fn caret_positions(line: &str, height: f32) -> Vec<f32> {
+    let unit = height / CAP_UNITS;
+    let mut x = 0.0;
+    let mut out = vec![0.0];
+    for c in line.chars() {
+        x += advance(c) * unit;
+        out.push(x);
+    }
+    // The caret after the last character sits at the glyph's end, not its spacing.
+    if out.len() > 1
+        && let Some(last) = out.last_mut()
+    {
+        *last -= unit;
+    }
+    out
+}
+
+/// Where each line of `text` starts: its left end on the baseline, relative to the anchor
+/// (before rotation). Lines stack downwards (−y), aligned by `halign`; `valign` places the
+/// block (`Top`: the first line's top, `Bottom`: the last line's baseline).
+pub fn line_origins(text: &str, height: f32, halign: HAlign, valign: VAlign) -> Vec<[f32; 2]> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let pitch = height * LINE_SPACING;
+    let below = (lines.len() - 1) as f32 * pitch;
+    let first = match valign {
+        VAlign::Bottom => below,
+        VAlign::Center => (below - height) * 0.5,
+        VAlign::Top => -height,
+    };
+    lines
+        .iter()
+        .enumerate()
+        .map(|(row, line)| {
+            let width = line_width(line, height);
+            let dx = match halign {
+                HAlign::Left => 0.0,
+                HAlign::Center => -width * 0.5,
+                HAlign::Right => -width,
+            };
+            [dx, first - row as f32 * pitch]
+        })
+        .collect()
 }
 
 /// Line segments for `text` with cap `height`, anchored at `origin`, rotated by
-/// `rotation` radians around the anchor. Lines (split at `\n`) stack downwards, each
-/// aligned by `halign`; `valign` places the whole block (`Top`: the first line's top,
-/// `Bottom`: the last line's baseline).
+/// `rotation` radians around the anchor, laid out by [`line_origins`].
 pub fn text_segments(
     text: &str,
     origin: [f32; 2],
@@ -116,33 +170,19 @@ pub fn text_segments(
     mut out: impl FnMut([f32; 2], [f32; 2]),
 ) {
     let unit = height / CAP_UNITS;
-    let lines: Vec<&str> = text.split('\n').collect();
-    let pitch = height * LINE_SPACING;
-    // Baseline of the first line, relative to the anchor.
-    let below = (lines.len() - 1) as f32 * pitch;
-    let first = match valign {
-        VAlign::Bottom => below,
-        VAlign::Center => (below - height) * 0.5,
-        VAlign::Top => -height,
-    };
     let (s, c) = rotation.sin_cos();
-    for (row, line) in lines.iter().enumerate() {
-        let width = line_width(line, height);
-        let dx = match halign {
-            HAlign::Left => 0.0,
-            HAlign::Center => -width * 0.5,
-            HAlign::Right => -width,
-        };
-        let dy = first - row as f32 * pitch;
+    let origins = line_origins(text, height, halign, valign);
+    for (line, [dx, dy]) in text.split('\n').zip(origins) {
         let xf = |x: f32, y: f32| {
             let (x, y) = (x + dx, y + dy);
             [origin[0] + x * c - y * s, origin[1] + x * s + y * c]
         };
+        let carets = caret_positions(line, height);
         for (i, ch) in line.chars().enumerate() {
             let Some(g) = glyph(ch).or_else(|| glyph('?')) else {
                 continue;
             };
-            let x0 = i as f32 * ADVANCE_UNITS * unit;
+            let x0 = carets[i];
             for stroke in g.split('|') {
                 let mut prev: Option<[f32; 2]> = None;
                 for pt in stroke.split_whitespace() {

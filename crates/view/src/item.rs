@@ -431,6 +431,7 @@ fn overlay_key(e: Elem, hover: bool) -> u64 {
 
 const ORIGIN_KEY: u64 = 3 << 62;
 const PREVIEW_KEY: u64 = (3 << 62) | 1;
+const TEXT_EDIT_KEY: u64 = (3 << 62) | 2;
 
 pub fn footprint_layer_color(layer: FootprintLayer) -> Color {
     board_layer_color(LayerId::for_footprint(layer, Side::Top))
@@ -447,6 +448,8 @@ pub struct ItemView {
     drawn: Option<u64>,
     selection: Vec<Elem>,
     hover: Option<Elem>,
+    /// The text being edited in place, as drawn.
+    edit: Option<(crate::text_edit::EditGeometry, Color)>,
 }
 
 impl Default for ItemView {
@@ -483,6 +486,7 @@ impl ItemView {
             drawn: None,
             selection: Vec::new(),
             hover: None,
+            edit: None,
         }
     }
 
@@ -590,6 +594,24 @@ impl ItemView {
         let sel = std::mem::take(&mut self.selection);
         let hover = self.hover.take();
         self.set_highlight(&sel, hover);
+        let edit = self.edit.take();
+        self.set_text_edit(edit);
+    }
+
+    /// Show the text being edited in place (`None`: no edit). Redrawn only if it changed.
+    pub fn set_text_edit(&mut self, edit: Option<(crate::text_edit::EditGeometry, Color)>) {
+        if edit == self.edit {
+            return;
+        }
+        match &edit {
+            Some((g, color)) => {
+                let mut p = Painter::default();
+                crate::text_edit::draw(&mut p, self.layers.selection, g, *color);
+                self.scene.set_item(TEXT_EDIT_KEY, p.out);
+            }
+            None => self.scene.remove_item(TEXT_EDIT_KEY),
+        }
+        self.edit = edit;
     }
 
     pub fn set_highlight(&mut self, selection: &[Elem], hover: Option<Elem>) {

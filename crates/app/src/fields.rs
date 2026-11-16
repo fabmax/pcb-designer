@@ -140,6 +140,15 @@ pub fn hint(ui: &mut egui::Ui, text: &str) {
     ui.label(RichText::new(text).color(theme::text_dim()));
 }
 
+/// Left / center / right buttons for a text alignment.
+pub fn halign_row(ui: &mut egui::Ui, align: &mut HAlign) {
+    ui.horizontal(|ui| {
+        ui.selectable_value(align, HAlign::Left, "Left");
+        ui.selectable_value(align, HAlign::Center, "Center");
+        ui.selectable_value(align, HAlign::Right, "Right");
+    });
+}
+
 /// Quarter-turn picker. Returns the new angle if changed.
 pub fn rotation_combo(ui: &mut egui::Ui, salt: &str, current: Angle, names: [&str; 4]) -> Option<Angle> {
     let deg = current.degrees();

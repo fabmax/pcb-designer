@@ -96,6 +96,20 @@ Gerber tab: flash centres and line ends), else to the grid; hold Alt for a free 
 ⌘C (Ctrl+C) copies the reading as text. Esc clears the measurement, a second Esc
 returns to Select.
 
+## Texts
+
+The Text tool (schematic **T**, board **⇧T**) places a free text: click where it goes and
+type. Its size, alignment and rotation (R) are in the tool settings; on the board also its
+layer (Top Silkscreen by default; F switches the side) and stroke width. Texts on copper
+have no net. Double-click a text to edit it in place: free texts, labels, sheet names and
+reference and value texts. Arrows, Home/End, ⌥ (Ctrl) for words, ⌘ for lines, ⇧ to
+select, ⌘A, the clipboard, and clicks, drags and double-clicks on the text work as in a
+text field. Shift+Enter starts a new line in a free text, Enter finishes as one undo
+step, Esc cancels, and clicking elsewhere or switching tools finishes too. An emptied free
+text is deleted; labels and references can't be empty, and a reference already used is
+refused. Properties edits free texts in a multi-line field. Footprint texts stay upright,
+in the Gerber files too.
+
 On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.app`
 (`--install` copies it to /Applications). Run from the bundle, the app is named
 "PCB Designer" in the menu bar and Dock; run with `cargo run`, macOS uses the binary's
@@ -119,7 +133,8 @@ open project, so only turn it on when you need it.
 Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `search_kicad`, `import_kicad`, `download_kicad_libraries`, `import_kicad_project`, `list_objects`, `get_objects`, `get_component`,
 `get_netlist` (nets, buses and their members, schematic and ERC problems), `get_routing`,
-`run_drc`, `export_gerber`, `execute` (any editor command, as one undo step), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
+`run_drc`, `export_gerber`, `execute` (any editor command, as one undo step, e.g.
+`add_text` on a sheet or a board layer), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
 or the whole window) and `save_project`. Sheets are added, renamed and deleted with
 `execute` (`add_sheet`, `update`, `delete`); `get_project` lists their paths, and wherever
 a sheet is asked for (`sheet`, `parent`), an id, a name or a path like `/Power/Regulator`
@@ -162,10 +177,13 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
   M3 mounting hole. Remove a part's last unit in the part form to make one.
 - **Footprint variants** can be switched in Properties both for a symbol in the schematic
   and for a footprint on the board (the board lists only variants with a footprint).
-- **Reference and value texts** on the board belong to each footprint: click one to
-  select it, drag it away from the pads, R turns it; it moves and flips with its
-  footprint. Properties sets its layer, size, offset and rotation, and hides it (the
-  footprint's Properties have a visibility checkbox per text).
+- **Reference and value texts** belong to each symbol in the schematic and each footprint
+  on the board: click one to select it, drag it away, R turns it; it moves (and on the
+  board flips) with its owner, which is highlighted with a line to the text while it is
+  selected. They stay upright whatever the owner's rotation. Properties sets the size,
+  offset and rotation (and on the board the layer), hides it, and "Reset to library
+  position" puts it back (the owner's Properties have a visibility checkbox per text).
+  Library changes don't move placed texts.
 - **Built-in Library:** a few basic parts that ship with the app. It is read-only; "Save a
   copy as…" makes an editable library of your own from it.
 - **External Libraries:** the project's library files (`.pcblib`).

@@ -119,17 +119,25 @@ pub fn copy(project: &Project, ids: &[ObjectId], anchor: Point) -> Option<(Clip,
             continue;
         }
         let kind = id.kind();
+        if kind == ObjectKind::SymbolField {
+            continue; // goes with its symbol
+        }
         let ok = if schematic { is_schematic_copyable(kind) } else { is_board_copyable(kind) };
         let Some(o) = project.get(id).filter(|_| ok) else {
             skipped += 1;
             continue;
         };
+        let symbol = if let Object::Symbol(s) = &o { Some(s.id) } else { None };
         if let Object::Symbol(s) = &o
             && !components.contains(&s.component)
         {
             components.push(s.component);
         }
         objects.push(o);
+        // A symbol's reference and value texts go along.
+        if let Some(s) = symbol {
+            objects.extend(project.schematic.fields.iter().filter(|f| f.symbol == s).cloned().map(Object::SymbolField));
+        }
     }
     if objects.is_empty() {
         return None;

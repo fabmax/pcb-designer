@@ -46,6 +46,16 @@ impl LayerId {
     pub const BOTTOM_COURTYARD: LayerId = LayerId(109);
     pub const OUTLINE: LayerId = LayerId(120);
 
+    /// The matching layer on the other side (top ↔ bottom); inner and other layers stay.
+    pub fn other_side(self) -> LayerId {
+        match self {
+            LayerId::TOP_COPPER => LayerId::BOTTOM_COPPER,
+            LayerId::BOTTOM_COPPER => LayerId::TOP_COPPER,
+            l if (100..=109).contains(&l.0) => LayerId(l.0 ^ 1),
+            l => l,
+        }
+    }
+
     pub fn inner(n: u16) -> LayerId {
         assert!((1..63).contains(&n));
         LayerId(n)
