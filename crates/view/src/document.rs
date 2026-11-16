@@ -6,9 +6,10 @@ use std::time::{Duration, Instant};
 use editor_core::connectivity::Connectivity;
 use editor_core::copper::BoardConnectivity;
 use editor_core::drc::{self, Violation};
+use editor_core::route_check;
 use editor_core::{ChangeSet, Command, CommandError, Editor};
 use model::io::{FileError, load_project, save_project};
-use model::{Coord, Id, ObjectId, ObjectKind, Point, Project, Rect};
+use model::{Coord, Id, LayerId, ObjectId, ObjectKind, Point, Project, Rect};
 
 use crate::interaction::{Edit, Target, reference_point};
 use crate::view::{View, ViewId, ViewKind};
@@ -115,6 +116,17 @@ impl Document {
     pub fn current_copper(&mut self) -> &BoardConnectivity {
         self.update_connectivity(false);
         &self.copper
+    }
+
+    /// The rule copper about to be added breaks (see [`route_check::check`]).
+    pub fn route_clash(
+        &mut self,
+        probes: &[route_check::Probe],
+        net: Option<&str>,
+        ends: &[(LayerId, Point)],
+    ) -> Option<route_check::Clash> {
+        self.update_connectivity(false);
+        route_check::check(self.editor.project(), &self.copper, probes, net, ends)
     }
 
     /// Run the design rule check on the current board and mark the violations.

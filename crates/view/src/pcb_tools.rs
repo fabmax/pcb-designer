@@ -1,9 +1,10 @@
-//! Board creation tools: route tracks (45° or 90°), place vias, draw the board outline
+//! Board creation tools: route tracks (45°, 90° or rounded corners), place vias, draw the board outline
 //! copper zones and keepouts, measure, place board parts.
 //! Independent of the GUI toolkit.
 
 use editor_core::Command;
-use editor_core::copper::CopperItem;
+use editor_core::copper::{CopperItem, layer_bit};
+use editor_core::route_check::{Clash, Probe};
 use model::*;
 
 use crate::bend::{self, Posture};
@@ -75,6 +76,16 @@ pub struct PcbSettings {
     pub corners: Corners,
     /// Which leg comes first (`/` flips it).
     pub bend: Bend,
+    /// Radius of Edit → Round track corners.
+    pub corner_radius: Coord,
+    /// Add tracks and vias that break the clearance, keepout or board edge rules
+    /// (otherwise the click is refused).
+    pub allow_violations: bool,
+    /// Vias added while routing (L) join just the two layers (else they go through).
+    pub via_pair: bool,
+    /// Layers the via tool's vias join (blind and buried vias); through when the same or
+    /// not on the board.
+    pub via_span: [LayerId; 2],
     /// Net of new zones; empty: the net of the copper under the first corner.
     pub zone_net: String,
     /// New keepouts cover all copper layers (else the active one).
@@ -91,6 +102,10 @@ impl Default for PcbSettings {
             width: None,
             corners: Corners::Deg45,
             bend: Bend::Auto,
+            corner_radius: 1_000_000,
+            allow_violations: false,
+            via_pair: false,
+            via_span: [LayerId::TOP_COPPER, LayerId::BOTTOM_COPPER],
             zone_net: String::new(),
             keepout_all_layers: true,
             rotation: Angle::ZERO,
@@ -106,12 +121,19 @@ pub enum PcbGhost {
         layer: LayerId,
         a: Point,
         b: Point,
+        /// A point on the arc (arc corners).
+        mid: Option<Point>,
         width: Coord,
+        /// Breaks a rule (see [`PcbPlacer::clash`]).
+        bad: bool,
     },
     Via {
         pos: Point,
         diameter: Coord,
+        bad: bool,
     },
+    /// Where the copper being added breaks a rule.
+    Clash(Point),
     Outline(Rect),
     /// A zone being drawn (the last point is the cursor).
     Zone {
@@ -151,7 +173,15 @@ pub struct PcbPlacer {
     pub free: bool,
     /// Automatic posture of the track leg being routed.
     posture: Posture,
+    /// The rule the track leg or via at the cursor breaks.
+    clash: Option<Clash>,
+    /// What [`PcbPlacer::clash`] was checked for (it's only checked again on changes).
+    checked: Option<ClashKey>,
 }
+
+/// The inputs of a clash check: document revision, tool, net, layer, width, the leg's
+/// segments (or the via position) and the via span.
+type ClashKey = (u64, PcbTool, Option<String>, LayerId, Coord, Vec<(Point, Point, Option<Point>)>, [LayerId; 2]);
 
 impl Default for PcbPlacer {
     fn default() -> Self {
@@ -168,6 +198,8 @@ impl Default for PcbPlacer {
             placing: None,
             free: false,
             posture: Posture::default(),
+            clash: None,
+            checked: None,
         }
     }
 }
@@ -223,6 +255,8 @@ impl PcbPlacer {
         self.net = None;
         self.corners.clear();
         self.on_copper = false;
+        self.clash = None;
+        self.checked = None;
         self.measure.clear();
     }
 
@@ -259,10 +293,10 @@ impl PcbPlacer {
         Some(self.settings.corners.label())
     }
 
-    /// Corner points of the track leg from `start` to `p`.
-    fn leg(&self, start: Point, p: Point) -> Vec<Point> {
+    /// Segments of the track leg from `start` to `p`: (start, end, point on an arc).
+    fn leg(&self, start: Point, p: Point) -> Vec<(Point, Point, Option<Point>)> {
         let s = &self.settings;
-        bend::path(start, p, s.corners, self.posture.second(s.bend))
+        bend::segments(start, p, s.corners, self.posture.second(s.bend))
     }
 
     /// Escape: end the track being routed, or leave the tool. Returns true if the tool
@@ -284,26 +318,111 @@ impl PcbPlacer {
     }
 
     /// Switch to the next copper layer. While routing, a via joins the layers at the
-    /// current end of the track.
+    /// current end of the track (through, or just the two layers: [`PcbSettings::via_pair`]).
     pub fn next_layer(&mut self, doc: &mut Document) -> Result<(), String> {
         let layers: Vec<LayerId> = doc.project().board.copper_layers().map(|l| l.id).collect();
-        let i = layers.iter().position(|&l| l == self.settings.layer).unwrap_or(0);
+        let cur = self.settings.layer;
+        let i = layers.iter().position(|&l| l == cur).unwrap_or(0);
         let next = layers[(i + 1) % layers.len().max(1)];
         if self.tool == PcbTool::Route
             && let Some(p) = self.start
         {
-            // Not needed on a via or a through-hole pad (they are on every layer already).
-            let has_via = doc.current_copper().items.iter().any(|c| {
+            // Not needed on a via or a through-hole pad joining both layers already.
+            let both = layer_bit(cur) | layer_bit(next);
+            let joined = doc.current_copper().items.iter().any(|c| {
                 matches!(c.item, CopperItem::Via(_) | CopperItem::Pad { .. })
                     && c.anchors[0] == p
-                    && c.layers.count_ones() > 1
+                    && c.layers & both == both
             });
-            if !has_via {
-                doc.execute(Command::AddVia { pos: p, diameter: None, drill: None }).map_err(|e| e.to_string())?;
+            if !joined {
+                let span = self.settings.via_pair.then_some([cur, next]).filter(|s| !is_through(s));
+                let via = Probe::Via {
+                    pos: p,
+                    diameter: doc.project().board.rules.via_diameter,
+                    layers: span_mask(doc.project(), span),
+                };
+                if let Some(c) = doc.route_clash(&[via], self.net.as_deref(), &[(cur, p)])
+                    && !self.settings.allow_violations
+                {
+                    return Err(format!("No via here: {}", c.message));
+                }
+                doc.execute(Command::AddVia { pos: p, diameter: None, drill: None, span })
+                    .map_err(|e| e.to_string())?;
             }
         }
         self.settings.layer = next;
         Ok(())
+    }
+
+    /// The rule the copper at the cursor would break (route leg or via).
+    pub fn clash(&self) -> Option<&Clash> {
+        self.clash.as_ref()
+    }
+
+    /// Span of the via tool's vias (`None`: through).
+    fn tool_span(&self, doc: &Document) -> Option<[LayerId; 2]> {
+        let s = self.settings.via_span;
+        let on_board = |l: LayerId| doc.project().board.copper_layers().any(|c| c.id == l);
+        (s[0] != s[1] && on_board(s[0]) && on_board(s[1]) && !is_through(&s)).then_some(s)
+    }
+
+    /// Check what a click at the cursor would add.
+    fn update_clash(&mut self, doc: &mut Document) {
+        let Some(p) = self.cursor else {
+            self.clash = None;
+            return;
+        };
+        let layer = self.settings.layer;
+        let segments = match (self.tool, self.start) {
+            (PcbTool::Route, Some(start)) => self.leg(start, p),
+            _ => vec![(p, p, None)],
+        };
+        let key = (doc.revision, self.tool, self.net.clone(), layer, self.width(doc), segments, self.settings.via_span);
+        if self.checked.as_ref() == Some(&key) {
+            return;
+        }
+        self.checked = Some(key);
+        self.clash = None;
+        match self.tool {
+            PcbTool::Route => {
+                let Some(start) = self.start else { return };
+                let width = self.width(doc);
+                let probes: Vec<Probe> = self
+                    .leg(start, p)
+                    .into_iter()
+                    .map(|(a, b, mid)| Probe::Track { layer, a, b, mid, width })
+                    .collect();
+                if probes.is_empty() {
+                    return;
+                }
+                self.clash = doc.route_clash(&probes, self.net.as_deref(), &[(layer, start), (layer, p)]);
+            }
+            PcbTool::Via => {
+                let layers = span_mask(doc.project(), self.tool_span(doc));
+                let diameter = doc.project().board.rules.via_diameter;
+                // The via takes the net of the copper under it.
+                let under: Vec<LayerId> = doc.project().board.copper_layers().map(|l| l.id).collect();
+                let copper = doc.current_copper();
+                let found = under
+                    .into_iter()
+                    .filter(|&l| layers & layer_bit(l) != 0)
+                    .find_map(|l| copper.at(p, l).map(|c| (l, copper.net_of(c.item).map(str::to_string))));
+                let (ends, net) = match found {
+                    Some((l, net)) => (vec![(l, p)], net),
+                    None => (Vec::new(), None),
+                };
+                self.clash = doc.route_clash(&[Probe::Via { pos: p, diameter, layers }], net.as_deref(), &ends);
+            }
+            _ => {}
+        }
+    }
+
+    /// Refuse a click that breaks a rule (unless allowed).
+    fn refuse(&self) -> Result<(), String> {
+        match &self.clash {
+            Some(c) if !self.settings.allow_violations => Err(format!("Not added: {}", c.message)),
+            _ => Ok(()),
+        }
     }
 
     /// Track the cursor: `raw` position and grid-snapped position. Routing snaps to
@@ -330,6 +449,7 @@ impl PcbPlacer {
             }
             _ => self.cursor = Some(snapped),
         }
+        self.update_clash(doc);
     }
 
     /// A click at the current cursor (see [`PcbPlacer::hover`]). Returns true when a
@@ -355,11 +475,16 @@ impl PcbPlacer {
                     self.start = None;
                     return Ok(true);
                 }
+                self.refuse()?;
                 let ends = doc.current_copper().at(p, layer).is_some();
-                let points = self.leg(start, p);
+                let segs = self.leg(start, p);
+                let points = std::iter::once(start).chain(segs.iter().map(|s| s.1)).collect();
+                let mids = segs.iter().map(|s| s.2).collect();
                 let width = Some(self.width(doc));
-                doc.execute(Command::AddTrack { layer, points, width }).map_err(|e| e.to_string())?;
+                doc.execute(Command::AddTrack { layer, points, width, mids }).map_err(|e| e.to_string())?;
                 self.posture.start();
+                self.clash = None;
+                self.checked = None;
                 if ends {
                     self.start = None;
                     self.net = None;
@@ -374,7 +499,11 @@ impl PcbPlacer {
                 Ok(ends)
             }
             PcbTool::Via => {
-                doc.execute(Command::AddVia { pos: p, diameter: None, drill: None }).map_err(|e| e.to_string())?;
+                self.refuse()?;
+                let span = self.tool_span(doc);
+                doc.execute(Command::AddVia { pos: p, diameter: None, drill: None, span })
+                    .map_err(|e| e.to_string())?;
+                self.update_clash(doc);
                 Ok(false)
             }
             PcbTool::Place => {
@@ -465,14 +594,25 @@ impl PcbPlacer {
             PcbTool::Route => {
                 if let Some(start) = self.start {
                     let width = self.width(doc);
-                    let path = self.leg(start, p);
-                    g.extend(path.windows(2).map(|w| PcbGhost::Track { layer: s.layer, a: w[0], b: w[1], width }));
+                    let bad = self.clash.is_some();
+                    g.extend(self.leg(start, p).into_iter().map(|(a, b, mid)| PcbGhost::Track {
+                        layer: s.layer,
+                        a,
+                        b,
+                        mid,
+                        width,
+                        bad,
+                    }));
                 }
                 if self.on_copper {
                     g.push(PcbGhost::Target(p));
                 }
             }
-            PcbTool::Via => g.push(PcbGhost::Via { pos: p, diameter: doc.project().board.rules.via_diameter }),
+            PcbTool::Via => g.push(PcbGhost::Via {
+                pos: p,
+                diameter: doc.project().board.rules.via_diameter,
+                bad: self.clash.is_some(),
+            }),
             PcbTool::Place => g.extend(self.placing.map(|part| PcbGhost::Footprint {
                 part,
                 pos: p,
@@ -494,6 +634,7 @@ impl PcbPlacer {
                 g.push(PcbGhost::Target(p));
             }
         }
+        g.extend(self.clash.as_ref().map(|c| PcbGhost::Clash(c.at)));
         g
     }
 
@@ -505,4 +646,17 @@ impl PcbPlacer {
             g
         })
     }
+}
+
+/// Spans top to bottom.
+fn is_through(span: &[LayerId; 2]) -> bool {
+    let (lo, hi) = (span[0].0.min(span[1].0), span[0].0.max(span[1].0));
+    lo == LayerId::TOP_COPPER.0 && hi == LayerId::BOTTOM_COPPER.0
+}
+
+/// Copper layers of a via spanning `span` (`None`: all).
+fn span_mask(project: &Project, span: Option<[LayerId; 2]>) -> editor_core::copper::LayerMask {
+    let [a, b] = span.unwrap_or([LayerId::TOP_COPPER, LayerId::BOTTOM_COPPER]);
+    let (lo, hi) = (a.0.min(b.0), a.0.max(b.0));
+    project.board.copper_layers().filter(|l| (lo..=hi).contains(&l.id.0)).fold(0, |m, l| m | layer_bit(l.id))
 }

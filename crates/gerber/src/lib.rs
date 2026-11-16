@@ -112,6 +112,24 @@ pub fn generate(project: &Project, copper: &BoardConnectivity) -> Result<Vec<Out
             content: excellon::drill_file(&holes, is_plated, copper_count),
         });
     }
+    // Blind and buried vias: a file per span, named by its layers (front, in1, …, back).
+    let copper: Vec<&BoardLayer> = board.copper_layers().collect();
+    let number = |l: LayerId| copper.iter().position(|c| c.id == l).map(|i| i + 1);
+    for ([from, to], holes) in excellon::span_holes(project) {
+        let (Some(a), Some(b)) = (number(from), number(to)) else { continue };
+        let short = |n: usize| match n {
+            1 => "front".to_string(),
+            n if n == copper_count => "back".to_string(),
+            n => format!("in{}", n - 1),
+        };
+        let kind = if a == 1 || b == copper_count { "Blind" } else { "Buried" };
+        files.push(OutputFile {
+            name: format!("{stem}-{}-{}.drl", short(a), short(b)),
+            kind: FileKind::SpanDrill { from, to },
+            label: format!("{kind} Drill {}–{}", copper[a - 1].name, copper[b - 1].name),
+            content: excellon::span_drill_file(&holes, a, b, copper_count),
+        });
+    }
     Ok(files)
 }
 

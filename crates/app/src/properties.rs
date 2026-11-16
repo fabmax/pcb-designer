@@ -434,6 +434,22 @@ impl Properties {
                         self.update(cx, Object::Via(v.clone()), true);
                     }
                     ui.end_row();
+                    // Blind and buried vias: only with inner layers.
+                    if cx.doc.project().board.copper_layers().count() > 2 {
+                        for (name, is_from) in [("From layer", true), ("To layer", false)] {
+                            label(ui, name);
+                            let cur = if is_from { v.from } else { v.to };
+                            if let Some(l) = copper_layer_combo_salt(ui, cx.doc.project(), cur, name) {
+                                let other = if is_from { v.to } else { v.from };
+                                if l != other {
+                                    (v.from, v.to) = if l.0 < other.0 { (l, other) } else { (other, l) };
+                                    self.update(cx, Object::Via(v.clone()), true);
+                                }
+                            }
+                            ui.end_row();
+                        }
+                        row(ui, "Kind", v.kind().to_string());
+                    }
                     copper_net_row(ui, cx.doc, CopperItem::Via(v.id));
                 });
             }
@@ -856,8 +872,12 @@ fn layer_name(project: &Project, id: LayerId) -> String {
 }
 
 fn copper_layer_combo(ui: &mut egui::Ui, project: &Project, current: LayerId) -> Option<LayerId> {
+    copper_layer_combo_salt(ui, project, current, "copper_layer")
+}
+
+fn copper_layer_combo_salt(ui: &mut egui::Ui, project: &Project, current: LayerId, salt: &str) -> Option<LayerId> {
     let mut layer = current;
-    egui::ComboBox::from_id_salt("copper_layer").selected_text(layer_name(project, current)).show_ui(ui, |ui| {
+    egui::ComboBox::from_id_salt(salt).selected_text(layer_name(project, current)).show_ui(ui, |ui| {
         for l in project.board.copper_layers() {
             ui.selectable_value(&mut layer, l.id, &l.name);
         }

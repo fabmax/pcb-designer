@@ -208,12 +208,26 @@ the current design of each area with the gotchas a change needs to know, the pla
   `RegionIndex` grids fill edges (without it, touch tests on 80k vertices took 0.7 s).
 - **DRC** (`drc::run`, pure, most severe first): shorts, clearance (pads within one
   footprint and fills skipped), keepouts, board edge, courtyard overlaps (bounding
-  boxes), track width and drill minimums, zone net, unconnected copper, unrouted.
+  boxes), track width and drill minimums, via spans (`ViaSpan`: a layer off the board,
+  `from == to`, or `from` below `to`), zone net, unconnected copper, unrouted.
+- **Checks while routing** (`route_check::check`, through `Document::route_clash`):
+  `Probe`s (a track leg, a via) against other nets' pads, tracks and vias (zone fills
+  make room themselves), keepouts forbidding tracks / vias, and the board outline
+  (clearance to the edge, inside). Copper at the leg's start is never a clash, nor at its
+  end when the net isn't known yet (a route from free space takes the net it ends on).
+  `Clash.at` is the point of the probe nearest the problem (the marker). Linear over all
+  copper per check; the route tool only rechecks when its inputs or the document
+  revision change (`ClashKey`).
+- **Vias** have a span `from`..`to` (copper layers, top one first; `AddVia { span }`,
+  `None` through). `Via::is_through` / `kind` (Through, Blind, Buried); `via_layers` is
+  every copper layer between. Arcs: `fillet::fillet` rounds a corner with a tangent
+  arc (largest radius the shorter leg allows, or a given one); `RoundCorners` rounds
+  corners between selected straight tracks where exactly two meet and no pad or via is.
 - **Keepouts** (`Keepout`, KiCad rule areas) are separate from zone holes on purpose: a
   hole is part of one zone's shape (other zones may fill it, it moves with the zone), a
   keepout is a rule for all zones on its layers (`layers` empty = all copper layers).
   `no_pour` is enforced by the fill; tracks, vias, pads and footprints (front courtyard
-  bounding box, on the footprint's side) by DRC only, not while routing.
+  bounding box, on the footprint's side) by DRC; tracks and vias also while routing.
 - Gotcha: a `Zone` binds to its net by *name* (`Zone.net`, sheet-qualified for local
   labels: `/MID`), unlike everything else, whose nets come from pads. Renaming a label
   or removing the net's last pad leaves the zone on no net (as in KiCad); DRC reports it
@@ -249,7 +263,9 @@ the current design of each area with the gotchas a change needs to know, the pla
 
 - `gerber::generate` writes one Gerber X2 file per layer (copper, mask, paste, silk,
   outline; mm, format 4.6, so coordinates are nm) and Excellon drills (plated: TH pads
-  and vias; non-plated), named like KiCad's (`Demo-F_Cu.gbr`, `-PTH.drl`). `export`
+  and through vias; non-plated; one per blind/buried span, `-front-in1.drl`, X2
+  `Plated,1,2,Blind`, `FileKind::SpanDrill`), named like KiCad's (`Demo-F_Cu.gbr`,
+  `-PTH.drl`). `export`
   replaces `<project>/output/gerber/`, writes `output/<name>-gerber.zip` (own minimal
   zip writer, fixed dates) and `export.json` (`Manifest`: files, labels and
   `design_hash` of board + schematic + library, for "outdated"). `Document::export_gerber`
@@ -345,11 +361,14 @@ the current design of each area with the gotchas a change needs to know, the pla
   auto-increment), `sch_tools` (wire, bus, bus entry, label, power, junction, no connect, place;
   `bend` for corners; `SchPlacer::sheet` is the sheet they work on, `set_sheet` ends a
   wire begun elsewhere; the Sheet tool places a new sheet's symbol with one
-  `AddSheet`), `pcb_tools` (route 45°/90° with copper snapping, L changes
-  layer + via, via, outline, zone, measure). Bus naming prompts: `SchPlacer::take_prompt`
+  `AddSheet`), `pcb_tools` (route with copper snapping and the checks above: a clash
+  turns the ghost to the flagged colour with a marker and refuses the click unless
+  `allow_violations`; L changes layer + via (through, or the two layers with
+  `via_pair`); via (span `via_span`), outline, zone, measure). Bus naming prompts: `SchPlacer::take_prompt`
   returns a `SchPrompt` for unnamed buses and entry signals.
-- `bend`: corner styles (`Corners`: wires 90°/45°/free, tracks 45°/90°), the two-leg
-  `path`, and `Posture`: the first leg follows the way the cursor first leaves the start
+- `bend`: corner styles (`Corners`: wires 90°/45°/free, tracks 45°/90°/arc 45°/arc
+  90°), the two-leg `path`, `segments` (arc styles round the corner with
+  `fillet(…, None)`: `AddTrack.mids`), and `Posture`: the first leg follows the way the cursor first leaves the start
   point (snapped cursor ≠ start; 45°: diagonal when more than 22.5° off the axis), held
   until the cursor returns to the start. `/` flips it until the next leg (or swaps a
   fixed `Bend`). Placers call `Posture::start` on every leg click, so a flip before the
@@ -601,18 +620,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-**M12b: Routing**
-- Arc 45° and arc 90° corner styles while routing (the corner rounded with the largest
-  radius the legs allow); `RoundCorners { tracks, radius }` for existing corners (route
-  tool setting "Corner radius", 1 mm; an action on the selection).
-- Clearance (other nets' pads, tracks, vias), keepouts and the board outline checked while
-  routing and placing vias: red ghost and marker, the click refused unless "Allow
-  violations" is on. A route from free space checks against all copper it doesn't join.
-- Blind and buried vias: From/To in via Properties and the Via tool, "Via span" (through
-  or the two layers) for L; hidden on two-layer boards. Drill files per span
-  (`Demo-front-in1.drl`, X2 `Plated,from,to,Blind/Buried`), read by the Gerber tab; DRC
-  of empty or backwards spans.
-
 **M13: Texts**
 - Editing text on the canvas.
 - Multi-line text: the font stacks lines, but the Text properties field is single-line.
@@ -689,6 +696,12 @@ defers.
 - Clipboard: carrying a paste between the schematic and the board.
 - Measure tool: an index for `board_points` on huge boards.
 - Push-and-shove routing.
+- Routing checks: clearance to zone fills of other nets, an index for huge boards
+  (linear per check today), checking the vias L adds against the next layer's copper
+  only once the layer changes; blind and buried vias drawn differently from through
+  vias; per-span via sizes; micro vias.
+- Round track corners: corners at pads and vias, between arcs, and live radius
+  editing of an existing arc.
 - Track drags: a 45° fix-up where a joining track is added (two segments instead of one
   at any angle); tees of other tracks onto a moved track's inside don't follow;
   re-selecting "expand" (through vias, then the whole net) on a second double click.

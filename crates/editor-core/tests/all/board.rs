@@ -73,12 +73,15 @@ impl B {
     }
 
     fn track(&mut self, layer: LayerId, points: &[Point]) -> Id {
-        let c = self.ed.execute(Command::AddTrack { layer, points: points.to_vec(), width: None }).unwrap();
+        let c = self
+            .ed
+            .execute(Command::AddTrack { layer, points: points.to_vec(), width: None, mids: Vec::new() })
+            .unwrap();
         c.ids().find_map(|id| if let ObjectId::Track(t) = id { Some(t) } else { None }).unwrap()
     }
 
     fn via(&mut self, pos: Point) -> Id {
-        let c = self.ed.execute(Command::AddVia { pos, diameter: None, drill: None }).unwrap();
+        let c = self.ed.execute(Command::AddVia { pos, diameter: None, drill: None, span: None }).unwrap();
         c.ids().find_map(|id| if let ObjectId::Via(v) = id { Some(v) } else { None }).unwrap()
     }
 

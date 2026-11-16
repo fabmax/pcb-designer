@@ -179,7 +179,8 @@ fn copper_touching_a_board_part_pad_is_a_short() {
     })
     .unwrap();
     let (a, b) = (pad_of(&ed, rf), pad_of(&ed, f));
-    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![a, b], width: None }).unwrap();
+    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![a, b], width: None, mids: Vec::new() })
+        .unwrap();
     let v = check(&ed);
     let shorts: Vec<_> = v.iter().filter(|v| v.kind == ViolationKind::Short).collect();
     assert_eq!(shorts.len(), 1, "{v:?}");
@@ -204,8 +205,13 @@ fn copper_touching_an_unmapped_pad_is_a_short() {
     let bc = BoardConnectivity::build(p, &Connectivity::build(p));
     assert!(bc.nets.iter().any(|n| n == "unconnected-(R1-Pad2)"), "{:?}", bc.nets);
 
-    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![pads[0].2, pads[1].2], width: None })
-        .unwrap();
+    ed.execute(Command::AddTrack {
+        layer: LayerId::TOP_COPPER,
+        points: vec![pads[0].2, pads[1].2],
+        width: None,
+        mids: Vec::new(),
+    })
+    .unwrap();
     let p = ed.project();
     let bc = BoardConnectivity::build(p, &Connectivity::build(p));
     assert_eq!(bc.shorts.len(), 1, "{:?}", bc.shorts);

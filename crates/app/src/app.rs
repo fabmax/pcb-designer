@@ -1692,6 +1692,30 @@ impl PcbApp {
         true
     }
 
+    /// Round the corners between the selected tracks with the route tool's radius.
+    fn round_corners(&mut self) {
+        let tracks: Vec<Id> = self
+            .panes
+            .selection(ViewId::Board)
+            .iter()
+            .filter_map(|id| if let ObjectId::Track(t) = id { Some(*t) } else { None })
+            .collect();
+        if tracks.is_empty() {
+            return self.set_status("Select the tracks whose corners to round (on the board)".to_string());
+        }
+        let total = editor_core::fillet::corners(self.doc().project(), &tracks).len();
+        let radius = self.pcb.settings.corner_radius;
+        let arcs = |p: &Project| p.board.tracks.iter().filter(|t| t.mid.is_some()).count();
+        let before = arcs(self.doc().project());
+        match self.project.lib.doc.execute(Command::RoundCorners { tracks, radius }) {
+            Ok(_) => {
+                let n = arcs(self.doc().project()) - before;
+                self.set_status(format!("Rounded {n} of {total} corners ({} mm radius)", radius as f64 / 1e6));
+            }
+            Err(e) => self.set_status(e.to_string()),
+        }
+    }
+
     fn run_action(&mut self, action: Action) {
         if let Some(panel) = Panel::of_action(action) {
             return self.settings.dock.toggle(panel);
@@ -1733,6 +1757,7 @@ impl PcbApp {
                 return;
             }
             Action::ExportGerber => return self.export_gerber(),
+            Action::RoundCorners => return self.round_corners(),
             Action::Cut | Action::Copy | Action::Paste | Action::Duplicate => return,
             Action::Undo => return self.undo(),
             Action::Redo => return self.redo(),
@@ -1852,7 +1877,8 @@ impl PcbApp {
             | Action::SchJunction
             | Action::SchNoConnect
             | Action::Posture
-            | Action::NextCorners => None,
+            | Action::NextCorners
+            | Action::RoundCorners => None,
             Action::PcbRoute
             | Action::PcbVia
             | Action::PcbOutline

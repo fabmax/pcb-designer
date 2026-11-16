@@ -179,12 +179,19 @@ fn retracted_step_leaves_no_redo() {
 // ---- Board
 
 fn track(ed: &mut Editor, points: &[Point]) -> Vec<Id> {
-    let c = ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: points.to_vec(), width: None }).unwrap();
+    let c = ed
+        .execute(Command::AddTrack {
+            layer: LayerId::TOP_COPPER,
+            points: points.to_vec(),
+            width: None,
+            mids: Vec::new(),
+        })
+        .unwrap();
     c.ids().filter_map(|id| if let ObjectId::Track(t) = id { Some(t) } else { None }).collect()
 }
 
 fn via(ed: &mut Editor, pos: Point) -> Id {
-    let c = ed.execute(Command::AddVia { pos, diameter: None, drill: None }).unwrap();
+    let c = ed.execute(Command::AddVia { pos, diameter: None, drill: None, span: None }).unwrap();
     c.ids().find_map(|id| if let ObjectId::Via(v) = id { Some(v) } else { None }).unwrap()
 }
 

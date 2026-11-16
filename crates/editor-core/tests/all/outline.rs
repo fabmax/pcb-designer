@@ -52,7 +52,7 @@ fn lines_and_arcs_close_into_a_rounded_board_with_a_cutout() {
     assert!(filled(Point::mm(2.0, 0.5)), "inside along the edge");
 
     // DRC: a via in the cutout is outside the board.
-    ed.execute(Command::AddVia { pos: Point::mm(10.0, 5.0), diameter: None, drill: None }).unwrap();
+    ed.execute(Command::AddVia { pos: Point::mm(10.0, 5.0), diameter: None, drill: None, span: None }).unwrap();
     let p = ed.project();
     let bc = BoardConnectivity::build(p, &Connectivity::build(p));
     let v = editor_core::drc::run(p, &bc);

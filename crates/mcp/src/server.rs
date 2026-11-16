@@ -96,9 +96,11 @@ A zone fills its outline minus its holes on one layer with its net (empty net: i
 copper); connection thermal/thermal_through_hole/solid/none says how its own pads join, \
 islands always/never/below_area which unconnected fill pieces go. A keepout (layers: copper \
 layers, empty for all) forbids tracks, vias, pads, zone fills (no_pour) or footprints \
-(courtyards) inside its outline; fills leave it out and DRC reports the rest. Arc tracks are \
-track objects with a mid point (any point on the arc between a and b), inserted with execute; \
-add_track draws straight segments.";
+(courtyards) inside its outline; fills leave it out and DRC reports the rest. Arc tracks have \
+a mid point (any point on the arc between a and b): add_track takes mids (one per segment, \
+null for straight ones). round_corners {tracks, radius} rounds the corners between straight \
+tracks with tangent arcs. add_via takes span [from, to] (two copper layers) for blind and \
+buried vias; without it a via goes through all layers.";
 
 #[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -491,7 +493,8 @@ impl PcbTools {
         nearest pads, vias or track ends of each net, in nm), shorts between nets, flagged copper \
         (tracks/vias in a short or touching no pad, kept after schematic changes), copper layers \
         and design rules. Route with `execute` add_track (points on pad centers; tracks get their \
-        net from the pads they touch) and add_via (through, connects all layers).")]
+        net from the pads they touch; mids for arc segments) and add_via (through all layers, or \
+        span [from, to] for blind and buried vias).")]
     async fn get_routing(&self) -> Result<CallToolResult, ErrorData> {
         self.call(Request::Routing).await
     }

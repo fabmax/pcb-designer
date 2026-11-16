@@ -197,6 +197,7 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
     for a in [Action::SelectAll, Action::Rotate, Action::Mirror, Action::Flip, Action::Delete] {
         edit.push(action(a.label(), a, true));
     }
+    edit.extend([Entry::Separator, action("Round track corners", Action::RoundCorners, true)]);
     if !s.native {
         edit.extend([Entry::Separator, action("Settings…", Action::Settings, true)]);
     }

@@ -13,27 +13,33 @@ pub enum Corners {
     Deg45,
     /// One straight segment at any angle.
     Free,
+    /// A 45° path with the corner rounded by the largest arc the legs allow (tracks).
+    Arc45,
+    /// A 90° path with the corner rounded by the largest arc the legs allow (tracks).
+    Arc90,
 }
 
 impl Corners {
     /// Styles of schematic wires and buses, in cycling order.
     pub const WIRE: &[Corners] = &[Corners::Deg90, Corners::Deg45, Corners::Free];
     /// Styles of tracks, in cycling order.
-    pub const TRACK: &[Corners] = &[Corners::Deg45, Corners::Deg90];
+    pub const TRACK: &[Corners] = &[Corners::Deg45, Corners::Deg90, Corners::Arc45, Corners::Arc90];
 
     pub fn label(self) -> &'static str {
         match self {
             Corners::Deg90 => "90°",
             Corners::Deg45 => "45°",
             Corners::Free => "Free angle",
+            Corners::Arc45 => "Arc 45°",
+            Corners::Arc90 => "Arc 90°",
         }
     }
 
     /// Names of the two postures by their first leg: straight (horizontal), or not.
     pub fn postures(self) -> (&'static str, &'static str) {
         match self {
-            Corners::Deg90 => ("Horizontal", "Vertical"),
-            Corners::Deg45 => ("Straight", "Diagonal"),
+            Corners::Deg90 | Corners::Arc90 => ("Horizontal", "Vertical"),
+            Corners::Deg45 | Corners::Arc45 => ("Straight", "Diagonal"),
             Corners::Free => ("", ""),
         }
     }
@@ -61,12 +67,13 @@ pub enum Bend {
 /// `second` picks the second posture (vertical first, or diagonal first).
 pub fn path(a: Point, b: Point, corners: Corners, second: bool) -> Vec<Point> {
     let (dx, dy) = (b.x - a.x, b.y - a.y);
-    if corners == Corners::Free || dx == 0 || dy == 0 || (corners == Corners::Deg45 && dx.abs() == dy.abs()) {
+    let diagonal = matches!(corners, Corners::Deg45 | Corners::Arc45);
+    if corners == Corners::Free || dx == 0 || dy == 0 || (diagonal && dx.abs() == dy.abs()) {
         return vec![a, b];
     }
     let corner = match corners {
-        Corners::Deg90 if second => Point::new(a.x, b.y),
-        Corners::Deg90 => Point::new(b.x, a.y),
+        Corners::Deg90 | Corners::Arc90 if second => Point::new(a.x, b.y),
+        Corners::Deg90 | Corners::Arc90 => Point::new(b.x, a.y),
         _ => {
             let m = dx.abs().min(dy.abs());
             let diag = Point::new(dx.signum() * m, dy.signum() * m);
@@ -74,6 +81,18 @@ pub fn path(a: Point, b: Point, corners: Corners, second: bool) -> Vec<Point> {
         }
     };
     vec![a, corner, b]
+}
+
+/// Segments of a path from `a` to `b` as (start, end, point on the arc): arc styles round
+/// the corner of [`path`].
+pub fn segments(a: Point, b: Point, corners: Corners, second: bool) -> Vec<(Point, Point, Option<Point>)> {
+    let pts = path(a, b, corners, second);
+    if let ([a, c, b], Corners::Arc45 | Corners::Arc90) = (&pts[..], corners)
+        && let Some((p1, mid, p2)) = editor_core::fillet::fillet(*a, *c, *b, None)
+    {
+        return [(*a, p1, None), (p1, p2, Some(mid)), (p2, *b, None)].into_iter().filter(|s| s.0 != s.1).collect();
+    }
+    pts.windows(2).map(|w| (w[0], w[1], None)).collect()
 }
 
 /// The automatic posture of the leg being drawn. It is decided when the cursor first
@@ -113,9 +132,9 @@ impl Posture {
         }
         let (dx, dy) = ((cursor.x - start.x).abs() as f64, (cursor.y - start.y).abs() as f64);
         self.second = match corners {
-            Corners::Deg90 => dy > dx,
+            Corners::Deg90 | Corners::Arc90 => dy > dx,
             // Leaving at a steep angle (more than 22.5° off the axis) starts diagonally.
-            Corners::Deg45 => dx.min(dy) > dx.max(dy) * std::f64::consts::FRAC_PI_8.tan(),
+            Corners::Deg45 | Corners::Arc45 => dx.min(dy) > dx.max(dy) * std::f64::consts::FRAC_PI_8.tan(),
             Corners::Free => self.second,
         };
         self.armed = false;
@@ -194,6 +213,19 @@ mod tests {
         let mut p = Posture::default();
         p.track(s, Point::mm(1.0, 0.9), Corners::Deg45);
         assert!(p.second(Bend::Auto));
+    }
+
+    #[test]
+    fn arc_styles_round_the_corner() {
+        let (a, b) = (Point::mm(0.0, 0.0), Point::mm(10.0, 4.0));
+        let s = segments(a, b, Corners::Arc90, false);
+        assert_eq!(s.len(), 2, "the shorter leg is used up: {s:?}");
+        assert_eq!((s[0].0, s[0].1, s[0].2), (a, Point::mm(6.0, 0.0), None));
+        assert!(s[1].2.is_some() && s[1].1 == b);
+        let s = segments(a, b, Corners::Arc45, false);
+        assert_eq!(s.len(), 2);
+        assert!(s[1].2.is_some() && s[1].1 == b);
+        assert_eq!(segments(a, b, Corners::Deg90, false).len(), 2);
     }
 
     #[test]

@@ -143,6 +143,17 @@ pub enum Command {
         points: Vec<Point>,
         #[serde(default)]
         width: Option<Coord>,
+        /// For arcs: a point on the arc of segment `i` (from `points[i]` to `points[i+1]`);
+        /// missing or `None`: straight.
+        #[serde(default)]
+        mids: Vec<Option<Point>>,
+    },
+    /// Round the corners between the given straight tracks (where two of them end at the
+    /// same point with nothing else there) with tangent arcs of `radius`. Corners whose
+    /// tracks are too short for the radius stay; fails if none could be rounded.
+    RoundCorners {
+        tracks: Vec<Id>,
+        radius: Coord,
     },
     /// Number of copper layers (2 or more, even). Inner layers are added or removed at
     /// the bottom of the inner stack; removing a layer that has copper on it fails.
@@ -164,6 +175,10 @@ pub enum Command {
         diameter: Option<Coord>,
         #[serde(default)]
         drill: Option<Coord>,
+        /// The two copper layers a blind or buried via joins (and all between);
+        /// `None`: a through via.
+        #[serde(default)]
+        span: Option<[LayerId; 2]>,
     },
     /// Move objects. With `keep_connected`, what is attached stays attached. Schematic
     /// wires attached to moved pins, wire ends, labels and junctions follow: horizontal and
@@ -258,6 +273,7 @@ impl Command {
             Command::SetComponent { .. } => "Edit component".into(),
             Command::AddTrack { .. } => "Add track".into(),
             Command::AddVia { .. } => "Add via".into(),
+            Command::RoundCorners { .. } => "Round corners".into(),
             Command::SetCopperLayers { count } => format!("{count} copper layers"),
             Command::SetDesignRules { .. } => "Edit design rules".into(),
             Command::SetTitleBlock { .. } => "Edit title block".into(),
@@ -399,17 +415,41 @@ impl Command {
                     Ok(())
                 })
             }
-            Command::AddTrack { layer, points, width } => {
+            Command::AddTrack { layer, points, width, mids } => {
                 if !layer.is_copper() || !tx.project().board.layers.iter().any(|l| l.id == layer) {
                     return Err(CommandError::Invalid(format!("{layer:?} is not a copper layer of this board")));
                 }
                 let width = width.unwrap_or(tx.project().board.rules.track_width);
-                let segments: Vec<_> = points.windows(2).filter(|w| w[0] != w[1]).collect();
+                let segments: Vec<_> = points.windows(2).enumerate().filter(|(_, w)| w[0] != w[1]).collect();
                 if segments.is_empty() {
                     return Err(CommandError::Invalid("a track needs two distinct points".into()));
                 }
-                for w in segments {
-                    tx.insert(Object::Track(Track::straight(layer, w[0], w[1], width)))?;
+                for (i, w) in segments {
+                    let mut t = Track::straight(layer, w[0], w[1], width);
+                    t.mid = mids.get(i).copied().flatten();
+                    tx.insert(Object::Track(t))?;
+                }
+                Ok(())
+            }
+            Command::RoundCorners { tracks, radius } => {
+                if radius <= 0 {
+                    return Err(CommandError::Invalid("the radius must be positive".into()));
+                }
+                let corners = crate::fillet::corners(tx.project(), &tracks);
+                if corners.is_empty() {
+                    return Err(CommandError::Invalid(
+                        "no corners: two of the tracks must end at the same point, with nothing else there".into(),
+                    ));
+                }
+                let mut rounded = 0;
+                for c in &corners {
+                    rounded += crate::fillet::round(tx, c, radius)? as usize;
+                }
+                if rounded == 0 {
+                    return Err(CommandError::Invalid(format!(
+                        "the tracks are too short for a {} mm radius",
+                        radius as f64 / 1e6
+                    )));
                 }
                 Ok(())
             }
@@ -437,15 +477,22 @@ impl Command {
                 tx.set_setup(setup);
                 Ok(())
             }
-            Command::AddVia { pos, diameter, drill } => {
-                let rules = &tx.project().board.rules;
+            Command::AddVia { pos, diameter, drill, span } => {
+                let board = &tx.project().board;
+                let rules = &board.rules;
+                let [from, to] = span.unwrap_or([LayerId::TOP_COPPER, LayerId::BOTTOM_COPPER]);
+                let copper = |l: LayerId| board.copper_layers().any(|c| c.id == l);
+                if !copper(from) || !copper(to) || from == to {
+                    return Err(CommandError::Invalid("a via spans two different copper layers of the board".into()));
+                }
+                let (from, to) = if from.0 < to.0 { (from, to) } else { (to, from) };
                 let via = Via {
                     id: Id::new(),
                     pos,
                     diameter: diameter.unwrap_or(rules.via_diameter),
                     drill: drill.unwrap_or(rules.via_drill),
-                    from: LayerId::TOP_COPPER,
-                    to: LayerId::BOTTOM_COPPER,
+                    from,
+                    to,
                 };
                 if via.drill >= via.diameter {
                     return Err(CommandError::Invalid("via drill must be smaller than its diameter".into()));

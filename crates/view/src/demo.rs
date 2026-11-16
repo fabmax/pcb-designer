@@ -196,12 +196,24 @@ pub fn demo_project() -> Project {
     ];
     for (a, b) in tracks {
         let mid = Point::new(b.x, a.y);
-        ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![a, mid, b], width: None }).unwrap();
+        ed.execute(Command::AddTrack {
+            layer: LayerId::TOP_COPPER,
+            points: vec![a, mid, b],
+            width: None,
+            mids: Vec::new(),
+        })
+        .unwrap();
     }
     let gnd = pad(ed.project(), fj1, "4");
     let via = Point::new(gnd.x + mm(4.0), gnd.y);
-    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![gnd, via], width: Some(mm(0.4)) }).unwrap();
-    ed.execute(Command::AddVia { pos: via, diameter: None, drill: None }).unwrap();
+    ed.execute(Command::AddTrack {
+        layer: LayerId::TOP_COPPER,
+        points: vec![gnd, via],
+        width: Some(mm(0.4)),
+        mids: Vec::new(),
+    })
+    .unwrap();
+    ed.execute(Command::AddVia { pos: via, diameter: None, drill: None, span: None }).unwrap();
     ed.execute(Command::Insert {
         objects: vec![Object::Zone(Zone::new(
             LayerId::BOTTOM_COPPER,

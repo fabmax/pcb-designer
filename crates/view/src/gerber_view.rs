@@ -125,8 +125,7 @@ impl GerberView {
                     continue;
                 }
             };
-            let drill = matches!(kind, Some(FileKind::PlatedDrill | FileKind::NonPlatedDrill))
-                || (kind.is_none() && is_drill_name(&name));
+            let drill = kind.map_or_else(|| is_drill_name(&name), FileKind::is_drill);
             let parsed = if drill { parse_excellon(&text) } else { parse_gerber(&text) };
             let image = match parsed {
                 Ok(i) => i,

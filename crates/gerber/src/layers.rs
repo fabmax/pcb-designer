@@ -20,6 +20,17 @@ pub enum FileKind {
     Layer(LayerId),
     PlatedDrill,
     NonPlatedDrill,
+    /// Blind or buried vias between two copper layers.
+    SpanDrill {
+        from: LayerId,
+        to: LayerId,
+    },
+}
+
+impl FileKind {
+    pub fn is_drill(self) -> bool {
+        !matches!(self, FileKind::Layer(_))
+    }
 }
 
 /// The file name suffix (KiCad's layer names) and the X2 file attributes of a layer.

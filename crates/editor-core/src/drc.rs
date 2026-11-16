@@ -22,6 +22,8 @@ pub enum ViolationKind {
     Courtyard,
     TrackWidth,
     Drill,
+    /// A via whose layers aren't two different copper layers of the board, top one first.
+    ViaSpan,
     /// A zone's net name matches no net on the board (renamed, or its pads are gone),
     /// so it connects nothing.
     ZoneNet,
@@ -39,6 +41,7 @@ impl ViolationKind {
             ViolationKind::Courtyard => "Courtyard overlap",
             ViolationKind::TrackWidth => "Track width",
             ViolationKind::Drill => "Drill",
+            ViolationKind::ViaSpan => "Via span",
             ViolationKind::ZoneNet => "Zone net",
             ViolationKind::Unconnected => "Unconnected copper",
             ViolationKind::Unrouted => "Unrouted",
@@ -294,6 +297,24 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
         pos,
         objects: vec![id],
     };
+    let copper_layer = |l: LayerId| board.copper_layers().any(|c| c.id == l);
+    for v in board.vias.iter() {
+        let problem = if !copper_layer(v.from) || !copper_layer(v.to) {
+            "joins a layer that isn't a copper layer of the board"
+        } else if v.from == v.to {
+            "joins no layers (both ends on the same layer)"
+        } else if v.from.0 > v.to.0 {
+            "spans backwards (its first layer is below the second)"
+        } else {
+            continue;
+        };
+        out.push(Violation {
+            kind: ViolationKind::ViaSpan,
+            message: format!("Via {problem}"),
+            pos: v.pos,
+            objects: vec![ObjectId::Via(v.id)],
+        });
+    }
     for v in board.vias.iter().filter(|v| v.drill < rules.min_drill) {
         out.push(drill("Via".into(), v.drill, v.pos, ObjectId::Via(v.id)));
     }

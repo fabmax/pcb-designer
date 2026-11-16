@@ -319,12 +319,17 @@ pub fn grid_menu(ui: &mut Ui, grid: &mut Coord, snap: &mut bool, background: &mu
 
 /// The usage hint at the bottom of `canvas`, right of the view buttons (not interactive).
 pub fn hint(ui: &Ui, canvas: Rect, text: &str) {
+    hint_in(ui, canvas, text, theme::text_dim());
+}
+
+/// [`hint`] in `color` (a warning).
+pub fn hint_in(ui: &Ui, canvas: Rect, text: &str, color: Color32) {
     let left = canvas.left() + INSET + VIEW_BUTTONS_WIDTH + GAP;
     let max_width = canvas.right() - INSET - left - 20.0;
     if max_width < 40.0 {
         return;
     }
-    let galley = egui::WidgetText::from(RichText::new(text).color(theme::text_dim())).into_galley(
+    let galley = egui::WidgetText::from(RichText::new(text).color(color)).into_galley(
         ui,
         Some(egui::TextWrapMode::Truncate),
         max_width,
@@ -336,5 +341,5 @@ pub fn hint(ui: &Ui, canvas: Rect, text: &str) {
     let rect = Rect::from_min_size(Pos2::new(left, center_y - size.y / 2.0), size);
     let painter = ui.painter_at(canvas);
     painter.rect_filled(rect, RADIUS, theme::panel().gamma_multiply(0.85));
-    painter.galley(rect.min + vec2(10.0, 5.0), galley, theme::text_dim());
+    painter.galley(rect.min + vec2(10.0, 5.0), galley, color);
 }

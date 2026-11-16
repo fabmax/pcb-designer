@@ -283,3 +283,34 @@ fn viewer_loads_an_export() {
     gv.show_only(Some("nothing"));
     assert!(gv.snap_points(at, model::mm(0.2)).is_empty());
 }
+
+#[test]
+fn blind_and_buried_vias_get_their_own_drill_files() {
+    use editor_core::Command;
+    let (_tmp, mut doc) = saved_demo();
+    doc.execute(Command::SetCopperLayers { count: 4 }).unwrap();
+    let (top, in1, in2) = (LayerId::TOP_COPPER, LayerId::inner(1), LayerId::inner(2));
+    for (x, span) in [(1.0, [top, in1]), (2.0, [top, in1]), (3.0, [in1, in2])] {
+        let pos = model::Point::mm(100.0 + x, 100.0);
+        doc.execute(Command::AddVia { pos, diameter: None, drill: None, span: Some(span) }).unwrap();
+    }
+    let export = doc.export_gerber().unwrap();
+    let stem = doc.project().name.clone();
+    let files = &export.manifest.files;
+    let blind = files.iter().find(|f| f.kind == FileKind::SpanDrill { from: top, to: in1 }).unwrap();
+    assert_eq!(blind.name, format!("{stem}-front-in1.drl"));
+    let text = std::fs::read_to_string(export.dir.join(&blind.name)).unwrap();
+    assert!(text.contains("TF.FileFunction,Plated,1,2,Blind"), "{text}");
+    assert_eq!(text.lines().filter(|l| l.starts_with('X')).count(), 2);
+    let buried = files.iter().find(|f| f.kind == FileKind::SpanDrill { from: in1, to: in2 }).unwrap();
+    assert_eq!(buried.name, format!("{stem}-in1-in2.drl"));
+    assert!(std::fs::read_to_string(export.dir.join(&buried.name)).unwrap().contains("Plated,2,3,Buried"));
+    // Through holes don't include them.
+    let pth = files.iter().find(|f| f.kind == FileKind::PlatedDrill).unwrap();
+    let pth = std::fs::read_to_string(export.dir.join(&pth.name)).unwrap();
+    assert!(!pth.contains("X101.0000Y100.0000"));
+    // The viewer reads each as its own drill layer.
+    let gv = view::GerberView::load(&export.dir).unwrap();
+    assert!(gv.errors.is_empty(), "{:?}", gv.errors);
+    assert!(gv.files.iter().filter(|f| f.drill).count() >= 3);
+}

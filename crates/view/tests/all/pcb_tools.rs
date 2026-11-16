@@ -110,9 +110,22 @@ fn outline_and_vias() {
     assert_eq!(g.shape.bounds().width(), mm(30.0) + 100_000);
 
     t.set_tool(PcbTool::Via);
+    // On the board edge: refused, shown red with a marker.
     t.hover(&mut doc, Some((b, b)), mm(0.3));
+    assert!(t.ghosts(&doc).iter().any(|g| matches!(g, PcbGhost::Via { bad: true, .. })));
+    assert!(t.ghosts(&doc).iter().any(|g| matches!(g, PcbGhost::Clash(_))));
+    assert!(t.click(&mut doc).unwrap_err().contains("board edge"));
+    assert!(doc.project().board.vias.is_empty());
+    // Unless violations are allowed.
+    t.settings.allow_violations = true;
     t.click(&mut doc).unwrap();
     assert_eq!(doc.project().board.vias.len(), 1);
+    t.settings.allow_violations = false;
+    let inside = Point::mm(10.0, 10.0);
+    t.hover(&mut doc, Some((inside, inside)), mm(0.3));
+    assert!(t.clash().is_none());
+    t.click(&mut doc).unwrap();
+    assert_eq!(doc.project().board.vias.len(), 2);
     assert!(t.escape());
     assert_eq!(t.tool(), PcbTool::Select);
 }
@@ -222,4 +235,68 @@ fn place_board_parts_with_rotation_and_side() {
     assert!(t.escape());
     t.place(part);
     assert_eq!((t.settings.rotation, t.settings.side), (Angle::ZERO, Side::Top));
+}
+
+#[test]
+fn route_with_rounded_corners() {
+    let mut doc = Document::new(Project::new("T"));
+    let mut t = PcbPlacer::default();
+    t.set_tool(PcbTool::Route);
+    t.settings.corners = view::bend::Corners::Arc90;
+    let (a, b) = (Point::mm(0.0, 0.0), Point::mm(10.0, 4.0));
+    t.hover(&mut doc, Some((a, a)), mm(0.3));
+    t.click(&mut doc).unwrap();
+    t.hover(&mut doc, Some((b, b)), mm(0.3));
+    let ghosts = t.ghosts(&doc);
+    assert!(ghosts.iter().any(|g| matches!(g, PcbGhost::Track { mid: Some(_), .. })), "{ghosts:?}");
+    t.click(&mut doc).unwrap();
+    let tracks: Vec<&Track> = doc.project().board.tracks.iter().collect();
+    assert_eq!(tracks.len(), 2);
+    assert_eq!((tracks[0].a, tracks[0].b, tracks[0].mid), (a, Point::mm(6.0, 0.0), None));
+    assert!(tracks[1].mid.is_some() && tracks[1].b == b);
+}
+
+#[test]
+fn routing_keeps_clearance_to_other_nets() {
+    let mut doc = Document::new(Project::new("T"));
+    let parts = vec![PART_RESISTOR, PART_HEADER_1X4];
+    doc.execute(Command::import_parts(&builtin::builtin_library(), &parts).unwrap()).unwrap();
+    let (sj, fj) = place(&mut doc, PART_HEADER_1X4, 0.0, Point::mm(0.0, 0.0));
+    let (sr, _) = place(&mut doc, PART_RESISTOR, 20.32, Point::mm(10.0, 0.0));
+    for (a, b) in [((sj, "1"), (sr, "1")), ((sj, "2"), (sr, "2"))] {
+        let (pa, pb) = (pin(&doc, a.0, a.1), pin(&doc, b.0, b.1));
+        let pts = if pa.x == pb.x || pa.y == pb.y { vec![pa, pb] } else { vec![pa, Point::new(pb.x, pa.y), pb] };
+        doc.execute(Command::AddWire { sheet: None, points: pts }).unwrap();
+    }
+    let (j1, j2) = (pad(&doc, fj, "1"), pad(&doc, fj, "2"));
+    let mut t = PcbPlacer::default();
+    t.set_tool(PcbTool::Route);
+    t.settings.corners = view::bend::Corners::Deg90;
+    t.hover(&mut doc, Some((j1, j1)), mm(0.3));
+    t.click(&mut doc).unwrap();
+    // Straight onto the pad of the other net: refused.
+    t.hover(&mut doc, Some((j2, j2)), mm(0.3));
+    let clash = t.clash().expect("a clash").clone();
+    assert!(clash.message.contains("touch"), "{}", clash.message);
+    assert!(t.click(&mut doc).is_err());
+    assert!(doc.project().board.tracks.is_empty());
+    // Away from it: fine.
+    let away = j1 + Point::mm(-5.0, 0.0);
+    t.hover(&mut doc, Some((away, away)), mm(0.3));
+    assert!(t.clash().is_none(), "{:?}", t.clash());
+    t.click(&mut doc).unwrap();
+    assert_eq!(doc.project().board.tracks.len(), 1);
+    t.escape();
+
+    // Started in free space, a route may end on any pad (it takes that net)...
+    let free = j2 + Point::mm(-5.0, 0.0);
+    t.hover(&mut doc, Some((free, free)), mm(0.3));
+    t.click(&mut doc).unwrap();
+    t.hover(&mut doc, Some((j2, j2)), mm(0.3));
+    assert!(t.clash().is_none(), "{:?}", t.clash());
+    // ...but not cross copper it doesn't connect to (the first track).
+    t.settings.bend = view::bend::Bend::First;
+    let across = j1 + (j1 - j2) + Point::mm(-4.0, 0.0);
+    t.hover(&mut doc, Some((across, across)), mm(0.0));
+    assert!(t.clash().is_some_and(|c| c.message.contains("touch")), "{:?}", t.clash());
 }

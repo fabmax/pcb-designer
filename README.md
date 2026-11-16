@@ -14,7 +14,8 @@ cargo test --workspace
 ## Manufacturing files
 
 File → Export Gerber files (⇧⌘E) writes Gerber X2 files (copper, solder mask, paste,
-silkscreen, board outline) and Excellon drill files into `<project>.pcbproj/output/gerber/`,
+silkscreen, board outline) and Excellon drill files (one more per blind or buried via
+span, e.g. `Demo-front-in1.drl`) into `<project>.pcbproj/output/gerber/`,
 replacing the previous export, plus `output/<name>-gerber.zip` for the manufacturer.
 Zones are refilled and the design rules checked first; violations are reported but don't
 stop the export. Solder mask openings and paste come from the pads (Board setup: mask
@@ -34,7 +35,17 @@ The Wire, Bus and Route tools draw one leg per click. Each leg bends once: the f
 follows the way the pointer leaves the start point (horizontal or vertical, or straight
 or diagonal at 45°); move back to the start to choose again, or press **/** to flip it.
 The tool settings fix it if you prefer. Corner styles (tool settings, or Shift+Space to
-cycle): 90°, 45° and free angle for wires and buses; 45° and 90° for tracks.
+cycle): 90°, 45° and free angle for wires and buses; 45°, 90°, arc 45° and arc 90° for
+tracks (the arc styles round the corner as widely as the legs allow). Edit → Round track
+corners rounds the corners between the selected tracks with the Route tool's corner
+radius.
+
+While routing and placing vias, the design rules are checked: clearance to other nets'
+pads, tracks and vias, keepouts and the board outline. A track or via that breaks them is
+drawn in the warning colour with a marker where it clashes, the hint bar says why, and
+the click is refused, unless "Allow violations" is on in the tool settings. On boards
+with inner layers, vias can be blind or buried: From/To layers in the Via tool and in a
+via's properties, and "Via span" (through, or just the two layers) for the vias L adds.
 
 ## Selecting and dragging
 

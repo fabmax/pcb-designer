@@ -211,6 +211,8 @@ pub fn corner_rows(
                 Corners::Deg90 => Icon::Corner90,
                 Corners::Deg45 => Icon::Corner45,
                 Corners::Free => Icon::CornerFree,
+                Corners::Arc45 => Icon::CornerArc45,
+                Corners::Arc90 => Icon::CornerArc90,
             };
             let active = *corners == style;
             let (rect, r) = ui.allocate_exact_size(egui::vec2(26.0, 22.0), egui::Sense::click());

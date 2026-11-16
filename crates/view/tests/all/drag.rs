@@ -120,10 +120,15 @@ fn double_click_selects_the_chain() {
 #[test]
 fn board_drag_keeps_tracks_on_a_via() {
     let mut doc = Document::new(Project::new("t"));
-    let c = doc.execute(Command::AddVia { pos: p(0.0, 0.0), diameter: None, drill: None }).unwrap();
+    let c = doc.execute(Command::AddVia { pos: p(0.0, 0.0), diameter: None, drill: None, span: None }).unwrap();
     let via = c.ids().find_map(|id| if let ObjectId::Via(v) = id { Some(v) } else { None }).unwrap();
     let c = doc
-        .execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![p(0.0, 0.0), p(10.0, 0.0)], width: None })
+        .execute(Command::AddTrack {
+            layer: LayerId::TOP_COPPER,
+            points: vec![p(0.0, 0.0), p(10.0, 0.0)],
+            width: None,
+            mids: Vec::new(),
+        })
         .unwrap();
     let t = c.ids().find_map(|id| if let ObjectId::Track(t) = id { Some(t) } else { None }).unwrap();
     let mut it = Interaction::new(mm(1.0));

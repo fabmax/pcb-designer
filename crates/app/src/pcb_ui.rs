@@ -79,7 +79,13 @@ pub fn toolbar(
                 .on_hover_text(tip.join("\n"));
         }
     });
-    toolbar::hint(ui, canvas, pcb.tool().hint());
+    match pcb.clash() {
+        Some(c) if !pcb.settings.allow_violations => {
+            toolbar::hint_in(ui, canvas, &format!("Can't add here: {}", c.message), crate::theme::warn())
+        }
+        Some(c) => toolbar::hint_in(ui, canvas, &format!("Violation: {}", c.message), crate::theme::warn()),
+        None => toolbar::hint(ui, canvas, pcb.tool().hint()),
+    }
     chosen.filter(|&t| t != PcbTool::Place)
 }
 
@@ -117,20 +123,59 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 }
                 ui.end_row();
                 fields::corner_rows(ui, &mut s.corners, &mut s.bend, Corners::TRACK);
+                label(ui, "Corner radius");
+                if let (_, Some(r)) = units::drag(ui, s.corner_radius, mm(0.01), mm(100.0)) {
+                    s.corner_radius = r;
+                }
+                ui.end_row();
+                if doc.project().board.copper_layers().count() > 2 {
+                    label(ui, "Via span");
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut s.via_pair, false, "Through")
+                            .on_hover_text("L adds vias through all layers");
+                        ui.selectable_value(&mut s.via_pair, true, "Two layers")
+                            .on_hover_text("L adds blind or buried vias joining just the two layers");
+                    });
+                    ui.end_row();
+                }
             });
+            ui.checkbox(&mut s.allow_violations, "Allow violations")
+                .on_hover_text("Add tracks and vias that break the clearance, keepout or board edge rules");
             if s.width.is_some() && ui.small_button("Use the design rule width").clicked() {
                 s.width = None;
             }
             ui.add_space(6.0);
-            hint(ui, "Tracks start and end on pad centers, vias and track ends. The net being routed is highlighted.");
+            hint(
+                ui,
+                "Tracks start and end on pad centers, vias and track ends. The net being routed is highlighted. \
+                 The Edit menu's Round track corners rounds the selected tracks with the corner radius.",
+            );
         }
         PcbTool::Via => {
+            let layers = doc.project().board.copper_layers().count();
             grid(ui, "pcb_tool", |ui| {
                 row(ui, "Diameter", units::fmt(rules.via_diameter));
                 row(ui, "Drill", units::fmt(rules.via_drill));
+                if layers > 2 {
+                    label(ui, "From layer");
+                    layer_combo(ui, "via_from", &mut s.via_span[0], doc);
+                    ui.end_row();
+                    label(ui, "To layer");
+                    layer_combo(ui, "via_to", &mut s.via_span[1], doc);
+                    ui.end_row();
+                }
             });
+            ui.checkbox(&mut s.allow_violations, "Allow violations")
+                .on_hover_text("Place vias that break the clearance, keepout or board edge rules");
             ui.add_space(6.0);
-            hint(ui, "Through vias connect all copper layers. Sizes come from the design rules.");
+            hint(
+                ui,
+                if layers > 2 {
+                    "Vias join the layers from–to (blind or buried), or all layers (through). Sizes come from the design rules."
+                } else {
+                    "Through vias connect all copper layers. Sizes come from the design rules."
+                },
+            );
         }
         PcbTool::Outline => hint(ui, "Click two corners. The outline is a graphic on the Board Outline layer."),
         PcbTool::Place => {

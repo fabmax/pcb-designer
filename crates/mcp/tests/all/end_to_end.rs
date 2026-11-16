@@ -203,6 +203,31 @@ async fn agent_session() {
     assert!(drc["violations"].as_array().unwrap().len() <= 3 && drc["clean"] == false);
     ok_json(call("undo", Value::Null).await);
 
+    // Arc segments, rounded corners and a blind via (rejected on two layers).
+    let r = ok_json(
+        call(
+            "execute",
+            json!({ "commands": [
+                { "command": "add_track", "layer": 0, "points": [[0, 0], [5_000_000, 0], [7_000_000, 2_000_000]],
+                  "mids": [null, [6_200_000, 600_000]] },
+                { "command": "add_track", "layer": 0, "points": [[0, 10_000_000], [10_000_000, 10_000_000], [10_000_000, 20_000_000]] }
+            ]}),
+        )
+        .await,
+    );
+    let tracks: Vec<Value> = r["created"].as_array().unwrap().iter().skip(2).cloned().collect();
+    let ids: Vec<Value> = tracks.iter().map(|t| t["id"].clone()).collect();
+    let r = ok_json(
+        call("execute", json!({ "commands": [{ "command": "round_corners", "tracks": ids, "radius": 1_000_000 }] }))
+            .await,
+    );
+    assert_eq!(r["executed"][0], "Round corners", "{r}");
+    let r = call("execute", json!({ "commands": [{ "command": "add_via", "pos": [0, 0], "span": [0, 1] }] })).await;
+    assert_eq!(r.is_error, Some(true), "no inner layer 1 on the demo board");
+    for _ in 0..2 {
+        ok_json(call("undo", Value::Null).await);
+    }
+
     // A failing batch changes nothing.
     let r = call(
         "execute",

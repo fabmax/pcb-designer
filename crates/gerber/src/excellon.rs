@@ -23,8 +23,22 @@ pub fn holes(project: &Project) -> (Vec<Hole>, Vec<Hole>) {
             }
         }
     }
-    plated.extend(project.board.vias.iter().map(|v| Hole { a: v.pos, b: v.pos, diameter: v.drill }));
+    plated.extend(project.board.vias.iter().filter(|v| v.is_through()).map(via_hole));
     (plated, npth)
+}
+
+fn via_hole(v: &Via) -> Hole {
+    Hole { a: v.pos, b: v.pos, diameter: v.drill }
+}
+
+/// Holes of blind and buried vias by span (top layer first), in layer order.
+pub fn span_holes(project: &Project) -> Vec<([LayerId; 2], Vec<Hole>)> {
+    let mut spans: std::collections::BTreeMap<(u16, u16), Vec<Hole>> = Default::default();
+    for v in project.board.vias.iter().filter(|v| !v.is_through() && v.from != v.to) {
+        let key = (v.from.0.min(v.to.0), v.from.0.max(v.to.0));
+        spans.entry(key).or_default().push(via_hole(v));
+    }
+    spans.into_iter().map(|((a, b), h)| ([LayerId(a), LayerId(b)], h)).collect()
 }
 
 /// Millimetres with four decimals (0.1 µm).
@@ -32,8 +46,21 @@ fn mm4(v: Coord) -> String {
     format!("{:.4}", v as f64 * 1e-6)
 }
 
-/// The drill file of `holes`; `layers` is the number of copper layers.
+/// The drill file of through `holes`; `layers` is the number of copper layers.
 pub fn drill_file(holes: &[Hole], plated: bool, layers: usize) -> String {
+    let function = if plated { format!("Plated,1,{layers},PTH") } else { format!("NonPlated,1,{layers},NPTH") };
+    write_drills(holes, &function)
+}
+
+/// The drill file of blind (reaching the top or bottom) or buried vias from copper layer
+/// number `from` to `to` (1 is the top).
+pub fn span_drill_file(holes: &[Hole], from: usize, to: usize, layers: usize) -> String {
+    let kind = if from == 1 || to == layers { "Blind" } else { "Buried" };
+    write_drills(holes, &format!("Plated,{from},{to},{kind}"))
+}
+
+/// A drill file with the X2 file function `function`.
+fn write_drills(holes: &[Hole], function: &str) -> String {
     let mut tools: Vec<Coord> = holes.iter().map(|h| h.diameter).collect();
     tools.sort();
     tools.dedup();
@@ -41,8 +68,7 @@ pub fn drill_file(holes: &[Hole], plated: bool, layers: usize) -> String {
     out.push_str("M48\n");
     let _ = writeln!(out, "; DRILL file {{pcb-designer {}}}", env!("CARGO_PKG_VERSION"));
     out.push_str("; FORMAT={-:-/ absolute / metric / decimal}\n");
-    let (kind, short) = if plated { ("Plated", "PTH") } else { ("NonPlated", "NPTH") };
-    let _ = writeln!(out, "; #@! TF.FileFunction,{kind},1,{layers},{short}");
+    let _ = writeln!(out, "; #@! TF.FileFunction,{function}");
     out.push_str("FMAT,2\nMETRIC\n");
     for (i, d) in tools.iter().enumerate() {
         let _ = writeln!(out, "T{}C{}", i + 1, mm4(*d));

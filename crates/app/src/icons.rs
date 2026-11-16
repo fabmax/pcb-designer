@@ -61,6 +61,8 @@ pub enum Icon {
     Corner90,
     Corner45,
     CornerFree,
+    CornerArc45,
+    CornerArc90,
 }
 
 /// Paint `icon` into `rect` (square) in `color`.
@@ -101,11 +103,25 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             ];
             poly(pts, faint, line);
         }
-        Icon::Corner90 | Icon::Corner45 | Icon::CornerFree => {
+        Icon::Corner90 | Icon::Corner45 | Icon::CornerFree | Icon::CornerArc45 | Icon::CornerArc90 => {
             let (a, b) = (p(0.12, 0.84), p(0.88, 0.16));
+            // The corner rounded by a quadratic curve from `k` of the way along each leg.
+            let round = |c: Pos2, k: f32| {
+                let (p1, p2) = (c + (a - c) * k, c + (b - c) * k);
+                let mut pts = vec![a];
+                pts.extend((0..=12).map(|i| {
+                    let t = i as f32 / 12.0;
+                    let u = 1.0 - t;
+                    (p1.to_vec2() * u * u + c.to_vec2() * 2.0 * u * t + p2.to_vec2() * t * t).to_pos2()
+                }));
+                pts.push(b);
+                pts
+            };
             let pts = match icon {
                 Icon::Corner90 => vec![a, p(0.88, 0.84), b],
                 Icon::Corner45 => vec![a, p(0.56, 0.84), b],
+                Icon::CornerArc90 => round(p(0.88, 0.84), 0.6),
+                Icon::CornerArc45 => round(p(0.56, 0.84), 0.7),
                 _ => vec![a, b],
             };
             open(pts, thick);

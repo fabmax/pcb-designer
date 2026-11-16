@@ -61,7 +61,8 @@ fn clean_board_after_routing() {
     let (mut ed, [f1, f2]) = board();
     assert_eq!(kinds(&check(&ed)), vec![K::Unrouted]);
     let (a, b) = (pad(&ed, f1, "2"), pad(&ed, f2, "1"));
-    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![a, b], width: None }).unwrap();
+    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![a, b], width: None, mids: Vec::new() })
+        .unwrap();
     assert_eq!(check(&ed), vec![]);
 }
 
@@ -70,21 +71,23 @@ fn finds_seeded_errors() {
     let (mut ed, [f1, f2]) = board();
     let (p12, p21, p11) = (pad(&ed, f1, "2"), pad(&ed, f2, "1"), pad(&ed, f1, "1"));
     let top = LayerId::TOP_COPPER;
-    ed.execute(Command::AddTrack { layer: top, points: vec![p12, p21], width: None }).unwrap();
+    ed.execute(Command::AddTrack { layer: top, points: vec![p12, p21], width: None, mids: Vec::new() }).unwrap();
     // 1. A stub of R1.2's net passing 0.1 mm above R1.1 (pad top edge at y + 0.5 mm).
     let y = p11.y + mm(0.5) + mm(0.125) + mm(0.1);
     ed.execute(Command::AddTrack {
         layer: top,
         points: vec![p12, Point::new(p12.x, y), Point::new(p11.x, y)],
         width: None,
+        mids: Vec::new(),
     })
     .unwrap();
     // 2. A thin, dangling track.
     let thin = vec![Point::mm(5.0, 15.0), Point::mm(8.0, 15.0)];
-    ed.execute(Command::AddTrack { layer: top, points: thin, width: Some(mm(0.1)) }).unwrap();
+    ed.execute(Command::AddTrack { layer: top, points: thin, width: Some(mm(0.1)), mids: Vec::new() }).unwrap();
     // 3. A via with a tiny drill, 4. one at the board edge (both dangling).
-    ed.execute(Command::AddVia { pos: Point::mm(25.0, 15.0), diameter: None, drill: Some(mm(0.1)) }).unwrap();
-    ed.execute(Command::AddVia { pos: Point::mm(0.2, 5.0), diameter: None, drill: None }).unwrap();
+    ed.execute(Command::AddVia { pos: Point::mm(25.0, 15.0), diameter: None, drill: Some(mm(0.1)), span: None })
+        .unwrap();
+    ed.execute(Command::AddVia { pos: Point::mm(0.2, 5.0), diameter: None, drill: None, span: None }).unwrap();
     // 5. R3 overlapping R2's courtyard (pads keep their clearance).
     let (_, f3) = place(&mut ed, 40.0, Point::mm(20.0, 11.3));
     let v = check(&ed);
@@ -113,7 +116,7 @@ fn shorts_are_violations() {
     let (a, b) = (pad(&ed, f1, "1"), pad(&ed, f2, "1"));
     let y = a.y - mm(2.0);
     let pts = vec![a, Point::new(a.x, y), Point::new(b.x, y), b];
-    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: pts, width: None }).unwrap();
+    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: pts, width: None, mids: Vec::new() }).unwrap();
     let v = check(&ed);
     let s: Vec<_> = v.iter().filter(|x| x.kind == K::Short).collect();
     assert_eq!(s.len(), 1, "{v:?}");
@@ -124,7 +127,8 @@ fn shorts_are_violations() {
 fn zone_on_a_renamed_net_is_flagged() {
     let (mut ed, [f1, f2]) = board();
     let (a, b) = (pad(&ed, f1, "2"), pad(&ed, f2, "1"));
-    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![a, b], width: None }).unwrap();
+    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: vec![a, b], width: None, mids: Vec::new() })
+        .unwrap();
     // Name the R1–R2 net with a label on its wire, then pour a zone on it.
     let wire = ed.project().schematic.wires.iter().next().unwrap().clone();
     let changes = ed

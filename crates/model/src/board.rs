@@ -270,6 +270,25 @@ pub struct Via {
     pub to: LayerId,
 }
 
+impl Via {
+    /// Spans all copper layers (top to bottom).
+    pub fn is_through(&self) -> bool {
+        self.from.0.min(self.to.0) == LayerId::TOP_COPPER.0 && self.from.0.max(self.to.0) == LayerId::BOTTOM_COPPER.0
+    }
+
+    /// "Through", "Blind" (reaching the top or bottom) or "Buried".
+    pub fn kind(&self) -> &'static str {
+        let outer = |l: LayerId| l == LayerId::TOP_COPPER || l == LayerId::BOTTOM_COPPER;
+        if self.is_through() {
+            "Through"
+        } else if outer(self.from) || outer(self.to) {
+            "Blind"
+        } else {
+            "Buried"
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Zone {
     pub id: Id,

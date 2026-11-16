@@ -336,7 +336,7 @@ fn project_folder_roundtrip() {
     place(&mut ed, PART_RESISTOR, 0.0, 0.0);
     place(&mut ed, PART_LED, 10.0, 0.0);
     ed.execute(Command::AddWire { sheet: None, points: vec![Point::mm(5.08, 0.0), Point::mm(4.92, 0.0)] }).unwrap();
-    ed.execute(Command::AddVia { pos: Point::mm(3.0, 3.0), diameter: None, drill: None }).unwrap();
+    ed.execute(Command::AddVia { pos: Point::mm(3.0, 3.0), diameter: None, drill: None, span: None }).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("demo.pcbproj");
     save_project(ed.project(), &path).unwrap();

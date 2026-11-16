@@ -82,7 +82,7 @@ fn variant_changes_add_and_remove_the_placement() {
     let fp = ed.project().board.footprint_of(r1).unwrap().clone();
     let v0603 = ed.project().schematic.components.get(r1).unwrap().variant;
     let track = vec![fp.pos, fp.pos + Point::mm(5.0, 0.0)];
-    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: track, width: None }).unwrap();
+    ed.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: track, width: None, mids: Vec::new() }).unwrap();
     let before = files(ed.project());
 
     // To the "no footprint" variant: the placement goes, the track stays.

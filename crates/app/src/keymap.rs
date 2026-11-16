@@ -49,6 +49,7 @@ pub enum Action {
     SchNoConnect,
     Posture,
     NextCorners,
+    RoundCorners,
     PcbRoute,
     PcbVia,
     PcbOutline,
@@ -108,6 +109,7 @@ impl Action {
         Action::SchNoConnect,
         Action::Posture,
         Action::NextCorners,
+        Action::RoundCorners,
         Action::PcbRoute,
         Action::PcbVia,
         Action::PcbOutline,
@@ -159,6 +161,7 @@ impl Action {
             Action::SchNoConnect => "No-connect flag tool (schematic)",
             Action::Posture => "Corner direction (wires, tracks)",
             Action::NextCorners => "Next corner style (wires, tracks)",
+            Action::RoundCorners => "Round track corners",
             Action::PcbRoute => "Route tool (PCB)",
             Action::PcbVia => "Via tool (PCB)",
             Action::PcbOutline => "Board outline tool (PCB)",
@@ -193,7 +196,8 @@ impl Action {
             | Action::PcbOutline
             | Action::PcbZone
             | Action::PcbKeepout
-            | Action::PcbNextLayer => Some(Context::Board),
+            | Action::PcbNextLayer
+            | Action::RoundCorners => Some(Context::Board),
             _ => None,
         }
     }
@@ -480,8 +484,10 @@ mod tests {
     fn defaults_have_no_conflicts_and_cover_all_actions() {
         let map = Keymap::default();
         assert!(map.conflicts().is_empty());
-        for &a in Action::ALL {
-            assert!(!map.shortcuts(a).is_empty(), "{a:?} has no default shortcut");
+        // Unbound by default (in a menu).
+        let unbound = [Action::RoundCorners];
+        for a in Action::ALL.iter().filter(|a| !unbound.contains(a)) {
+            assert!(!map.shortcuts(*a).is_empty(), "{a:?} has no default shortcut");
         }
     }
 

@@ -608,14 +608,30 @@ impl View {
                         out.push((layer, Instance::line(mmf(points[i]), mmf(points[(i + 1) % n]), w, color)));
                     }
                 }
-                PcbGhost::Track { layer: l, a, b, width } => out.push((
-                    layer,
-                    Instance::line(mmf(a), mmf(b), (width as f64 * 1e-6) as f32, board_layer_color(l).with_alpha(0xc0)),
-                )),
-                PcbGhost::Via { pos, diameter } => out.push((
-                    layer,
-                    Instance::circle(mmf(pos), (diameter as f64 * 0.5e-6) as f32, pal().via.with_alpha(0xc0)),
-                )),
+                PcbGhost::Track { layer: l, a, b, mid, width, bad } => {
+                    let color = if bad { pal().flagged } else { board_layer_color(l) }.with_alpha(0xc0);
+                    let arc = mid.and_then(|m| path_instance(&[a, m, b], width / 2, 0.0, color));
+                    out.push((
+                        layer,
+                        arc.unwrap_or_else(|| Instance::line(mmf(a), mmf(b), (width as f64 * 1e-6) as f32, color)),
+                    ));
+                }
+                PcbGhost::Via { pos, diameter, bad } => {
+                    let color = if bad { pal().flagged } else { pal().via };
+                    out.push((
+                        layer,
+                        Instance::circle(mmf(pos), (diameter as f64 * 0.5e-6) as f32, color.with_alpha(0xc0)),
+                    ))
+                }
+                PcbGhost::Clash(p) => {
+                    // A ring with a cross: where the rule is broken.
+                    let c = pal().flagged;
+                    out.push((layer, Instance::circle_outline(mmf(p), 0.6, 0.12, c)));
+                    for (dx, dy) in [(0.35, 0.35), (0.35, -0.35)] {
+                        let (x, y) = (p.x as f32 * 1e-6, p.y as f32 * 1e-6);
+                        out.push((layer, Instance::line([x - dx, y - dy], [x + dx, y + dy], 0.12, c)));
+                    }
+                }
                 PcbGhost::Outline(r) => {
                     let c = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
                     let color = board_layer_color(LayerId::OUTLINE);
