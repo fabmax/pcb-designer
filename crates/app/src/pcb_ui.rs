@@ -116,22 +116,7 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                     s.width = Some(w);
                 }
                 ui.end_row();
-                label(ui, "Corners");
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut s.corners, Corners::Deg45, "45°");
-                    ui.selectable_value(&mut s.corners, Corners::Deg90, "90°");
-                });
-                ui.end_row();
-                label(ui, "Bend");
-                ui.horizontal(|ui| {
-                    let (first, second) = match s.corners {
-                        Corners::Deg45 => ("Straight first", "Diagonal first"),
-                        Corners::Deg90 => ("Horizontal first", "Vertical first"),
-                    };
-                    ui.selectable_value(&mut s.bend_first, false, first);
-                    ui.selectable_value(&mut s.bend_first, true, second);
-                });
-                ui.end_row();
+                fields::corner_rows(ui, &mut s.corners, &mut s.bend, Corners::TRACK);
             });
             if s.width.is_some() && ui.small_button("Use the design rule width").clicked() {
                 s.width = None;

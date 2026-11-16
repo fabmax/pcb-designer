@@ -2,6 +2,7 @@
 
 use model::{EntryDir, LabelKind, LabelShape};
 use view::Document;
+use view::bend::Corners;
 use view::sch_tools::{POWER_NAMES, SchPlacer, SchTool};
 
 use crate::fields::{self, grid, hint, label, row};
@@ -77,26 +78,16 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
             );
         }
         SchTool::Wire => {
-            grid(ui, "sch_tool", |ui| {
-                label(ui, "Corner");
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut s.vertical_first, false, "Horizontal first");
-                    ui.selectable_value(&mut s.vertical_first, true, "Vertical first");
-                });
-                ui.end_row();
-            });
+            grid(ui, "sch_tool", |ui| fields::corner_rows(ui, &mut s.corners, &mut s.bend, Corners::WIRE));
             ui.add_space(6.0);
-            hint(ui, "Wires end automatically on pins, wires, labels and junctions. / switches the corner.");
+            hint(
+                ui,
+                "Wires end automatically on pins, wires, labels and junctions. / switches the corner, \
+                 Shift+Space the corner style.",
+            );
         }
         SchTool::Bus => {
-            grid(ui, "sch_tool", |ui| {
-                label(ui, "Corner");
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut s.vertical_first, false, "Horizontal first");
-                    ui.selectable_value(&mut s.vertical_first, true, "Vertical first");
-                });
-                ui.end_row();
-            });
+            grid(ui, "sch_tool", |ui| fields::corner_rows(ui, &mut s.corners, &mut s.bend, Corners::WIRE));
             ui.add_space(6.0);
             hint(
                 ui,

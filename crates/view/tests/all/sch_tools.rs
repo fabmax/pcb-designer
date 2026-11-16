@@ -122,11 +122,21 @@ fn wire_chain_continues_in_free_space_and_ends_on_double_click() {
     t.click(&mut doc, Point::mm(5.08, -5.08)).unwrap();
     let placed = t.click(&mut doc, Point::mm(5.08, 0.0)).unwrap();
     assert!(placed.finished);
-    // Posture: vertical first.
-    t.toggle_posture();
+    // Posture: leaving the start upwards draws vertical first, / flips it for this leg.
     t.click(&mut doc, Point::mm(20.32, 0.0)).unwrap();
+    t.hover(&mut doc, Some(Point::mm(20.32, 1.27)));
     t.hover(&mut doc, Some(Point::mm(25.4, 5.08)));
     assert_eq!(t.ghosts()[0], SchGhost::Wire(Point::mm(20.32, 0.0), Point::mm(20.32, 5.08)));
+    t.toggle_posture();
+    t.hover(&mut doc, Some(Point::mm(25.4, 6.35)));
+    assert_eq!(t.ghosts()[0], SchGhost::Wire(Point::mm(20.32, 0.0), Point::mm(25.4, 0.0)));
+    // 45° corners and free angle.
+    t.settings.corners = view::bend::Corners::Deg45;
+    t.hover(&mut doc, Some(Point::mm(30.48, 5.08)));
+    assert_eq!(t.ghosts()[0], SchGhost::Wire(Point::mm(20.32, 0.0), Point::mm(25.4, 0.0)));
+    assert_eq!(t.next_corners(), Some("Free angle"));
+    t.hover(&mut doc, Some(Point::mm(30.48, 6.35)));
+    assert_eq!(t.ghosts()[0], SchGhost::Wire(Point::mm(20.32, 0.0), Point::mm(30.48, 6.35)));
     // Esc ends the chain first, then the tool.
     assert!(!t.escape());
     assert_eq!(t.tool(), SchTool::Wire);

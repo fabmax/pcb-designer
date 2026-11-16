@@ -1492,6 +1492,12 @@ impl PcbApp {
                 self.sch.toggle_posture();
                 return true;
             }
+            Action::NextCorners => {
+                if let Some(name) = self.sch.next_corners() {
+                    self.set_status(format!("Corners: {name}"));
+                }
+                return true;
+            }
             _ if !self.sch.is_placing() => return false,
             Action::Rotate => {
                 self.sch.rotate();
@@ -1532,6 +1538,12 @@ impl PcbApp {
             Action::ToolSelect => PcbTool::Select,
             Action::Posture => {
                 self.pcb.toggle_posture();
+                return true;
+            }
+            Action::NextCorners => {
+                if let Some(name) = self.pcb.next_corners() {
+                    self.set_status(format!("Corners: {name}"));
+                }
                 return true;
             }
             Action::PcbNextLayer => {
@@ -1747,6 +1759,7 @@ impl PcbApp {
             | Action::SchJunction
             | Action::SchNoConnect
             | Action::Posture
+            | Action::NextCorners
             | Action::PcbRoute
             | Action::PcbVia
             | Action::PcbOutline
@@ -1838,7 +1851,8 @@ impl PcbApp {
             | Action::SchPower
             | Action::SchJunction
             | Action::SchNoConnect
-            | Action::Posture => None,
+            | Action::Posture
+            | Action::NextCorners => None,
             Action::PcbRoute
             | Action::PcbVia
             | Action::PcbOutline

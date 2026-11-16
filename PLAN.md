@@ -343,11 +343,17 @@ the current design of each area with the gotchas a change needs to know, the pla
   the commands default to false (MCP gets exact moves unless it asks).
 - Tools: `tools::Placer` (library: pin/pad, line, rect, circle, text; names
   auto-increment), `sch_tools` (wire, bus, bus entry, label, power, junction, no connect, place;
-  `/` flips the corner; `SchPlacer::sheet` is the sheet they work on, `set_sheet` ends a
+  `bend` for corners; `SchPlacer::sheet` is the sheet they work on, `set_sheet` ends a
   wire begun elsewhere; the Sheet tool places a new sheet's symbol with one
   `AddSheet`), `pcb_tools` (route 45°/90° with copper snapping, L changes
   layer + via, via, outline, zone, measure). Bus naming prompts: `SchPlacer::take_prompt`
   returns a `SchPrompt` for unnamed buses and entry signals.
+- `bend`: corner styles (`Corners`: wires 90°/45°/free, tracks 45°/90°), the two-leg
+  `path`, and `Posture`: the first leg follows the way the cursor first leaves the start
+  point (snapped cursor ≠ start; 45°: diagonal when more than 22.5° off the axis), held
+  until the cursor returns to the start. `/` flips it until the next leg (or swaps a
+  fixed `Bend`). Placers call `Posture::start` on every leg click, so a flip before the
+  first click is lost.
 - `measure`: the measure tool's state (`Measure`: click, live end, click pins, next
   click starts anew, Esc clears) and snapping (`snap`: nearest object point within the
   pixel tolerance, else the grid point; Alt free). Object points: `board_points` (pad and
@@ -595,13 +601,17 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-**M12: Drawing wires and tracks**
-- Wire posture that flips automatically with the cursor (`/` stays as the override).
-- More corner styles for wires and buses, chosen with icon buttons in the tool panel.
-- Drawing arc tracks: an "Arc" corner style while routing, rounding the corner between
-  two tracks (arcs come from import and MCP today).
-- Clearance checking while routing; keepouts enforced while routing.
-- Blind and buried vias in the UI.
+**M12b: Routing**
+- Arc 45° and arc 90° corner styles while routing (the corner rounded with the largest
+  radius the legs allow); `RoundCorners { tracks, radius }` for existing corners (route
+  tool setting "Corner radius", 1 mm; an action on the selection).
+- Clearance (other nets' pads, tracks, vias), keepouts and the board outline checked while
+  routing and placing vias: red ghost and marker, the click refused unless "Allow
+  violations" is on. A route from free space checks against all copper it doesn't join.
+- Blind and buried vias: From/To in via Properties and the Via tool, "Via span" (through
+  or the two layers) for L; hidden on two-layer boards. Drill files per span
+  (`Demo-front-in1.drl`, X2 `Plated,from,to,Blind/Buried`), read by the Gerber tab; DRC
+  of empty or backwards spans.
 
 **M13: Texts**
 - Editing text on the canvas.
@@ -638,6 +648,8 @@ when it's done; what it defers goes back to **Later**.
 - Save the window layout and pane sizes (eframe persistence is off).
 - UI scale; per-layer colour customisation.
 - MCP in settings: port, enable on startup.
+- Remember the drawing tools' settings (corner style, first leg, route options) across
+  sessions; they are per session today.
 - Tool window bars: drag buttons to reorder or move between bars, two panels stacked on
   one side.
 - A Nets panel; an MCP activity log panel listing agent edits.

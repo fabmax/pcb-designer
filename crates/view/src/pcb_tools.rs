@@ -6,6 +6,8 @@ use editor_core::Command;
 use editor_core::copper::CopperItem;
 use model::*;
 
+use crate::bend::{self, Posture};
+pub use crate::bend::{Bend, Corners};
 use crate::document::Document;
 use crate::measure::{Measure, board_points};
 
@@ -50,7 +52,7 @@ impl PcbTool {
         match self {
             PcbTool::Select => "Click/box to select · drag to move · R rotate · F flip side · Del delete",
             PcbTool::Route => {
-                "Click a pad to start · click corners · ends on copper · L next layer (adds a via) · / corner · Esc done"
+                "Click a pad to start · click corners · ends on copper · L next layer (adds a via) · / corner · Shift+Space style · Esc done"
             }
             PcbTool::Via => "Click to place a via · Esc done",
             PcbTool::Outline => "Click two corners of the board outline · Esc done",
@@ -64,13 +66,6 @@ impl PcbTool {
     }
 }
 
-/// Track corner angles.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Corners {
-    Deg45,
-    Deg90,
-}
-
 #[derive(Clone, Debug)]
 pub struct PcbSettings {
     /// Active copper layer for routing.
@@ -78,8 +73,8 @@ pub struct PcbSettings {
     /// Track width; `None`: the design rules' width.
     pub width: Option<Coord>,
     pub corners: Corners,
-    /// The diagonal (45°) or vertical (90°) part comes first.
-    pub bend_first: bool,
+    /// Which leg comes first (`/` flips it).
+    pub bend: Bend,
     /// Net of new zones; empty: the net of the copper under the first corner.
     pub zone_net: String,
     /// New keepouts cover all copper layers (else the active one).
@@ -95,7 +90,7 @@ impl Default for PcbSettings {
             layer: LayerId::TOP_COPPER,
             width: None,
             corners: Corners::Deg45,
-            bend_first: false,
+            bend: Bend::Auto,
             zone_net: String::new(),
             keepout_all_layers: true,
             rotation: Angle::ZERO,
@@ -154,6 +149,8 @@ pub struct PcbPlacer {
     pub placing: Option<Id>,
     /// Snap nowhere (Alt held): set by the app before [`PcbPlacer::hover`].
     pub free: bool,
+    /// Automatic posture of the track leg being routed.
+    posture: Posture,
 }
 
 impl Default for PcbPlacer {
@@ -170,26 +167,9 @@ impl Default for PcbPlacer {
             measure: Measure::default(),
             placing: None,
             free: false,
+            posture: Posture::default(),
         }
     }
-}
-
-/// Corner points of a track from `a` to `b` with 45° or 90° corners.
-pub fn track_path(a: Point, b: Point, corners: Corners, bend_first: bool) -> Vec<Point> {
-    let (dx, dy) = (b.x - a.x, b.y - a.y);
-    if dx == 0 || dy == 0 || (corners == Corners::Deg45 && dx.abs() == dy.abs()) {
-        return vec![a, b];
-    }
-    let corner = match corners {
-        Corners::Deg90 if bend_first => Point::new(a.x, b.y),
-        Corners::Deg90 => Point::new(b.x, a.y),
-        Corners::Deg45 => {
-            let m = dx.abs().min(dy.abs());
-            let diag = Point::new(dx.signum() * m, dy.signum() * m);
-            if bend_first { a + diag } else { b - diag }
-        }
-    };
-    vec![a, corner, b]
 }
 
 /// Where a click at `raw` (grid-snapped: `snapped`) attaches on `layer`: the nearest pad
@@ -265,8 +245,24 @@ impl PcbPlacer {
         };
     }
 
+    /// `/`: flip which leg comes first.
     pub fn toggle_posture(&mut self) {
-        self.settings.bend_first = !self.settings.bend_first;
+        bend::flip(&mut self.settings.bend, &mut self.posture);
+    }
+
+    /// Switch to the next corner style (route tool only). Returns its name.
+    pub fn next_corners(&mut self) -> Option<&'static str> {
+        if self.tool != PcbTool::Route {
+            return None;
+        }
+        self.settings.corners = self.settings.corners.next_in(Corners::TRACK);
+        Some(self.settings.corners.label())
+    }
+
+    /// Corner points of the track leg from `start` to `p`.
+    fn leg(&self, start: Point, p: Point) -> Vec<Point> {
+        let s = &self.settings;
+        bend::path(start, p, s.corners, self.posture.second(s.bend))
     }
 
     /// Escape: end the track being routed, or leave the tool. Returns true if the tool
@@ -322,6 +318,9 @@ impl PcbPlacer {
             PcbTool::Route => {
                 let (q, item) = snap_to_copper(doc, raw, snapped, self.settings.layer, tol);
                 self.cursor = Some(q);
+                if let Some(start) = self.start {
+                    self.posture.track(start, q, self.settings.corners);
+                }
                 self.on_copper = item.is_some();
             }
             PcbTool::Measure => {
@@ -347,6 +346,7 @@ impl PcbPlacer {
                 let layer = self.settings.layer;
                 let Some(start) = self.start else {
                     self.start = Some(p);
+                    self.posture.start();
                     let copper = doc.current_copper();
                     self.net = copper.at(p, layer).and_then(|c| copper.net_of(c.item)).map(str::to_string);
                     return Ok(false);
@@ -356,9 +356,10 @@ impl PcbPlacer {
                     return Ok(true);
                 }
                 let ends = doc.current_copper().at(p, layer).is_some();
-                let points = track_path(start, p, self.settings.corners, self.settings.bend_first);
+                let points = self.leg(start, p);
                 let width = Some(self.width(doc));
                 doc.execute(Command::AddTrack { layer, points, width }).map_err(|e| e.to_string())?;
+                self.posture.start();
                 if ends {
                     self.start = None;
                     self.net = None;
@@ -464,7 +465,7 @@ impl PcbPlacer {
             PcbTool::Route => {
                 if let Some(start) = self.start {
                     let width = self.width(doc);
-                    let path = track_path(start, p, s.corners, s.bend_first);
+                    let path = self.leg(start, p);
                     g.extend(path.windows(2).map(|w| PcbGhost::Track { layer: s.layer, a: w[0], b: w[1], width }));
                 }
                 if self.on_copper {
@@ -503,23 +504,5 @@ impl PcbPlacer {
             self.shown = g.clone();
             g
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn paths() {
-        let a = Point::mm(0.0, 0.0);
-        let b = Point::mm(5.0, 2.0);
-        assert_eq!(track_path(a, b, Corners::Deg45, false), vec![a, Point::mm(3.0, 0.0), b]);
-        assert_eq!(track_path(a, b, Corners::Deg45, true), vec![a, Point::mm(2.0, 2.0), b]);
-        assert_eq!(track_path(a, b, Corners::Deg90, false), vec![a, Point::mm(5.0, 0.0), b]);
-        assert_eq!(track_path(a, b, Corners::Deg90, true), vec![a, Point::mm(0.0, 2.0), b]);
-        let c = Point::mm(-2.0, -5.0);
-        assert_eq!(track_path(a, c, Corners::Deg45, false), vec![a, Point::mm(0.0, -3.0), c]);
-        assert_eq!(track_path(a, Point::mm(3.0, -3.0), Corners::Deg45, false).len(), 2);
     }
 }

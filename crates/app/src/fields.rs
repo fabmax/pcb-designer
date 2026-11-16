@@ -192,3 +192,53 @@ pub fn combo<T: PartialEq + Clone>(
     });
     out
 }
+
+/// Rows of a drawing tool's corner style (icon buttons) and posture (which leg first:
+/// automatic or fixed), for the styles `styles`.
+pub fn corner_rows(
+    ui: &mut egui::Ui,
+    corners: &mut view::bend::Corners,
+    bend: &mut view::bend::Bend,
+    styles: &[view::bend::Corners],
+) {
+    use crate::icons::{self, Icon};
+    use view::bend::{Bend, Corners};
+    label(ui, "Corners");
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        for &style in styles {
+            let icon = match style {
+                Corners::Deg90 => Icon::Corner90,
+                Corners::Deg45 => Icon::Corner45,
+                Corners::Free => Icon::CornerFree,
+            };
+            let active = *corners == style;
+            let (rect, r) = ui.allocate_exact_size(egui::vec2(26.0, 22.0), egui::Sense::click());
+            let v = ui.visuals();
+            let (fill, color) = if active {
+                (theme::accent(), egui::Color32::WHITE)
+            } else if r.hovered() {
+                (v.widgets.hovered.weak_bg_fill, v.strong_text_color())
+            } else {
+                (v.widgets.inactive.weak_bg_fill, v.text_color())
+            };
+            ui.painter().rect_filled(rect, 4.0, fill);
+            icons::paint(ui.painter(), rect.shrink(4.0), icon, color);
+            if r.on_hover_text(style.label()).clicked() {
+                *corners = style;
+            }
+        }
+    });
+    ui.end_row();
+    if *corners != Corners::Free {
+        label(ui, "First leg");
+        ui.horizontal(|ui| {
+            let (first, second) = corners.postures();
+            ui.selectable_value(bend, Bend::Auto, "Auto")
+                .on_hover_text("Follows the way the cursor leaves the start point; / flips it");
+            ui.selectable_value(bend, Bend::First, first).on_hover_text(format!("{first} leg first"));
+            ui.selectable_value(bend, Bend::Second, second).on_hover_text(format!("{second} leg first"));
+        });
+        ui.end_row();
+    }
+}

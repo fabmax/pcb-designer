@@ -6,6 +6,7 @@ use editor_core::connectivity::{Connectivity, on_segment_inside};
 use editor_core::{Command, bus};
 use model::*;
 
+use crate::bend::{self, Bend, Corners, Posture};
 use crate::document::Document;
 use crate::tools::increment_name;
 
@@ -58,9 +59,11 @@ impl SchTool {
     pub fn hint(self) -> &'static str {
         match self {
             SchTool::Select => "Click/box to select · drag to move (wires follow) · R rotate · X mirror · Del delete",
-            SchTool::Wire => "Click to start · click corners · ends on a pin or wire · / corner direction · Esc done",
+            SchTool::Wire => {
+                "Click to start · click corners · ends on a pin or wire · / corner direction · Shift+Space style · Esc done"
+            }
             SchTool::Bus => {
-                "Click to start · click corners · ends on a bus · / corner direction · Esc done (asks for a name)"
+                "Click to start · click corners · ends on a bus · / corner direction · Shift+Space style · Esc done (asks for a name)"
             }
             SchTool::BusEntry => "Click on a bus to place an entry · R rotate · X mirror · Esc done",
             SchTool::Label | SchTool::Power => "Click to place · R rotate · Esc done",
@@ -96,8 +99,10 @@ pub struct SchSettings {
     pub power_style: Option<PowerStyle>,
     pub rotation: Angle,
     pub mirror: bool,
-    /// Wire corners go vertical first (toggled with `/`).
-    pub vertical_first: bool,
+    /// Corner style of wires and buses.
+    pub corners: Corners,
+    /// Which leg of a wire comes first (`/` flips it).
+    pub bend: Bend,
     /// Direction of new bus entries.
     pub entry: EntryDir,
 }
@@ -112,7 +117,8 @@ impl Default for SchSettings {
             power_style: None,
             rotation: Angle::ZERO,
             mirror: false,
-            vertical_first: false,
+            corners: Corners::Deg90,
+            bend: Bend::Auto,
             entry: EntryDir::UpRight,
         }
     }
@@ -318,6 +324,8 @@ pub struct SchPlacer {
     on_target: bool,
     /// Ghosts currently shown.
     shown: Vec<SchGhost>,
+    /// Automatic posture of the wire leg being drawn.
+    posture: Posture,
 }
 
 impl Default for SchPlacer {
@@ -334,17 +342,9 @@ impl Default for SchPlacer {
             cursor: None,
             on_target: false,
             shown: Vec::new(),
+            posture: Posture::default(),
         }
     }
-}
-
-/// Corner points of an orthogonal wire from `a` to `b`.
-pub fn wire_path(a: Point, b: Point, vertical_first: bool) -> Vec<Point> {
-    if a.x == b.x || a.y == b.y {
-        return vec![a, b];
-    }
-    let corner = if vertical_first { Point::new(a.x, b.y) } else { Point::new(b.x, a.y) };
-    vec![a, corner, b]
 }
 
 /// Is `p` a connection point on `sheet`: a pin, sheet pin, wire end or wire interior,
@@ -454,8 +454,24 @@ impl SchPlacer {
         self.settings.mirror = !self.settings.mirror;
     }
 
+    /// `/`: flip which leg comes first.
     pub fn toggle_posture(&mut self) {
-        self.settings.vertical_first = !self.settings.vertical_first;
+        bend::flip(&mut self.settings.bend, &mut self.posture);
+    }
+
+    /// Switch to the next corner style (wire and bus tools only). Returns its name.
+    pub fn next_corners(&mut self) -> Option<&'static str> {
+        if !matches!(self.tool, SchTool::Wire | SchTool::Bus) {
+            return None;
+        }
+        self.settings.corners = self.settings.corners.next_in(Corners::WIRE);
+        Some(self.settings.corners.label())
+    }
+
+    /// Corner points of the leg from `start` to `p`.
+    fn leg(&self, start: Point, p: Point) -> Vec<Point> {
+        let s = &self.settings;
+        bend::path(start, p, s.corners, self.posture.second(s.bend))
     }
 
     /// Escape: end the wire being drawn, or leave the tool. Returns true if the tool was left.
@@ -472,6 +488,9 @@ impl SchPlacer {
     pub fn hover(&mut self, doc: &mut Document, p: Option<Point>) {
         if p != self.cursor {
             self.cursor = p;
+            if let (Some(start), Some(p)) = (self.start, p) {
+                self.posture.track(start, p, self.settings.corners);
+            }
             let sheet = self.sheet_in(doc.project());
             self.on_target = match self.tool {
                 SchTool::Wire => p.is_some_and(|p| doc.connects(sheet, p)),
@@ -492,6 +511,7 @@ impl SchPlacer {
             SchTool::Wire => {
                 let Some(start) = self.start else {
                     self.start = Some(p);
+                    self.posture.start();
                     return Ok(placed);
                 };
                 if start == p {
@@ -501,13 +521,16 @@ impl SchPlacer {
                     return Ok(placed);
                 }
                 let ends = doc.connects(sheet, p);
+                let points = self.leg(start, p);
                 self.start = if ends { None } else { Some(p) };
+                self.posture.start();
                 placed.finished = ends;
-                Command::AddWire { sheet: Some(sheet), points: wire_path(start, p, s.vertical_first) }
+                Command::AddWire { sheet: Some(sheet), points }
             }
             SchTool::Bus => {
                 let Some(start) = self.start else {
                     self.start = Some(p);
+                    self.posture.start();
                     return Ok(placed);
                 };
                 if start == p {
@@ -516,9 +539,11 @@ impl SchPlacer {
                     return Ok(placed);
                 }
                 let ends = on_bus(doc.project(), sheet, p);
+                let points = self.leg(start, p);
                 self.start = if ends { None } else { Some(p) };
+                self.posture.start();
                 placed.finished = ends;
-                Command::AddBus { sheet: Some(sheet), points: wire_path(start, p, s.vertical_first) }
+                Command::AddBus { sheet: Some(sheet), points }
             }
             SchTool::BusEntry => Command::AddBusEntry { sheet: Some(sheet), pos: p, dir: s.entry },
             SchTool::Label => Command::AddLabel {
@@ -655,7 +680,7 @@ impl SchPlacer {
             SchTool::Wire | SchTool::Bus => {
                 let mut g = Vec::new();
                 if let Some(start) = self.start {
-                    let path = wire_path(start, p, s.vertical_first);
+                    let path = self.leg(start, p);
                     let ghost = if self.tool == SchTool::Bus { SchGhost::Bus } else { SchGhost::Wire };
                     g.extend(path.windows(2).map(|w| ghost(w[0], w[1])));
                 }
@@ -711,18 +736,5 @@ impl SchPlacer {
                 .into_iter()
                 .collect(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn wire_paths_are_orthogonal() {
-        let (a, b) = (Point::mm(0.0, 0.0), Point::mm(5.08, 2.54));
-        assert_eq!(wire_path(a, b, false), vec![a, Point::mm(5.08, 0.0), b]);
-        assert_eq!(wire_path(a, b, true), vec![a, Point::mm(0.0, 2.54), b]);
-        assert_eq!(wire_path(a, Point::mm(0.0, 5.0), false).len(), 2);
     }
 }

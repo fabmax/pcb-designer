@@ -57,6 +57,10 @@ pub enum Icon {
     Symbol,
     Footprint,
     Missing,
+    /// Corner styles of drawn wires and tracks.
+    Corner90,
+    Corner45,
+    CornerFree,
 }
 
 /// Paint `icon` into `rect` (square) in `color`.
@@ -96,6 +100,17 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
                 p(0.78, 0.62),
             ];
             poly(pts, faint, line);
+        }
+        Icon::Corner90 | Icon::Corner45 | Icon::CornerFree => {
+            let (a, b) = (p(0.12, 0.84), p(0.88, 0.16));
+            let pts = match icon {
+                Icon::Corner90 => vec![a, p(0.88, 0.84), b],
+                Icon::Corner45 => vec![a, p(0.56, 0.84), b],
+                _ => vec![a, b],
+            };
+            open(pts, thick);
+            dot(a, 0.07);
+            dot(b, 0.07);
         }
         Icon::Wire => {
             open(vec![p(0.1, 0.8), p(0.5, 0.8), p(0.5, 0.2), p(0.9, 0.2)], line);

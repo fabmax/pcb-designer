@@ -28,6 +28,14 @@ holes); double-clicking a single file shows only that one, the layers button tog
 them, and hovering names the file, aperture and its function. Open the PCB tab side by
 side to compare. Agents can look too: `screenshot` with target `gerber`.
 
+## Drawing wires and tracks
+
+The Wire, Bus and Route tools draw one leg per click. Each leg bends once: the first part
+follows the way the pointer leaves the start point (horizontal or vertical, or straight
+or diagonal at 45°); move back to the start to choose again, or press **/** to flip it.
+The tool settings fix it if you prefer. Corner styles (tool settings, or Shift+Space to
+cycle): 90°, 45° and free angle for wires and buses; 45° and 90° for tracks.
+
 ## Selecting and dragging
 
 Dragging keeps things connected, in the schematic and on the board. Wires attached to a
