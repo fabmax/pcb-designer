@@ -38,6 +38,8 @@ pub enum Action {
     ToolLine,
     ToolRect,
     ToolCircle,
+    ToolArc,
+    ToolPolygon,
     ToolText,
     ToolMeasure,
     SchWire,
@@ -59,6 +61,7 @@ pub enum Action {
     PcbKeepout,
     PcbCutout,
     ConvertToPolygon,
+    CreateArray,
     MeasureClearance,
     PcbText,
     PcbNextLayer,
@@ -104,6 +107,8 @@ impl Action {
         Action::ToolLine,
         Action::ToolRect,
         Action::ToolCircle,
+        Action::ToolArc,
+        Action::ToolPolygon,
         Action::ToolText,
         Action::ToolMeasure,
         Action::SchWire,
@@ -125,6 +130,7 @@ impl Action {
         Action::PcbKeepout,
         Action::PcbCutout,
         Action::ConvertToPolygon,
+        Action::CreateArray,
         Action::MeasureClearance,
         Action::PcbText,
         Action::PcbNextLayer,
@@ -162,6 +168,8 @@ impl Action {
             Action::ToolLine => "Line tool",
             Action::ToolRect => "Rectangle tool",
             Action::ToolCircle => "Circle tool",
+            Action::ToolArc => "Arc tool",
+            Action::ToolPolygon => "Polygon tool",
             Action::ToolText => "Text tool",
             Action::ToolMeasure => "Measure tool (layouts)",
             Action::SchWire => "Wire tool (schematic)",
@@ -183,6 +191,7 @@ impl Action {
             Action::PcbKeepout => "Keepout tool (PCB)",
             Action::PcbCutout => "Cutout tool (PCB)",
             Action::ConvertToPolygon => "Convert to polygon",
+            Action::CreateArray => "Create array…",
             Action::MeasureClearance => "Measure clearances or points (PCB)",
             Action::PcbText => "Text tool (PCB)",
             Action::PcbNextLayer => "Next copper layer; adds a via while routing (PCB)",
@@ -199,9 +208,13 @@ impl Action {
     /// The only context the action works in (`None`: everywhere).
     pub fn context(self) -> Option<Context> {
         match self {
-            Action::ToolPin | Action::ToolLine | Action::ToolRect | Action::ToolCircle | Action::ToolText => {
-                Some(Context::Library)
-            }
+            Action::ToolPin
+            | Action::ToolLine
+            | Action::ToolRect
+            | Action::ToolCircle
+            | Action::ToolArc
+            | Action::ToolPolygon
+            | Action::ToolText => Some(Context::Library),
             Action::SchWire
             | Action::SchBus
             | Action::SchBusEntry
@@ -217,7 +230,6 @@ impl Action {
             | Action::PcbZone
             | Action::PcbKeepout
             | Action::PcbCutout
-            | Action::ConvertToPolygon
             | Action::MeasureClearance
             | Action::PcbText
             | Action::PcbNextLayer
@@ -383,6 +395,7 @@ impl Default for Keymap {
             (Action::Copy, vec![S::cmd(Key::C)]),
             (Action::Paste, vec![S::cmd(Key::V)]),
             (Action::Duplicate, vec![S::cmd(Key::D)]),
+            (Action::CreateArray, vec![S::cmd_shift(Key::D)]),
             (Action::SelectAll, vec![S::cmd(Key::A)]),
             (Action::Rotate, vec![S::key(Key::R)]),
             (Action::Mirror, vec![S::key(Key::X)]),
@@ -395,6 +408,8 @@ impl Default for Keymap {
             (Action::ToolLine, vec![S::key(Key::L)]),
             (Action::ToolRect, vec![S::key(Key::B)]),
             (Action::ToolCircle, vec![S::key(Key::C)]),
+            (Action::ToolArc, vec![S::key(Key::A)]),
+            (Action::ToolPolygon, vec![S::key(Key::G)]),
             (Action::ToolText, vec![S::key(Key::T)]),
             (Action::ToolMeasure, vec![S::key(Key::M)]),
             (Action::SchWire, vec![S::key(Key::W)]),

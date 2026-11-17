@@ -1453,10 +1453,10 @@ fn draw_footprint_at(
             draw(layer, 0);
         }
         for layer in pad_mask_layers(pad, side) {
-            draw(layer, rules.mask_expansion);
+            draw(layer, editor_core::fab::mask_margin(pad, rules));
         }
         if let Some(layer) = pad_paste_layer(pad, side) {
-            draw(layer, rules.paste_margin);
+            draw(layer, editor_core::fab::paste_margin(pad, rules));
         }
         if let Some(h) = editor_core::fab::pad_hole(pad, &t) {
             if h.is_slot() {
@@ -1512,7 +1512,7 @@ impl Painter {
 }
 
 /// A placed pad outline (see [`editor_core::fab`]).
-fn push_pad(p: &mut Painter, rl: RLayer, outline: &PadOutline, color: Color) {
+pub(crate) fn push_pad(p: &mut Painter, rl: RLayer, outline: &PadOutline, color: Color) {
     let f = |c: Coord| (c as f64 * 1e-6) as f32;
     let rect = |c: Point, s: Size, r: f32, rot: Angle| {
         Instance::rect(mmf(c), [f(s.w), f(s.h)], r, rot.radians() as f32, color)

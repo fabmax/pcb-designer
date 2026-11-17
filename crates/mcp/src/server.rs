@@ -659,7 +659,9 @@ impl PcbTools {
         datasheet), pos (centre), size [w, h], shape ({\"type\": \"rect\"}, round_rect with \
         ratio, oval, circle), kind ({\"type\": \"smd\"}, through_hole or non_plated_hole \
         with drill [w, h]: equal for a round hole, else an oval slot), optional back (SMD pad on \
-        the other side), mask and paste (false: no mask opening / no solder paste). Origin at the \
+        the other side), mask and paste (false: no mask opening / no solder paste), optional \
+        mask_margin and paste_margin (nm, overriding the board's mask expansion / paste margin \
+        rules for this pad; negative shrinks the opening). Origin at the \
         package centre, pad 1 top left, Y up. Graphics \
         {\"layer\": silkscreen, fabrication or courtyard, \"shape\": …, \"back\"?}: body outline on \
         fabrication, courtyard around everything, silkscreen clear of the pads.\n\

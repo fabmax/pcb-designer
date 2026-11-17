@@ -14,6 +14,10 @@ pub enum Tool {
     Line,
     Rect,
     Circle,
+    /// Centre, start, end.
+    Arc,
+    /// Click corners; the first or last again closes it.
+    Polygon,
     Text,
     /// Footprints only.
     Measure,
@@ -28,6 +32,8 @@ impl Tool {
             Tool::Line => "Line",
             Tool::Rect => "Rectangle",
             Tool::Circle => "Circle",
+            Tool::Arc => "Arc",
+            Tool::Polygon => "Polygon",
             Tool::Text => "Text",
             Tool::Measure => "Measure",
         }
@@ -36,10 +42,20 @@ impl Tool {
     /// Tools available for an item kind.
     pub fn for_item(item: Item) -> &'static [Tool] {
         match item {
-            Item::Symbol(_) => &[Tool::Select, Tool::Pin, Tool::Line, Tool::Rect, Tool::Circle, Tool::Text],
-            Item::Footprint(_) => {
-                &[Tool::Select, Tool::Pad, Tool::Line, Tool::Rect, Tool::Circle, Tool::Text, Tool::Measure]
+            Item::Symbol(_) => {
+                &[Tool::Select, Tool::Pin, Tool::Line, Tool::Rect, Tool::Circle, Tool::Arc, Tool::Polygon, Tool::Text]
             }
+            Item::Footprint(_) => &[
+                Tool::Select,
+                Tool::Pad,
+                Tool::Line,
+                Tool::Rect,
+                Tool::Circle,
+                Tool::Arc,
+                Tool::Polygon,
+                Tool::Text,
+                Tool::Measure,
+            ],
         }
     }
 }
@@ -103,9 +119,13 @@ pub fn increment_name(name: &str) -> String {
 pub struct Placer {
     pub tool: Tool,
     pub settings: Settings,
-    /// Points clicked so far (line chains, rectangle corner, circle center).
+    /// Points clicked so far (line chains, rectangle corner, circle center, arc centre
+    /// and start, polygon corners).
     points: Vec<Point>,
     cursor: Option<Point>,
+    /// The arc's sweep so far (degrees, counterclockwise positive), following the pointer
+    /// around the centre.
+    sweep: f64,
     pub measure: crate::measure::Measure,
 }
 
@@ -116,6 +136,7 @@ impl Default for Placer {
             settings: Settings::default(),
             points: Vec::new(),
             cursor: None,
+            sweep: 0.0,
             measure: Default::default(),
         }
     }
@@ -164,7 +185,32 @@ impl Placer {
 
     /// Track the (snapped) cursor.
     pub fn hover(&mut self, p: Option<Point>) {
+        if self.tool == Tool::Arc
+            && let ([c, start], Some(p)) = (self.points.as_slice(), p)
+        {
+            // Follow the pointer's turn around the centre since the last hover.
+            let last = self.cursor.unwrap_or(*start);
+            if p != *c && last != *c {
+                let delta = angle_of(*c, p) - angle_of(*c, last);
+                let delta = (delta + 540.0).rem_euclid(360.0) - 180.0;
+                self.sweep = (self.sweep + delta).clamp(-360.0, 360.0);
+            }
+        }
         self.cursor = p;
+    }
+
+    /// `/`: the arc being drawn goes the other way round.
+    pub fn flip_arc(&mut self) {
+        if self.tool == Tool::Arc && self.points.len() == 2 && self.sweep != 0.0 {
+            self.sweep -= 360.0 * self.sweep.signum();
+        }
+    }
+
+    /// The arc from the clicked centre and start to the pointer.
+    fn arc(&self, width: Coord) -> Option<Shape> {
+        let [c, start] = self.points.as_slice() else { return None };
+        let radius = (*start - *c).length().round() as Coord;
+        Some(Shape::Arc { center: *c, radius, start: Angle::deg(angle_of(*c, *start)), sweep: self.sweep, width })
     }
 
     /// A click at the snapped point `p`. Returns the element created, if any.
@@ -195,6 +241,41 @@ impl Placer {
                 } else {
                     self.points.push(p);
                     None
+                }
+            }
+            Tool::Arc => match self.points.len() {
+                0 => {
+                    self.points.push(p);
+                    None
+                }
+                1 => {
+                    if p == self.points[0] {
+                        return Err("the start must differ from the centre".into());
+                    }
+                    self.points.push(p);
+                    self.sweep = 0.0;
+                    None
+                }
+                _ => {
+                    let arc = self.arc(width).expect("centre and start");
+                    if self.sweep.abs() < 0.5 {
+                        return Err("move the pointer around the centre to draw the arc".into());
+                    }
+                    self.points.clear();
+                    Some(add(doc, item, Ghost::Shape(arc), s.layer)?)
+                }
+            },
+            Tool::Polygon => {
+                let closes = self.points.first() == Some(&p) || self.points.last() == Some(&p);
+                if !closes {
+                    self.points.push(p);
+                    None
+                } else if self.points.len() < 3 {
+                    return Err("a polygon needs at least three corners".into());
+                } else {
+                    let points = std::mem::take(&mut self.points);
+                    let shape = Shape::Polygon { points, width, fill: s.fill };
+                    Some(add(doc, item, Ghost::Shape(shape), s.layer)?)
                 }
             }
             Tool::Rect | Tool::Circle => {
@@ -252,6 +333,8 @@ impl Placer {
                 back: false,
                 mask: true,
                 paste: true,
+                mask_margin: None,
+                paste_margin: None,
                 id: Id::new(),
                 name: s.name.clone(),
                 pos: p,
@@ -271,6 +354,23 @@ impl Placer {
                 let &a = self.points.first()?;
                 Ghost::Shape(self.shape(*self.points.last().unwrap_or(&a), p, self.width(item)))
             }
+            Tool::Arc => match self.points.as_slice() {
+                [] => return None,
+                [c] => Ghost::Shape(Shape::line(*c, p, self.width(item))),
+                _ => Ghost::Shape(self.arc(self.width(item))?),
+            },
+            Tool::Polygon => {
+                if self.points.is_empty() {
+                    return None;
+                }
+                let mut points = self.points.clone();
+                points.push(p);
+                if points.len() == 2 {
+                    Ghost::Shape(Shape::line(points[0], points[1], self.width(item)))
+                } else {
+                    Ghost::Shape(Shape::Polygon { points, width: self.width(item), fill: false })
+                }
+            }
             Tool::Select | Tool::Measure => return None,
         })
     }
@@ -282,6 +382,11 @@ impl Placer {
             _ => Vec::new(),
         }
     }
+}
+
+/// Direction of `p` seen from `c`, degrees counterclockwise from +X.
+fn angle_of(c: Point, p: Point) -> f64 {
+    ((p.y - c.y) as f64).atan2((p.x - c.x) as f64).to_degrees()
 }
 
 fn next_name(c: &Content) -> String {

@@ -4,11 +4,12 @@
 use editor_core::clip::Clip;
 use egui::RichText;
 use model::*;
-use view::item::{Content, Elem, Item, ItemTarget, ItemView, update_item};
+use view::item::{Content, Elem, Ghost, Item, ItemTarget, ItemView, update_item};
 use view::text_edit::EditSite;
 use view::tools::{Placer, Tool};
 use view::{Interaction, KeyAction, LibraryDoc};
 
+use crate::array_dialog::ArrayDialog;
 use crate::canvas::{self, Canvas};
 use crate::fields::{self, Fields, grid, hint, label};
 use crate::icons::Icon;
@@ -50,6 +51,42 @@ pub struct LibraryEditor {
     pub save_copy: bool,
     /// The pointer went down on the text being edited and selects while it is held.
     text_drag: bool,
+    /// The handle under the pointer: of the selected graphic (by index).
+    pub grip_hover: Option<(usize, view::handles::Grip)>,
+    grip_drag: Option<ShapeDrag>,
+    /// Picked in the canvas's context menu; the app runs it.
+    pub picked: Option<Action>,
+    /// "Create array…" is open: the dialog, the item and the pad (pin) it copies.
+    array: Option<(ArrayDialog, Item, Elem)>,
+}
+
+/// A handle drag of a graphic: as it was, the handle, its offset from the pointer, the
+/// undo group, the snap points (taken at the start) and whether it moved yet.
+struct ShapeDrag {
+    index: usize,
+    original: Shape,
+    grip: view::handles::Grip,
+    offset: Point,
+    group: u64,
+    points: Vec<Point>,
+    moved: bool,
+    start: egui::Pos2,
+}
+
+fn graphic(c: &Content, i: usize) -> Option<&Shape> {
+    match c {
+        Content::Symbol(s) => s.graphics.get(i),
+        Content::Footprint(f) => f.graphics.get(i).map(|g| &g.shape),
+    }
+}
+
+fn set_graphic(c: &mut Content, i: usize, shape: Shape) -> Result<(), String> {
+    let slot = match c {
+        Content::Symbol(s) => s.graphics.get_mut(i),
+        Content::Footprint(f) => f.graphics.get_mut(i).map(|g| &mut g.shape),
+    };
+    *slot.ok_or("the drawing no longer exists")? = shape;
+    Ok(())
 }
 
 impl view::project_libs::HasLibrary for LibraryEditor {
@@ -81,6 +118,10 @@ impl LibraryEditor {
             message: None,
             save_copy: false,
             text_drag: false,
+            grip_hover: None,
+            grip_drag: None,
+            picked: None,
+            array: None,
         }
     }
 
@@ -380,6 +421,8 @@ impl LibraryEditor {
             b(Tool::Line, Icon::Line, "Draw lines and polylines.", Action::ToolLine),
             b(Tool::Rect, Icon::Rect, "Draw rectangles.", Action::ToolRect),
             b(Tool::Circle, Icon::Circle, "Draw circles.", Action::ToolCircle),
+            b(Tool::Arc, Icon::Arc, "Draw arcs: centre, start, end (/ the other way round).", Action::ToolArc),
+            b(Tool::Polygon, Icon::Polygon, "Draw polygons, filled or not.", Action::ToolPolygon),
             b(Tool::Text, Icon::Text, "Place text.", Action::ToolText),
         ];
         let measure: &[ToolButton<Tool>] = match item {
@@ -418,6 +461,10 @@ impl LibraryEditor {
             Tool::Line => "Click points · click the last point again or Esc to finish",
             Tool::Rect => "Click two corners",
             Tool::Circle => "Click center, then a point on the circle",
+            Tool::Arc => {
+                "Click the centre, the start, then the end (the arc follows the pointer) · / other way · Esc cancel"
+            }
+            Tool::Polygon => "Click the corners · click the first or last corner again to close · Esc cancel",
             Tool::Measure => view::measure::HINT,
             _ => "Click to place · R rotate · Esc done",
         };
@@ -458,9 +505,19 @@ impl LibraryEditor {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             }
         } else if self.placer.is_placing() {
+            // Drawing tools snap to pins, pads and vertices too (Alt: the grid only).
+            let draws = matches!(self.placer.tool, Tool::Line | Tool::Rect | Tool::Circle | Tool::Arc | Tool::Polygon);
+            let free = ui.input(|i| i.modifiers.alt);
+            let points = if draws && !free { self.view.content().map(|c| c.snap_points()) } else { None };
+            let tol = (8.0 / self.canvas.camera.zoom * 1e6) as model::Coord;
             let world = response.hover_pos().map(|p| {
                 let [x, y] = self.canvas.screen_to_world(p);
-                self.it.snap(Point::mm(x, y))
+                let raw = Point::mm(x, y);
+                let grid = self.it.snap(raw);
+                match &points {
+                    Some(pts) => view::measure::snap(raw, grid, pts.iter().copied(), None, tol, false).0,
+                    None => grid,
+                }
             });
             self.placer.hover(world);
             if let Some(p) = world
@@ -476,17 +533,28 @@ impl LibraryEditor {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
             }
         } else {
+            let mut on_grip = false;
+            if !on_edit && self.lib.doc.read_only.is_none() {
+                let (consumed, err) = self.graphic_handles(ui, &response, item);
+                on_grip = consumed;
+                if err.is_some() {
+                    self.message = err;
+                }
+            }
             let engaged = !self.it.is_idle();
             let carried_off = self.it.is_carrying() && !response.hovered();
             if let Some(input) = canvas::pointer_input(ui, &response, &self.canvas, engaged, self.it.hover.is_some())
                 && !carried_off
                 && !on_edit
+                && !on_grip
             {
                 let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
                 self.it.pointer(&mut t, &input);
             }
+            self.context_menu(&response, keymap);
             // Double-clicking a text edits it in place.
             if response.double_clicked()
+                && !on_grip
                 && !on_edit
                 && !self.is_builtin()
                 && let Some(Elem::Text(i)) = self.it.hover
@@ -511,9 +579,234 @@ impl LibraryEditor {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
         }
         self.view.set_text_edit(self.lib.doc.item_text_edit(item));
+        self.array_ui(ui.ctx());
         if !self.it.is_idle() {
             ui.ctx().request_repaint();
         }
+    }
+
+    /// A dialog is open that takes the keys.
+    pub fn modal(&self) -> bool {
+        self.array.is_some()
+    }
+
+    /// "Create array…" on the one selected pad or pin; a message otherwise.
+    pub fn open_array_dialog(&mut self) {
+        let Open::Item(item) = self.open else { return };
+        if self.lib.doc.read_only.is_some() {
+            self.message = Some("This library is read-only".into());
+            return;
+        }
+        match (item, self.it.selection.as_slice()) {
+            (Item::Footprint(_), &[e @ Elem::Pad(_)]) => self.array = Some((ArrayDialog::new(false), item, e)),
+            (Item::Symbol(_), &[e @ Elem::Pin(_)]) => self.array = Some((ArrayDialog::new(true), item, e)),
+            _ => self.message = Some("Select one pad or pin to make an array of".into()),
+        }
+    }
+
+    /// The array dialog with its preview on the canvas.
+    fn array_ui(&mut self, ctx: &egui::Context) {
+        let Some((dialog, item, base)) = &mut self.array else { return };
+        let (item, base) = (*item, *base);
+        let layout = dialog.layout();
+        let Some(content) = self.view.content() else {
+            self.array = None;
+            return;
+        };
+        let (slots, ghosts) = match (content, base) {
+            (Content::Footprint(f), Elem::Pad(id)) => match f.pads.get(id) {
+                Some(p) => {
+                    let s = view::array::slots(&layout, p.pos, &p.name);
+                    let g = s
+                        .as_ref()
+                        .map_or(Vec::new(), |s| view::array::pads(p, s).into_iter().skip(1).map(Ghost::Pad).collect());
+                    (s, g)
+                }
+                None => (Err("the pad no longer exists".into()), Vec::new()),
+            },
+            (Content::Symbol(sym), Elem::Pin(id)) => match sym.pins.get(id) {
+                Some(p) => {
+                    let s = view::array::slots(&layout, p.pos, &p.name);
+                    let g = s
+                        .as_ref()
+                        .map_or(Vec::new(), |s| view::array::pins(p, s).into_iter().skip(1).map(Ghost::Pin).collect());
+                    (s, g)
+                }
+                None => (Err("the pin no longer exists".into()), Vec::new()),
+            },
+            _ => (Err("select one pad or pin".into()), Vec::new()),
+        };
+        let clashes = slots.as_ref().map_or(Vec::new(), |s| view::array::clashes(content, base, s));
+        self.view.set_preview(&ghosts);
+        let outcome = dialog.ui(ctx, &slots, &clashes);
+        let Some(create) = outcome else { return };
+        self.array = None;
+        self.view.set_preview(&[]);
+        if create {
+            match view::array::apply(&mut self.lib.doc, item, base, &layout) {
+                Ok(elems) => {
+                    self.view.sync(&self.lib.doc);
+                    let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
+                    self.it.set_selection(&mut t, elems);
+                }
+                Err(e) => self.message = Some(e),
+            }
+        }
+    }
+
+    /// The right-click menu of the canvas: a right click selects what is under the
+    /// pointer first. The pick is run by the app ([`LibraryEditor::picked`]).
+    fn context_menu(&mut self, response: &egui::Response, keymap: &Keymap) {
+        if response.secondary_clicked() && self.it.is_idle() {
+            let sel = match self.it.hover {
+                Some(h) if !self.it.selection.contains(&h) => Some(vec![h]),
+                None => Some(Vec::new()),
+                _ => None,
+            };
+            if let Some(sel) = sel {
+                let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
+                self.it.set_selection(&mut t, sel);
+            }
+        }
+        let content = self.view.content();
+        let selected = !self.it.selection.is_empty();
+        let rect = self.it.selection.iter().any(|e| {
+            matches!(e, Elem::Graphic(i) if content.and_then(|c| graphic(c, *i)).is_some_and(|g| matches!(g, Shape::Rect { .. })))
+        });
+        let array = matches!(self.it.selection.as_slice(), [Elem::Pad(_) | Elem::Pin(_)]);
+        let entries = crate::menu::canvas_menu(keymap, crate::menu::CanvasKind::Part, selected, false, rect, array);
+        response.context_menu(|ui| {
+            if let Some(crate::menu::Cmd::Action(a)) = crate::menu::entries_menu_ui(ui, &entries) {
+                self.picked = Some(a);
+            }
+        });
+    }
+
+    /// Handles of the one selected graphic: drawn and dragged (one undo step per drag;
+    /// Alt: no snapping, Shift: 0°/45°/90°). A double click on a polygon corner deletes
+    /// it. Returns whether the pointer input went to a handle, and an error.
+    fn graphic_handles(&mut self, ui: &egui::Ui, response: &egui::Response, item: Item) -> (bool, Option<String>) {
+        use view::handles;
+        let tol = (6.0 / self.canvas.camera.zoom * 1e6) as Coord;
+        let (pos, pressed, down, alt, shift) = ui.input(|i| {
+            (
+                i.pointer.latest_pos(),
+                i.pointer.primary_pressed(),
+                i.pointer.primary_down(),
+                i.modifiers.alt,
+                i.modifiers.shift,
+            )
+        });
+        let canvas = &self.canvas;
+        let world = |p: egui::Pos2| {
+            let [x, y] = canvas.screen_to_world(p);
+            Point::mm(x, y)
+        };
+        if let Some(d) = &mut self.grip_drag {
+            if !down {
+                if d.moved {
+                    self.lib.doc.close_group();
+                }
+                self.grip_drag = None;
+                return (true, None);
+            }
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            ui.ctx().request_repaint();
+            let Some(pos) = pos else { return (true, None) };
+            if !d.moved && pos.distance(d.start) < 4.0 {
+                return (true, None);
+            }
+            d.moved = true;
+            let raw = world(pos) + d.offset;
+            let mut p = if alt {
+                raw
+            } else {
+                view::measure::snap(raw, self.it.snap(raw), d.points.iter().copied(), None, tol, false).0
+            };
+            if shift {
+                p = handles::constrain(p, &handles::shape_neighbours(&d.original, d.grip));
+            }
+            let Some(shape) = handles::shape_moved(&d.original, d.grip, p) else { return (true, None) };
+            let index = d.index;
+            let r = view::item::update_item(&mut self.lib.doc, item, Some(d.group), |c| set_graphic(c, index, shape));
+            self.view.sync(&self.lib.doc);
+            return (true, r.err());
+        }
+        let target = match self.it.selection.as_slice() {
+            [Elem::Graphic(i)] if self.it.is_idle() => {
+                self.view.content().and_then(|c| graphic(c, *i)).cloned().map(|g| (*i, g))
+            }
+            _ => None,
+        };
+        let Some((index, shape)) = target else {
+            self.grip_hover = None;
+            return (false, None);
+        };
+        let hs = handles::shape_handles(&shape);
+        let at = pos.filter(|_| response.hovered()).map(world);
+        let hit = at.and_then(|p| handles::hit(&hs, p, tol));
+        self.grip_hover = hit.map(|h| (index, h.grip));
+        canvas::draw_handles(ui, &self.canvas, response.rect, &hs, hit.map(|h| h.grip));
+        let Some(h) = hit else { return (false, None) };
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+        if response.double_clicked() {
+            if !h.is_corner() {
+                return (true, None);
+            }
+            self.grip_hover = None;
+            return (true, self.delete_corner(item, index, h.grip).err());
+        }
+        if pressed && let (Some(p), Some(start)) = (at, pos) {
+            let points = self.view.content().map(|c| c.snap_points()).unwrap_or_default();
+            let group = view::interaction::new_group();
+            self.grip_drag = Some(ShapeDrag {
+                index,
+                original: shape,
+                grip: h.grip,
+                offset: h.pos - p,
+                group,
+                points,
+                moved: false,
+                start,
+            });
+            return (true, None);
+        }
+        (false, None)
+    }
+
+    fn delete_corner(&mut self, item: Item, index: usize, grip: view::handles::Grip) -> Result<(), String> {
+        let shape = self.view.content().and_then(|c| graphic(c, index)).cloned().ok_or("no such drawing")?;
+        let shape = view::handles::shape_without_corner(&shape, grip)?;
+        view::item::update_item(&mut self.lib.doc, item, None, |c| set_graphic(c, index, shape))?;
+        self.view.sync(&self.lib.doc);
+        Ok(())
+    }
+
+    /// Delete: the polygon corner under the pointer, if any. `None`: no corner there.
+    pub fn delete_hovered_corner(&mut self) -> Option<Result<(), String>> {
+        let Open::Item(item) = self.open else { return None };
+        let (index, grip) = self.grip_hover.filter(|(_, g)| matches!(g, view::handles::Grip::Corner { .. }))?;
+        self.grip_hover = None;
+        Some(self.delete_corner(item, index, grip))
+    }
+
+    /// The selected rectangles as polygons.
+    pub fn convert_to_polygon(&mut self) -> Result<(), String> {
+        let Open::Item(item) = self.open else { return Err("open a symbol or footprint".into()) };
+        let rects: Vec<usize> =
+            self.it.selection.iter().filter_map(|e| if let Elem::Graphic(i) = e { Some(*i) } else { None }).collect();
+        let r = view::item::update_item(&mut self.lib.doc, item, None, |c| {
+            let mut n = 0;
+            for &i in &rects {
+                if let Some(p) = graphic(c, i).and_then(view::handles::rect_shape_to_polygon) {
+                    set_graphic(c, i, p)?;
+                    n += 1;
+                }
+            }
+            if n == 0 { Err("select a rectangle to convert".to_string()) } else { Ok(()) }
+        });
+        self.view.sync(&self.lib.doc);
+        r
     }
 
     /// Pointer on the text being edited in place: a press on it places the caret (a drag
@@ -585,6 +878,10 @@ impl LibraryEditor {
             Open::Item(item) => match self.it.selection.as_slice() {
                 [] => self.item_summary(ui, item),
                 [e] => self.element(ui, item, *e),
+                many if many.iter().all(|e| matches!(e, Elem::Pad(_))) => {
+                    let many = many.to_vec();
+                    self.pads(ui, item, &many);
+                }
                 many => {
                     fields::heading(ui, &format!("{} elements", many.len()), "");
                     hint(ui, "R rotate · X mirror · Del delete · drag to move");
@@ -598,6 +895,27 @@ impl LibraryEditor {
         }
         if self.fields.end_frame() {
             self.lib.doc.close_group();
+        }
+    }
+
+    /// Several pads: their mask and paste openings, edited together.
+    fn pads(&mut self, ui: &mut egui::Ui, item: Item, elems: &[Elem]) {
+        let Some(mut content) = self.view.content().cloned() else { return };
+        let Content::Footprint(fp) = &mut content else { return };
+        let rules = self.lib.doc.project().board.rules.clone();
+        fields::heading(ui, &format!("{} pads", elems.len()), "");
+        let mut pads: Vec<Pad> =
+            elems.iter().filter_map(|e| if let Elem::Pad(id) = e { fp.pads.get(*id).cloned() } else { None }).collect();
+        let mut changed = None;
+        grid(ui, "pads", |ui| changed = opening_rows(ui, &mut self.fields, &mut pads, &rules));
+        hint(ui, "R rotate · X mirror · Del delete · drag to move");
+        if let Some(grouped) = changed {
+            for p in pads {
+                if let Some(slot) = fp.pads.get_mut(p.id) {
+                    *slot = p;
+                }
+            }
+            self.commit(item, content, grouped);
         }
     }
 
@@ -731,7 +1049,7 @@ impl LibraryEditor {
                 }
                 ui.end_row();
             }
-            Tool::Line | Tool::Rect | Tool::Circle => {
+            Tool::Line | Tool::Rect | Tool::Circle | Tool::Arc | Tool::Polygon => {
                 if let Item::Footprint(_) = item {
                     label(ui, "Layer");
                     if let Some(l) = layer_combo(ui, "tool_layer", s.layer) {
@@ -748,7 +1066,7 @@ impl LibraryEditor {
                     *w = v;
                 }
                 ui.end_row();
-                if tool != Tool::Line {
+                if !matches!(tool, Tool::Line | Tool::Arc) {
                     label(ui, "Filled");
                     ui.checkbox(&mut s.fill, "");
                     ui.end_row();
@@ -781,6 +1099,7 @@ impl LibraryEditor {
 
     fn element(&mut self, ui: &mut egui::Ui, item: Item, e: Elem) {
         let Some(mut content) = self.view.content().cloned() else { return };
+        let rules = self.lib.doc.project().board.rules.clone();
         let mut changed = None; // Some(grouped)
         let f = &mut self.fields;
         match (&mut content, e) {
@@ -862,18 +1181,8 @@ impl LibraryEditor {
                         }
                         ui.end_row();
                     }
-                    label(ui, "Mask opening");
-                    if ui.checkbox(&mut pad.mask, "").changed() {
-                        changed = Some(false);
-                    }
-                    ui.end_row();
-                    if smd {
-                        label(ui, "Solder paste");
-                        if ui.checkbox(&mut pad.paste, "").on_hover_text("Off for test points and fiducials").changed()
-                        {
-                            changed = Some(false);
-                        }
-                        ui.end_row();
+                    if let Some(g) = opening_rows(ui, f, std::slice::from_mut(pad), &rules) {
+                        changed = Some(g);
                     }
                     label(ui, "Rotation");
                     if let Some(a) = fields::rotation_combo(ui, "pad_rot", pad.rotation, DEGREES) {
@@ -1141,6 +1450,61 @@ fn text_fields(ui: &mut egui::Ui, f: &mut Fields, index: usize, t: &mut Text) ->
         changed = Some(false);
     }
     ui.end_row();
+    changed
+}
+
+/// The mask and paste rows of one or more pads: on/off and the margin, the design rule's
+/// until a value is typed (↺ goes back to it). Mixed values show the first pad's.
+/// Returns `Some(grouped)` when something changed.
+fn opening_rows(ui: &mut egui::Ui, f: &mut fields::Fields, pads: &mut [Pad], rules: &DesignRules) -> Option<bool> {
+    let first = pads.first()?.clone();
+    let mut changed = None;
+    let smd = pads.iter().all(|p| p.kind == PadKind::Smd);
+    let rows: [(&str, bool, Option<Coord>, Coord); 2] = [
+        ("Solder mask", first.mask, first.mask_margin, rules.mask_expansion),
+        ("Solder paste", first.paste, first.paste_margin, rules.paste_margin),
+    ];
+    for (i, (name, on, margin, rule)) in rows.into_iter().enumerate() {
+        if i == 1 && !smd {
+            continue;
+        }
+        label(ui, name);
+        ui.horizontal(|ui| {
+            let mut v = on;
+            let tip = if i == 0 { "The solder mask opens over the pad" } else { "Off for test points and fiducials" };
+            if ui.checkbox(&mut v, "").on_hover_text(tip).changed() {
+                for p in pads.iter_mut() {
+                    if i == 0 { p.mask = v } else { p.paste = v }
+                }
+                changed = Some(false);
+            }
+            if !v {
+                return;
+            }
+            if let Some(m) = f.length(ui, margin.unwrap_or(rule), -10.0) {
+                for p in pads.iter_mut() {
+                    if i == 0 { p.mask_margin = Some(m) } else { p.paste_margin = Some(m) }
+                }
+                changed = Some(true);
+            }
+            if margin.is_some() {
+                if ui
+                    .small_button("↺")
+                    .on_hover_text(format!("Back to the design rule ({})", crate::units::fmt(rule)))
+                    .clicked()
+                {
+                    for p in pads.iter_mut() {
+                        if i == 0 { p.mask_margin = None } else { p.paste_margin = None }
+                    }
+                    changed = Some(false);
+                }
+            } else {
+                ui.label(egui::RichText::new("rule").color(theme::text_dim()))
+                    .on_hover_text("The board's design rule; placed on a board, that board's rule applies");
+            }
+        });
+        ui.end_row();
+    }
     changed
 }
 

@@ -109,6 +109,29 @@ under the pointer to remove it. Corners snap to the grid and to pads, track ends
 other corners; Alt drags freely, Shift keeps the edges at 0°, 45° or 90°. A rectangle
 (like the board outline) resizes by its corners and edges; right-click → Convert to
 polygon makes its corners editable one by one.
+A circle has a radius handle; an arc has its two ends (they slide round the circle) and a
+midpoint that changes the radius keeping the ends in place.
+
+## Part editors
+
+The symbol and footprint editors draw lines, rectangles, circles, arcs (**A**: click
+the centre, the start, then the end follows the pointer; **/** goes round the other way)
+and polygons (**G**: click the corners, close on the first or last one). Drawing snaps to
+the grid and to pins, pads and corners; Alt snaps to the grid only. A selected drawing
+has the same handles as board drawings.
+
+**Create array…** (⇧⌘D, right-click or Edit menu) copies the one selected pad or pin:
+in a line, two rows (SOIC, DIP; numbered counterclockwise), a grid (BGA; rows A, B, …
+without I, O, Q, S, X, Z) or four sides (QFP, QFN; the end pads turned by 90°). The
+selected pad is the first, numbers go on from its own, and the copies show on the canvas
+while you set them up. Names that are taken already are listed but allowed. Pins make
+lines only.
+
+The footprint editor shows each pad's solder mask opening and paste on the Solder mask
+and Paste layers. A pad's Properties have Solder mask and Solder paste rows: the checkbox
+turns the opening off, and the margin overrides the board's rule for this pad (it shows
+the rule until you type, ↺ goes back to it). In the Project Library the project's rules
+apply, elsewhere the defaults; board rules apply when the part is placed.
 
 ## Measuring
 

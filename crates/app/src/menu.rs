@@ -202,6 +202,7 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
     edit.extend([
         Entry::Separator,
         action("Move to sheet…", Action::MoveToSheet, s.move_to_sheet),
+        action("Create array…", Action::CreateArray, true),
         action("Round track corners", Action::RoundCorners, true),
     ]);
     if !s.native {
@@ -283,8 +284,25 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
     out
 }
 
-/// The context menu of a schematic (`schematic`) or board canvas.
-pub fn canvas_menu(keymap: &Keymap, schematic: bool, selected: bool, move_to_sheet: bool, rect: bool) -> Vec<Entry> {
+/// Which canvas a context menu is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CanvasKind {
+    Schematic,
+    Board,
+    /// A symbol or footprint.
+    Part,
+}
+
+/// The context menu of a canvas: `rect`: a rectangle is selected (Convert to polygon),
+/// `array`: one pad or pin is (Create array…).
+pub fn canvas_menu(
+    keymap: &Keymap,
+    kind: CanvasKind,
+    selected: bool,
+    move_to_sheet: bool,
+    rect: bool,
+    array: bool,
+) -> Vec<Entry> {
     let action = |a: Action, enabled: bool| Entry::Item {
         label: a.label().to_string(),
         cmd: Cmd::Action(a),
@@ -298,14 +316,20 @@ pub fn canvas_menu(keymap: &Keymap, schematic: bool, selected: bool, move_to_she
         action(Action::Duplicate, selected),
         Entry::Separator,
         action(Action::Rotate, selected),
-        action(if schematic { Action::Mirror } else { Action::Flip }, selected),
+        action(if kind == CanvasKind::Board { Action::Flip } else { Action::Mirror }, selected),
         action(Action::Delete, selected),
     ];
-    if schematic {
+    if kind == CanvasKind::Schematic {
         out.extend([Entry::Separator, action(Action::MoveToSheet, move_to_sheet)]);
     }
+    if rect || array {
+        out.push(Entry::Separator);
+    }
+    if array {
+        out.push(action(Action::CreateArray, true));
+    }
     if rect {
-        out.extend([Entry::Separator, action(Action::ConvertToPolygon, true)]);
+        out.push(action(Action::ConvertToPolygon, true));
     }
     out
 }

@@ -23,6 +23,8 @@ pub enum Icon {
     Zone,
     Keepout,
     Cutout,
+    Arc,
+    Polygon,
     Measure,
     Pin,
     Pad,
@@ -255,6 +257,21 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::Circle => {
             ring(p(0.5, 0.5), 0.34, line);
             dot(p(0.5, 0.5), 0.05);
+        }
+        Icon::Arc => {
+            // A half circle over its centre.
+            let pts: Vec<_> = (0..=16)
+                .map(|i| {
+                    let t = std::f32::consts::PI * (1.0 - i as f32 / 16.0);
+                    p(0.5 + 0.36 * t.cos(), 0.68 - 0.36 * t.sin())
+                })
+                .collect();
+            open(pts, line);
+            dot(p(0.5, 0.68), 0.05);
+        }
+        Icon::Polygon => {
+            let pts = vec![p(0.18, 0.78), p(0.3, 0.2), p(0.72, 0.16), p(0.86, 0.56), p(0.56, 0.84)];
+            open(close(pts), line);
         }
         Icon::Layers => {
             // Three stacked sheets, the top one filled.

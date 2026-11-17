@@ -150,6 +150,18 @@ pub fn convert(lib: &str, root: &Node) -> KiFootprint {
             _ => {}
         }
     }
+    // Footprint-level margins apply to pads without their own.
+    let margin = |key: &str| root.child(key).and_then(|m| m.num(0)).map(nm);
+    let (mask_margin, paste_margin) = (margin("solder_mask_margin"), margin("solder_paste_margin"));
+    if mask_margin.is_some() || paste_margin.is_some() {
+        let ids: Vec<Id> = fp.pads.iter().map(|p| p.id).collect();
+        for id in ids {
+            if let Some(p) = fp.pads.get_mut(id) {
+                p.mask_margin = p.mask_margin.or(mask_margin);
+                p.paste_margin = p.paste_margin.or(paste_margin);
+            }
+        }
+    }
     let mut warnings = std::mem::take(&mut cx.warnings);
     warnings.sort();
     warnings.dedup();
@@ -431,7 +443,12 @@ fn pad(cx: &mut Ctx, n: &Node, fp: &mut Footprint, seen: &mut std::collections::
     let id = kid(&["kicad-pad", cx.lib, cx.name, &name, &occurrence.to_string()]);
     let back = back && kind == PadKind::Smd;
     let paste = kind != PadKind::Smd || paste;
-    fp.pads.insert(Pad { back, mask, paste, id, name, pos, rotation, size, shape, kind });
+    let margin = |key: &str| n.child(key).and_then(|m| m.num(0)).map(nm);
+    let (mask_margin, paste_margin) = (margin("solder_mask_margin"), margin("solder_paste_margin"));
+    if n.child("solder_paste_margin_ratio").and_then(|m| m.num(0)).is_some_and(|r| r != 0.0) {
+        cx.warn("solder paste margin ratio ignored");
+    }
+    fp.pads.insert(Pad { back, mask, paste, mask_margin, paste_margin, id, name, pos, rotation, size, shape, kind });
 }
 
 #[cfg(test)]
@@ -456,6 +473,19 @@ mod tests {
   (pad "" np_thru_hole circle (at 0 -2) (size 1 1) (drill 1) (layers "*.Cu" "*.Mask"))
   (pad "3" thru_hole oval (at 2 0) (size 1.5 2) (drill oval 0.8 1.2) (layers "*.Cu" "*.Mask"))
 )"#;
+
+    #[test]
+    fn pad_and_footprint_margins() {
+        let src = r#"(footprint "X" (version 20240108)
+  (solder_mask_margin 0.07) (solder_paste_margin -0.02)
+  (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Paste" "F.Mask") (solder_mask_margin 0.1))
+  (pad "2" smd rect (at 2 0) (size 1 1) (layers "F.Cu" "F.Paste" "F.Mask") (solder_paste_margin -0.05))
+)"#;
+        let fp = parse("L", src).unwrap().footprint;
+        let pad = |n: &str| fp.pads.iter().find(|p| p.name == n).unwrap().clone();
+        assert_eq!((pad("1").mask_margin, pad("1").paste_margin), (Some(100_000), Some(-20_000)));
+        assert_eq!((pad("2").mask_margin, pad("2").paste_margin), (Some(70_000), Some(-50_000)));
+    }
 
     #[test]
     fn converts_basic_footprint() {

@@ -62,6 +62,16 @@ pub fn pad_paste_layer(pad: &Pad, side: Side) -> Option<LayerId> {
         .then(|| LayerId::for_footprint(FootprintLayer::SolderPaste, pad.side(side)))
 }
 
+/// The solder mask margin of `pad`: its own, else the design rule.
+pub fn mask_margin(pad: &Pad, rules: &DesignRules) -> Coord {
+    pad.mask_margin.unwrap_or(rules.mask_expansion)
+}
+
+/// The paste margin of `pad`: its own, else the design rule.
+pub fn paste_margin(pad: &Pad, rules: &DesignRules) -> Coord {
+    pad.paste_margin.unwrap_or(rules.paste_margin)
+}
+
 /// A placed hole: a round one has `a == b`; a slot is the stroke from `a` to `b` with
 /// round ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -160,6 +170,8 @@ mod tests {
             back: false,
             mask: true,
             paste: true,
+            mask_margin: None,
+            paste_margin: None,
             id: Id::new(),
             name: "1".into(),
             pos: Point::mm(1.0, 0.0),

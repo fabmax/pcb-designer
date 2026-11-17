@@ -1993,6 +1993,9 @@ impl PcbApp {
             Action::RoundCorners => return self.round_corners(),
             Action::ConvertToPolygon => return self.convert_to_polygon(),
             Action::MoveToSheet => return self.move_to_sheet(),
+            Action::CreateArray => {
+                return self.set_status("Select one pad or pin in a footprint or symbol to make an array of");
+            }
             Action::Cut | Action::Copy | Action::Paste | Action::Duplicate => return,
             Action::Undo => return self.undo(),
             Action::Redo => return self.redo(),
@@ -2009,6 +2012,8 @@ impl PcbApp {
             | Action::ToolLine
             | Action::ToolRect
             | Action::ToolCircle
+            | Action::ToolArc
+            | Action::ToolPolygon
             | Action::ToolText
             | Action::ToolMeasure
             | Action::SchWire
@@ -2095,13 +2100,27 @@ impl PcbApp {
             Action::SelectAll => key_msg(l, KeyAction::SelectAll),
             Action::Rotate => key_msg(l, KeyAction::Rotate),
             Action::Mirror | Action::Flip => key_msg(l, KeyAction::Mirror),
-            Action::Delete => key_msg(l, KeyAction::Delete),
+            Action::Delete => match l.delete_hovered_corner() {
+                Some(r) => r.err(),
+                None => key_msg(l, KeyAction::Delete),
+            },
+            Action::ConvertToPolygon => l.convert_to_polygon().err(),
+            Action::CreateArray => {
+                l.open_array_dialog();
+                l.message.take()
+            }
             Action::Cancel => key_msg(l, KeyAction::Escape),
             Action::ToolSelect => tool_msg(l, Tool::Select),
             Action::ToolPin => tool_msg(l, Tool::Pin),
             Action::ToolLine => tool_msg(l, Tool::Line),
             Action::ToolRect => tool_msg(l, Tool::Rect),
             Action::ToolCircle => tool_msg(l, Tool::Circle),
+            Action::ToolArc => tool_msg(l, Tool::Arc),
+            Action::ToolPolygon => tool_msg(l, Tool::Polygon),
+            Action::Posture => {
+                l.placer.flip_arc();
+                None
+            }
             Action::ToolText => tool_msg(l, Tool::Text),
             Action::ToolMeasure => tool_msg(l, Tool::Measure),
             Action::Cut | Action::Copy | Action::Paste | Action::Duplicate => None,
@@ -2116,7 +2135,6 @@ impl PcbApp {
             | Action::SchPower
             | Action::SchJunction
             | Action::SchNoConnect
-            | Action::Posture
             | Action::NextCorners
             | Action::RoundCorners
             | Action::MoveToSheet => None,
@@ -2126,7 +2144,6 @@ impl PcbApp {
             | Action::PcbZone
             | Action::PcbKeepout
             | Action::PcbCutout
-            | Action::ConvertToPolygon
             | Action::MeasureClearance
             | Action::PcbText
             | Action::PcbNextLayer => None,
@@ -3508,7 +3525,8 @@ impl TreeBehavior<'_> {
                     .selection
                     .iter()
                     .any(|&id| doc.project().get(id).is_some_and(|o| view::handles::rect_to_polygon(&o).is_some()));
-            let entries = menu::canvas_menu(self.keymap, sheet.is_some(), selected, movable, rect);
+            let kind = if sheet.is_some() { menu::CanvasKind::Schematic } else { menu::CanvasKind::Board };
+            let entries = menu::canvas_menu(self.keymap, kind, selected, movable, rect, false);
             response.context_menu(|ui| {
                 if let Some(menu::Cmd::Action(a)) = menu::entries_menu_ui(ui, &entries) {
                     self.deferred.push(Deferred::Action(a));
@@ -3586,10 +3604,14 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                 } else {
                     self.libraries.iter_mut().find(|l| l.key == key)
                 };
-                if let Some(l) = l
-                    && l.center_ui(ui, self.keymap)
-                {
-                    *self.focus = Focus::Library(key);
+                if let Some(l) = l {
+                    if l.center_ui(ui, self.keymap) {
+                        *self.focus = Focus::Library(key);
+                    }
+                    if let Some(a) = l.picked.take() {
+                        *self.focus = Focus::Library(key);
+                        self.deferred.push(Deferred::Action(a));
+                    }
                 }
             }
             Tab::Gerber => {
@@ -3777,14 +3799,12 @@ impl eframe::App for PcbApp {
         self.paste_text = ctx.input(|i| {
             i.events.iter().find_map(|e| if let egui::Event::Paste(t) = e { Some(t.clone()) } else { None })
         });
-        if self.name_prompt.is_none()
-            && self.sheet_picker.is_none()
-            && !ctx.egui_wants_keyboard_input()
-            && self.editing_doc().is_some()
-        {
+        let modal =
+            self.name_prompt.is_some() || self.sheet_picker.is_some() || self.libraries.iter().any(|l| l.modal());
+        if !modal && !ctx.egui_wants_keyboard_input() && self.editing_doc().is_some() {
             self.text_edit_input(&ctx);
         }
-        if !self.record_shortcut(&ctx) && self.name_prompt.is_none() && self.sheet_picker.is_none() {
+        if !self.record_shortcut(&ctx) && !modal {
             for action in self.keymap.triggered(&ctx, self.context()) {
                 self.run_action(action);
             }
@@ -4141,22 +4161,7 @@ fn corner_handles(
     let at = pos.filter(|_| response.hovered()).map(world);
     let hit = at.and_then(|p| handles::hit(&hs, p, tol));
     pane.grip_hover = hit.map(|h| (id, h.grip));
-    // Draw: corners as squares, midpoints as small circles; the hovered one filled.
-    let painter = ui.painter_at(response.rect);
-    let accent = theme::accent();
-    let bg = theme::panel();
-    for h in &hs {
-        let c = pane.canvas.world_to_screen([h.pos.x as f64 * 1e-6, h.pos.y as f64 * 1e-6]);
-        let hot = hit.is_some_and(|x| x.grip == h.grip);
-        let fill = if hot { accent } else { bg };
-        let stroke = egui::Stroke::new(1.5, accent);
-        if matches!(h.grip, handles::Grip::Mid { .. } | handles::Grip::RectEdge(_)) {
-            painter.circle(c, 3.5, fill, stroke);
-        } else {
-            let r = egui::Rect::from_center_size(c, egui::vec2(8.0, 8.0));
-            painter.rect(r, 1.0, fill, stroke, egui::StrokeKind::Middle);
-        }
-    }
+    canvas::draw_handles(ui, &pane.canvas, response.rect, &hs, hit.map(|h| h.grip));
     let Some(h) = hit else { return (false, None) };
     ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
     if response.double_clicked() {

@@ -392,8 +392,11 @@ the current design of each area with the gotchas a change needs to know, the pla
   press is still pending (script input): it uses the press up.
 - The GUI sets `keep_connected` for every move, rotate, mirror and flip except carries;
   the commands default to false (MCP gets exact moves unless it asks).
-- Tools: `tools::Placer` (library: pin/pad, line, rect, circle, text; names
-  auto-increment), `sch_tools` (wire, bus, bus entry, label, power, junction, no connect, place;
+- Tools: `tools::Placer` (library: pin/pad, line, rect, circle, arc, polygon, text; names
+  auto-increment; arc: centre, start, then the end follows the pointer with `sweep`
+  accumulated from angle deltas so it can pass 180°, `/` (`flip_arc`) takes the other way
+  round; polygon: closes on a click on its first or last corner, ≥ 3 corners; the drawing
+  tools snap to `Content::snap_points`, Alt grid only), `sch_tools` (wire, bus, bus entry, label, power, junction, no connect, place;
   `bend` for corners; `SchPlacer::sheet` is the sheet they work on, `set_sheet` ends a
   wire begun elsewhere; the Sheet tool places a new sheet's symbol with one
   `AddSheet`), `pcb_tools` (route with copper snapping and the checks above: a clash
@@ -424,12 +427,27 @@ the current design of each area with the gotchas a change needs to know, the pla
   `editor_core::clearance::Feature`s (copper on the active layer, pad and via holes, the
   board edge) and `clearance::gap` gives the distance, nearest points (`Geo::nearest`)
   and the rule (copper of different nets on a common layer, or copper to the edge).
-- `handles`: corner handles of one selected zone, keepout or board drawing. Polygons
+- `handles`: corner handles of one selected zone, keepout or board drawing, and of one
+  selected graphic in the part editors (`shape_*` functions on a `Shape`; the object
+  functions delegate board drawings to them). Polygons
   (holes too): corners move, midpoints insert, Delete / double click removes (≥ 3 stay).
   Rectangles keep their shape (corner: opposite corner fixed, edge: moves); "Convert to
-  polygon" in the context menu. Lines: both ends. The app (`corner_handles`) runs a drag
+  polygon" in the context menu. Lines: both ends. Circles: a radius handle. Arcs: both
+  ends (centre and radius fixed, the sweep changes) and a midpoint (radius changes, the
+  ends stay put). The app (`corner_handles`) runs a drag
   as `Update`s in one undo group from the original object, snapping like Measure (a
-  `BoardSnap` built once per drag), Alt free, Shift 0°/45°/90° to the neighbours.
+  `BoardSnap` built once per drag), Alt free, Shift 0°/45°/90° to the neighbours. The
+  library editor does the same in `LibraryEditor::graphic_handles` with `update_item`.
+- `array`: "Create array…" (⌘⇧D, context and Edit menu) on one selected pad or pin.
+  `slots` lays out Linear, Dual row (the second row 90° counterclockwise of the first's
+  direction, running back: numbers go round counterclockwise), Grid (selected pad top
+  left, columns →, rows ↓ lettered without I, O, Q, S, X, Z; continues from a name like
+  "C3", else starts at A1 and renames the selected pad) and Quad (counts and spans for
+  sides and ends; end pads turned 90°; an exposed pad isn't part of it). Names go on with
+  `increment_name`; pins: Linear only. `apply` is one `update_item` (one undo step); the
+  selected element stays first and keeps its id. Clashing names are allowed, the dialog
+  lists them (`clashes`). The app dialog (`array_dialog.rs`) is a modal in the top right
+  over a clear backdrop with the copies as the canvas preview.
 - `clipboard`: copy (anchor = snapped reference point of the first copyable object) and
   paste into a view, checking the clip's domain. A paste is carried:
   `Interaction::carry` is a drag without a button in the paste's undo group (moves,
@@ -471,12 +489,20 @@ the current design of each area with the gotchas a change needs to know, the pla
 
 ## Libraries and KiCad (`kicad`)
 
+- Pad openings: `Pad::mask_margin` / `paste_margin` (`None`: the board's
+  `mask_expansion` / `paste_margin` rule) on top of the `mask` / `paste` flags;
+  `fab::mask_margin` / `paste_margin` resolve them for Gerber and the board view. The
+  footprint editor draws them on its Solder mask and Paste layers with the document's
+  rules (the project's in the Project Library, defaults elsewhere); Properties edits
+  them for all selected pads (the field shows the rule until typed, ↺ resets).
 - Imports `.kicad_sym`, `.kicad_symdir` (KiCad 10) and `.pretty` (KiCad 6–10). Units
   from sub-symbols, `extends` merged, power symbols skipped (they are power labels
   here), symbols with hidden `power_in` pins refused (KiCad joins those implicitly to the
   global net of the pin name; none in KiCad's current libraries), other hidden pins shown
   with a warning, footprints y-flipped; `B.*` items and `B.Cu`-only pads become `back`
-  ones, a pad's mask/paste come from its layer list. A symbol requested without footprints gets a "No footprint" variant
+  ones, a pad's mask/paste come from its layer list, its `solder_mask_margin` /
+  `solder_paste_margin` become `mask_margin` / `paste_margin` (a footprint-level value
+  fills pads without their own; a paste ratio is warned about and dropped). A symbol requested without footprints gets a "No footprint" variant
   (with a warning); one whose footprints all fail to load makes no part. Deterministic ids (FNV of library, name, element), so re-imports
   update in place.
 - Previews (`kicad::preview::PreviewCache`): the first unit of a symbol or a footprint,
@@ -701,12 +727,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-**M16: Part editors**
-- Drawing tools for arcs and polygons (numeric editing only today).
-- Pad arrays.
-- Per-pad mask and paste overrides (board-wide margins today), with the openings shown
-  and edited in the footprint editor.
-
 **M17: ERC review**
 - Excluding single findings (kept in the project).
 - Configurable severities and a pin conflict matrix.
@@ -766,7 +786,6 @@ defers.
 - A side-bar panel to browse and place board parts from the project and loaded
   libraries (needs design; P on the board stays unassigned until then).
 - Cutouts that split a zone into two pieces (refused today; would need a second zone).
-- Handles for circles and arcs (radius, ends) and for footprint editor graphics.
 - Push-and-shove routing.
 - Routing checks: clearance to zone fills of other nets, an index for huge boards
   (linear per check today), checking the vias L adds against the next layer's copper
@@ -794,6 +813,9 @@ defers.
 
 **Libraries and parts**
 - Footprint wizards.
+- Circular pad arrays; remembering the array dialog's settings.
+- Pad paste ratio (KiCad's `solder_paste_margin_ratio`, warned about on import) and
+  footprint-level mask/paste margin defaults (the import copies them into the pads).
 - KiCad import: back-side footprint content, text boxes, De Morgan bodies, alternate pin
   functions, exact oval drills, 3D models.
 

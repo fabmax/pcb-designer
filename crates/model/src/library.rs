@@ -154,6 +154,14 @@ pub struct Pad {
     /// paste drawn separately.
     #[serde(default = "yes", skip_serializing_if = "is_true")]
     pub paste: bool,
+    /// How far the solder mask opening extends beyond the pad (negative: smaller);
+    /// `None`: the board's design rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask_margin: Option<Coord>,
+    /// Added to the pad for its paste opening (negative shrinks); `None`: the board's
+    /// design rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paste_margin: Option<Coord>,
 }
 
 fn is_true(b: &bool) -> bool {

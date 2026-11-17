@@ -125,6 +125,16 @@ impl Content {
         }
     }
 
+    /// Points the drawing tools snap to: pin ends, pad centres and graphic vertices.
+    pub fn snap_points(&self) -> Vec<Point> {
+        match self {
+            Content::Symbol(s) => {
+                s.pins.iter().map(|p| p.pos).chain(s.graphics.iter().flat_map(crate::measure::shape_points)).collect()
+            }
+            Content::Footprint(f) => crate::measure::footprint_points(f).collect(),
+        }
+    }
+
     pub fn elements(&self) -> Vec<Elem> {
         match self {
             Content::Symbol(s) => s
@@ -399,7 +409,9 @@ struct Layers {
     body_fill: RLayer,
     body: RLayer,
     silk: RLayer,
+    mask: RLayer,
     copper: RLayer,
+    paste: RLayer,
     holes: RLayer,
     pins: RLayer,
     names: RLayer,
@@ -408,6 +420,9 @@ struct Layers {
     preview: RLayer,
     hover: RLayer,
     selection: RLayer,
+    /// The design rules' solder mask and paste margins, for pads without their own (the
+    /// project's for the Project Library, the defaults elsewhere).
+    rules: DesignRules,
 }
 
 /// A not-yet-placed element shown under the cursor by a creation tool.
@@ -467,7 +482,9 @@ impl ItemView {
             body_fill: scene.add_layer("Body fill"),
             body: scene.add_layer("Body"),
             silk: scene.add_layer("Silkscreen"),
+            mask: scene.add_layer("Solder mask"),
             copper: scene.add_layer("Pads"),
+            paste: scene.add_layer("Paste"),
             holes: scene.add_layer("Holes"),
             pins: scene.add_layer("Pins"),
             names: scene.add_layer("Pin and pad names"),
@@ -476,6 +493,7 @@ impl ItemView {
             preview: scene.add_layer("Preview"),
             hover: scene.add_layer("Hover"),
             selection: scene.add_layer("Selection"),
+            rules: DesignRules::default(),
         };
         ItemView {
             scene,
@@ -524,6 +542,8 @@ impl ItemView {
             ],
             Some(Item::Footprint(_)) => vec![
                 e(l.copper, Some(footprint_layer_color(FootprintLayer::Copper)), 0),
+                e(l.mask, Some(footprint_layer_color(FootprintLayer::SolderMask)), 0),
+                e(l.paste, Some(footprint_layer_color(FootprintLayer::SolderPaste)), 0),
                 e(l.holes, None, 0),
                 e(l.names, None, 0),
                 e(l.silk, Some(footprint_layer_color(FootprintLayer::Silkscreen)), 1),
@@ -547,6 +567,7 @@ impl ItemView {
         }
         self.drawn = Some(doc.revision);
         self.content = self.item.and_then(|item| Content::get(doc.project(), item));
+        self.layers.rules = doc.project().board.rules.clone();
         if self.content.is_none() {
             self.item = None;
         }
@@ -837,6 +858,21 @@ fn draw_pad(l: &Layers, pad: &Pad, p: &mut Painter, color: Option<Color>) {
     let rot = pad.rotation.radians() as f32;
     let (w, h) = ((pad.size.w as f64 * 1e-6) as f32, (pad.size.h as f64 * 1e-6) as f32);
     let has_copper = !matches!(pad.kind, PadKind::NonPlatedHole { .. });
+    // Mask and paste openings (not in overlays and ghosts).
+    if color.is_none() {
+        let t = Transform::IDENTITY;
+        let side = if pad.back { Side::Bottom } else { Side::Top };
+        if pad.mask
+            && let Some(o) = editor_core::fab::pad_outline(pad, &t, editor_core::fab::mask_margin(pad, &l.rules))
+        {
+            crate::view::push_pad(p, l.mask, &o, footprint_layer_color(FootprintLayer::SolderMask));
+        }
+        if editor_core::fab::pad_paste_layer(pad, side).is_some()
+            && let Some(o) = editor_core::fab::pad_outline(pad, &t, editor_core::fab::paste_margin(pad, &l.rules))
+        {
+            crate::view::push_pad(p, l.paste, &o, footprint_layer_color(FootprintLayer::SolderPaste));
+        }
+    }
     if has_copper {
         match &pad.shape {
             PadShape::Circle => p.push(l.copper, Instance::circle(c, w * 0.5, copper)),

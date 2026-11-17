@@ -267,6 +267,31 @@ pub fn draw_box(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, r: model::Rect
     }
 }
 
+/// Handles of the selected drawing, zone or keepout: corners as squares, the others as
+/// small circles; the one under the pointer filled.
+pub fn draw_handles(
+    ui: &egui::Ui,
+    canvas: &Canvas,
+    clip: egui::Rect,
+    handles: &[view::handles::Handle],
+    hot: Option<view::handles::Grip>,
+) {
+    let painter = ui.painter_at(clip);
+    let accent = crate::theme::accent();
+    let bg = crate::theme::panel();
+    for h in handles {
+        let c = canvas.world_to_screen([h.pos.x as f64 * 1e-6, h.pos.y as f64 * 1e-6]);
+        let fill = if hot == Some(h.grip) { accent } else { bg };
+        let stroke = egui::Stroke::new(1.5, accent);
+        if h.is_minor() {
+            painter.circle(c, 3.5, fill, stroke);
+        } else {
+            let r = egui::Rect::from_center_size(c, egui::vec2(8.0, 8.0));
+            painter.rect(r, 1.0, fill, stroke, egui::StrokeKind::Middle);
+        }
+    }
+}
+
 /// The Measure tool's Clearance overlay: the picked objects' outlines (and the hovered
 /// one's, thinner), the gap as a ruler between the nearest points, and its reading with
 /// the rule (in the warning colour when the gap is too small).

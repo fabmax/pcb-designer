@@ -142,12 +142,12 @@ pub fn layer_file(project: &Project, copper: &BoardConnectivity, layer: LayerId)
                 if !pad_mask_layers(pad, inst.side).contains(&layer) {
                     continue;
                 }
-                (rules.mask_expansion, None)
+                (editor_core::fab::mask_margin(pad, rules), None)
             } else if matches!(layer, LayerId::TOP_PASTE | LayerId::BOTTOM_PASTE) {
                 if pad_paste_layer(pad, inst.side) != Some(layer) {
                     continue;
                 }
-                (rules.paste_margin, None)
+                (editor_core::fab::paste_margin(pad, rules), None)
             } else {
                 continue;
             };

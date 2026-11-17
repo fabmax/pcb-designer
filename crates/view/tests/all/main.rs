@@ -13,6 +13,7 @@ mod layers;
 mod object_json;
 mod part_editor;
 mod part_preview;
+mod part_tools;
 mod pcb_tools;
 mod probe;
 mod sch_tools;
