@@ -1,4 +1,4 @@
-//! "Create array…": the dialog laying out copies of a selected pad or pin.
+//! "Create array…": the Tool settings form laying out copies of a selected pad or pin.
 
 use model::*;
 use view::array::{Dir, Layout, Slot};
@@ -25,7 +25,7 @@ impl Kind {
     }
 }
 
-pub struct ArrayDialog {
+pub struct ArrayForm {
     /// Making pins: linear arrays only.
     pins: bool,
     kind: Kind,
@@ -43,9 +43,9 @@ pub struct ArrayDialog {
     fields: Fields,
 }
 
-impl ArrayDialog {
-    pub fn new(pins: bool) -> ArrayDialog {
-        ArrayDialog {
+impl ArrayForm {
+    pub fn new(pins: bool) -> ArrayForm {
+        ArrayForm {
             pins,
             kind: Kind::Linear,
             count: 4,
@@ -81,53 +81,55 @@ impl ArrayDialog {
         }
     }
 
-    /// Show the dialog. `slots` is the current layout (or why it can't be made) and
-    /// `clashes` the names taken already. Returns `Some(true)` to create, `Some(false)` when
-    /// cancelled, `None` while open.
-    pub fn ui(&mut self, ctx: &egui::Context, slots: &Result<Vec<Slot>, String>, clashes: &[String]) -> Option<bool> {
+    /// The form (Tool settings panel) for an array of `what` ("pad 1"). `slots` is the
+    /// current layout (or why it can't be made) and `clashes` the names taken already.
+    /// Returns `Some(true)` to create, `Some(false)` to cancel.
+    pub fn ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        what: &str,
+        slots: &Result<Vec<Slot>, String>,
+        clashes: &[String],
+    ) -> Option<bool> {
         let mut outcome = None;
-        let what = if self.pins { "pin" } else { "pad" };
-        let title = format!("Create {what} array");
-        let modal = theme::side_dialog(ctx, egui::Id::unique("array_dialog"), &title, 300.0, |ui| {
-            self.fields.begin_frame();
-            if !self.pins {
-                ui.horizontal(|ui| {
-                    for k in [Kind::Linear, Kind::DualRow, Kind::Grid, Kind::Quad] {
-                        ui.selectable_value(&mut self.kind, k, k.label());
-                    }
-                });
-                ui.add_space(6.0);
-            }
-            crate::fields::grid(ui, "array_grid", |ui| self.rows_ui(ui));
-            ui.add_space(6.0);
-            match slots {
-                Ok(s) => hint(ui, &format!("{} {what}s, numbered from the selected one.", s.len())),
-                Err(e) => {
-                    ui.colored_label(theme::warn(), e);
-                }
-            }
-            if !clashes.is_empty() {
-                let mut list = clashes.iter().take(8).cloned().collect::<Vec<_>>().join(", ");
-                if clashes.len() > 8 {
-                    list.push_str(", …");
-                }
-                ui.colored_label(theme::warn(), format!("Names in use already: {list}"));
-            }
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                let enter = ui.input(|i| i.key_pressed(egui::Key::Enter)) && !ui.ctx().egui_wants_keyboard_input();
-                if ui.add_enabled(slots.is_ok(), egui::Button::new("Create")).clicked() || (enter && slots.is_ok()) {
-                    outcome = Some(true);
-                }
-                if ui.button("Cancel").clicked() {
-                    outcome = Some(false);
+        let noun = if self.pins { "pin" } else { "pad" };
+        crate::fields::heading(ui, &format!("{} array", if self.pins { "Pin" } else { "Pad" }), &format!("of {what}"));
+        self.fields.begin_frame();
+        if !self.pins {
+            ui.horizontal_wrapped(|ui| {
+                for k in [Kind::Linear, Kind::DualRow, Kind::Grid, Kind::Quad] {
+                    ui.selectable_value(&mut self.kind, k, k.label());
                 }
             });
-            self.fields.end_frame();
-        });
-        if modal.should_close() && outcome.is_none() {
-            outcome = Some(false);
+            ui.add_space(6.0);
         }
+        crate::fields::grid(ui, "array_grid", |ui| self.rows_ui(ui));
+        ui.add_space(6.0);
+        match slots {
+            Ok(s) => hint(ui, &format!("{} {noun}s, numbered on from the selected one.", s.len())),
+            Err(e) => {
+                ui.colored_label(theme::warn(), e);
+            }
+        }
+        if !clashes.is_empty() {
+            let mut list = clashes.iter().take(8).cloned().collect::<Vec<_>>().join(", ");
+            if clashes.len() > 8 {
+                list.push_str(", …");
+            }
+            ui.colored_label(theme::warn(), format!("Names in use already: {list}"));
+        }
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if ui.add_enabled(slots.is_ok(), egui::Button::new("Create")).clicked() {
+                outcome = Some(true);
+            }
+            if ui.button("Cancel").clicked() {
+                outcome = Some(false);
+            }
+        });
+        ui.add_space(4.0);
+        hint(ui, "Enter creates · Esc cancels");
+        self.fields.end_frame();
         outcome
     }
 

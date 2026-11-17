@@ -120,22 +120,6 @@ pub fn dialog<R>(
     })
 }
 
-/// A [`dialog`] in the top right corner over a clear backdrop, for dialogs previewing on
-/// the canvas.
-pub fn side_dialog<R>(
-    ctx: &egui::Context,
-    id: egui::Id,
-    title: &str,
-    width: f32,
-    add_contents: impl FnOnce(&mut egui::Ui) -> R,
-) -> egui::ModalResponse<R> {
-    let area = egui::Modal::default_area(id.with("area")).anchor(egui::Align2::RIGHT_TOP, [-24.0, 80.0]);
-    egui::Modal::new(id).frame(floating_frame(ctx)).backdrop_color(Color32::TRANSPARENT).area(area).show(ctx, |ui| {
-        ui.set_width(width + 2.0 * f32::from(PAD));
-        floating_contents(ui, title, None, add_contents)
-    })
-}
-
 /// A resizable, non-modal window that looks like [`dialog`], with a close button, first
 /// shown centred. Shown while `open`; returns the contents' result when shown.
 pub fn window<R>(

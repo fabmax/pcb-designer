@@ -32,7 +32,7 @@
 
 mod agent;
 mod app;
-mod array_dialog;
+mod array_form;
 mod canvas;
 mod clipboard;
 mod dock;

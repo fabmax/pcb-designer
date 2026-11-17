@@ -287,6 +287,9 @@ pub struct PcbApp {
     name_prompt: Option<NamePrompt>,
     /// "Move to sheet…" asking for the sheet.
     sheet_picker: Option<SheetPicker>,
+    /// Array mode opened the Tool settings panel: the library editor and the panel it
+    /// replaced, shown again when the mode ends.
+    array_dock: Option<(u64, Option<Panel>)>,
     /// The dock as last saved (the live one is in `settings`).
     saved_dock: Dock,
     /// The Project panel's tree.
@@ -400,6 +403,7 @@ impl PcbApp {
             sch: SchPlacer::default(),
             name_prompt: None,
             sheet_picker: None,
+            array_dock: None,
             saved_dock: Dock::default(),
             project_tree: ProjectPanel::default(),
             rename: None,
@@ -2106,8 +2110,16 @@ impl PcbApp {
             },
             Action::ConvertToPolygon => l.convert_to_polygon().err(),
             Action::CreateArray => {
-                l.open_array_dialog();
-                l.message.take()
+                if l.start_array() {
+                    let side = Panel::ToolSettings.side();
+                    if !self.settings.dock.is_open(Panel::ToolSettings) {
+                        self.array_dock = Some((key, self.settings.dock.open(side)));
+                    }
+                    self.settings.dock.show(Panel::ToolSettings);
+                    None
+                } else {
+                    l.message.take()
+                }
             }
             Action::Cancel => key_msg(l, KeyAction::Escape),
             Action::ToolSelect => tool_msg(l, Tool::Select),
@@ -2976,6 +2988,17 @@ impl PcbApp {
 
     /// Per frame: the Messages badge, saving the dock.
     fn update_dock(&mut self, ctx: &egui::Context) {
+        if let Some((key, before)) = self.array_dock
+            && !self.lib(key).is_some_and(|l| l.in_array())
+        {
+            self.array_dock = None;
+            if self.settings.dock.is_open(Panel::ToolSettings) {
+                match before {
+                    Some(p) => self.settings.dock.show(p),
+                    None => self.settings.dock.hide(Panel::ToolSettings.side()),
+                }
+            }
+        }
         let keys = messages::keys(&self.project.lib.doc, &mut self.libraries);
         self.unseen.update(keys, self.settings.dock.is_open(Panel::Messages));
         // Save once a resize is done.
@@ -3799,8 +3822,7 @@ impl eframe::App for PcbApp {
         self.paste_text = ctx.input(|i| {
             i.events.iter().find_map(|e| if let egui::Event::Paste(t) = e { Some(t.clone()) } else { None })
         });
-        let modal =
-            self.name_prompt.is_some() || self.sheet_picker.is_some() || self.libraries.iter().any(|l| l.modal());
+        let modal = self.name_prompt.is_some() || self.sheet_picker.is_some();
         if !modal && !ctx.egui_wants_keyboard_input() && self.editing_doc().is_some() {
             self.text_edit_input(&ctx);
         }

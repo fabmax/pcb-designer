@@ -446,8 +446,12 @@ the current design of each area with the gotchas a change needs to know, the pla
   sides and ends; end pads turned 90°; an exposed pad isn't part of it). Names go on with
   `increment_name`; pins: Linear only. `apply` is one `update_item` (one undo step); the
   selected element stays first and keeps its id. Clashing names are allowed, the dialog
-  lists them (`clashes`). The app dialog (`array_dialog.rs`) is a modal in the top right
-  over a clear backdrop with the copies as the canvas preview.
+  lists them (`clashes`). In the app it's a mode, not a tool: `LibraryEditor::array`
+  (item, element) shows the form (`array_form.rs`, kept per editor for pads and pins for
+  the session) in the Tool settings panel, which the app opens and afterwards gives back to
+  the panel it replaced (`App::array_dock`). The copies are the canvas preview; Enter
+  (unless a field had focus this or the last frame) creates, Esc, another tool, another
+  item or a selection change cancel.
 - `clipboard`: copy (anchor = snapped reference point of the first copyable object) and
   paste into a view, checking the clip's domain. A paste is carried:
   `Interaction::carry` is a drag without a button in the paste's undo group (moves,
@@ -813,7 +817,7 @@ defers.
 
 **Libraries and parts**
 - Footprint wizards.
-- Circular pad arrays; remembering the array dialog's settings.
+- Circular pad arrays; remembering the array settings across sessions.
 - Pad paste ratio (KiCad's `solder_paste_margin_ratio`, warned about on import) and
   footprint-level mask/paste margin defaults (the import copies them into the pads).
 - KiCad import: back-side footprint content, text boxes, De Morgan bodies, alternate pin

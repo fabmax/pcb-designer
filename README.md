@@ -123,8 +123,9 @@ has the same handles as board drawings.
 **Create array…** (⇧⌘D, right-click or Edit menu) copies the one selected pad or pin:
 in a line, two rows (SOIC, DIP; numbered counterclockwise), a grid (BGA; rows A, B, …
 without I, O, Q, S, X, Z) or four sides (QFP, QFN; the end pads turned by 90°). The
-selected pad is the first, numbers go on from its own, and the copies show on the canvas
-while you set them up. Names that are taken already are listed but allowed. Pins make
+selected pad is the first and numbers go on from its own. The settings are in the Tool
+settings panel and the copies show on the canvas while you set them up; Enter (or Create)
+makes them, Esc cancels. Names that are taken already are listed but allowed. Pins make
 lines only.
 
 The footprint editor shows each pad's solder mask opening and paste on the Solder mask

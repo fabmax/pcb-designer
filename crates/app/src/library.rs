@@ -4,12 +4,13 @@
 use editor_core::clip::Clip;
 use egui::RichText;
 use model::*;
+use view::array::Slot;
 use view::item::{Content, Elem, Ghost, Item, ItemTarget, ItemView, update_item};
 use view::text_edit::EditSite;
 use view::tools::{Placer, Tool};
 use view::{Interaction, KeyAction, LibraryDoc};
 
-use crate::array_dialog::ArrayDialog;
+use crate::array_form::ArrayForm;
 use crate::canvas::{self, Canvas};
 use crate::fields::{self, Fields, grid, hint, label};
 use crate::icons::Icon;
@@ -56,8 +57,13 @@ pub struct LibraryEditor {
     grip_drag: Option<ShapeDrag>,
     /// Picked in the canvas's context menu; the app runs it.
     pub picked: Option<Action>,
-    /// "Create array…" is open: the dialog, the item and the pad (pin) it copies.
-    array: Option<(ArrayDialog, Item, Elem)>,
+    /// Array mode ("Create array…"): the item and the pad (pin) it copies.
+    array: Option<(Item, Elem)>,
+    /// The array forms of pads and pins (kept for the session).
+    array_pads: ArrayForm,
+    array_pins: ArrayForm,
+    /// A widget had the keyboard focus last frame (its Enter isn't the array's).
+    array_focus: bool,
 }
 
 /// A handle drag of a graphic: as it was, the handle, its offset from the pointer, the
@@ -72,6 +78,10 @@ struct ShapeDrag {
     moved: bool,
     start: egui::Pos2,
 }
+
+/// An array's slots (or why it can't be made), the names in use, the copies to preview and
+/// what it copies ("pad 1").
+type ArrayPreview = (Result<Vec<Slot>, String>, Vec<String>, Vec<Ghost>, String);
 
 fn graphic(c: &Content, i: usize) -> Option<&Shape> {
     match c {
@@ -122,6 +132,9 @@ impl LibraryEditor {
             grip_drag: None,
             picked: None,
             array: None,
+            array_pads: ArrayForm::new(false),
+            array_pins: ArrayForm::new(true),
+            array_focus: false,
         }
     }
 
@@ -168,6 +181,7 @@ impl LibraryEditor {
             self.message = Some(e);
         }
         self.open = open;
+        self.array = None;
         let item = match open {
             Open::Item(item) => Some(item),
             _ => None,
@@ -206,6 +220,7 @@ impl LibraryEditor {
             }
             return self.set_tool(alt);
         }
+        self.cancel_array();
         let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
         self.it.set_selection(&mut t, Vec::new());
         self.placer.set_tool(tool, self.view.content());
@@ -234,6 +249,9 @@ impl LibraryEditor {
     pub fn key(&mut self, action: KeyAction) {
         if !matches!(self.open, Open::Item(_)) {
             return;
+        }
+        if self.array.is_some() && action == KeyAction::Escape {
+            return self.cancel_array();
         }
         if self.placer.is_placing() {
             match action {
@@ -457,6 +475,7 @@ impl LibraryEditor {
         }
         let tip = match self.placer.tool {
             _ if self.lib.doc.read_only.is_some() => READ_ONLY,
+            _ if self.array.is_some() => "Array: set it up in Tool settings · Enter creates · Esc cancels",
             Tool::Select => "Click/box to select · drag to move · R rotate · X mirror · Del delete",
             Tool::Line => "Click points · click the last point again or Esc to finish",
             Tool::Rect => "Click two corners",
@@ -579,78 +598,114 @@ impl LibraryEditor {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
         }
         self.view.set_text_edit(self.lib.doc.item_text_edit(item));
-        self.array_ui(ui.ctx());
+        self.array_canvas(ui.ctx(), item);
         if !self.it.is_idle() {
             ui.ctx().request_repaint();
         }
     }
 
-    /// A dialog is open that takes the keys.
-    pub fn modal(&self) -> bool {
+    /// "Create array…" on the one selected pad or pin: array mode, its form in the Tool
+    /// settings panel. Returns whether it started (a message otherwise).
+    pub fn start_array(&mut self) -> bool {
+        let Open::Item(item) = self.open else { return false };
+        if self.lib.doc.read_only.is_some() {
+            self.message = Some("This library is read-only".into());
+            return false;
+        }
+        if let Err(e) = self.lib.doc.commit_text_edit() {
+            self.message = Some(e);
+        }
+        match (item, self.it.selection.as_slice()) {
+            (Item::Footprint(_), &[e @ Elem::Pad(_)]) | (Item::Symbol(_), &[e @ Elem::Pin(_)]) => {
+                self.placer.set_tool(Tool::Select, None);
+                self.array = Some((item, e));
+                true
+            }
+            _ => {
+                self.message = Some("Select one pad or pin to make an array of".into());
+                false
+            }
+        }
+    }
+
+    pub fn in_array(&self) -> bool {
         self.array.is_some()
     }
 
-    /// "Create array…" on the one selected pad or pin; a message otherwise.
-    pub fn open_array_dialog(&mut self) {
-        let Open::Item(item) = self.open else { return };
-        if self.lib.doc.read_only.is_some() {
-            self.message = Some("This library is read-only".into());
-            return;
-        }
-        match (item, self.it.selection.as_slice()) {
-            (Item::Footprint(_), &[e @ Elem::Pad(_)]) => self.array = Some((ArrayDialog::new(false), item, e)),
-            (Item::Symbol(_), &[e @ Elem::Pin(_)]) => self.array = Some((ArrayDialog::new(true), item, e)),
-            _ => self.message = Some("Select one pad or pin to make an array of".into()),
+    pub fn cancel_array(&mut self) {
+        if self.array.take().is_some() {
+            self.view.set_preview(&[]);
         }
     }
 
-    /// The array dialog with its preview on the canvas.
-    fn array_ui(&mut self, ctx: &egui::Context) {
-        let Some((dialog, item, base)) = &mut self.array else { return };
-        let (item, base) = (*item, *base);
-        let layout = dialog.layout();
-        let Some(content) = self.view.content() else {
-            self.array = None;
-            return;
-        };
-        let (slots, ghosts) = match (content, base) {
-            (Content::Footprint(f), Elem::Pad(id)) => match f.pads.get(id) {
-                Some(p) => {
-                    let s = view::array::slots(&layout, p.pos, &p.name);
-                    let g = s
-                        .as_ref()
-                        .map_or(Vec::new(), |s| view::array::pads(p, s).into_iter().skip(1).map(Ghost::Pad).collect());
-                    (s, g)
-                }
-                None => (Err("the pad no longer exists".into()), Vec::new()),
-            },
-            (Content::Symbol(sym), Elem::Pin(id)) => match sym.pins.get(id) {
-                Some(p) => {
-                    let s = view::array::slots(&layout, p.pos, &p.name);
-                    let g = s
-                        .as_ref()
-                        .map_or(Vec::new(), |s| view::array::pins(p, s).into_iter().skip(1).map(Ghost::Pin).collect());
-                    (s, g)
-                }
-                None => (Err("the pin no longer exists".into()), Vec::new()),
-            },
-            _ => (Err("select one pad or pin".into()), Vec::new()),
+    /// The array's slots, the names in use, the copies to preview and what it copies
+    /// ("pad 1"). `None` when the copied element is gone.
+    fn array_preview(&self) -> Option<ArrayPreview> {
+        let (_, base) = self.array?;
+        let content = self.view.content()?;
+        let (slots, ghosts, what) = match (content, base) {
+            (Content::Footprint(f), Elem::Pad(id)) => {
+                let p = f.pads.get(id)?;
+                let s = view::array::slots(&self.array_pads.layout(), p.pos, &p.name);
+                let g = s
+                    .as_ref()
+                    .map_or(Vec::new(), |s| view::array::pads(p, s).into_iter().skip(1).map(Ghost::Pad).collect());
+                (s, g, format!("pad {}", p.name))
+            }
+            (Content::Symbol(sym), Elem::Pin(id)) => {
+                let p = sym.pins.get(id)?;
+                let s = view::array::slots(&self.array_pins.layout(), p.pos, &p.name);
+                let g = s
+                    .as_ref()
+                    .map_or(Vec::new(), |s| view::array::pins(p, s).into_iter().skip(1).map(Ghost::Pin).collect());
+                (s, g, format!("pin {}", p.name))
+            }
+            _ => return None,
         };
         let clashes = slots.as_ref().map_or(Vec::new(), |s| view::array::clashes(content, base, s));
+        Some((slots, clashes, ghosts, what))
+    }
+
+    /// Array mode on the canvas: the preview, Enter creates; it ends when the selection
+    /// changes or the element goes.
+    fn array_canvas(&mut self, ctx: &egui::Context, item: Item) {
+        let Some((on, base)) = self.array else { return };
+        let preview = (on == item && self.it.selection == [base]).then(|| self.array_preview()).flatten();
+        let Some((slots, _, ghosts, _)) = preview else { return self.cancel_array() };
         self.view.set_preview(&ghosts);
-        let outcome = dialog.ui(ctx, &slots, &clashes);
-        let Some(create) = outcome else { return };
-        self.array = None;
+        // Enter in a field commits the field; only a free Enter creates.
+        let focused = ctx.memory(|m| m.focused().is_some());
+        let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
+        if enter && !focused && !self.array_focus && slots.is_ok() {
+            self.create_array();
+        }
+        self.array_focus = focused;
+    }
+
+    fn create_array(&mut self) {
+        let Some((item, base)) = self.array.take() else { return };
         self.view.set_preview(&[]);
-        if create {
-            match view::array::apply(&mut self.lib.doc, item, base, &layout) {
-                Ok(elems) => {
-                    self.view.sync(&self.lib.doc);
-                    let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
-                    self.it.set_selection(&mut t, elems);
-                }
-                Err(e) => self.message = Some(e),
+        let layout = if matches!(base, Elem::Pin(_)) { self.array_pins.layout() } else { self.array_pads.layout() };
+        match view::array::apply(&mut self.lib.doc, item, base, &layout) {
+            Ok(elems) => {
+                self.view.sync(&self.lib.doc);
+                let mut t = ItemTarget { doc: &mut self.lib.doc, view: &mut self.view };
+                self.it.set_selection(&mut t, elems);
             }
+            Err(e) => self.message = Some(e),
+        }
+    }
+
+    /// The array form (Tool settings panel).
+    fn array_panel(&mut self, ui: &mut egui::Ui) {
+        let Some((base_elem, (slots, clashes, _, what))) = self.array.map(|a| a.1).zip(self.array_preview()) else {
+            return;
+        };
+        let form = if matches!(base_elem, Elem::Pin(_)) { &mut self.array_pins } else { &mut self.array_pads };
+        match form.ui(ui, &what, &slots, &clashes) {
+            Some(true) => self.create_array(),
+            Some(false) => self.cancel_array(),
+            None => {}
         }
     }
 
@@ -858,6 +913,7 @@ impl LibraryEditor {
     pub fn tool_settings_ui(&mut self, ui: &mut egui::Ui) {
         self.fields.begin_frame();
         match self.open {
+            Open::Item(_) if self.array.is_some() => self.array_panel(ui),
             Open::Item(item) if self.placer.is_placing() => self.tool_settings(ui, item),
             _ => hint(ui, "The select tool has no settings. Pick a drawing tool from the tool bar."),
         }
