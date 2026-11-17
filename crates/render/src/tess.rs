@@ -69,6 +69,14 @@ pub fn fill_polygon(points: &[[f32; 2]], color: Color) -> Vec<Instance> {
 /// Instances that fill a polygon with holes (`contours[0]` the outline, then holes; any
 /// winding). Edges along the contours are anti-aliased. Fast for many holes.
 pub fn fill_region(contours: &[Vec<[f32; 2]>], color: Color) -> Vec<Instance> {
+    region_triangles(contours).into_iter().map(|([a, b, c], outer)| Instance::triangle(a, b, c, outer, color)).collect()
+}
+
+/// A triangle and which of its edges (a-b, b-c, c-a) lie on the region's contours.
+pub type Triangle = ([[f32; 2]; 3], [bool; 3]);
+
+/// Triangles of a polygon with holes (see [`fill_region`]).
+pub fn region_triangles(contours: &[Vec<[f32; 2]>]) -> Vec<Triangle> {
     use i_triangle::i_overlay::i_float::int::point::IntPoint;
     use i_triangle::int::triangulatable::IntTriangulatable;
 
@@ -118,9 +126,7 @@ pub fn fill_region(contours: &[Vec<[f32; 2]>], color: Color) -> Vec<Instance> {
         .as_chunks::<3>()
         .0
         .iter()
-        .map(|&[a, b, c]| {
-            Instance::triangle(pt(a), pt(b), pt(c), [boundary(a, b), boundary(b, c), boundary(c, a)], color)
-        })
+        .map(|&[a, b, c]| ([pt(a), pt(b), pt(c)], [boundary(a, b), boundary(b, c), boundary(c, a)]))
         .collect()
 }
 

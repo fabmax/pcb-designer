@@ -391,8 +391,9 @@ pub struct Text {
     pub pos: Point,
     /// Cap height.
     pub size: Coord,
-    /// Stroke width.
-    pub width: Coord,
+    /// Bold weight (board texts, for silkscreen strong enough to fabricate).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub bold: bool,
     #[serde(default)]
     pub rotation: Angle,
     #[serde(default)]
@@ -407,11 +408,16 @@ impl Text {
             text: text.into(),
             pos,
             size,
-            width: size / 7,
+            bold: false,
             rotation: Angle::ZERO,
             halign: HAlign::Left,
             valign: VAlign::Bottom,
         }
+    }
+
+    pub fn with_bold(mut self, bold: bool) -> Self {
+        self.bold = bold;
+        self
     }
 
     pub fn aligned(mut self, h: HAlign, v: VAlign) -> Self {

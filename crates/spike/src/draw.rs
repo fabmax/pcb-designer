@@ -111,8 +111,8 @@ pub mod ids {
 
 #[allow(clippy::too_many_arguments)] // spike-only helper
 fn text(out: &mut Prims, layer: LayerId, s: &str, at: [f32; 2], height: f32, h: HAlign, v: VAlign, color: Color) {
-    let w = height * 0.14;
-    font::text_segments(s, at, height, 0.0, h, v, |a, b| out.push((layer, Instance::line(a, b, w, color))));
+    let p = font::Placement { origin: at, height, rotation: 0.0, halign: h, valign: v, bold: false, mirror: false };
+    font::text_triangles(s, &p, |([a, b, c], e)| out.push((layer, Instance::triangle(a, b, c, e, color))));
 }
 
 const SCH_LINE: f32 = 0.15;

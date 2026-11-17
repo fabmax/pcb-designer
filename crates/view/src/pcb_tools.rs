@@ -97,10 +97,10 @@ pub struct PcbSettings {
     pub zone_net: String,
     /// New keepouts cover all copper layers (else the active one).
     pub keepout_all_layers: bool,
-    /// Layer, cap height, stroke width and alignment of new texts.
+    /// Layer, cap height, weight and alignment of new texts.
     pub text_layer: LayerId,
     pub text_size: Coord,
-    pub text_width: Coord,
+    pub text_bold: bool,
     pub text_align: HAlign,
     /// Rotation of board parts and texts being placed; the side of board parts.
     pub rotation: Angle,
@@ -122,7 +122,7 @@ impl Default for PcbSettings {
             keepout_all_layers: true,
             text_layer: LayerId::TOP_SILK,
             text_size: 1_000_000,
-            text_width: 150_000,
+            text_bold: true,
             text_align: HAlign::Left,
             rotation: Angle::ZERO,
             side: Side::Top,
@@ -331,7 +331,7 @@ impl PcbPlacer {
     fn new_text(&self, p: Point) -> Text {
         let s = &self.settings;
         let mut t = Text::new("", p, s.text_size).aligned(s.text_align, VAlign::Bottom);
-        t.width = s.text_width;
+        t.bold = s.text_bold;
         t.rotation = s.rotation;
         t
     }

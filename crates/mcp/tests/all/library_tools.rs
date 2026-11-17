@@ -93,7 +93,7 @@ fn part_from_a_datasheet() {
     assert_eq!(part["prefix"], "U");
     let symbol = get(&mut host, "symbol:DRV");
     assert_eq!(symbol["pins"][0]["length"], 2_540_000, "default pin length");
-    assert_eq!(symbol["texts"][0]["width"], 1_270_000 / 7, "default text width");
+    assert_eq!(symbol["texts"][0].get("bold"), None, "symbol texts are regular");
 
     // Updating by name keeps pad and pin ids, so the part's mapping stays valid.
     let pad_ids = |fp: &Value| fp["pads"].as_array().unwrap().iter().map(|p| p["id"].clone()).collect::<Vec<_>>();

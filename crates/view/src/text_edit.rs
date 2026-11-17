@@ -394,10 +394,11 @@ impl TextEdit {
         let h = self.height();
         let origins = self.origins();
         let pad = h * 0.3;
+        let below = font::descent() * h;
         let mut b = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
         for (line, o) in self.text.split('\n').zip(&origins) {
             let w = font::caret_positions(line, h).last().copied().unwrap_or(0.0).max(h * 0.3);
-            b = (b.0.min(o[0]), b.1.min(o[1]), b.2.max(o[0] + w), b.3.max(o[1] + h));
+            b = (b.0.min(o[0]), b.1.min(o[1] - below), b.2.max(o[0] + w), b.3.max(o[1] + h));
         }
         (b.0 - pad, b.1 - pad, b.2 + pad, b.3 + pad)
     }
@@ -414,7 +415,7 @@ impl TextEdit {
         let mut selection = Vec::new();
         let mut caret = (self.shape.pos, self.shape.pos);
         let mut start = 0;
-        let (below, above) = (h * 0.25, h * 1.2);
+        let (below, above) = (font::descent() * h, h * 1.2);
         for (k, line) in lines.iter().enumerate() {
             let n = line.chars().count();
             let xs = font::caret_positions(line, h);

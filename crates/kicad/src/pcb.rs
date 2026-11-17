@@ -130,8 +130,9 @@ pub fn import(path: &Path, report: &mut Report) -> Result<PcbImport, String> {
                 };
                 let content = plain(item.arg(0).unwrap_or(""));
                 if let Some(at) = item.child("at")
-                    && let Some(text) = text(content, at, item.child("effects"), true, 1.0)
+                    && let Some(mut text) = text(content, at, item.child("effects"), true, 1.0)
                 {
+                    text.bold = true;
                     out.texts.push(BoardText { id: ids.of(item), layer, text });
                 }
             }
@@ -450,7 +451,9 @@ fn field(n: &Node, content: &str) -> Option<(FootprintLayer, bool, Text, bool)> 
     let effects = n.child("effects");
     let hidden = n.flag("hide") || effects.is_some_and(|e| e.flag("hide"));
     let effects = effects.map(without_hide);
-    let t = text(content.to_string(), n.child("at")?, effects.as_ref(), true, 1.0)?;
+    let mut t = text(content.to_string(), n.child("at")?, effects.as_ref(), true, 1.0)?;
+    // Board texts are bold: thin silkscreen doesn't fabricate well.
+    t.bold = true;
     Some((layer, back, t, hidden))
 }
 

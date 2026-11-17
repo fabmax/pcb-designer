@@ -183,7 +183,7 @@ fn text(p: &mut Painter, layer: LayerId, s: &str, pos: Point, size: Coord, h: HA
     if s.is_empty() {
         return;
     }
-    let t = Text { halign: h, valign: v, width: mm(0.18), ..Text::new(s, pos, size) };
+    let t = Text { halign: h, valign: v, ..Text::new(s, pos, size) };
     p.text(layer, &t, c, &|s| s.to_string(), false);
 }
 

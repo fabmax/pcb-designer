@@ -128,28 +128,28 @@ impl Painter {
             VAlign::Center => FV::Center,
             VAlign::Top => FV::Top,
         };
-        let width = len(t.width.max(1));
-        let mut min = [f32::MAX; 2];
-        let mut max = [f32::MIN; 2];
-        let mut segs = Vec::new();
-        font::text_segments(&s, mmf(t.pos), len(t.size), t.rotation.radians() as f32, h, v, |a, b| {
-            for p in [a, b] {
-                min = [min[0].min(p[0]), min[1].min(p[1])];
-                max = [max[0].max(p[0]), max[1].max(p[1])];
-            }
-            segs.push((a, b));
-        });
-        for (a, b) in segs {
-            self.push(layer, Instance::line(a, b, width, color));
-        }
+        let p = font::Placement {
+            origin: mmf(t.pos),
+            height: len(t.size),
+            rotation: t.rotation.radians() as f32,
+            halign: h,
+            valign: v,
+            bold: t.bold,
+            mirror: false,
+        };
+        font::text_triangles(&s, &p, |([a, b, c], edges)| self.push(layer, Instance::triangle(a, b, c, edges, color)));
         if hit {
             self.texts.push((Text { text: s.clone(), ..t.clone() }, color));
         }
-        if hit && min[0] <= max[0] {
-            self.grow(Rect::from_points(
-                Point::mm(min[0] as f64, min[1] as f64),
-                Point::mm(max[0] as f64, max[1] as f64),
-            ));
+        if hit {
+            // The box of advances, descender to cap top, rotated: the hit area.
+            let [x0, y0, x1, y1] = font::text_box(&s, p.height, h, v);
+            let (sin, cos) = p.rotation.sin_cos();
+            let corner = |x: f32, y: f32| {
+                Point::mm((p.origin[0] + x * cos - y * sin) as f64, (p.origin[1] + x * sin + y * cos) as f64)
+            };
+            let c = [corner(x0, y0), corner(x1, y0), corner(x1, y1), corner(x0, y1)];
+            self.grow(Rect::from_points(c[0], c[2]).union(Rect::from_points(c[1], c[3])));
         }
     }
 }

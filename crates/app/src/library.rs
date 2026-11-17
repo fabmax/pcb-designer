@@ -1108,9 +1108,13 @@ fn text_fields(ui: &mut egui::Ui, f: &mut Fields, index: usize, t: &mut Text) ->
     ui.end_row();
     label(ui, "Size");
     if let Some(v) = f.length(ui, t.size, 0.1) {
-        t.width = v / 7;
         t.size = v;
         changed = Some(true);
+    }
+    ui.end_row();
+    label(ui, "Bold");
+    if ui.checkbox(&mut t.bold, "").changed() {
+        changed = Some(false);
     }
     ui.end_row();
     label(ui, "Position");

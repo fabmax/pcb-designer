@@ -100,8 +100,8 @@ returns to Select.
 
 The Text tool (schematic **T**, board **⇧T**) places a free text: click where it goes and
 type. Its size, alignment and rotation (R) are in the tool settings; on the board also its
-layer (Top Silkscreen by default; F switches the side) and stroke width. Texts on copper
-have no net. Double-click a text to edit it in place: free texts, labels, sheet names and
+layer (Top Silkscreen by default; F switches the side) and weight (Bold by default, as
+thin silkscreen doesn't fabricate well). Texts on copper have no net. Double-click a text to edit it in place: free texts, labels, sheet names and
 reference and value texts. Arrows, Home/End, ⌥ (Ctrl) for words, ⌘ for lines, ⇧ to
 select, ⌘A, the clipboard, and clicks, drags and double-clicks on the text work as in a
 text field. Shift+Enter starts a new line in a free text, Enter finishes as one undo
@@ -109,6 +109,12 @@ step, Esc cancels, and clicking elsewhere or switching tools finishes too. An em
 text is deleted; labels and references can't be empty, and a reference already used is
 refused. Properties edits free texts in a multi-line field. Footprint texts stay upright,
 in the Gerber files too.
+
+Texts are set in [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (Regular and Bold),
+which ships with the app under the SIL Open Font License 1.1
+(`crates/render/fonts/OFL.txt`). The text size is the height of capitals; KiCad imports
+keep their sizes but not their exact widths (KiCad's own font differs). In the Gerber
+files texts are filled regions.
 
 On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.app`
 (`--install` copies it to /Applications). Run from the bundle, the app is named

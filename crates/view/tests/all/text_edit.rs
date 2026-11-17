@@ -204,5 +204,5 @@ fn text_tools_start_typing_where_clicked() {
     doc.with_text_edit(|e| e.insert("v1"));
     doc.commit_text_edit().unwrap();
     let b = doc.project().board.texts.iter().last().unwrap();
-    assert_eq!((b.layer, b.text.text.as_str(), b.text.width), (LayerId::BOTTOM_SILK, "v1", mm(0.15)));
+    assert_eq!((b.layer, b.text.text.as_str(), b.text.bold), (LayerId::BOTTOM_SILK, "v1", true));
 }

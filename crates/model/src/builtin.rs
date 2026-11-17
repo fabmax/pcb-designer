@@ -117,7 +117,9 @@ fn chip(id: Id, name: &str, pad_ids: [Id; 2], pad_x: f64, pad: Size, body: (f64,
         texts: vec![FootprintText {
             back: false,
             layer: FootprintLayer::Silkscreen,
-            text: Text::new("${REF}", Point::mm(0.0, court_y + 0.2), mm(1.0)).aligned(HAlign::Center, VAlign::Bottom),
+            text: Text::new("${REF}", Point::mm(0.0, court_y + 0.2), mm(1.0))
+                .aligned(HAlign::Center, VAlign::Bottom)
+                .with_bold(true),
         }],
     }
 }
@@ -276,7 +278,9 @@ pub fn builtin_library() -> Library {
         texts: vec![FootprintText {
             back: false,
             layer: FootprintLayer::Silkscreen,
-            text: Text::new("${REF}", Point::mm(0.0, top + 2.0), mm(1.0)).aligned(HAlign::Center, VAlign::Bottom),
+            text: Text::new("${REF}", Point::mm(0.0, top + 2.0), mm(1.0))
+                .aligned(HAlign::Center, VAlign::Bottom)
+                .with_bold(true),
         }],
     };
     lib.parts.insert(Part {
@@ -499,7 +503,9 @@ fn add_mounting_hole(lib: &mut Library) {
         texts: vec![FootprintText {
             back: false,
             layer: FootprintLayer::Fabrication,
-            text: Text::new("${REF}", Point::mm(0.0, 4.0), mm(1.0)).aligned(HAlign::Center, VAlign::Bottom),
+            text: Text::new("${REF}", Point::mm(0.0, 4.0), mm(1.0))
+                .aligned(HAlign::Center, VAlign::Bottom)
+                .with_bold(true),
         }],
     };
     lib.parts.insert(Part {
@@ -567,7 +573,9 @@ fn smd_footprint(
         texts: vec![FootprintText {
             back: false,
             layer: FootprintLayer::Silkscreen,
-            text: Text::new("${REF}", Point::mm(0.0, ch + 0.2), mm(1.0)).aligned(HAlign::Center, VAlign::Bottom),
+            text: Text::new("${REF}", Point::mm(0.0, ch + 0.2), mm(1.0))
+                .aligned(HAlign::Center, VAlign::Bottom)
+                .with_bold(true),
         }],
     }
 }

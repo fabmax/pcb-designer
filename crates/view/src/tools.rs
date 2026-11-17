@@ -263,6 +263,8 @@ impl Placer {
             Tool::Text => {
                 let mut t = Text::new(s.text.clone(), p, s.text_size);
                 t.rotation = s.rotation;
+                // Footprint texts are bold, like board texts.
+                t.bold = matches!(item, Item::Footprint(_));
                 Ghost::Text(t)
             }
             Tool::Line | Tool::Rect | Tool::Circle => {

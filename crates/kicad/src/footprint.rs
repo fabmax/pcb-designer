@@ -171,7 +171,9 @@ fn fp_text(cx: &mut Ctx, n: &Node, content: String) -> Option<FootprintText> {
         return None;
     }
     let (layer, back) = cx.layer_of(n, "text")?;
-    let t = text(content, n.child("at")?, n.child("effects"), true, 1.0)?;
+    let mut t = text(content, n.child("at")?, n.child("effects"), true, 1.0)?;
+    // Board texts are bold: thin silkscreen doesn't fabricate well.
+    t.bold = true;
     Some(FootprintText { back, layer, text: t })
 }
 

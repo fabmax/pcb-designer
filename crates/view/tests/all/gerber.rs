@@ -370,3 +370,58 @@ fn footprint_texts_stay_upright_in_gerber() {
     doc.execute(turn).unwrap();
     assert_eq!(strokes(&mut doc), upright);
 }
+
+/// Texts are written as filled regions that cover what the view fills: sampled on a grid,
+/// the Gerber read back and the font's triangles agree (holes of O and 8 stay open), on
+/// the bottom mirrored.
+#[test]
+fn texts_round_trip_as_regions() {
+    use gerber::reader::parse_gerber;
+    use model::*;
+    use render::font::{self, Placement};
+
+    let mut p = Project::new("T");
+    let at = Point::mm(10.0, 10.0);
+    for layer in [LayerId::TOP_SILK, LayerId::BOTTOM_SILK] {
+        let text = Text::new("O8g", at, mm(2.0)).aligned(HAlign::Center, VAlign::Center).with_bold(true);
+        p.board.texts.insert(BoardText { id: Id::new(), layer, text });
+    }
+    let copper = editor_core::copper::BoardConnectivity::default();
+    for (layer, mirror) in [(LayerId::TOP_SILK, false), (LayerId::BOTTOM_SILK, true)] {
+        let image = parse_gerber(&gerber::layers::layer_file(&p, &copper, layer)).unwrap();
+        assert!(image.objects.len() >= 3, "a region per glyph outline");
+        let place = Placement {
+            origin: [10.0, 10.0],
+            height: 2.0,
+            rotation: 0.0,
+            halign: font::HAlign::Center,
+            valign: font::VAlign::Center,
+            bold: true,
+            mirror,
+        };
+        let mut tris = Vec::new();
+        font::text_triangles("O8g", &place, |(t, _)| tris.push(t));
+        let side =
+            |a: [f32; 2], b: [f32; 2], q: [f32; 2]| (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]);
+        let filled = |q: [f32; 2]| {
+            tris.iter().any(|&[a, b, c]| {
+                let (d1, d2, d3) = (side(a, b, q), side(b, c, q), side(c, a, q));
+                !((d1 < 0.0 || d2 < 0.0 || d3 < 0.0) && (d1 > 0.0 || d2 > 0.0 || d3 > 0.0))
+            })
+        };
+        let (mut inside, mut differ) = (0, 0);
+        for i in 0..120 {
+            for j in 0..60 {
+                let q = [6.0 + i as f32 * 0.07, 7.5 + j as f32 * 0.085];
+                let f = filled(q);
+                inside += f as usize;
+                if f != image.covers(Point::mm(q[0] as f64, q[1] as f64)) {
+                    differ += 1;
+                }
+            }
+        }
+        assert!(inside > 300, "{inside}");
+        // Only samples within a hair of an edge may disagree (flattening, nm rounding).
+        assert!(differ * 50 < inside, "{layer:?}: {differ} of {inside} samples differ");
+    }
+}

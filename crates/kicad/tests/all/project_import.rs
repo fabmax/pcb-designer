@@ -99,6 +99,9 @@ fn hierarchical_routed_project() {
         assert!(report.contains(s), "{s}: {report}");
     }
 
+    // Board texts import in Bold (silkscreen that fabricates), schematic ones as drawn.
+    assert!(p.board.fields.iter().all(|f| f.text.bold) && p.board.texts.iter().all(|t| t.text.bold));
+    assert!(p.schematic.fields.iter().all(|f| !f.text.bold));
     // Each footprint has its reference and value, as placed in KiCad.
     for f in p.board.footprints.iter() {
         assert_eq!(p.board.fields.iter().filter(|x| x.footprint == f.id).count(), 2);

@@ -129,8 +129,9 @@ pub enum Command {
         rotation: Angle,
     },
     /// A free text: on a board `layer` (silkscreen, copper without a net, fab, …), or
-    /// without a layer on a schematic `sheet`. Size defaults to 1.27 mm on the schematic
-    /// and 1 mm on the board, stroke width to 0.15 mm on the board. Newlines break lines.
+    /// without a layer on a schematic `sheet`. Size (cap height) defaults to 1.27 mm on the
+    /// schematic and 1 mm on the board; `bold` defaults to true on the board, false on the
+    /// schematic. Newlines break lines.
     AddText {
         #[serde(default)]
         sheet: Option<Id>,
@@ -141,7 +142,7 @@ pub enum Command {
         #[serde(default)]
         size: Option<Coord>,
         #[serde(default)]
-        width: Option<Coord>,
+        bold: Option<bool>,
         #[serde(default)]
         rotation: Angle,
         #[serde(default)]
@@ -414,18 +415,14 @@ impl Command {
                 let label = NetLabel { id: Id::new(), sheet, pos, name, kind, shape, style, rotation };
                 tx.insert(Object::Label(label)).map(drop)
             }
-            Command::AddText { sheet, layer, pos, text, size, width, rotation, halign, valign } => {
+            Command::AddText { sheet, layer, pos, text, size, bold, rotation, halign, valign } => {
                 if text.trim().is_empty() {
                     return Err(CommandError::Invalid("a text can't be empty".into()));
                 }
                 let default = if layer.is_some() { mm(1.0) } else { 1_270_000 };
                 let mut t = Text::new(text, pos, size.unwrap_or(default)).aligned(halign, valign);
                 t.rotation = rotation;
-                if let Some(w) = width {
-                    t.width = w;
-                } else if layer.is_some() {
-                    t.width = 150_000;
-                }
+                t.bold = bold.unwrap_or(layer.is_some());
                 match layer {
                     Some(layer) => {
                         if !tx.project().board.layers.iter().any(|l| l.id == layer) || layer == LayerId::OUTLINE {

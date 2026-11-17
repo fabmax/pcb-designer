@@ -383,6 +383,11 @@ impl Properties {
                         self.update(cx, Object::SchText(t.clone()), true);
                     }
                     ui.end_row();
+                    label(ui, "Bold");
+                    if ui.checkbox(&mut t.text.bold, "").changed() {
+                        self.update(cx, Object::SchText(t.clone()), false);
+                    }
+                    ui.end_row();
                 });
             }
             Object::Track(mut t) => {
@@ -647,8 +652,12 @@ impl Properties {
                     label(ui, "Size");
                     if let Some(v) = self.length(ui, f.text.size, 0.1) {
                         f.text.size = v;
-                        f.text.width = v / 7;
                         self.update(cx, Object::FootprintField(f.clone()), true);
+                    }
+                    ui.end_row();
+                    label(ui, "Bold");
+                    if ui.checkbox(&mut f.text.bold, "").changed() {
+                        self.update(cx, Object::FootprintField(f.clone()), false);
                     }
                     ui.end_row();
                     label(ui, "Offset");
@@ -703,6 +712,11 @@ impl Properties {
                         self.update(cx, Object::SymbolField(f.clone()), true);
                     }
                     ui.end_row();
+                    label(ui, "Bold");
+                    if ui.checkbox(&mut f.text.bold, "").changed() {
+                        self.update(cx, Object::SymbolField(f.clone()), false);
+                    }
+                    ui.end_row();
                     label(ui, "Offset");
                     if let Some(p) = self.point(ui, f.text.pos) {
                         f.text.pos = p;
@@ -745,6 +759,17 @@ impl Properties {
                     }
                     ui.end_row();
                     row(ui, "Layer", layer_name(cx.doc.project(), t.layer));
+                    label(ui, "Size");
+                    if let Some(v) = self.length(ui, t.text.size, 0.1) {
+                        t.text.size = v;
+                        self.update(cx, Object::BoardText(t.clone()), true);
+                    }
+                    ui.end_row();
+                    label(ui, "Bold");
+                    if ui.checkbox(&mut t.text.bold, "").changed() {
+                        self.update(cx, Object::BoardText(t.clone()), false);
+                    }
+                    ui.end_row();
                 });
             }
             other => {

@@ -1,79 +1,19 @@
-//! Minimal stroke (vector) font. Text turns into line segments that are drawn as capsules,
-//! so it uses the regular primitive pipeline and scales without artifacts.
+//! Text in JetBrains Mono (Regular and Bold, embedded; SIL Open Font License, see
+//! `fonts/OFL.txt`). Glyph outlines are flattened, cleaned (non-zero fill) and
+//! triangulated once per glyph, then placed per text: triangles for drawing, outline
+//! polygons for Gerber regions.
 //!
-//! Glyphs live on a 4×6 unit grid (cap height 6, baseline at y = 0). Each glyph is a list
-//! of polylines separated by `|`; every point is two digits `xy`.
-//! This is a placeholder font for milestone 0. It will be replaced by a complete font.
+//! Units: `height` is the cap height. Lines stack downwards (−y) by the font's line
+//! spacing. Both weights share their metrics (the font is monospaced), so the layout
+//! functions don't take the weight. No shaping or kerning.
 
-pub const CAP_UNITS: f32 = 6.0;
-pub const ADVANCE_UNITS: f32 = 5.0;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
-fn glyph(c: char) -> Option<&'static str> {
-    Some(match c.to_ascii_uppercase() {
-        '0' => "10 30 41 45 36 16 05 01 10",
-        '1' => "15 26 20 | 10 30",
-        '2' => "05 16 36 45 44 00 40",
-        '3' => "05 16 36 45 44 33 42 41 30 10 01 | 13 33",
-        '4' => "30 36 02 42",
-        '5' => "46 06 04 34 43 41 30 10 01",
-        '6' => "36 16 05 01 10 30 41 42 33 03",
-        '7' => "06 46 10",
-        '8' => "13 04 05 16 36 45 44 33 13 02 01 10 30 41 42 33",
-        '9' => "43 13 04 05 16 36 45 41 30 10 01",
-        'A' => "00 04 26 44 40 | 02 42",
-        'B' => "00 06 36 45 44 33 03 | 33 42 41 30 00",
-        'C' => "45 36 16 05 01 10 30 41",
-        'D' => "00 06 36 45 41 30 00",
-        'E' => "46 06 00 40 | 03 33",
-        'F' => "46 06 00 | 03 33",
-        'G' => "45 36 16 05 01 10 30 41 43 23",
-        'H' => "00 06 | 40 46 | 03 43",
-        'I' => "10 30 | 20 26 | 16 36",
-        'J' => "46 41 30 10 01 02",
-        'K' => "00 06 | 46 02 | 13 40",
-        'L' => "06 00 40",
-        'M' => "00 06 23 46 40",
-        'N' => "00 06 40 46",
-        'O' => "10 30 41 45 36 16 05 01 10",
-        'P' => "00 06 36 45 44 33 03",
-        'Q' => "10 30 41 45 36 16 05 01 10 | 22 40",
-        'R' => "00 06 36 45 44 33 03 | 23 40",
-        'S' => "45 36 16 05 04 13 33 42 41 30 10 01",
-        'T' => "06 46 | 26 20",
-        'U' => "06 01 10 30 41 46",
-        'V' => "06 20 46",
-        'W' => "06 10 23 30 46",
-        'X' => "00 46 | 06 40",
-        'Y' => "06 23 46 | 23 20",
-        'Z' => "06 46 00 40",
-        '-' => "13 33",
-        '+' => "03 43 | 21 25",
-        '=' => "02 42 | 04 44",
-        '.' => "20 20",
-        ',' => "21 10",
-        ':' => "22 22 | 24 24",
-        '/' => "00 46",
-        '_' => "00 40",
-        '(' => "36 25 21 30",
-        ')' => "16 25 21 10",
-        '[' => "36 26 20 30",
-        ']' => "16 26 20 10",
-        '{' => "36 26 24 13 22 20 30",
-        '}' => "16 26 24 33 22 20 10",
-        '<' => "45 03 41",
-        '>' => "05 43 01",
-        '~' => "04 15 34 45",
-        '#' => "10 16 | 30 36 | 02 42 | 04 44",
-        '*' => "13 33 | 22 24 | 12 34 | 14 32",
-        '\'' => "25 24",
-        '"' => "15 14 | 35 34",
-        '&' => "40 05 16 26 35 34 02 01 10 20 42",
-        '!' => "26 22 | 20 20",
-        '?' => "05 16 36 45 44 23 22 | 20 20",
-        ' ' => "",
-        _ => return None,
-    })
-}
+use crate::tess::{Triangle, region_triangles};
+
+static REGULAR: &[u8] = include_bytes!("../fonts/JetBrainsMono-Regular.ttf");
+static BOLD: &[u8] = include_bytes!("../fonts/JetBrainsMono-Bold.ttf");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HAlign {
@@ -89,54 +29,180 @@ pub enum VAlign {
     Top,
 }
 
+/// A glyph in cap-height units (baseline at y = 0, cap height 1).
+#[derive(Debug, Default)]
+pub struct Glyph {
+    pub advance: f32,
+    /// Cleaned outlines: each an outer contour followed by its holes.
+    pub shapes: Vec<Vec<Vec<[f32; 2]>>>,
+    pub triangles: Vec<Triangle>,
+}
+
+struct Font {
+    face: ttf_parser::Face<'static>,
+    /// Font units per cap height.
+    cap: f32,
+    glyphs: Mutex<HashMap<char, Arc<Glyph>>>,
+}
+
+fn fonts() -> &'static [Font; 2] {
+    static FONTS: OnceLock<[Font; 2]> = OnceLock::new();
+    FONTS.get_or_init(|| {
+        [REGULAR, BOLD].map(|data| {
+            let face = ttf_parser::Face::parse(data, 0).expect("embedded font parses");
+            let cap = face.capital_height().map_or(0.7 * face.units_per_em() as f32, |c| c as f32);
+            Font { face, cap, glyphs: Mutex::default() }
+        })
+    })
+}
+
+fn font(bold: bool) -> &'static Font {
+    &fonts()[bold as usize]
+}
+
 /// Distance between the baselines of two lines, in cap heights.
-pub const LINE_SPACING: f32 = 1.6;
+pub fn line_spacing() -> f32 {
+    let f = font(false);
+    let face = &f.face;
+    (face.ascender() as f32 - face.descender() as f32 + face.line_gap() as f32) / f.cap
+}
+
+/// Depth of descenders below the baseline, in cap heights (positive).
+pub fn descent() -> f32 {
+    let f = font(false);
+    -(f.face.descender() as f32) / f.cap
+}
+
+/// The glyph of `c` (the font's missing-glyph box if it has none).
+pub fn glyph(c: char, bold: bool) -> Arc<Glyph> {
+    let f = font(bold);
+    if let Some(g) = f.glyphs.lock().unwrap().get(&c) {
+        return g.clone();
+    }
+    let g = Arc::new(build_glyph(f, c));
+    f.glyphs.lock().unwrap().insert(c, g.clone());
+    g
+}
+
+/// Flattens an outline into closed polygons (font units).
+struct Flatten {
+    contours: Vec<Vec<[f32; 2]>>,
+    at: [f32; 2],
+}
+
+/// Largest deviation of a flattened curve from the outline, in font units.
+const TOLERANCE: f32 = 2.0;
+
+impl Flatten {
+    fn segments(dev: f32) -> usize {
+        ((dev / TOLERANCE).sqrt().ceil() as usize).clamp(1, 32)
+    }
+
+    fn push(&mut self, p: [f32; 2]) {
+        if let Some(c) = self.contours.last_mut() {
+            c.push(p);
+        }
+        self.at = p;
+    }
+}
+
+impl ttf_parser::OutlineBuilder for Flatten {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.contours.push(Vec::new());
+        self.push([x, y]);
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.push([x, y]);
+    }
+
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        let p0 = self.at;
+        // A quadratic's distance from its chord is a quarter of |p0 - 2p1 + p2|; it shrinks
+        // with the square of the number of segments.
+        let dev = ((p0[0] - 2.0 * x1 + x).hypot(p0[1] - 2.0 * y1 + y)) * 0.25;
+        let n = Self::segments(dev);
+        for i in 1..=n {
+            let t = i as f32 / n as f32;
+            let u = 1.0 - t;
+            self.push([u * u * p0[0] + 2.0 * u * t * x1 + t * t * x, u * u * p0[1] + 2.0 * u * t * y1 + t * t * y]);
+        }
+    }
+
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        let p0 = self.at;
+        let dev =
+            (p0[0] - 2.0 * x1 + x2).hypot(p0[1] - 2.0 * y1 + y2).max((x1 - 2.0 * x2 + x).hypot(y1 - 2.0 * y2 + y))
+                * 0.75;
+        let n = Self::segments(dev);
+        for i in 1..=n {
+            let t = i as f32 / n as f32;
+            let u = 1.0 - t;
+            let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+            self.push([a * p0[0] + b * x1 + c * x2 + d * x, a * p0[1] + b * y1 + c * y2 + d * y]);
+        }
+    }
+
+    fn close(&mut self) {}
+}
+
+fn build_glyph(f: &Font, c: char) -> Glyph {
+    use i_triangle::i_overlay::core::fill_rule::FillRule;
+    use i_triangle::i_overlay::float::simplify::SimplifyShape;
+
+    let face = &f.face;
+    let id = face.glyph_index(c).unwrap_or(ttf_parser::GlyphId(0));
+    let advance = face.glyph_hor_advance(id).unwrap_or(0) as f32 / f.cap;
+    let mut flat = Flatten { contours: Vec::new(), at: [0.0; 2] };
+    face.outline_glyph(id, &mut flat);
+    let contours: Vec<Vec<[f32; 2]>> = flat
+        .contours
+        .into_iter()
+        .map(|mut c| {
+            if c.len() > 1 && c.first() == c.last() {
+                c.pop();
+            }
+            c.into_iter().map(|[x, y]| [x / f.cap, y / f.cap]).collect::<Vec<_>>()
+        })
+        .filter(|c| c.len() >= 3)
+        .collect();
+    if contours.is_empty() {
+        return Glyph { advance, ..Glyph::default() };
+    }
+    // TrueType outlines fill by the non-zero rule and may overlap (composite glyphs).
+    let shapes = contours.simplify_shape(FillRule::NonZero);
+    let triangles = shapes.iter().flat_map(|s| region_triangles(s)).collect();
+    Glyph { advance, shapes, triangles }
+}
 
 /// Width of `text` in world units for the given cap height: its widest line.
 pub fn text_width(text: &str, height: f32) -> f32 {
     text.split('\n').map(|l| line_width(l, height)).fold(0.0, f32::max)
 }
 
-/// Advance of a character, in grid units.
-fn advance(_c: char) -> f32 {
-    ADVANCE_UNITS
-}
-
 fn line_width(line: &str, height: f32) -> f32 {
-    let last = line.chars().last();
-    let w: f32 = line.chars().map(advance).sum();
-    // The last glyph's spacing doesn't count.
-    match last {
-        None => 0.0,
-        Some(_) => (w - 1.0) * height / CAP_UNITS,
-    }
+    line.chars().map(|c| glyph(c, false).advance).sum::<f32>() * height
 }
 
 /// Caret positions of a line: the x of every character boundary (`len + 1` values, the
 /// first 0), in world units for cap `height`, before alignment.
 pub fn caret_positions(line: &str, height: f32) -> Vec<f32> {
-    let unit = height / CAP_UNITS;
     let mut x = 0.0;
     let mut out = vec![0.0];
     for c in line.chars() {
-        x += advance(c) * unit;
+        x += glyph(c, false).advance * height;
         out.push(x);
-    }
-    // The caret after the last character sits at the glyph's end, not its spacing.
-    if out.len() > 1
-        && let Some(last) = out.last_mut()
-    {
-        *last -= unit;
     }
     out
 }
 
 /// Where each line of `text` starts: its left end on the baseline, relative to the anchor
 /// (before rotation). Lines stack downwards (−y), aligned by `halign`; `valign` places the
-/// block (`Top`: the first line's top, `Bottom`: the last line's baseline).
+/// block (`Top`: the first line's cap top, `Bottom`: the last line's baseline, `Center`:
+/// halfway between).
 pub fn line_origins(text: &str, height: f32, halign: HAlign, valign: VAlign) -> Vec<[f32; 2]> {
     let lines: Vec<&str> = text.split('\n').collect();
-    let pitch = height * LINE_SPACING;
+    let pitch = height * line_spacing();
     let below = (lines.len() - 1) as f32 * pitch;
     let first = match valign {
         VAlign::Bottom => below,
@@ -158,87 +224,137 @@ pub fn line_origins(text: &str, height: f32, halign: HAlign, valign: VAlign) -> 
         .collect()
 }
 
-/// Line segments for `text` with cap `height`, anchored at `origin`, rotated by
-/// `rotation` radians around the anchor, laid out by [`line_origins`].
-pub fn text_segments(
-    text: &str,
-    origin: [f32; 2],
-    height: f32,
-    rotation: f32,
-    halign: HAlign,
-    valign: VAlign,
-    mut out: impl FnMut([f32; 2], [f32; 2]),
-) {
-    let unit = height / CAP_UNITS;
-    let (s, c) = rotation.sin_cos();
+/// The box of `text` relative to its anchor, before rotation: `[min x, min y, max x,
+/// max y]` from the advances, the descender of the last line and the cap top of the
+/// first. Used for hit testing.
+pub fn text_box(text: &str, height: f32, halign: HAlign, valign: VAlign) -> [f32; 4] {
     let origins = line_origins(text, height, halign, valign);
+    let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+    for (line, [x, y]) in text.split('\n').zip(origins) {
+        let w = line_width(line, height);
+        b = [b[0].min(x), b[1].min(y - descent() * height), b[2].max(x + w), b[3].max(y + height)];
+    }
+    b
+}
+
+/// How a text is placed: anchor, cap height, rotation (radians, about the anchor),
+/// alignment, weight, and mirrored (x negated about the anchor, before rotation).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Placement {
+    pub origin: [f32; 2],
+    pub height: f32,
+    pub rotation: f32,
+    pub halign: HAlign,
+    pub valign: VAlign,
+    pub bold: bool,
+    pub mirror: bool,
+}
+
+/// Every glyph of `text` with the transform from its cap-height units to the world.
+fn place(text: &str, p: &Placement, mut out: impl FnMut(&Glyph, &dyn Fn([f32; 2]) -> [f32; 2])) {
+    let (s, c) = p.rotation.sin_cos();
+    let origins = line_origins(text, p.height, p.halign, p.valign);
     for (line, [dx, dy]) in text.split('\n').zip(origins) {
-        let xf = |x: f32, y: f32| {
-            let (x, y) = (x + dx, y + dy);
-            [origin[0] + x * c - y * s, origin[1] + x * s + y * c]
-        };
-        let carets = caret_positions(line, height);
-        for (i, ch) in line.chars().enumerate() {
-            let Some(g) = glyph(ch).or_else(|| glyph('?')) else {
-                continue;
+        let mut x0 = dx;
+        for ch in line.chars() {
+            let g = glyph(ch, p.bold);
+            let xf = |q: [f32; 2]| {
+                let x = x0 + q[0] * p.height;
+                let x = if p.mirror { -x } else { x };
+                let y = dy + q[1] * p.height;
+                [p.origin[0] + x * c - y * s, p.origin[1] + x * s + y * c]
             };
-            let x0 = carets[i];
-            for stroke in g.split('|') {
-                let mut prev: Option<[f32; 2]> = None;
-                for pt in stroke.split_whitespace() {
-                    let b = pt.as_bytes();
-                    let p = xf(x0 + (b[0] - b'0') as f32 * unit, (b[1] - b'0') as f32 * unit);
-                    match prev {
-                        Some(q) => out(q, p),
-                        None if stroke.split_whitespace().count() == 1 => out(p, p),
-                        None => {}
-                    }
-                    prev = Some(p);
-                }
-            }
+            out(&g, &xf);
+            x0 += g.advance * p.height;
         }
     }
+}
+
+/// The filled triangles of `text`.
+pub fn text_triangles(text: &str, p: &Placement, mut out: impl FnMut(Triangle)) {
+    place(text, p, |g, xf| {
+        for (t, edges) in &g.triangles {
+            out((t.map(xf), *edges));
+        }
+    });
+}
+
+/// The outlines of `text`, one shape (an outer contour, then its holes) at a time.
+pub fn text_shapes(text: &str, p: &Placement, mut out: impl FnMut(Vec<Vec<[f32; 2]>>)) {
+    place(text, p, |g, xf| {
+        for shape in &g.shapes {
+            out(shape.iter().map(|c| c.iter().map(|&q| xf(q)).collect()).collect());
+        }
+    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn all_glyphs_parse() {
-        for c in (b' '..=b'~').map(char::from) {
-            if let Some(g) = glyph(c) {
-                for stroke in g.split('|') {
-                    for pt in stroke.split_whitespace() {
-                        let b = pt.as_bytes();
-                        assert_eq!(b.len(), 2, "bad point {pt:?} in {c:?}");
-                        assert!(b[0] <= b'4' && b[1] <= b'6', "out of grid {pt:?} in {c:?}");
-                    }
-                }
+    fn placement(height: f32, halign: HAlign, valign: VAlign) -> Placement {
+        Placement { origin: [0.0; 2], height, rotation: 0.0, halign, valign, bold: false, mirror: false }
+    }
+
+    fn bounds(text: &str, p: &Placement) -> [f32; 4] {
+        let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+        text_triangles(text, p, |(t, _)| {
+            for q in t {
+                b = [b[0].min(q[0]), b[1].min(q[1]), b[2].max(q[0]), b[3].max(q[1])];
             }
+        });
+        b
+    }
+
+    #[test]
+    fn capitals_are_the_text_size() {
+        // "H" stands on the baseline and reaches the cap height.
+        let b = bounds("H", &placement(2.0, HAlign::Left, VAlign::Bottom));
+        assert!(b[1].abs() < 1e-3 && (b[3] - 2.0).abs() < 1e-2, "{b:?}");
+        // Descenders hang below it.
+        let g = bounds("g", &placement(2.0, HAlign::Left, VAlign::Bottom));
+        assert!(g[1] < -0.3, "{g:?}");
+    }
+
+    #[test]
+    fn glyphs_have_holes_and_both_weights_share_metrics() {
+        let o = glyph('o', false);
+        assert_eq!(o.shapes.len(), 1);
+        assert_eq!(o.shapes[0].len(), 2, "outline and hole");
+        assert!(!o.triangles.is_empty());
+        for c in ['i', 'M', '0', ' ', '$'] {
+            assert_eq!(glyph(c, false).advance, glyph(c, true).advance, "{c:?}");
         }
+        // A character the font lacks gets the missing-glyph box.
+        assert!(!glyph('\u{4e2d}', false).triangles.is_empty());
+        // Bold strokes are wider: more area.
+        let area = |g: &Glyph| -> f32 {
+            g.triangles
+                .iter()
+                .map(|([a, b, c], _)| ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])).abs() * 0.5)
+                .sum()
+        };
+        assert!(area(&glyph('l', true)) > area(&glyph('l', false)) * 1.2);
     }
 
     #[test]
     fn lines_stack_downwards() {
-        let mut ys = vec![];
-        text_segments("I\nI", [0.0, 0.0], 6.0, 0.0, HAlign::Left, VAlign::Top, |a, b| ys.extend([a[1], b[1]]));
-        let top = ys.iter().copied().fold(f32::MIN, f32::max);
-        let bottom = ys.iter().copied().fold(f32::MAX, f32::min);
-        assert!(top.abs() < 1e-4, "the first line hangs from the anchor: {top}");
-        assert!((bottom + 6.0 + 6.0 * LINE_SPACING).abs() < 1e-4, "{bottom}");
+        let p = placement(1.0, HAlign::Left, VAlign::Top);
+        let b = bounds("H\nH", &p);
+        assert!(b[3].abs() < 1e-2, "the first line hangs from the anchor: {b:?}");
+        assert!((b[1] + 1.0 + line_spacing()).abs() < 1e-2, "{b:?}");
         assert_eq!(text_width("II\nIIII", 6.0), text_width("IIII", 6.0));
+        let boxed = text_box("H\nHg", 1.0, HAlign::Left, VAlign::Top);
+        assert!(boxed[1] < b[1] && boxed[3] >= b[3] - 1e-3);
     }
 
     #[test]
-    fn centered_text_is_symmetric() {
-        let mut xs = vec![];
-        text_segments("HH", [0.0, 0.0], 6.0, 0.0, HAlign::Center, VAlign::Center, |a, b| {
-            xs.push(a[0]);
-            xs.push(b[0]);
-        });
-        let min = xs.iter().cloned().fold(f32::MAX, f32::min);
-        let max = xs.iter().cloned().fold(f32::MIN, f32::max);
-        assert!((min + max).abs() < 1e-5);
+    fn centered_text_is_symmetric_and_mirroring_flips_it() {
+        let p = placement(1.0, HAlign::Center, VAlign::Center);
+        let b = bounds("HH", &p);
+        assert!((b[0] + b[2]).abs() < 1e-3, "{b:?}");
+        let l = bounds("L", &placement(1.0, HAlign::Left, VAlign::Bottom));
+        let m = bounds("L", &Placement { mirror: true, ..placement(1.0, HAlign::Left, VAlign::Bottom) });
+        assert!((l[0] + m[2]).abs() < 1e-4 && (l[2] + m[0]).abs() < 1e-4);
     }
 }

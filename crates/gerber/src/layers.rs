@@ -318,30 +318,36 @@ fn polygon(w: &mut GerberWriter, points: &[Point], width: Coord, fill: bool, fun
     closed(w, points);
 }
 
-/// Stroked text; on bottom layers mirrored around its anchor so it reads from below.
+/// Text as filled regions, one per glyph outline (holes bridged in); on bottom layers
+/// mirrored around its anchor so it reads from below.
 fn write_text(w: &mut GerberWriter, t: &Text, s: &str, mirror: bool, function: Option<&str>) {
     if s.is_empty() {
         return;
     }
-    let h = match t.halign {
-        HAlign::Left => font::HAlign::Left,
-        HAlign::Center => font::HAlign::Center,
-        HAlign::Right => font::HAlign::Right,
+    let p = font::Placement {
+        origin: [0.0, 0.0],
+        height: (t.size as f64 * 1e-6) as f32,
+        rotation: t.rotation.radians() as f32,
+        halign: match t.halign {
+            HAlign::Left => font::HAlign::Left,
+            HAlign::Center => font::HAlign::Center,
+            HAlign::Right => font::HAlign::Right,
+        },
+        valign: match t.valign {
+            VAlign::Bottom => font::VAlign::Bottom,
+            VAlign::Center => font::VAlign::Center,
+            VAlign::Top => font::VAlign::Top,
+        },
+        bold: t.bold,
+        mirror,
     };
-    let v = match t.valign {
-        VAlign::Bottom => font::VAlign::Bottom,
-        VAlign::Center => font::VAlign::Center,
-        VAlign::Top => font::VAlign::Top,
-    };
-    let (sin, cos) = t.rotation.radians().sin_cos();
-    let place = |p: [f32; 2]| {
-        let (x, y) = (if mirror { -p[0] as f64 } else { p[0] as f64 }, p[1] as f64);
-        t.pos + Point::new(((x * cos - y * sin) * 1e6).round() as Coord, ((x * sin + y * cos) * 1e6).round() as Coord)
-    };
-    let mut segments = Vec::new();
-    font::text_segments(s, [0.0, 0.0], (t.size as f64 * 1e-6) as f32, 0.0, h, v, |a, b| segments.push((a, b)));
-    w.aperture(Aperture::Circle(t.width.max(1)), function);
-    for (a, b) in segments {
-        w.line(place(a), place(b));
-    }
+    // Placed relative to the anchor in f32, then offset in nm (board coordinates are large).
+    let nm =
+        |q: &[f32; 2]| t.pos + Point::new((q[0] as f64 * 1e6).round() as Coord, (q[1] as f64 * 1e6).round() as Coord);
+    font::text_shapes(s, &p, |shape| {
+        let mut contours = shape.iter().map(|c| c.iter().map(nm).collect::<Vec<Point>>());
+        let Some(outer) = contours.next() else { return };
+        let holes: Vec<Vec<Point>> = contours.collect();
+        w.region(&bridge_holes(&outer, &holes), function);
+    });
 }

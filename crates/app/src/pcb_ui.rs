@@ -198,10 +198,8 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                     s.text_size = v;
                 }
                 ui.end_row();
-                label(ui, "Stroke width");
-                if let (_, Some(v)) = units::drag(ui, s.text_width, mm(0.01), mm(10.0)) {
-                    s.text_width = v;
-                }
+                label(ui, "Bold");
+                ui.checkbox(&mut s.text_bold, "").on_hover_text("Bold strokes fabricate better on silkscreen");
                 ui.end_row();
                 label(ui, "Alignment");
                 fields::halign_row(ui, &mut s.text_align);

@@ -34,7 +34,7 @@ fn texts_are_added_on_sheets_and_board_layers() {
     execute(&mut host, json!({"command": "add_text", "layer": 100, "pos": [0, 0], "text": "v1.0", "rotation": 90}))
         .unwrap();
     let b = host.doc.project().board.texts.iter().last().unwrap();
-    assert_eq!((b.text.size, b.text.width, b.text.rotation.degrees()), (1_000_000, 150_000, 90.0));
+    assert_eq!((b.text.size, b.text.bold, b.text.rotation.degrees()), (1_000_000, true, 90.0));
 
     let empty = execute(&mut host, json!({"command": "add_text", "pos": [0, 0], "text": " "}));
     assert!(empty.unwrap_err().contains("empty"));

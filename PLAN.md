@@ -283,8 +283,10 @@ the current design of each area with the gotchas a change needs to know, the pla
   fills are regions; holes are bridged into the outline with cut-in lines
   (`bridge_holes`), never drawn clear, as clear polarity would also erase other copper
   inside the hole. Mask files are written with negative polarity (drawn = opening).
-- Text is stroked from the stroke font and mirrored around its anchor on bottom layers
-  (the editor never mirrors text).
+- Text is written as regions, one per glyph outline (`font::text_shapes`, holes
+  bridged like zone fills), mirrored around its anchor on bottom layers (the editor
+  never mirrors text). Glyphs are placed relative to the anchor in f32 and offset in nm:
+  board coordinates are too large for f32 at nm precision.
 - Checked against PyGerber renders (in a throwaway venv); no files are committed.
 - **Reader** (`gerber::reader`): Gerber X2 / RS-274X and Excellon into primitives in nm
   (circles, round lines, rotated round rects, polygons; arcs become segments). Macros
@@ -313,11 +315,21 @@ the current design of each area with the gotchas a change needs to know, the pla
   show no seams (but a fan's hairline gaps can show: see the app icon).
 - Polygons: ear clipping (`render::tess`) for small ones, i_triangle for zone fills
   (holes, O(n log n); earcut took 1.9 s on a fill with thousands of holes).
-- Stroke font → capsules (also used by Gerber); `\n` starts a line (`LINE_SPACING`).
-  `font::caret_positions` / `line_origins` expose the layout for the text editor; keep
-  them and `text_segments` on the same `advance`. The font is a placeholder: capitals
-  only (lowercase is drawn as capitals), missing glyphs (e.g. `$`) drawn as `?`.
-  Small details hide when zoomed out. Per-layer buffers; only dirty items upload;
+- Text (`font`): JetBrains Mono Regular and Bold, embedded (`render/fonts`, SIL OFL;
+  the app stays MIT/Apache). `ttf-parser` reads outlines; each glyph is flattened (2
+  font units tolerance), cleaned with i_overlay (non-zero) and triangulated with
+  i_triangle once, cached per weight and char (`glyph`), and placed per text
+  (`Placement`: anchor, cap height, rotation, alignment, weight, mirror) as triangles
+  (`text_triangles`, the view) or outlines (`text_shapes`, Gerber). `Text.size` is the
+  cap height; lines are `line_spacing()` apart (the font's ascender − descender + gap);
+  Bottom = last baseline, Top = first cap top. `text_box` (advances, descender to cap
+  top) is the hit box and the editor's frame. No shaping or kerning; missing chars get
+  `.notdef`. Both weights share the layout functions (monospace: same advances;
+  a test checks). `Text.bold` replaced the stroke width: board and footprint texts
+  default to Bold, KiCad board imports are Bold, schematic ones follow `(bold yes)`.
+  Cost: a glyph is ~20–60 triangles, so texts are most of the stress scenes' instances
+  (see Performance).
+- Small details hide when zoomed out. Per-layer buffers; only dirty items upload;
   pan/zoom is a uniform.
 - `Scene::set_item` gives up a shrunk item's tail as garbage (else `instance_count`
   drifts from a rebuild). `Scene::snapshot` doesn't consume the incremental upload.
@@ -640,7 +652,8 @@ Budget: about 10k footprints at 60 fps, an edit → board → GPU update within 
 | Drag step | ~0.035 ms |
 | Drag step, symbol with wires (replayed from the start) | ~2.2 ms |
 | Drag step, footprint with tracks (connectivity deferred while dragging) | ~0.2 ms |
-| Both canvases animated, ~3 M primitives | 90–170 fps uncapped |
+| Both canvases animated, ~3 M primitives (stroke font era) | 90–170 fps uncapped |
+| GPU frame, 10k board at 3200×2000 offscreen: TrueType texts (~2.9 M instances) / stroke font (0.6 M) | 3.9 ms / 1.1–1.4 ms |
 
 Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 `sync_bench` (`spike`) and `--stress N`.
@@ -706,10 +719,13 @@ defers.
 - Reference and value texts: re-sync fields when the library templates change; fields
   of other texts than `${REF}` / `${VALUE}`; a Text tool placed field of a symbol
   (KiCad's extra fields).
-- Texts: replace the placeholder stroke font (KiCad's newstroke is GPL-2+, so not
-  embeddable in this MIT/Apache project; Hershey Simplex is public domain); undo inside
-  an in-place edit; the library editors' Text tool typing in place (it takes the text
-  from its settings today); text DRC (silkscreen over pads, minimum stroke).
+- Texts: undo inside an in-place edit; the library editors' Text tool typing in place
+  (it takes the text from its settings today); text DRC (silkscreen over pads, minimum
+  stroke and size).
+- Fonts: choosing the font in the settings (loading a TTF at runtime); italic (KiCad's
+  `(italic yes)` is ignored); shaping, kerning and right-to-left scripts; a fallback
+  font for glyphs JetBrains Mono lacks (CJK; `.notdef` boxes today); level of detail
+  for texts on huge boards (a box when a few pixels high) if the GPU time matters.
 - Custom power symbols: power ports drawn from a symbol of their own (a part flagged
   power, no footprint), for glyphs beyond `PowerStyle`; maps to KiCad custom power
   symbols on import and export.

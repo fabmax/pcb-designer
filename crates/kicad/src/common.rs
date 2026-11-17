@@ -93,23 +93,20 @@ pub fn bezier(p: &[Point]) -> Vec<Point> {
         .collect()
 }
 
-/// Text with KiCad `(effects (font (size h w) (thickness t)) (justify …) (hide))`.
+/// Text with KiCad `(effects (font (size h w) (bold yes)) (justify …) (hide))`; the
+/// thickness is dropped (texts are TrueType, Regular or Bold).
 /// Returns `None` for hidden text.
 pub fn text(content: String, at: &Node, effects: Option<&Node>, flip_y: bool, angle_scale: f64) -> Option<Text> {
     let pos = point(at.num(0)?, at.num(1)?, flip_y);
     let angle = at.num(2).unwrap_or(0.0) * angle_scale;
     let font = effects.and_then(|e| e.child("font"));
     let size = font.and_then(|f| f.child("size")).and_then(|s| s.num(0)).unwrap_or(1.27);
-    let thickness = font.and_then(|f| f.child("thickness")).and_then(|t| t.num(0));
     if effects.is_some_and(|e| e.flag("hide")) {
         return None;
     }
     let mut t = Text::new(content, pos, nm(size));
-    if let Some(th) = thickness
-        && th > 0.0
-    {
-        t.width = nm(th);
-    }
+    // `(bold yes)`, or a bare `bold` before KiCad 7. Board callers make every text bold.
+    t.bold = font.is_some_and(|f| f.flag("bold"));
     t.rotation = Angle::deg(angle);
     t.halign = HAlign::Center;
     t.valign = VAlign::Center;

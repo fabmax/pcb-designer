@@ -631,13 +631,10 @@ fn fill_ids(items: Option<&mut Value>, old: &[(String, Id)], key: impl Fn(&Value
     }
 }
 
-/// Default stroke width of texts: a seventh of the size.
-fn fill_text_width(text: &mut Value) {
-    if let Value::Object(t) = text
-        && !t.contains_key("width")
-        && let Some(size) = t.get("size").and_then(Value::as_i64)
-    {
-        t.insert("width".into(), json!(size / 7));
+/// Footprint texts are bold unless given otherwise (silkscreen that fabricates well).
+fn default_bold(text: &mut Value) {
+    if let Value::Object(t) = text {
+        t.entry("bold").or_insert(json!(true));
     }
 }
 
@@ -674,9 +671,6 @@ fn symbol(work: &Library, map: Map<String, Value>) -> Result<Symbol, String> {
             p.entry("length").or_insert(json!(mm(2.54)));
         }
     }
-    if let Some(Value::Array(texts)) = m.get_mut("texts") {
-        texts.iter_mut().for_each(fill_text_width);
-    }
     let what = format!("lib_symbol {:?}", m.get("name").and_then(Value::as_str).unwrap_or_default());
     m.entry("id").or_insert(json!(Id::new()));
     let s: Symbol = parse(m, &what)?;
@@ -700,7 +694,7 @@ fn footprint(work: &Library, map: Map<String, Value>) -> Result<Footprint, Strin
         old.map(|f| f.pads.iter().map(|p| (p.name.clone(), p.id)).collect()).unwrap_or_default();
     fill_ids(m.get_mut("pads"), &old_pads, |p| str_field(p, "name").unwrap_or_default().to_string());
     if let Some(Value::Array(texts)) = m.get_mut("texts") {
-        texts.iter_mut().filter_map(|t| t.get_mut("text")).for_each(fill_text_width);
+        texts.iter_mut().filter_map(|t| t.get_mut("text")).for_each(default_bold);
     }
     let what = format!("lib_footprint {:?}", m.get("name").and_then(Value::as_str).unwrap_or_default());
     m.entry("id").or_insert(json!(Id::new()));

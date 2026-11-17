@@ -13,3 +13,4 @@ png.workspace = true
 rustc-hash.workspace = true
 smallvec.workspace = true
 i_triangle.workspace = true
+ttf-parser.workspace = true
