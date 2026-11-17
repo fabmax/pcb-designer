@@ -284,7 +284,7 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
 }
 
 /// The context menu of a schematic (`schematic`) or board canvas.
-pub fn canvas_menu(keymap: &Keymap, schematic: bool, selected: bool, move_to_sheet: bool) -> Vec<Entry> {
+pub fn canvas_menu(keymap: &Keymap, schematic: bool, selected: bool, move_to_sheet: bool, rect: bool) -> Vec<Entry> {
     let action = |a: Action, enabled: bool| Entry::Item {
         label: a.label().to_string(),
         cmd: Cmd::Action(a),
@@ -303,6 +303,9 @@ pub fn canvas_menu(keymap: &Keymap, schematic: bool, selected: bool, move_to_she
     ];
     if schematic {
         out.extend([Entry::Separator, action(Action::MoveToSheet, move_to_sheet)]);
+    }
+    if rect {
+        out.extend([Entry::Separator, action(Action::ConvertToPolygon, true)]);
     }
     out
 }

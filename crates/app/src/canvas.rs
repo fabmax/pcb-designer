@@ -267,6 +267,58 @@ pub fn draw_box(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, r: model::Rect
     }
 }
 
+/// The Measure tool's Clearance overlay: the picked objects' outlines (and the hovered
+/// one's, thinner), the gap as a ruler between the nearest points, and its reading with
+/// the rule (in the warning colour when the gap is too small).
+pub fn draw_clearance(
+    ui: &egui::Ui,
+    canvas: &Canvas,
+    clip: egui::Rect,
+    picked: &[editor_core::copper::Geo],
+    hover: &[editor_core::copper::Geo],
+    gap: Option<&editor_core::clearance::Gap>,
+) {
+    use egui::{FontId, Stroke, vec2};
+    let painter = ui.painter_at(clip);
+    let accent = crate::theme::accent();
+    let screen = |p: model::Point| canvas.world_to_screen([p.x as f64 * 1e-6, p.y as f64 * 1e-6]);
+    let outline = |g: &editor_core::copper::Geo, stroke: Stroke| {
+        for line in view::measure::geo_outlines(g) {
+            painter.add(egui::Shape::line(line.into_iter().map(screen).collect(), stroke));
+        }
+    };
+    for g in hover {
+        outline(g, Stroke::new(1.0, accent.gamma_multiply(0.7)));
+    }
+    for g in picked {
+        outline(g, Stroke::new(2.0, accent));
+    }
+    let Some(gap) = gap else { return };
+    let color = if gap.violates() { crate::theme::warn() } else { accent };
+    let (sa, sb) = (screen(gap.a), screen(gap.b));
+    let stroke = Stroke::new(2.0, color);
+    painter.line_segment([sa, sb], stroke);
+    for c in [sa, sb] {
+        painter.circle_filled(c, 3.0, color);
+    }
+    let text = view::measure::gap_text(gap, crate::units::fmt);
+    let galley = painter.layout_no_wrap(text, FontId::proportional(12.0), ui.visuals().text_color());
+    let centre = sa + (sb - sa) / 2.0;
+    let inner = clip.shrink(8.0);
+    let mut pos = centre + vec2(12.0, 10.0);
+    let size = galley.size();
+    if pos.x + size.x > inner.right() {
+        pos.x = centre.x - 12.0 - size.x;
+    }
+    if pos.y + size.y > inner.bottom() {
+        pos.y = centre.y - 10.0 - size.y;
+    }
+    pos = pos.max(inner.min);
+    let bg = egui::Rect::from_min_size(pos, size).expand(5.0);
+    painter.rect(bg, 4.0, crate::theme::panel(), Stroke::new(1.0, color), egui::StrokeKind::Inside);
+    painter.galley(pos, galley, ui.visuals().text_color());
+}
+
 /// The measure tool's overlay: the snap target ring, the ruler with crosses at its ends
 /// and a label with length, ΔX, ΔY and angle in the current unit.
 pub fn draw_measure(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, m: &view::measure::Measure) {

@@ -122,6 +122,22 @@ pub(crate) struct Pane {
     pub it: Interaction<ObjectId>,
     /// A press landed on the text being edited: drags select in it.
     pub text_drag: bool,
+    /// The corner handle under the pointer (board: a selected zone, keepout or drawing).
+    pub grip_hover: Option<(ObjectId, view::handles::Grip)>,
+    /// A corner handle being dragged.
+    pub grip_drag: Option<GripDrag>,
+}
+
+/// A corner handle drag: the object as it was, the handle, its offset from the pointer,
+/// the undo group, the snap points (built once at the start) and whether it moved yet.
+pub(crate) struct GripDrag {
+    original: Object,
+    grip: view::handles::Grip,
+    offset: Point,
+    group: u64,
+    snap: view::measure::BoardSnap,
+    moved: bool,
+    start: egui::Pos2,
 }
 
 impl Pane {
@@ -131,7 +147,7 @@ impl Pane {
             ViewKind::Board => 0.5,
         };
         let canvas = Canvas::new(view::style::background(grid as f32));
-        Pane { view, canvas, it: Interaction::new(mm(grid)), text_drag: false }
+        Pane { view, canvas, it: Interaction::new(mm(grid)), text_drag: false, grip_hover: None, grip_drag: None }
     }
 }
 
@@ -1613,7 +1629,16 @@ impl PcbApp {
             Action::PcbOutline => PcbTool::Outline,
             Action::PcbZone => PcbTool::Zone,
             Action::PcbKeepout => PcbTool::Keepout,
+            Action::PcbCutout => PcbTool::Cutout,
             Action::PcbText => PcbTool::Text,
+            Action::MeasureClearance => {
+                if self.pcb.tool() != PcbTool::Measure {
+                    self.set_pcb_tool(PcbTool::Measure);
+                }
+                let mode = self.pcb.toggle_clearance();
+                self.set_status(mode);
+                return true;
+            }
             Action::ToolMeasure => PcbTool::Measure,
             Action::ToolSelect => PcbTool::Select,
             Action::Posture => {
@@ -1656,9 +1681,9 @@ impl PcbApp {
     /// Cut, copy, paste and duplicate in the focused library item or the active view.
     fn clipboard_action(&mut self, action: Action) {
         if action == Action::Copy
-            && let Some(r) = self.measure_reading()
+            && let Some(text) = self.measure_reading()
         {
-            self.copy_out = Some(r.text(units::fmt));
+            self.copy_out = Some(text);
             return self.set_status("Copied the measurement");
         }
         if self.gerber_focused() {
@@ -1677,16 +1702,22 @@ impl PcbApp {
     }
 
     /// The measurement of the Measure tool in the focused editor, if it shows one.
-    fn measure_reading(&mut self) -> Option<view::measure::Reading> {
+    fn measure_reading(&mut self) -> Option<String> {
+        let text = |r: view::measure::Reading| r.text(units::fmt);
         if self.gerber_focused() {
-            return self.gerber.measure.reading().filter(|_| self.gerber.measuring);
+            return self.gerber.measure.reading().filter(|_| self.gerber.measuring).map(text);
         }
         if let Some(key) = self.focus.library() {
             let l = self.lib(key)?;
-            return l.placer.measure.reading().filter(|_| l.placer.tool == Tool::Measure);
+            return l.placer.measure.reading().filter(|_| l.placer.tool == Tool::Measure).map(text);
         }
-        let board = self.active == ViewId::Board && self.pcb.tool() == PcbTool::Measure;
-        self.pcb.measure.reading().filter(|_| board)
+        if self.active != ViewId::Board || self.pcb.tool() != PcbTool::Measure {
+            return None;
+        }
+        if self.pcb.settings.clearance {
+            return self.pcb.gap.as_ref().map(|g| view::measure::gap_text(g, units::fmt));
+        }
+        self.pcb.measure.reading().map(text)
     }
 
     /// The clip on the system clipboard.
@@ -1773,6 +1804,34 @@ impl PcbApp {
     }
 
     /// Round the corners between the selected tracks with the route tool's radius.
+    /// Delete a corner of a zone, keepout or polygon drawing (from its handle).
+    fn delete_corner(&mut self, id: ObjectId, grip: view::handles::Grip) {
+        let Some(o) = self.doc().project().get(id) else { return };
+        let result = view::handles::without_corner(&o, grip)
+            .and_then(|o| self.doc_mut().execute(Command::Update { objects: vec![o] }).map_err(|e| e.to_string()));
+        match result {
+            Ok(_) => self.panes.get(ViewId::Board).grip_hover = None,
+            Err(e) => self.set_status(e),
+        }
+    }
+
+    /// The selected rectangle drawing (the board outline) as a polygon, whose corners can
+    /// then be added and deleted.
+    fn convert_to_polygon(&mut self) {
+        let sel = self.panes.selection(ViewId::Board);
+        let converted: Vec<Object> = sel
+            .iter()
+            .filter_map(|&id| self.doc().project().get(id))
+            .filter_map(|o| view::handles::rect_to_polygon(&o))
+            .collect();
+        if converted.is_empty() {
+            return self.set_status("Select a rectangle on the board to convert");
+        }
+        if let Err(e) = self.doc_mut().execute(Command::Update { objects: converted }) {
+            self.set_status(e.to_string());
+        }
+    }
+
     fn round_corners(&mut self) {
         let tracks: Vec<Id> = self
             .panes
@@ -1907,6 +1966,14 @@ impl PcbApp {
         if view_keys && self.context() == Context::Board && self.pcb_action(action) {
             return;
         }
+        if view_keys
+            && action == Action::Delete
+            && self.active == ViewId::Board
+            && let Some((id, grip)) = self.panes.get(ViewId::Board).grip_hover
+            && matches!(grip, view::handles::Grip::Corner { .. })
+        {
+            return self.delete_corner(id, grip);
+        }
         let key_action = match action {
             Action::New => return self.new_document(),
             Action::Settings => {
@@ -1924,6 +1991,7 @@ impl PcbApp {
             }
             Action::ExportGerber => return self.export_gerber(),
             Action::RoundCorners => return self.round_corners(),
+            Action::ConvertToPolygon => return self.convert_to_polygon(),
             Action::MoveToSheet => return self.move_to_sheet(),
             Action::Cut | Action::Copy | Action::Paste | Action::Duplicate => return,
             Action::Undo => return self.undo(),
@@ -1958,6 +2026,8 @@ impl PcbApp {
             | Action::PcbOutline
             | Action::PcbZone
             | Action::PcbKeepout
+            | Action::PcbCutout
+            | Action::MeasureClearance
             | Action::PcbText
             | Action::PcbNextLayer
             | Action::PanelProject
@@ -2055,6 +2125,9 @@ impl PcbApp {
             | Action::PcbOutline
             | Action::PcbZone
             | Action::PcbKeepout
+            | Action::PcbCutout
+            | Action::ConvertToPolygon
+            | Action::MeasureClearance
             | Action::PcbText
             | Action::PcbNextLayer => None,
             Action::PanelProject
@@ -3383,17 +3456,26 @@ impl TreeBehavior<'_> {
                 }
             }
             let pane = self.panes.get(view);
+            let mut on_grip = false;
+            if kind == ViewKind::Board && !on_edit {
+                let (consumed, err) = corner_handles(ui, &response, pane, doc);
+                on_grip = consumed;
+                if let Some(e) = err {
+                    *self.status = Some((e, Instant::now()));
+                }
+            }
             let engaged = !pane.it.is_idle();
             let carried_off = pane.it.is_carrying() && !response.hovered();
             if let Some(input) = canvas::pointer_input(ui, &response, &pane.canvas, engaged, pane.it.hover.is_some())
                 && !carried_off
                 && !on_edit
+                && !on_grip
             {
                 pane.it.pointer(&mut doc.target(view), &input);
             }
             // Double-clicking a text edits it; a sheet symbol opens the sheet; on a wire
             // or track it selects the whole chain.
-            if response.double_clicked() && !on_edit {
+            if response.double_clicked() && !on_edit && !on_grip {
                 let edits = match (pane.it.hover, pointer) {
                     (Some(h), Some(p)) => doc.begin_text_edit(view, h, p),
                     _ => false,
@@ -3420,7 +3502,13 @@ impl TreeBehavior<'_> {
             }
             let selected = !pane.it.selection.is_empty();
             let movable = sheet.is_some_and(|s| !movable_ids(doc.project(), &pane.it.selection, s).is_empty());
-            let entries = menu::canvas_menu(self.keymap, sheet.is_some(), selected, movable);
+            let rect = kind == ViewKind::Board
+                && pane
+                    .it
+                    .selection
+                    .iter()
+                    .any(|&id| doc.project().get(id).is_some_and(|o| view::handles::rect_to_polygon(&o).is_some()));
+            let entries = menu::canvas_menu(self.keymap, sheet.is_some(), selected, movable, rect);
             response.context_menu(|ui| {
                 if let Some(menu::Cmd::Action(a)) = menu::entries_menu_ui(ui, &entries) {
                     self.deferred.push(Deferred::Action(a));
@@ -3443,7 +3531,16 @@ impl TreeBehavior<'_> {
             v.set_preview(project, &ghosts);
         }
         if kind == ViewKind::Board && self.pcb.tool() == PcbTool::Measure {
-            canvas::draw_measure(ui, &self.panes.get(view).canvas, response.rect, &self.pcb.measure);
+            let canvas = &self.panes.get(view).canvas;
+            if self.pcb.settings.clearance {
+                let (project, copper) = (doc.project(), doc.copper());
+                let shapes = |f| editor_core::clearance::geometry(project, copper, f);
+                let picked: Vec<_> = self.pcb.clearance.picked().flat_map(shapes).collect();
+                let hover: Vec<_> = self.pcb.clearance.hover.into_iter().flat_map(shapes).collect();
+                canvas::draw_clearance(ui, canvas, response.rect, &picked, &hover, self.pcb.gap.as_ref());
+            } else {
+                canvas::draw_measure(ui, canvas, response.rect, &self.pcb.measure);
+            }
         }
         if kind == ViewKind::Board
             && let Some(ghosts) = self.pcb.take_preview(doc)
@@ -3980,6 +4077,106 @@ fn default_tree(root: ViewId) -> Tree<Tab> {
     let mut tree = Tree::new(egui::Id::unique("main_tree"), root, tiles);
     tree.make_active(|id, _| id == sch);
     tree
+}
+
+/// The corner handles of the one selected zone, keepout or board drawing: drawn, and
+/// dragged (one undo step per drag; Alt: no snapping, Shift: 0°/45°/90° to the next
+/// corners). A double click on a corner deletes it. Returns whether the pointer input
+/// went to a handle (the selection interaction skips it) and an error to show.
+fn corner_handles(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    pane: &mut Pane,
+    doc: &mut Document,
+) -> (bool, Option<String>) {
+    use view::handles;
+    let nm_per_pt = 1e6 / pane.canvas.camera.zoom;
+    let tol = (6.0 * nm_per_pt) as Coord;
+    let (pos, pressed, down, alt, shift) = ui.input(|i| {
+        (
+            i.pointer.latest_pos(),
+            i.pointer.primary_pressed(),
+            i.pointer.primary_down(),
+            i.modifiers.alt,
+            i.modifiers.shift,
+        )
+    });
+    let world = |p: egui::Pos2| {
+        let [x, y] = pane.canvas.screen_to_world(p);
+        Point::mm(x, y)
+    };
+    if let Some(d) = &mut pane.grip_drag {
+        if !down {
+            if d.moved {
+                doc.close_group();
+            }
+            pane.grip_drag = None;
+            return (true, None);
+        }
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        ui.ctx().request_repaint();
+        let Some(pos) = pos else { return (true, None) };
+        if !d.moved && pos.distance(d.start) < 4.0 {
+            return (true, None);
+        }
+        d.moved = true;
+        let raw = world(pos) + d.offset;
+        let mut p = if alt { raw } else { d.snap.snap(raw, pane.it.snap(raw), tol, false).0 };
+        if shift {
+            p = handles::constrain(p, &handles::neighbours(&d.original, d.grip));
+        }
+        let Some(o) = handles::moved(&d.original, d.grip, p) else { return (true, None) };
+        let err = doc.execute_grouped(Command::Update { objects: vec![o] }, Some(d.group)).err().map(|e| e.to_string());
+        return (true, err);
+    }
+    let target = match pane.it.selection.as_slice() {
+        [id] if pane.it.is_idle() => doc.project().get(*id).filter(handles::has_handles).map(|o| (*id, o)),
+        _ => None,
+    };
+    let Some((id, obj)) = target else {
+        pane.grip_hover = None;
+        return (false, None);
+    };
+    let hs = handles::handles(&obj);
+    let at = pos.filter(|_| response.hovered()).map(world);
+    let hit = at.and_then(|p| handles::hit(&hs, p, tol));
+    pane.grip_hover = hit.map(|h| (id, h.grip));
+    // Draw: corners as squares, midpoints as small circles; the hovered one filled.
+    let painter = ui.painter_at(response.rect);
+    let accent = theme::accent();
+    let bg = theme::panel();
+    for h in &hs {
+        let c = pane.canvas.world_to_screen([h.pos.x as f64 * 1e-6, h.pos.y as f64 * 1e-6]);
+        let hot = hit.is_some_and(|x| x.grip == h.grip);
+        let fill = if hot { accent } else { bg };
+        let stroke = egui::Stroke::new(1.5, accent);
+        if matches!(h.grip, handles::Grip::Mid { .. } | handles::Grip::RectEdge(_)) {
+            painter.circle(c, 3.5, fill, stroke);
+        } else {
+            let r = egui::Rect::from_center_size(c, egui::vec2(8.0, 8.0));
+            painter.rect(r, 1.0, fill, stroke, egui::StrokeKind::Middle);
+        }
+    }
+    let Some(h) = hit else { return (false, None) };
+    ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+    if response.double_clicked() {
+        if !h.is_corner() {
+            return (true, None);
+        }
+        let err = handles::without_corner(&obj, h.grip)
+            .and_then(|o| doc.execute(Command::Update { objects: vec![o] }).map(|_| ()).map_err(|e| e.to_string()))
+            .err();
+        pane.grip_hover = None;
+        return (true, err);
+    }
+    if pressed && let (Some(p), Some(start)) = (at, pos) {
+        let snap = view::measure::BoardSnap::build(doc.project(), doc.revision);
+        let group = view::interaction::new_group();
+        pane.grip_drag =
+            Some(GripDrag { original: obj, grip: h.grip, offset: h.pos - p, group, snap, moved: false, start });
+        return (true, None);
+    }
+    (false, None)
 }
 
 /// "; N nets were renamed" for the status after a move to another sheet.

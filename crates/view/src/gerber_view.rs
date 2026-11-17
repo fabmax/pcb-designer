@@ -228,6 +228,18 @@ impl GerberView {
             .collect()
     }
 
+    /// The centre of the flash under `p` on a visible file (the measure tool snaps to it
+    /// from anywhere inside).
+    pub fn flash_at(&self, p: Point) -> Option<Point> {
+        let c = mm(p);
+        self.index
+            .locate_in_envelope_intersecting(AABB::from_point(c))
+            .filter(|h| self.scene.layer(self.files[h.file].render_layer).visible)
+            .map(|h| &self.files[h.file].image.objects[h.object])
+            .filter(|o| o.prims.iter().any(|pr| pr.contains(p)))
+            .find_map(|o| o.flash)
+    }
+
     /// What lies under `p` on the topmost visible file: file, aperture and its function.
     pub fn describe(&self, p: [f64; 2]) -> Option<String> {
         let q = Point::mm(p[0], p[1]);

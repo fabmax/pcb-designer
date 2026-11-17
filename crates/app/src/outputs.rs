@@ -267,7 +267,8 @@ pub fn gerber_ui(ui: &mut egui::Ui, pane: &mut GerberPane, outdated: bool, keyma
                 let raw = Point::mm(x, y);
                 let grid = pane.snap_point(raw);
                 let points = pane.view.as_ref().map(|v| v.snap_points(raw, tol)).unwrap_or_default();
-                view::measure::snap(raw, grid, points, tol, free)
+                let inside = pane.view.as_ref().and_then(|v| v.flash_at(raw));
+                view::measure::snap(raw, grid, points, inside, tol, free)
             });
             pane.measure.hover(at.map(|a| a.0), at.is_some_and(|a| a.1));
             if let Some((p, _)) = at

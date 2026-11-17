@@ -442,8 +442,9 @@ impl LibraryEditor {
             let at = response.hover_pos().map(|p| {
                 let [x, y] = self.canvas.screen_to_world(p);
                 let raw = Point::mm(x, y);
+                let inside = fp.and_then(|fp| view::measure::footprint_pad_centre(fp, raw));
                 let points = fp.into_iter().flat_map(view::measure::footprint_points);
-                view::measure::snap(raw, self.it.snap(raw), points, tol, free)
+                view::measure::snap(raw, self.it.snap(raw), points, inside, tol, free)
             });
             self.placer.measure.hover(at.map(|a| a.0), at.is_some_and(|a| a.1));
             if let Some((p, _)) = at

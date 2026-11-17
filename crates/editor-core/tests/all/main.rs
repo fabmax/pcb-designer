@@ -4,6 +4,7 @@
 mod board;
 mod board_parts;
 mod buses;
+mod cutouts_clearance;
 mod drag;
 mod drc;
 mod editing;

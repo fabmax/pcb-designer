@@ -1,4 +1,4 @@
-//! move_to_sheet and duplicate through MCP's execute.
+//! move_to_sheet, duplicate and add_cutout through MCP's execute; measure_clearance.
 
 use mcp::headless::HeadlessHost;
 use mcp::{Call, Reply, Request, handle};
@@ -62,4 +62,38 @@ fn duplicate_copies_with_new_references() {
     assert_eq!(s.pos, pos + Point::new(10_160_000, 0));
     let refs: std::collections::HashSet<&str> = p.schematic.components.iter().map(|c| c.refdes.as_str()).collect();
     assert_eq!(refs.len(), components + 1, "references stay unique");
+}
+
+#[test]
+fn cutouts_and_clearances() {
+    let mut host = HeadlessHost::new(Document::new(view::demo::demo_project()));
+    let sq = |a: i64, b: i64| json!([[a, a], [b, a], [b, b], [a, b]]);
+    let r = execute(
+        &mut host,
+        vec![
+            json!({ "command": "insert", "objects": [{ "type": "keepout", "id": model::Id::new(), "outline": sq(0, 10_000_000) }] }),
+        ],
+    );
+    let keepout = match r {
+        Ok(_) => host.doc.project().board.keepouts.iter().last().unwrap().id,
+        Err(e) => panic!("{e}"),
+    };
+    execute(
+        &mut host,
+        vec![json!({ "command": "add_cutout", "id": { "type": "keepout", "id": keepout }, "outline": sq(2_000_000, 4_000_000) })],
+    )
+    .unwrap();
+    assert_eq!(host.doc.project().board.keepouts.get(keepout).unwrap().holes.len(), 1);
+
+    let a = host.doc.project().board.tracks.iter().next().unwrap().id;
+    let gap = ask(
+        &mut host,
+        Request::MeasureClearance {
+            a: editor_core::clearance::Feature::Track { id: a },
+            b: editor_core::clearance::Feature::Edge,
+        },
+    )
+    .unwrap();
+    assert!(gap["distance"].as_i64().unwrap() > 0, "{gap}");
+    assert_eq!(gap["b_name"], "board edge");
 }

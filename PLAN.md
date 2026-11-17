@@ -417,7 +417,19 @@ the current design of each area with the gotchas a change needs to know, the pla
   measurement per editor, kept in `PcbPlacer` / `Placer` / `GerberPane`, cleared by
   `set_tool`; not saved, no commands. ⌘C copies `Reading::text` when the focused
   editor's Measure tool shows one (`App::measure_reading`), before object copy. The app draws it (`canvas::draw_measure`).
-  Gotcha: `board_points` scans the whole board per hover.
+  Snapping inside a pad, via or Gerber flash goes to its centre (explicit points within
+  the tolerance win). On the board, `BoardSnap` keeps the points and pad/via outlines in
+  R-trees, rebuilt when the document revision changes.
+  Clearance mode (`settings.clearance`, E): `measure::Clearance` picks two
+  `editor_core::clearance::Feature`s (copper on the active layer, pad and via holes, the
+  board edge) and `clearance::gap` gives the distance, nearest points (`Geo::nearest`)
+  and the rule (copper of different nets on a common layer, or copper to the edge).
+- `handles`: corner handles of one selected zone, keepout or board drawing. Polygons
+  (holes too): corners move, midpoints insert, Delete / double click removes (≥ 3 stay).
+  Rectangles keep their shape (corner: opposite corner fixed, edge: moves); "Convert to
+  polygon" in the context menu. Lines: both ends. The app (`corner_handles`) runs a drag
+  as `Update`s in one undo group from the original object, snapping like Measure (a
+  `BoardSnap` built once per drag), Alt free, Shift 0°/45°/90° to the neighbours.
 - `clipboard`: copy (anchor = snapped reference point of the first copyable object) and
   paste into a view, checking the clip's domain. A paste is carried:
   `Interaction::carry` is a drag without a button in the paste's undo group (moves,
@@ -689,12 +701,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-**M15: Measuring and zone editing**
-- Measure tool: edge-to-edge (clearance) measuring, snapping to a pad's centre from
-  anywhere inside it.
-- Zones: drawing holes into an existing zone (cutout tool), editing corners on the
-  canvas.
-
 **M16: Part editors**
 - Drawing tools for arcs and polygons (numeric editing only today).
 - Pad arrays.
@@ -759,7 +765,8 @@ defers.
 - Clipboard: carrying a paste between the schematic and the board.
 - A side-bar panel to browse and place board parts from the project and loaded
   libraries (needs design; P on the board stays unassigned until then).
-- Measure tool: an index for `board_points` on huge boards.
+- Cutouts that split a zone into two pieces (refused today; would need a second zone).
+- Handles for circles and arcs (radius, ends) and for footprint editor graphics.
 - Push-and-shove routing.
 - Routing checks: clearance to zone fills of other nets, an index for huge boards
   (linear per check today), checking the vias L adds against the next layer's copper

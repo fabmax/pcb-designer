@@ -10,7 +10,8 @@ use model::*;
 use crate::bend::{self, Posture};
 pub use crate::bend::{Bend, Corners};
 use crate::document::Document;
-use crate::measure::{Measure, board_points};
+use crate::measure::{BoardSnap, Clearance, Measure};
+use editor_core::clearance::{self, Gap};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PcbTool {
@@ -20,6 +21,8 @@ pub enum PcbTool {
     Outline,
     Zone,
     Keepout,
+    /// Cut an area out of a zone or keepout.
+    Cutout,
     Measure,
     /// Free text on a board layer: a click starts typing it in place.
     Text,
@@ -35,6 +38,7 @@ impl PcbTool {
         PcbTool::Outline,
         PcbTool::Zone,
         PcbTool::Keepout,
+        PcbTool::Cutout,
         PcbTool::Text,
         PcbTool::Measure,
     ];
@@ -47,6 +51,7 @@ impl PcbTool {
             PcbTool::Outline => "Outline",
             PcbTool::Zone => "Zone",
             PcbTool::Keepout => "Keepout",
+            PcbTool::Cutout => "Cutout",
             PcbTool::Measure => "Measure",
             PcbTool::Text => "Text",
             PcbTool::Place => "Place",
@@ -64,6 +69,9 @@ impl PcbTool {
             PcbTool::Zone => "Click the zone's corners · click the first or last corner again to close · Esc cancels",
             PcbTool::Keepout => {
                 "Click the keepout's corners · click the first or last corner again to close · Esc cancels"
+            }
+            PcbTool::Cutout => {
+                "Start inside a zone or keepout · click the cutout's corners · click the first or last corner again to cut · Esc cancels"
             }
             PcbTool::Measure => crate::measure::HINT,
             PcbTool::Text => {
@@ -97,6 +105,9 @@ pub struct PcbSettings {
     pub zone_net: String,
     /// New keepouts cover all copper layers (else the active one).
     pub keepout_all_layers: bool,
+    /// The Measure tool measures the gap between two objects' edges (else between two
+    /// points).
+    pub clearance: bool,
     /// Layer, cap height, weight and alignment of new texts.
     pub text_layer: LayerId,
     pub text_size: Coord,
@@ -120,6 +131,7 @@ impl Default for PcbSettings {
             via_span: [LayerId::TOP_COPPER, LayerId::BOTTOM_COPPER],
             zone_net: String::new(),
             keepout_all_layers: true,
+            clearance: false,
             text_layer: LayerId::TOP_SILK,
             text_size: 1_000_000,
             text_bold: true,
@@ -188,6 +200,13 @@ pub struct PcbPlacer {
     on_copper: bool,
     shown: Vec<PcbGhost>,
     pub measure: Measure,
+    /// The Measure tool's Clearance mode and the gap it shows.
+    pub clearance: Clearance,
+    pub gap: Option<Gap>,
+    /// Snap points of the board for the Measure tool (rebuilt on changes).
+    snap: Option<BoardSnap>,
+    /// The zone or keepout the cutout being drawn cuts into.
+    cut_into: Option<ObjectId>,
     /// The board part placed by [`PcbTool::Place`].
     pub placing: Option<Id>,
     /// Snap nowhere (Alt held): set by the app before [`PcbPlacer::hover`].
@@ -216,6 +235,10 @@ impl Default for PcbPlacer {
             on_copper: false,
             shown: Vec::new(),
             measure: Measure::default(),
+            clearance: Clearance::default(),
+            gap: None,
+            snap: None,
+            cut_into: None,
             placing: None,
             free: false,
             posture: Posture::default(),
@@ -282,6 +305,18 @@ impl PcbPlacer {
         self.clash = None;
         self.checked = None;
         self.measure.clear();
+        self.clearance.clear();
+        self.gap = None;
+        self.cut_into = None;
+    }
+
+    /// Switch the Measure tool between points and clearances. Returns the new mode's name.
+    pub fn toggle_clearance(&mut self) -> &'static str {
+        self.settings.clearance = !self.settings.clearance;
+        self.measure.clear();
+        self.clearance.clear();
+        self.gap = None;
+        if self.settings.clearance { "Measure clearances" } else { "Measure between points" }
     }
 
     /// Start placing board part `part` (in the project library already).
@@ -339,10 +374,15 @@ impl PcbPlacer {
     /// Escape: end the track being routed, or leave the tool. Returns true if the tool
     /// was left.
     pub fn escape(&mut self) -> bool {
-        if self.tool == PcbTool::Measure && self.measure.escape() {
-            return false;
+        if self.tool == PcbTool::Measure {
+            let had = if self.settings.clearance { self.clearance.escape() } else { self.measure.escape() };
+            if had {
+                self.gap = None;
+                return false;
+            }
         }
         if self.start.take().is_some() | !std::mem::take(&mut self.corners).is_empty() {
+            self.cut_into = None;
             self.net = None;
             return false;
         }
@@ -469,6 +509,10 @@ impl PcbPlacer {
         let Some((raw, snapped)) = p else {
             self.cursor = None;
             self.measure.hover(None, false);
+            self.clearance.hover(None);
+            if !self.clearance.is_pinned() {
+                self.gap = None;
+            }
             return;
         };
         match self.tool {
@@ -480,8 +524,19 @@ impl PcbPlacer {
                 }
                 self.on_copper = item.is_some();
             }
+            PcbTool::Measure if self.settings.clearance => {
+                self.cursor = Some(raw);
+                doc.current_copper();
+                let (project, copper) = (doc.project(), doc.copper());
+                self.clearance.hover(clearance::feature_at(project, copper, raw, self.settings.layer, tol));
+                self.gap = self.clearance.pair().and_then(|(a, b)| clearance::gap(project, copper, a, b));
+            }
             PcbTool::Measure => {
-                let (q, on) = crate::measure::snap(raw, snapped, board_points(doc.project()), tol, self.free);
+                if self.snap.as_ref().is_none_or(|s| s.revision != doc.revision) {
+                    self.snap = Some(BoardSnap::build(doc.project(), doc.revision));
+                }
+                let snap = self.snap.as_ref().expect("built above");
+                let (q, on) = snap.snap(raw, snapped, tol, self.free);
                 self.cursor = Some(q);
                 self.measure.hover(Some(q), on);
             }
@@ -496,10 +551,21 @@ impl PcbPlacer {
         let Some(p) = self.cursor else { return Ok(false) };
         match self.tool {
             PcbTool::Select => Ok(false),
+            PcbTool::Measure if self.settings.clearance => {
+                if self.clearance.hover.is_none() {
+                    return Err("click copper, a drill hole or the board edge".into());
+                }
+                self.clearance.click();
+                doc.current_copper();
+                let (project, copper) = (doc.project(), doc.copper());
+                self.gap = self.clearance.pair().and_then(|(a, b)| clearance::gap(project, copper, a, b));
+                Ok(false)
+            }
             PcbTool::Measure => {
                 self.measure.click(p);
                 Ok(false)
             }
+            PcbTool::Cutout => self.cutout_click(doc, p),
             PcbTool::Route => {
                 let layer = self.settings.layer;
                 let Some(start) = self.start else {
@@ -614,6 +680,27 @@ impl PcbPlacer {
         Ok(true)
     }
 
+    /// Add a cutout corner. The first one picks the zone or keepout to cut (on the active
+    /// layer, the topmost zone first); closing the polygon cuts.
+    fn cutout_click(&mut self, doc: &mut Document, p: Point) -> Result<bool, String> {
+        if self.corners.is_empty() {
+            let target = cutout_target(doc.project(), p, self.settings.layer);
+            let Some(target) = target else {
+                return Err("start the cutout inside a zone or keepout on the active layer".into());
+            };
+            self.cut_into = Some(target);
+        }
+        let Some(outline) = self.polygon_click(p, "a cutout")? else { return Ok(false) };
+        let Some(id) = self.cut_into.take() else { return Ok(false) };
+        doc.execute(Command::AddCutout { id, outline }).map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    /// The zone or keepout the cutout being drawn cuts into.
+    pub fn cut_into(&self) -> Option<ObjectId> {
+        self.cut_into.filter(|_| !self.corners.is_empty())
+    }
+
     /// Add a corner; clicking the first or last corner again closes the polygon and
     /// returns its corners.
     fn polygon_click(&mut self, p: Point, what: &str) -> Result<Option<Vec<Point>>, String> {
@@ -677,7 +764,7 @@ impl PcbPlacer {
                 }
                 g.push(PcbGhost::Target(p));
             }
-            PcbTool::Zone | PcbTool::Keepout => {
+            PcbTool::Zone | PcbTool::Keepout | PcbTool::Cutout => {
                 if !self.corners.is_empty() {
                     let mut points = self.corners.clone();
                     points.push(p);
@@ -698,6 +785,29 @@ impl PcbPlacer {
             g
         })
     }
+}
+
+/// What a cutout started at `p` cuts into: the zone on `layer` containing `p` with the
+/// highest priority, else a keepout on `layer` containing it.
+pub fn cutout_target(project: &Project, p: Point, layer: LayerId) -> Option<ObjectId> {
+    let inside = |outline: &[Point], holes: &[Vec<Point>]| {
+        editor_core::copper::point_in_polygon(p, outline)
+            && !holes.iter().any(|h| editor_core::copper::point_in_polygon(p, h))
+    };
+    let board = &project.board;
+    let zone = board
+        .zones
+        .iter()
+        .filter(|z| z.layer == layer && inside(&z.outline, &z.holes))
+        .max_by_key(|z| z.priority)
+        .map(|z| ObjectId::Zone(z.id));
+    zone.or_else(|| {
+        board
+            .keepouts
+            .iter()
+            .find(|k| k.on_layer(layer) && inside(&k.outline, &k.holes))
+            .map(|k| ObjectId::Keepout(k.id))
+    })
 }
 
 /// Spans top to bottom.

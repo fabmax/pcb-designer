@@ -22,6 +22,7 @@ pub enum Icon {
     Outline,
     Zone,
     Keepout,
+    Cutout,
     Measure,
     Pin,
     Pad,
@@ -213,6 +214,15 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
                     Stroke::new(w * 0.8, color.gamma_multiply(0.7)),
                 );
             }
+        }
+        Icon::Cutout => {
+            // A zone with a notch cut out of its corner, the cut drawn thin.
+            let pts = vec![p(0.12, 0.16), p(0.88, 0.16), p(0.88, 0.5), p(0.5, 0.5), p(0.5, 0.88), p(0.12, 0.88)];
+            poly(pts, color.gamma_multiply(0.45), line);
+            let thin = Stroke::new(w * 0.7, color.gamma_multiply(0.8));
+            seg(p(0.5, 0.5), p(0.88, 0.88), thin);
+            seg(p(0.88, 0.5), p(0.88, 0.88), thin);
+            seg(p(0.5, 0.88), p(0.88, 0.88), thin);
         }
         Icon::Measure => {
             // A ruler, diagonal, with ticks.

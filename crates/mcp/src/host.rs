@@ -51,6 +51,11 @@ pub enum Request {
     Drc {
         limit: usize,
     },
+    /// The gap between two board features.
+    MeasureClearance {
+        a: editor_core::clearance::Feature,
+        b: editor_core::clearance::Feature,
+    },
     /// Gerber and drill files into the project folder.
     ExportGerber,
     /// Commands as JSON: `sheet` and `parent` may name a sheet (see [`resolve_sheets`]).
@@ -171,6 +176,7 @@ impl Request {
             Request::Netlist => "read netlist".into(),
             Request::Routing => "read routing state".into(),
             Request::Drc { .. } => "run the design rule check".into(),
+            Request::MeasureClearance { .. } => "measure a clearance".into(),
             Request::ExportGerber => "export Gerber files".into(),
             Request::Execute { commands } => match &commands[..] {
                 [one] => one.get("command").and_then(Value::as_str).unwrap_or("command").replace('_', " "),
@@ -456,6 +462,22 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
                 "by_kind": by_kind,
                 "violations": &v[..v.len().min(limit)],
                 "truncated": v.len() > limit,
+            })
+        }
+        Request::MeasureClearance { a, b } => {
+            let doc = host.document_mut();
+            doc.update_connectivity(false);
+            let (project, copper) = (doc.project(), doc.copper());
+            let gap =
+                editor_core::clearance::gap(project, copper, a, b).ok_or("no such object (or it has no copper)")?;
+            json!({
+                "distance": gap.distance.round() as i64,
+                "a": [gap.a.x, gap.a.y],
+                "b": [gap.b.x, gap.b.y],
+                "rule": gap.rule,
+                "violates": gap.violates(),
+                "a_name": editor_core::clearance::name(project, copper, a),
+                "b_name": editor_core::clearance::name(project, copper, b),
             })
         }
         Request::ExportGerber => {

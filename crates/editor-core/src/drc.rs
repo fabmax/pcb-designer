@@ -63,6 +63,25 @@ fn fmt_mm(v: f64) -> String {
     format!("{:.3} mm", v * 1e-6)
 }
 
+/// "pad R1.2 (GND)", "track (/SIG)", "via (no net)", "zone (GND)".
+pub fn copper_name(project: &Project, copper: &BoardConnectivity, c: &crate::copper::Copper) -> String {
+    let board = &project.board;
+    let net = c.net.map_or("no net", |n| copper.nets[n as usize].as_str());
+    let what = match c.item {
+        CopperItem::Pad { footprint, pad } => {
+            let fp = board.footprints.get(footprint);
+            let refdes =
+                fp.and_then(|f| project.schematic.components.get(f.component)).map_or("?", |c| c.refdes.as_str());
+            let pad = fp.and_then(|f| crate::query::footprint_of_instance(project, f)).and_then(|d| d.pads.get(pad));
+            format!("pad {refdes}.{}", pad.map_or("?", |p| p.name.as_str()))
+        }
+        CopperItem::Track(_) => "track".into(),
+        CopperItem::Via(_) => "via".into(),
+        CopperItem::Zone { .. } => "zone".into(),
+    };
+    format!("{what} ({net})")
+}
+
 /// Check the board. Violations are sorted by kind (most severe first).
 pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
     let board = &project.board;
@@ -71,21 +90,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
     let refdes = |f: &FootprintInstance| -> &str {
         project.schematic.components.get(f.component).map_or("?", |c| c.refdes.as_str())
     };
-    let name = |c: &crate::copper::Copper| {
-        let net = c.net.map_or("no net", |n| copper.nets[n as usize].as_str());
-        let what = match c.item {
-            CopperItem::Pad { footprint, pad } => {
-                let fp = board.footprints.get(footprint);
-                let pad =
-                    fp.and_then(|f| crate::query::footprint_of_instance(project, f)).and_then(|d| d.pads.get(pad));
-                format!("pad {}.{}", fp.map_or("?", refdes), pad.map_or("?", |p| p.name.as_str()))
-            }
-            CopperItem::Track(_) => "track".into(),
-            CopperItem::Via(_) => "via".into(),
-            CopperItem::Zone { .. } => "zone".into(),
-        };
-        format!("{what} ({net})")
-    };
+    let name = |c: &crate::copper::Copper| copper_name(project, copper, c);
 
     // Copper by anchor point.
     let mut at_anchor: HashMap<Point, Vec<usize>> = HashMap::default();

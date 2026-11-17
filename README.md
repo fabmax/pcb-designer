@@ -98,15 +98,32 @@ The Keepout tool (**K**) draws an area, on all copper layers or one, that zone f
 out. DRC reports tracks, vias, pads and, if enabled, footprint courtyards inside it.
 Properties set what it keeps out and its layers.
 
+The Cutout tool (tool bar, no default key) cuts a polygon out of a zone or keepout: start
+inside it on the active layer and click the corners. Inside, the cutout becomes a hole
+(merged with holes it overlaps); across the edge, it trims the outline. A cut that would
+split the area in two is refused.
+
+Select one zone, keepout or board drawing to edit its corners on the canvas: drag a
+corner, drag an edge's midpoint to add a corner, and Delete (or double-click) a corner
+under the pointer to remove it. Corners snap to the grid and to pads, track ends and
+other corners; Alt drags freely, Shift keeps the edges at 0°, 45° or 90°. A rectangle
+(like the board outline) resizes by its corners and edges; right-click → Convert to
+polygon makes its corners editable one by one.
+
 ## Measuring
 
 The layout editors (PCB, the part editor's footprint, the Gerber tab) have a Measure
 tool (ruler button, **M**): click a start point, the ruler follows the pointer with its
 length, ΔX, ΔY and angle in the current unit, a second click pins it, the next click
 starts a new one. Ends snap to pad and via centres, track ends and corners (in the
-Gerber tab: flash centres and line ends), else to the grid; hold Alt for a free point.
-⌘C (Ctrl+C) copies the reading as text. Esc clears the measurement, a second Esc
-returns to Select.
+Gerber tab: flash centres and line ends), from anywhere inside a pad, via or flash to its
+centre, else to the grid; hold Alt for a free point. ⌘C (Ctrl+C) copies the reading as
+text. Esc clears the measurement, a second Esc returns to Select.
+
+On the board, **E** (or Tool settings) switches the Measure tool to clearances: click two
+objects (copper on the active layer, a drill hole or the board edge) and it shows the gap
+between their edges, with the clearance the design rules ask for; a gap below it is drawn
+in the warning colour.
 
 ## Texts
 
@@ -151,11 +168,11 @@ open project, so only turn it on when you need it.
 Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `search_kicad`, `import_kicad`, `download_kicad_libraries`, `import_kicad_project`, `list_objects`, `get_objects`, `get_component`,
 `get_netlist` (nets, buses and their members, schematic and ERC problems), `get_routing`,
-`run_drc`, `export_gerber`, `execute` (any editor command, as one undo step, e.g.
+`run_drc`, `measure_clearance`, `export_gerber`, `execute` (any editor command, as one undo step, e.g.
 `add_text` on a sheet or a board layer), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
 or the whole window) and `save_project`. Sheets are added, renamed and deleted with
 `execute` (`add_sheet`, `update`, `delete`), and `move_to_sheet` moves objects (or
-re-parents a sheet) while `duplicate` copies objects in one step; `get_project` lists their paths, and wherever
+re-parents a sheet) while `duplicate` copies objects in one step and `add_cutout` cuts into a zone or keepout; `get_project` lists their paths, and wherever
 a sheet is asked for (`sheet`, `parent`), an id, a name or a path like `/Power/Regulator`
 works. Agent edits go through the same commands as the
 GUI, so they can be undone with ⌘Z, and the status bar shows what the agent just did.

@@ -45,10 +45,21 @@ pub fn toolbar(
             "Draw a keepout: an area zone fills leave out and where DRC forbids tracks, vias or pads.",
             Action::PcbKeepout,
         ),
+        b(
+            PcbTool::Cutout,
+            Icon::Cutout,
+            "Cut an area out of a zone or keepout: start inside it, click the corners, close the polygon.",
+            Action::PcbCutout,
+        ),
     ];
     let measure = [
         b(PcbTool::Text, Icon::Text, "Write a text on a silkscreen, copper or other layer.", Action::PcbText),
-        b(PcbTool::Measure, Icon::Measure, "Measure distances between two points.", Action::ToolMeasure),
+        b(
+            PcbTool::Measure,
+            Icon::Measure,
+            "Measure distances between two points, or clearances between copper, holes and the board edge (E).",
+            Action::ToolMeasure,
+        ),
     ];
     let place = [ToolButton {
         tool: PcbTool::Place,
@@ -87,6 +98,9 @@ pub fn toolbar(
             toolbar::hint_in(ui, canvas, &format!("Can't add here: {}", c.message), crate::theme::warn())
         }
         Some(c) => toolbar::hint_in(ui, canvas, &format!("Violation: {}", c.message), crate::theme::warn()),
+        None if pcb.tool() == PcbTool::Measure && pcb.settings.clearance => {
+            toolbar::hint(ui, canvas, view::measure::CLEARANCE_HINT)
+        }
         None => toolbar::hint(ui, canvas, pcb.tool().hint()),
     }
     chosen.filter(|&t| t != PcbTool::Place)
@@ -242,12 +256,55 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
             ui.add_space(6.0);
             hint(ui, "A board part has no symbol: it lives on the board only, and its pads have no net.");
         }
-        PcbTool::Measure => hint(
-            ui,
-            "Click a start point, then an end point. Ends snap to pad and via centres, track ends and \
-             outline corners, else to the grid; hold Alt for a free point. The next click starts a new \
-             measurement, Esc clears it.",
-        ),
+        PcbTool::Measure => {
+            let mut toggle = false;
+            grid(ui, "pcb_tool", |ui| {
+                label(ui, "Measure");
+                ui.horizontal(|ui| {
+                    let mut c = s.clearance;
+                    ui.selectable_value(&mut c, false, "Points").on_hover_text("The distance between two points");
+                    ui.selectable_value(&mut c, true, "Clearance")
+                        .on_hover_text("The gap between two objects' edges: copper, drill holes, the board edge");
+                    toggle = c != s.clearance;
+                });
+                ui.end_row();
+                if s.clearance {
+                    label(ui, "Layer");
+                    layer_combo(ui, "pcb_tool_layer", &mut s.layer, doc);
+                    ui.end_row();
+                }
+            });
+            if toggle {
+                pcb.toggle_clearance();
+            }
+            ui.add_space(6.0);
+            hint(
+                ui,
+                if pcb.settings.clearance {
+                    "Click two objects: copper on the active layer, a drill hole or the board edge. The gap \
+                     between their edges shows with the clearance the design rules ask for (red when it's \
+                     less). E switches to points, Esc clears."
+                } else {
+                    "Click a start point, then an end point. Ends snap to pad and via centres (from anywhere \
+                     inside them), track ends and outline corners, else to the grid; hold Alt for a free \
+                     point. The next click starts a new measurement, E measures clearances, Esc clears."
+                },
+            );
+        }
+        PcbTool::Cutout => {
+            grid(ui, "pcb_tool", |ui| {
+                label(ui, "Layer");
+                layer_combo(ui, "pcb_tool_layer", &mut s.layer, doc);
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            hint(
+                ui,
+                "Start inside a zone or keepout on the active layer and click the cutout's corners. Inside, \
+                 it becomes a hole (merged with holes it overlaps); across the edge, it trims the outline. \
+                 A cut that would split the area in two is refused.",
+            );
+        }
         PcbTool::Zone => {
             grid(ui, "pcb_tool", |ui| {
                 label(ui, "Layer");

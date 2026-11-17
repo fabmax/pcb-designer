@@ -172,6 +172,13 @@ pub enum Command {
         #[serde(default)]
         mids: Vec<Option<Point>>,
     },
+    /// Cut `outline` out of a zone or keepout (`id`). Inside it, it becomes a hole (merged
+    /// with holes it overlaps); across the edge, it trims the outline. Refused if it
+    /// misses the area, would remove all of it or split it into pieces.
+    AddCutout {
+        id: ObjectId,
+        outline: Vec<Point>,
+    },
     /// Round the corners between the given straight tracks (where two of them end at the
     /// same point with nothing else there) with tangent arcs of `radius`. Corners whose
     /// tracks are too short for the radius stay; fails if none could be rounded.
@@ -315,6 +322,7 @@ impl Command {
             Command::AddTrack { .. } => "Add track".into(),
             Command::AddVia { .. } => "Add via".into(),
             Command::RoundCorners { .. } => "Round corners".into(),
+            Command::AddCutout { .. } => "Add cutout".into(),
             Command::SetCopperLayers { count } => format!("{count} copper layers"),
             Command::SetDesignRules { .. } => "Edit design rules".into(),
             Command::SetTitleBlock { .. } => "Edit title block".into(),
@@ -504,6 +512,17 @@ impl Command {
                 }
                 Ok(())
             }
+            Command::AddCutout { id, outline } => tx.update(id, |o| {
+                let (outer, holes) = match o {
+                    Object::Zone(z) => (&mut z.outline, &mut z.holes),
+                    Object::Keepout(k) => (&mut k.outline, &mut k.holes),
+                    _ => return Err(CommandError::Invalid("only zones and keepouts take cutouts".into())),
+                };
+                let (o2, h2) = crate::zones::cut(outer, holes, &outline).map_err(CommandError::Invalid)?;
+                *outer = o2;
+                *holes = h2;
+                Ok(())
+            }),
             Command::RoundCorners { tracks, radius } => {
                 if radius <= 0 {
                     return Err(CommandError::Invalid("the radius must be positive".into()));

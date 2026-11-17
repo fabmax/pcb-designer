@@ -104,7 +104,11 @@ pads and vias move along, sliding along the next track to keep their angles.
 Copper zones and keepouts are inserted with execute (command insert, object zone or keepout). \
 A zone fills its outline minus its holes on one layer with its net (empty net: isolated \
 copper); connection thermal/thermal_through_hole/solid/none says how its own pads join, \
-islands always/never/below_area which unconnected fill pieces go. A keepout (layers: copper \
+islands always/never/below_area which unconnected fill pieces go. add_cutout {id, outline} cuts a polygon out of a \
+zone or keepout: inside, it becomes a hole (merged with holes it overlaps), across the edge it \
+trims the outline; cuts that miss, remove all or split the area are refused. Edit corners by \
+update with a new outline or holes. measure_clearance gives the gap between two pads, tracks, \
+vias, zones, drill holes or the board edge, with the rule that applies. A keepout (layers: copper \
 layers, empty for all) forbids tracks, vias, pads, zone fills (no_pour) or footprints \
 (courtyards) inside its outline; fills leave it out and DRC reports the rest. Arc tracks have \
 a mid point (any point on the arc between a and b): add_track takes mids (one per segment, \
@@ -220,6 +224,12 @@ pub struct GetObjectsParams {
 pub struct DrcParams {
     /// Maximum number of violations to list (default 200; the counts cover all).
     pub limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ClearanceParams {
+    pub a: editor_core::clearance::Feature,
+    pub b: editor_core::clearance::Feature,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -516,6 +526,15 @@ impl PcbTools {
         involved (footprints for pads). The GUI marks them too.")]
     async fn run_drc(&self, Parameters(p): Parameters<DrcParams>) -> Result<CallToolResult, ErrorData> {
         self.call(Request::Drc { limit: p.limit.unwrap_or(200) }).await
+    }
+
+    #[tool(description = "Measure the gap between two things on the board: a pad {type: pad, \
+        footprint, pad}, track {type: track, id}, via, zone (its fill), pad_hole {footprint, pad}, \
+        via_hole {id} or the board edge {type: edge}. Returns the distance (nm, 0 when touching), \
+        the nearest points a and b, the design rule clearance that applies (copper of different \
+        nets on a common layer, copper to the edge; null otherwise) and whether it's violated.")]
+    async fn measure_clearance(&self, Parameters(p): Parameters<ClearanceParams>) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::MeasureClearance { a: p.a, b: p.b }).await
     }
 
     #[tool(description = "Export the board for manufacturing: Gerber X2 files (copper, solder \

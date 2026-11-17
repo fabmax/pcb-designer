@@ -114,6 +114,32 @@ fn grown(outer: &[Point], holes: &[Vec<Point>], d: Coord) -> Vec<Contour> {
     out
 }
 
+/// `outer` minus `holes` with `cutout` taken away: the new outline and holes. A cutout
+/// inside becomes a hole (merged with holes it overlaps); one across the edge trims the
+/// outline. Fails if nothing is cut, or the area would vanish or fall into pieces.
+pub fn cut(outer: &[Point], holes: &[Vec<Point>], cutout: &[Point]) -> Result<(Vec<Point>, Vec<Vec<Point>>), String> {
+    if cutout.len() < 3 || area(&cutout.iter().map(|&p| pt(p)).collect::<Vec<_>>()).abs() < 1.0 {
+        return Err("a cutout needs at least 3 corners around an area".into());
+    }
+    let before = shape_area(&std::iter::once(outer.to_vec()).chain(holes.iter().cloned()).collect::<Vec<_>>());
+    let base = vec![grown(outer, holes, 0)];
+    let knife = vec![vec![oriented(cutout.iter().map(|&p| pt(p)).collect(), true)]];
+    let result = base.overlay(&knife, OverlayRule::Difference, FillRule::NonZero);
+    let shapes: Vec<Vec<Vec<Point>>> =
+        result.into_iter().map(|s| s.into_iter().map(|c| c.into_iter().map(unpt).collect()).collect()).collect();
+    match shapes.as_slice() {
+        [] => Err("the cutout would remove the whole area".into()),
+        [shape] => {
+            if (shape_area(shape) - before).abs() < 1.0 {
+                return Err("the cutout doesn't overlap the area".into());
+            }
+            let (outline, holes) = shape.split_first().expect("shapes have an outline");
+            Ok((outline.clone(), holes.to_vec()))
+        }
+        _ => Err("the cutout would split the area into pieces".into()),
+    }
+}
+
 fn geo_contours(g: &Geo) -> Vec<Contour> {
     inflate(g, 0)
 }

@@ -120,6 +120,37 @@ impl Geo {
         (d - (ra + rb) as f64).max(0.0)
     }
 
+    /// The shortest gap between the shapes and the points on each that it lies between
+    /// (0 and a common point when they touch).
+    pub fn nearest(&self, other: &Geo) -> (f64, Point, Point) {
+        let (ea, ra) = self.edges_and_radius();
+        let (eb, rb) = other.edges_and_radius();
+        let mut best = (f64::MAX, (0.0, 0.0), (0.0, 0.0));
+        for &(a, b) in &ea {
+            for &(c, e) in &eb {
+                let (d, p, q) = seg_seg_closest(a, b, c, e);
+                if d < best.0 {
+                    best = (d, p, q);
+                }
+            }
+        }
+        let (d, p, q) = best;
+        let pt = |x: (f64, f64)| Point::new(x.0.round() as Coord, x.1.round() as Coord);
+        if d == f64::MAX {
+            return (0.0, Point::ZERO, Point::ZERO);
+        }
+        let gap = d - (ra + rb) as f64;
+        if self.touches(other) || gap <= 0.0 {
+            let m = if d > 0.0 { ra as f64 / d } else { 0.0 };
+            let c = pt((p.0 + (q.0 - p.0) * m.min(1.0), p.1 + (q.1 - p.1) * m.min(1.0)));
+            return (0.0, c, c);
+        }
+        let (ux, uy) = ((q.0 - p.0) / d, (q.1 - p.1) / d);
+        let a = pt((p.0 + ux * ra as f64, p.1 + uy * ra as f64));
+        let b = pt((q.0 - ux * rb as f64, q.1 - uy * rb as f64));
+        (gap, a, b)
+    }
+
     /// Boundary segments (a capsule is its axis) and the radius around them.
     fn edges_and_radius(&self) -> (Vec<(Point, Point)>, Coord) {
         match self {
@@ -559,6 +590,39 @@ pub fn seg_seg_dist(a: Point, b: Point, c: Point, d: Point) -> f64 {
         return 0.0;
     }
     point_seg_dist(a, c, d).min(point_seg_dist(b, c, d)).min(point_seg_dist(c, a, b)).min(point_seg_dist(d, a, b))
+}
+
+/// The closest point to `p` on segment `ab`.
+fn seg_closest(p: (f64, f64), a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let len2 = dx * dx + dy * dy;
+    let t = if len2 == 0.0 { 0.0 } else { (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / len2).clamp(0.0, 1.0) };
+    (a.0 + t * dx, a.1 + t * dy)
+}
+
+/// Distance between segments `ab` and `cd` and the closest points on each.
+pub(crate) fn seg_seg_closest(a: Point, b: Point, c: Point, d: Point) -> (f64, (f64, f64), (f64, f64)) {
+    let (fa, fb, fc, fd) = (f(a), f(b), f(c), f(d));
+    if segments_cross(a, b, c, d) {
+        // The crossing point.
+        let r = (fb.0 - fa.0, fb.1 - fa.1);
+        let s = (fd.0 - fc.0, fd.1 - fc.1);
+        let den = r.0 * s.1 - r.1 * s.0;
+        let t = ((fc.0 - fa.0) * s.1 - (fc.1 - fa.1) * s.0) / den;
+        let x = (fa.0 + t * r.0, fa.1 + t * r.1);
+        return (0.0, x, x);
+    }
+    let dist = |p: (f64, f64), q: (f64, f64)| ((p.0 - q.0).powi(2) + (p.1 - q.1).powi(2)).sqrt();
+    [
+        (fa, seg_closest(fa, fc, fd)),
+        (fb, seg_closest(fb, fc, fd)),
+        (seg_closest(fc, fa, fb), fc),
+        (seg_closest(fd, fa, fb), fd),
+    ]
+    .into_iter()
+    .map(|(p, q)| (dist(p, q), p, q))
+    .min_by(|x, y| x.0.total_cmp(&y.0))
+    .unwrap()
 }
 
 pub fn point_in_polygon(p: Point, poly: &[Point]) -> bool {

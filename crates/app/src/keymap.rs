@@ -57,6 +57,9 @@ pub enum Action {
     PcbOutline,
     PcbZone,
     PcbKeepout,
+    PcbCutout,
+    ConvertToPolygon,
+    MeasureClearance,
     PcbText,
     PcbNextLayer,
     Settings,
@@ -120,6 +123,9 @@ impl Action {
         Action::PcbOutline,
         Action::PcbZone,
         Action::PcbKeepout,
+        Action::PcbCutout,
+        Action::ConvertToPolygon,
+        Action::MeasureClearance,
         Action::PcbText,
         Action::PcbNextLayer,
         Action::Settings,
@@ -175,6 +181,9 @@ impl Action {
             Action::PcbOutline => "Board outline tool (PCB)",
             Action::PcbZone => "Copper zone tool (PCB)",
             Action::PcbKeepout => "Keepout tool (PCB)",
+            Action::PcbCutout => "Cutout tool (PCB)",
+            Action::ConvertToPolygon => "Convert to polygon",
+            Action::MeasureClearance => "Measure clearances or points (PCB)",
             Action::PcbText => "Text tool (PCB)",
             Action::PcbNextLayer => "Next copper layer; adds a via while routing (PCB)",
             Action::Settings => "Settings",
@@ -207,6 +216,9 @@ impl Action {
             | Action::PcbOutline
             | Action::PcbZone
             | Action::PcbKeepout
+            | Action::PcbCutout
+            | Action::ConvertToPolygon
+            | Action::MeasureClearance
             | Action::PcbText
             | Action::PcbNextLayer
             | Action::RoundCorners => Some(Context::Board),
@@ -400,6 +412,7 @@ impl Default for Keymap {
             (Action::PcbOutline, vec![S::key(Key::O)]),
             (Action::PcbZone, vec![S::key(Key::Z)]),
             (Action::PcbKeepout, vec![S::key(Key::K)]),
+            (Action::MeasureClearance, vec![S::key(Key::E)]),
             (Action::PcbText, vec![S::shift(Key::T)]),
             (Action::PcbNextLayer, vec![S::key(Key::L)]),
             (Action::Settings, vec![S::cmd(Key::Comma)]),
@@ -499,7 +512,7 @@ mod tests {
         let map = Keymap::default();
         assert!(map.conflicts().is_empty());
         // Unbound by default (in a menu).
-        let unbound = [Action::RoundCorners, Action::MoveToSheet];
+        let unbound = [Action::RoundCorners, Action::MoveToSheet, Action::PcbCutout, Action::ConvertToPolygon];
         for a in Action::ALL.iter().filter(|a| !unbound.contains(a)) {
             assert!(!map.shortcuts(*a).is_empty(), "{a:?} has no default shortcut");
         }
