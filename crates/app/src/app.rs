@@ -3992,8 +3992,20 @@ fn renamed_note(renamed: usize) -> String {
 }
 
 /// The objects of `selection` that lie on sheet `from` ("Move to sheet…" moves them).
+/// A selected reference or value text stands for its symbol (fields go with their symbol).
 fn movable_ids(project: &Project, selection: &[ObjectId], from: Id) -> Vec<ObjectId> {
-    selection.iter().copied().filter(|id| project.schematic.sheet_of(*id) == Some(from)).collect()
+    let sch = &project.schematic;
+    let mut ids: Vec<ObjectId> = selection
+        .iter()
+        .map(|&id| match id {
+            ObjectId::SymbolField(f) => sch.fields.get(f).map_or(id, |f| ObjectId::Symbol(f.symbol)),
+            _ => id,
+        })
+        .filter(|id| sch.sheet_of(*id) == Some(from))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
 }
 
 /// Schematic left, PCB right (each in its own tab group).
