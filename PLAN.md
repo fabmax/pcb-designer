@@ -128,8 +128,22 @@ the current design of each area with the gotchas a change needs to know, the pla
   Schematic clips carry the parts their symbols use (components come first). `Paste`
   gives new ids, keeps a refdes if it's free (so cut + paste keeps it) else the next
   one, imports missing parts (present ones win), then moves everything by
-  `at - anchor`. Sheet symbols and footprints aren't copied. Library item clips (pins,
-  pads, graphics, texts) are pasted by `view::item::paste_elems` as an `Update`.
+  `at - anchor`. Library item clips (pins, pads, graphics, texts) are pasted by
+  `view::item::paste_elems` as an `Update`. Version 2: an older clip is refused.
+  - A sheet symbol is copied with its sheet tree (`Sheet` objects parents first, then the
+    sub-sheets' contents). Paste maps old sheet ids to new ones, names a top-level copy
+    like `unique_sheet_name` (amp → amp2 → amp3) and drops copied title blocks. Only the
+    top-level objects move by the delta (`placed`); sub-sheet contents keep their places.
+  - Board clips carry board-part footprints with their component, fields and parts (a
+    `library`, imported on paste). Footprints of schematic parts are left out and counted
+    as skipped: they follow the schematic.
+  - `Duplicate {ids, delta}` is copy + paste in one command (MCP's duplicate).
+- `MoveToSheet {ids, sheet}` keeps ids (so components keep refdes, footprints, routing).
+  A symbol takes its fields and the no-connects on its pins (`query::pin_positions`);
+  unlisted wires stay. A sheet re-parents with its subtree, refused below itself,
+  renamed like a copy on a clash. No net repair: the app counts renamed nets in the
+  status bar. Gotcha: a moved sheet keeps its symbol position, which may lie off the new
+  parent's page.
 - `query::unused_library_objects` lists unused parts, then the symbols/footprints only
   they need; deleting in that order passes the in-use checks.
 
@@ -409,6 +423,8 @@ the current design of each area with the gotchas a change needs to know, the pla
   `Interaction::carry` is a drag without a button in the paste's undo group (moves,
   R, X join it; a click drops; Esc undoes the paste). Carried edits are wrapped in
   `Edit::Carry` so schematic wires the paste passes over aren't rubber-banded.
+  `clipboard::paste` returns only what landed in the view (not copied sub-sheet
+  contents, nor footprints sync stages for pasted components), so only that is carried.
 - **In-place text editing** (`text_edit`): `TextEdit` (text, caret and anchor as char
   indices, `TextTarget` says what a commit changes) is GUI-independent; `geometry`
   maps the font layout (`font::caret_positions`, `line_origins`, y-up local coordinates
@@ -561,6 +577,16 @@ the current design of each area with the gotchas a change needs to know, the pla
   follow the pointer: hovering a sheet's canvas while placing switches
   `SchPlacer::sheet` there (`switch_sheet` clears the old preview). Double-clicking a
   sheet symbol opens its tab. Deleting a non-empty sheet asks first (`confirm_sheet_delete`).
+- **Move to sheet** (`sheet_picker.rs`): the action (no default key) opens a dialog of
+  sheet paths with a filter, without the current sheet and selected sheets' subtrees.
+  The move and the carry on the target sheet share one undo group, so Esc undoes the
+  move. Sub-sheets dragged in the Project tree onto a sheet re-parent
+  (`project_panel::can_drop_sheet`: not onto itself, its subtree or its parent; not
+  while searching).
+- **Canvas context menu** (`menu::canvas_menu`): a right click (no drag; right drag pans)
+  selects the object under the pointer unless it's selected, and opens clipboard,
+  rotate/mirror (flip on the board), delete and Move to sheet. Picks run as
+  `Deferred::Action` after the tiles are drawn.
 - **Floating tool bars** (`toolbar.rs`, vector icons in `icons.rs`) are drawn after the
   canvas and sense click-and-drag, so presses never reach the canvas. View buttons
   (layers, grid/units/snap, fit) sit at the bottom left.
@@ -663,12 +689,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-**M14: Clipboard, board parts and sheets**
-- Board parts: copy/paste and duplicate on the board; a "Place board part" picker in the
-  PCB tool bar; editing their reference and value on the board (read-only today).
-- Copying sheet symbols (a deep copy of the sub-sheet).
-- Moving objects between sheets; re-parenting sheets.
-
 **M15: Measuring and zone editing**
 - Measure tool: edge-to-edge (clearance) measuring, snapping to a pad's centre from
   anywhere inside it.
@@ -737,6 +757,8 @@ defers.
   the mask area from the outline's contour (bounding box today), true clear polarity,
   G74 arcs, LM, thermal primitives, slots in drill files.
 - Clipboard: carrying a paste between the schematic and the board.
+- A side-bar panel to browse and place board parts from the project and loaded
+  libraries (needs design; P on the board stays unassigned until then).
 - Measure tool: an index for `board_points` on huge boards.
 - Push-and-shove routing.
 - Routing checks: clearance to zone fills of other nets, an index for huge boards

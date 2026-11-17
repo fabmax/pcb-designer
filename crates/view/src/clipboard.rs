@@ -20,10 +20,15 @@ pub fn copy(
     let first = selection.iter().find(|id| clip::is_pasted_kind(id.kind()));
     let anchor = first.and_then(|&id| reference_point(project, id)).map(snap).unwrap_or_default();
     let (clip, skipped) = clip::copy(project, selection, anchor).ok_or_else(|| {
-        if selection.is_empty() { "Nothing selected" } else { "Sheet symbols and footprints can't be copied" }
-            .to_string()
+        if selection.is_empty() {
+            "Nothing selected"
+        } else {
+            "Footprints of schematic parts can't be copied: copy their symbols in the schematic"
+        }
+        .to_string()
     })?;
-    let note = (skipped > 0).then(|| format!("{skipped} object(s) can't be copied (sheet symbols, footprints)"));
+    let note = (skipped > 0)
+        .then(|| format!("{skipped} object(s) left out (footprints of schematic parts follow the schematic)"));
     Ok((clip, note))
 }
 
@@ -49,10 +54,17 @@ pub fn paste(
         ViewId::Board => None,
     };
     let changes = doc.execute_grouped(Command::Paste { clip, sheet, at }, group).map_err(|e| e.to_string())?;
+    // What landed in this view: not the contents of copied sub-sheets, nor the footprints
+    // sync stages for pasted schematic components.
+    let project = doc.project();
     Ok(changes
         .changes
         .iter()
         .filter(|c| c.before.is_none() && c.after.is_some() && clip::is_pasted_kind(c.id.kind()))
         .map(|c| c.id)
+        .filter(|&id| match sheet {
+            Some(s) => project.schematic.sheet_of(id) == Some(s),
+            None => !matches!(id.kind(), ObjectKind::Sheet) && project.schematic.sheet_of(id).is_none(),
+        })
         .collect())
 }

@@ -18,3 +18,4 @@ mod power_styles;
 mod project_libraries;
 mod routing;
 mod sheets;
+mod sheets_clip;

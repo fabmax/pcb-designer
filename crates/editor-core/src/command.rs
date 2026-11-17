@@ -1,5 +1,7 @@
 //! Serializable editing commands. The GUI, scripts and MCP clients all go through these.
 
+use std::collections::{HashMap, HashSet};
+
 use serde::{Deserialize, Serialize};
 
 use model::*;
@@ -256,6 +258,22 @@ pub enum Command {
         sheet: Option<Id>,
         at: Point,
     },
+    /// Move schematic objects to another sheet, keeping their ids (components keep their
+    /// references, footprints and routing). Reference and value texts and the no-connect
+    /// flags on moved symbols' pins go along; wires not listed stay. A sheet symbol
+    /// re-parents its sheet (with its sub-sheets) below `sheet`, renamed with a number on a
+    /// name clash; a sheet can't move below itself. Positions are kept.
+    MoveToSheet {
+        ids: Vec<ObjectId>,
+        sheet: Id,
+    },
+    /// Copy and paste in one step, moved by `delta`: schematic objects (sheet symbols with
+    /// their sub-sheets) on their sheet, board objects (board parts included) on the board.
+    /// Copies of components get the next free references.
+    Duplicate {
+        ids: Vec<ObjectId>,
+        delta: Point,
+    },
     /// Replace raw objects by id (references are validated).
     Update {
         objects: Vec<Object>,
@@ -308,6 +326,8 @@ impl Command {
             Command::Insert { objects } => format!("Insert {} object(s)", objects.len()),
             Command::Update { objects } => format!("Update {} object(s)", objects.len()),
             Command::Paste { .. } => "Paste".into(),
+            Command::MoveToSheet { ids, .. } => format!("Move {} object(s) to another sheet", ids.len()),
+            Command::Duplicate { ids, .. } => format!("Duplicate {} object(s)", ids.len()),
             Command::AddLibrary { path } => format!("Add library {}", file_name(path)),
             Command::RemoveLibrary { path } => format!("Remove library {}", file_name(path)),
             Command::RelinkLibrary { to, .. } => format!("Relink library to {}", file_name(to)),
@@ -593,6 +613,14 @@ impl Command {
                 Ok(())
             }
             Command::Paste { clip, sheet, at } => paste(tx, clip, sheet, at),
+            Command::MoveToSheet { ids, sheet } => move_to_sheet(tx, &ids, sheet),
+            Command::Duplicate { ids, delta } => {
+                let p = tx.project();
+                let (clip, _) = crate::clip::copy(p, &ids, Point::ZERO)
+                    .ok_or_else(|| CommandError::Invalid("nothing to duplicate".into()))?;
+                let sheet = ids.iter().find_map(|&id| p.schematic.sheet_of(id));
+                paste(tx, clip, sheet, delta)
+            }
             Command::Update { objects } => {
                 for o in objects {
                     check_references(tx.project(), &o)?;
@@ -661,99 +689,83 @@ fn resolve_sheet(tx: &Transaction, sheet: Option<Id>) -> Result<Id, CommandError
 
 fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Result<(), CommandError> {
     let delta = at - clip.anchor;
+    // What lands where the clip is pasted (moved by `delta`; the contents of copied
+    // sub-sheets keep their places on their own pages).
     let mut placed = Vec::new();
     match clip.content {
         ClipContent::Schematic { objects, library } => {
             let sheet = resolve_sheet(tx, sheet)?;
-            // Parts the project lacks come from the clip; present ones stay as they are.
-            for part in library.parts.iter() {
-                if tx.project().library.parts.contains(part.id) {
-                    continue;
-                }
-                let (part, symbols, footprints) =
-                    library.extract_part(part.id).ok_or(CommandError::NotFound(ObjectId::LibPart(part.id)))?;
-                for s in symbols {
-                    if !tx.project().library.symbols.contains(s.id) {
-                        tx.insert(Object::LibSymbol(s))?;
-                    }
-                }
-                for f in footprints {
-                    if !tx.project().library.footprints.contains(f.id) {
-                        tx.insert(Object::LibFootprint(f))?;
-                    }
-                }
-                tx.insert(Object::LibPart(part))?;
-            }
-            let mut components = std::collections::HashMap::new();
-            let mut symbols = std::collections::HashMap::new();
-            let mut with_fields = std::collections::HashSet::new();
+            import_clip_parts(tx, &library)?;
+            let mut map = PasteIds::default();
+            // Sheets of copied sheet symbols: old id → new id.
+            let mut sheets: HashMap<Id, Id> = HashMap::new();
             for o in objects {
-                let o = match o {
-                    Object::Component(mut c) => {
-                        let old = c.id;
-                        c.id = Id::new();
-                        let part = tx
-                            .project()
-                            .library
-                            .parts
-                            .get(c.part)
-                            .ok_or(CommandError::NotFound(ObjectId::LibPart(c.part)))?;
-                        if part.variant(c.variant).is_none() {
-                            c.variant = part.variants.first().map(|v| v.id).unwrap_or(c.variant);
-                        }
-                        if c.refdes.is_empty() || tx.project().schematic.component_by_refdes(&c.refdes).is_some() {
-                            c.refdes = next_refdes(tx.project(), &part.prefix.clone());
-                        }
-                        components.insert(old, c.id);
-                        tx.insert(Object::Component(c))?;
+                let on = |old: Id| sheets.get(&old).copied().unwrap_or(sheet);
+                let top = |old: Id| !sheets.contains_key(&old);
+                let (o, top) = match o {
+                    Object::Component(c) => {
+                        map.component(tx, c)?;
                         continue;
+                    }
+                    Object::SymbolField(f) => {
+                        map.symbol_field(tx, f)?;
+                        continue;
+                    }
+                    Object::Sheet(mut s) => {
+                        let old = s.id;
+                        let parent = s.parent.map_or(sheet, on);
+                        let is_top = s.parent.is_none_or(top);
+                        s.id = Id::new();
+                        s.parent = Some(parent);
+                        s.title_block = None;
+                        if is_top {
+                            s.name = unique_sheet_name(&tx.project().schematic, parent, &s.name);
+                        }
+                        sheets.insert(old, s.id);
+                        (Object::Sheet(s), is_top)
                     }
                     Object::Symbol(mut s) => {
-                        s.component = *components
-                            .get(&s.component)
-                            .ok_or_else(|| CommandError::Invalid("the clip lacks the component of a symbol".into()))?;
+                        s.component = map.component_of(s.component, "symbol")?;
                         let old = s.id;
-                        s.id = Id::new();
-                        s.sheet = sheet;
-                        symbols.insert(old, s.id);
-                        Object::Symbol(s)
-                    }
-                    Object::SymbolField(mut f) => {
-                        f.symbol = *symbols
-                            .get(&f.symbol)
-                            .ok_or_else(|| CommandError::Invalid("the clip lacks the symbol of a text".into()))?;
-                        f.id = Id::new();
-                        with_fields.insert(f.symbol);
-                        tx.insert(Object::SymbolField(f))?;
-                        continue;
+                        let is_top = top(s.sheet);
+                        (s.id, s.sheet) = (Id::new(), on(s.sheet));
+                        map.symbols.insert(old, s.id);
+                        (Object::Symbol(s), is_top)
                     }
                     Object::Wire(mut w) => {
-                        (w.id, w.sheet) = (Id::new(), sheet);
-                        Object::Wire(w)
+                        let is_top = top(w.sheet);
+                        (w.id, w.sheet) = (Id::new(), on(w.sheet));
+                        (Object::Wire(w), is_top)
                     }
                     Object::BusWire(mut w) => {
-                        (w.id, w.sheet) = (Id::new(), sheet);
-                        Object::BusWire(w)
+                        let is_top = top(w.sheet);
+                        (w.id, w.sheet) = (Id::new(), on(w.sheet));
+                        (Object::BusWire(w), is_top)
                     }
                     Object::BusEntry(mut e) => {
-                        (e.id, e.sheet) = (Id::new(), sheet);
-                        Object::BusEntry(e)
+                        let is_top = top(e.sheet);
+                        (e.id, e.sheet) = (Id::new(), on(e.sheet));
+                        (Object::BusEntry(e), is_top)
                     }
                     Object::Junction(mut j) => {
-                        (j.id, j.sheet) = (Id::new(), sheet);
-                        Object::Junction(j)
+                        let is_top = top(j.sheet);
+                        (j.id, j.sheet) = (Id::new(), on(j.sheet));
+                        (Object::Junction(j), is_top)
                     }
                     Object::NoConnect(mut n) => {
-                        (n.id, n.sheet) = (Id::new(), sheet);
-                        Object::NoConnect(n)
+                        let is_top = top(n.sheet);
+                        (n.id, n.sheet) = (Id::new(), on(n.sheet));
+                        (Object::NoConnect(n), is_top)
                     }
                     Object::Label(mut l) => {
-                        (l.id, l.sheet) = (Id::new(), sheet);
-                        Object::Label(l)
+                        let is_top = top(l.sheet);
+                        (l.id, l.sheet) = (Id::new(), on(l.sheet));
+                        (Object::Label(l), is_top)
                     }
                     Object::SchText(mut t) => {
-                        (t.id, t.sheet) = (Id::new(), sheet);
-                        Object::SchText(t)
+                        let is_top = top(t.sheet);
+                        (t.id, t.sheet) = (Id::new(), on(t.sheet));
+                        (Object::SchText(t), is_top)
                     }
                     other => {
                         return Err(CommandError::Invalid(format!(
@@ -763,16 +775,50 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
                     }
                 };
                 check_references(tx.project(), &o)?;
-                placed.push(tx.insert(o)?);
+                let id = tx.insert(o)?;
+                if top {
+                    placed.push(id);
+                }
             }
             // Symbols copied without their texts get fresh ones.
-            for s in symbols.into_values().filter(|s| !with_fields.contains(s)) {
+            for s in map.symbols.into_values().filter(|s| !map.with_fields.contains(s)) {
                 insert_symbol_fields(tx, s)?;
             }
         }
-        ClipContent::Board { objects } => {
+        ClipContent::Board { objects, library } => {
+            import_clip_parts(tx, &library)?;
+            let mut map = PasteIds::default();
+            let mut footprints: HashMap<Id, Id> = HashMap::new();
+            let mut with_fields = HashSet::new();
             for o in objects {
                 let o = match o {
+                    Object::Component(c) => {
+                        let part = tx.project().library.parts.get(c.part);
+                        if !part.is_some_and(|p| p.is_board_part()) {
+                            return Err(CommandError::Invalid(
+                                "only board parts can be pasted onto the board; schematic parts are placed in the schematic"
+                                    .into(),
+                            ));
+                        }
+                        map.component(tx, c)?;
+                        continue;
+                    }
+                    Object::Footprint(mut f) => {
+                        f.component = map.component_of(f.component, "footprint")?;
+                        let old = f.id;
+                        f.id = Id::new();
+                        footprints.insert(old, f.id);
+                        Object::Footprint(f)
+                    }
+                    Object::FootprintField(mut f) => {
+                        f.footprint = *footprints
+                            .get(&f.footprint)
+                            .ok_or_else(|| CommandError::Invalid("the clip lacks the footprint of a text".into()))?;
+                        f.id = Id::new();
+                        with_fields.insert(f.footprint);
+                        tx.insert(Object::FootprintField(f))?;
+                        continue;
+                    }
                     Object::Track(mut t) => {
                         t.id = Id::new();
                         Object::Track(t)
@@ -807,6 +853,9 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
                 check_references(tx.project(), &o)?;
                 placed.push(tx.insert(o)?);
             }
+            for f in footprints.into_values().filter(|f| !with_fields.contains(f)) {
+                insert_fields(tx, f)?;
+            }
         }
         other => {
             return Err(CommandError::Invalid(format!(
@@ -819,6 +868,165 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
         transform_objects(tx, &placed, Transform::new(delta, Angle::ZERO, false), Edit::Transform)?;
     }
     Ok(())
+}
+
+fn move_to_sheet(tx: &mut Transaction, ids: &[ObjectId], target: Id) -> Result<(), CommandError> {
+    let sch = &tx.project().schematic;
+    if !sch.sheets.contains(target) {
+        return Err(CommandError::NotFound(ObjectId::Sheet(target)));
+    }
+    let mut moves: Vec<ObjectId> = Vec::new();
+    for &id in ids {
+        match id {
+            ObjectId::SymbolField(_) => continue, // drawn on its symbol's sheet
+            ObjectId::Sheet(s) => {
+                if sch.sheet_and_descendants(s).contains(&target) {
+                    return Err(CommandError::Invalid("a sheet can't move onto itself or its own sub-sheets".into()));
+                }
+            }
+            ObjectId::Symbol(sym) => {
+                // No-connect flags on its pins go along.
+                let from = sch.sheet_of(id);
+                for (_, _, p) in crate::query::pin_positions(tx.project(), sym) {
+                    moves.extend(
+                        sch.no_connects
+                            .iter()
+                            .filter(|n| Some(n.sheet) == from && n.pos == p)
+                            .map(|n| ObjectId::NoConnect(n.id)),
+                    );
+                }
+            }
+            ObjectId::Wire(_)
+            | ObjectId::BusWire(_)
+            | ObjectId::BusEntry(_)
+            | ObjectId::Junction(_)
+            | ObjectId::NoConnect(_)
+            | ObjectId::Label(_)
+            | ObjectId::SchText(_) => {}
+            other => {
+                return Err(CommandError::Invalid(format!(
+                    "{:?} isn't on a sheet; only schematic objects move between sheets",
+                    other.kind()
+                )));
+            }
+        }
+        if sch.sheet_of(id).is_none() {
+            return Err(CommandError::NotFound(id));
+        }
+        moves.push(id);
+    }
+    moves.sort();
+    moves.dedup();
+    moves.retain(|&id| tx.project().schematic.sheet_of(id) != Some(target));
+    if moves.is_empty() {
+        return Err(CommandError::Invalid("everything is on that sheet already".into()));
+    }
+    for id in moves {
+        let name = match id {
+            ObjectId::Sheet(s) => tx.project().schematic.sheets.get(s).map(|s| s.name.clone()),
+            _ => None,
+        };
+        let name = name.map(|n| unique_sheet_name(&tx.project().schematic, target, &n));
+        tx.update(id, |o| {
+            match o {
+                Object::Sheet(s) => {
+                    s.parent = Some(target);
+                    if let Some(n) = name {
+                        s.name = n;
+                    }
+                }
+                Object::Symbol(x) => x.sheet = target,
+                Object::Wire(x) => x.sheet = target,
+                Object::BusWire(x) => x.sheet = target,
+                Object::BusEntry(x) => x.sheet = target,
+                Object::Junction(x) => x.sheet = target,
+                Object::NoConnect(x) => x.sheet = target,
+                Object::Label(x) => x.sheet = target,
+                Object::SchText(x) => x.sheet = target,
+                _ => {}
+            }
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
+/// New ids of pasted components and symbols.
+#[derive(Default)]
+struct PasteIds {
+    components: HashMap<Id, Id>,
+    symbols: HashMap<Id, Id>,
+    /// Pasted symbols whose texts came along.
+    with_fields: HashSet<Id>,
+}
+
+impl PasteIds {
+    /// Insert a copy of component `c` with a new id, keeping its reference if it is free.
+    fn component(&mut self, tx: &mut Transaction, mut c: Component) -> Result<(), CommandError> {
+        let old = c.id;
+        c.id = Id::new();
+        let part = tx.project().library.parts.get(c.part).ok_or(CommandError::NotFound(ObjectId::LibPart(c.part)))?;
+        if part.variant(c.variant).is_none() {
+            c.variant = part.variants.first().map(|v| v.id).unwrap_or(c.variant);
+        }
+        if c.refdes.is_empty() || tx.project().schematic.component_by_refdes(&c.refdes).is_some() {
+            c.refdes = next_refdes(tx.project(), &part.prefix.clone());
+        }
+        self.components.insert(old, c.id);
+        tx.insert(Object::Component(c)).map(drop)
+    }
+
+    fn component_of(&self, old: Id, what: &str) -> Result<Id, CommandError> {
+        self.components
+            .get(&old)
+            .copied()
+            .ok_or_else(|| CommandError::Invalid(format!("the clip lacks the component of a {what}")))
+    }
+
+    fn symbol_field(&mut self, tx: &mut Transaction, mut f: SymbolField) -> Result<(), CommandError> {
+        f.symbol = *self
+            .symbols
+            .get(&f.symbol)
+            .ok_or_else(|| CommandError::Invalid("the clip lacks the symbol of a text".into()))?;
+        f.id = Id::new();
+        self.with_fields.insert(f.symbol);
+        tx.insert(Object::SymbolField(f)).map(drop)
+    }
+}
+
+/// Import the parts of a clip the project lacks; present ones stay as they are.
+fn import_clip_parts(tx: &mut Transaction, library: &Library) -> Result<(), CommandError> {
+    for part in library.parts.iter() {
+        if tx.project().library.parts.contains(part.id) {
+            continue;
+        }
+        let (part, symbols, footprints) =
+            library.extract_part(part.id).ok_or(CommandError::NotFound(ObjectId::LibPart(part.id)))?;
+        for s in symbols {
+            if !tx.project().library.symbols.contains(s.id) {
+                tx.insert(Object::LibSymbol(s))?;
+            }
+        }
+        for f in footprints {
+            if !tx.project().library.footprints.contains(f.id) {
+                tx.insert(Object::LibFootprint(f))?;
+            }
+        }
+        tx.insert(Object::LibPart(part))?;
+    }
+    Ok(())
+}
+
+/// `name`, or if a sibling below `parent` has it, the name with the next free number
+/// (`amp` → `amp2`, `amp2` → `amp3`).
+pub(crate) fn unique_sheet_name(sch: &Schematic, parent: Id, name: &str) -> String {
+    let taken = |n: &str| sch.children(parent).any(|s| s.name == n);
+    if !taken(name) {
+        return name.to_string();
+    }
+    let stem = name.trim_end_matches(|c: char| c.is_ascii_digit());
+    let stem = if stem.is_empty() { name } else { stem };
+    (2..).map(|n| format!("{stem}{n}")).find(|n| !taken(n)).expect("a free name")
 }
 
 fn import_parts(tx: &mut Transaction, parts: Vec<PartBundle>) -> Result<(), CommandError> {

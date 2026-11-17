@@ -98,6 +98,11 @@ pub enum Act {
     RenameSheet(Id),
     /// Delete a sheet with its contents (asking first if it has any).
     DeleteSheet(Id),
+    /// A sheet was dragged onto another: make it a sub-sheet of that one.
+    MoveSheet {
+        sheet: Id,
+        to: Id,
+    },
     SaveProject,
     SaveProjectAs,
     Reveal(PathBuf),
@@ -445,6 +450,21 @@ pub struct ProjectPanel {
     focus_search: bool,
     /// Give the tree keyboard focus next frame.
     focus_tree: bool,
+    /// The sheet being dragged onto another.
+    drag: Option<Id>,
+}
+
+/// Whether sheet `sheet` can become a sub-sheet of `to`: not onto itself, its own
+/// subtree, or the sheet it already is on.
+pub fn can_drop_sheet(roots: &[TreeNode], sheet: Id, to: Id) -> bool {
+    fn find(nodes: &[TreeNode], id: NodeId, parent: Option<NodeId>) -> Option<(&TreeNode, Option<NodeId>)> {
+        nodes.iter().find_map(|n| if n.id == id { Some((n, parent)) } else { find(&n.children, id, Some(n.id)) })
+    }
+    fn contains(n: &TreeNode, id: NodeId) -> bool {
+        n.id == id || n.children.iter().any(|c| contains(c, id))
+    }
+    let Some((node, parent)) = find(roots, NodeId::Sheet(sheet), None) else { return false };
+    !contains(node, NodeId::Sheet(to)) && parent != Some(NodeId::Sheet(to))
 }
 
 fn tree_id() -> egui::Id {
@@ -553,9 +573,47 @@ impl ProjectPanel {
             }
         }
         self.scroll = false;
+        if let Some(a) = self.drop_ui(ui, area, &rows, roots) {
+            act = Some(a);
+        }
 
         if focused && let Some(a) = self.keys(ui, &rows, roots) {
             act = Some(a);
+        }
+        act
+    }
+
+    /// A sheet dragged in the tree: the sheet row under the pointer is highlighted if it
+    /// can take it, and the drop makes the dragged sheet its sub-sheet.
+    fn drop_ui(
+        &mut self,
+        ui: &mut Ui,
+        area: egui::Rect,
+        rows: &[Row<NodeId, Info>],
+        roots: &[TreeNode],
+    ) -> Option<Act> {
+        let sheet = self.drag?;
+        let (pos, released) = ui.input(|i| (i.pointer.latest_pos(), !i.pointer.primary_down()));
+        let index = pos.filter(|p| area.contains(*p)).map(|p| ((p.y - area.top()) / ROW) as usize);
+        let mut act = None;
+        let mut ok = false;
+        if let Some(i) = index
+            && let Some(NodeId::Sheet(to)) = rows.get(i).map(|r| r.node.id)
+            && can_drop_sheet(roots, sheet, to)
+        {
+            ok = true;
+            let rect = egui::Rect::from_min_size(area.min + vec2(0.0, i as f32 * ROW), vec2(area.width(), ROW));
+            let stroke = egui::Stroke::new(1.5, theme::accent());
+            ui.painter().rect_stroke(rect.shrink(1.0), 4.0, stroke, egui::StrokeKind::Inside);
+            if released {
+                act = Some(Act::MoveSheet { sheet, to });
+            }
+        }
+        ui.ctx().set_cursor_icon(if ok { egui::CursorIcon::Grabbing } else { egui::CursorIcon::NotAllowed });
+        if released {
+            self.drag = None;
+        } else {
+            ui.ctx().request_repaint();
         }
         act
     }
@@ -571,7 +629,17 @@ impl ProjectPanel {
         let mut act = None;
         let node = row.node;
         let info = &node.data;
-        let r = ui.interact(rect, tree_id().with(node.id), Sense::click());
+        // Sub-sheets can be dragged onto other sheets (not while searching: the rows
+        // don't show the hierarchy then).
+        let draggable = matches!(node.id, NodeId::Sheet(_)) && info.editable && !self.state.is_searching();
+        let sense = if draggable { Sense::click_and_drag() } else { Sense::click() };
+        let r = ui.interact(rect, tree_id().with(node.id), sense);
+        if let NodeId::Sheet(s) = node.id
+            && draggable
+            && r.drag_started()
+        {
+            self.drag = Some(s);
+        }
         let painter = ui.painter_at(rect);
         let visuals = ui.visuals();
         if selected {
@@ -911,5 +979,22 @@ mod tests {
         let sub = acts(menu(NodeId::Sheet(s), &Info { editable: true, ..Default::default() }));
         assert!(sub.contains(&Act::RenameSheet(s)) && sub.contains(&Act::DeleteSheet(s)));
         assert_eq!(activate(NodeId::Project, &Info::default()), None, "expands");
+    }
+
+    #[test]
+    fn sheets_drop_onto_other_sheets_only() {
+        let [root, a, b, c] = [Id::new(), Id::new(), Id::new(), Id::new()];
+        let node = |s: Id| TreeNode::new(NodeId::Sheet(s), "", Info::default());
+        // root › a › b, root › c
+        let roots = vec![
+            TreeNode::new(NodeId::Project, "", Info::default())
+                .with_children(vec![node(root).with_children(vec![node(a).with_children(vec![node(b)]), node(c)])]),
+        ];
+        assert!(can_drop_sheet(&roots, b, c));
+        assert!(can_drop_sheet(&roots, b, root));
+        assert!(can_drop_sheet(&roots, c, a));
+        assert!(!can_drop_sheet(&roots, a, a), "onto itself");
+        assert!(!can_drop_sheet(&roots, a, b), "into its own subtree");
+        assert!(!can_drop_sheet(&roots, b, a), "where it already is");
     }
 }

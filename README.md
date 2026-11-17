@@ -65,12 +65,24 @@ pads, vias and branches; with ⇧ or ⌘ it's added to the selection.
 ⌘C / ⌘X / ⌘V (Ctrl on Windows and Linux) copy, cut and paste the selection; ⌘D
 duplicates it without touching the clipboard. A paste follows the pointer (R rotates,
 X mirrors) until you click; Esc cancels it. Works in the schematic (symbols, wires,
-buses, labels, texts; across sheets, and into other projects and app instances, since
-clips carry their parts), on the board (tracks, vias, zones, keepouts, graphics, texts; they keep
-their layers) and in the symbol and footprint editors (pins, pads, graphics, texts;
-pins and pads get the next free numbers). Pasted components get the next free
-reference unless theirs is free (after a cut). Clips are JSON text on the system
-clipboard.
+buses, labels, texts, sheet symbols; across sheets, and into other projects and app
+instances, since clips carry their parts), on the board (tracks, vias, zones, keepouts,
+graphics, texts, and board parts such as mounting holes; they keep their layers) and in
+the symbol and footprint editors (pins, pads, graphics, texts; pins and pads get the
+next free numbers). Pasted components get the next free reference unless theirs is free
+(after a cut). A copied sheet symbol copies its whole sheet with its sub-sheets, as an
+independent copy named amp2, amp3, …; their components get new references. Footprints of
+schematic parts aren't copied on the board: copy their symbols in the schematic. Clips
+are JSON text on the system clipboard (clips of older versions are refused).
+
+Right-click the canvas for a menu with these and more. **Move to sheet…** (Edit menu or
+the right-click menu; no default key, bind one in the settings) moves the selected
+schematic objects to another sheet you pick from a list: they keep their identity
+(references, footprints and routing stay), take their reference and value texts and
+no-connect flags along, and follow the pointer on the new sheet until you click (Esc
+undoes the move). Wires you didn't select stay, so the status bar tells how many nets
+were renamed by the move. A moved sheet symbol takes its sheet along as a sub-sheet of
+the target; in the Project tree you can also drag a sub-sheet onto another sheet.
 
 ## Zones and keepouts
 
@@ -142,7 +154,8 @@ Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `run_drc`, `export_gerber`, `execute` (any editor command, as one undo step, e.g.
 `add_text` on a sheet or a board layer), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
 or the whole window) and `save_project`. Sheets are added, renamed and deleted with
-`execute` (`add_sheet`, `update`, `delete`); `get_project` lists their paths, and wherever
+`execute` (`add_sheet`, `update`, `delete`), and `move_to_sheet` moves objects (or
+re-parents a sheet) while `duplicate` copies objects in one step; `get_project` lists their paths, and wherever
 a sheet is asked for (`sheet`, `parent`), an id, a name or a path like `/Power/Regulator`
 works. Agent edits go through the same commands as the
 GUI, so they can be undone with ⌘Z, and the status bar shows what the agent just did.
@@ -179,8 +192,9 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
 - **Board parts** (mounting holes, logos, fiducials) have no symbol: a part without units.
   They show a mounting-hole icon in the tree, and "Place on board" (or P) places them on
   the PCB, where R rotates and F flips the side; Delete removes them there. Their pads
-  have no net, so copper of a net touching one is a short. The Built-in Library has an
-  M3 mounting hole. Remove a part's last unit in the part form to make one.
+  have no net, so copper of a net touching one is a short. Copy, paste and ⌘D work on
+  them on the board, and Properties edits their reference and value (as for every
+  footprint). The Built-in Library has an M3 mounting hole. Remove a part's last unit in the part form to make one.
 - **Footprint variants** can be switched in Properties both for a symbol in the schematic
   and for a footprint on the board (the board lists only variants with a footprint).
 - **Reference and value texts** belong to each symbol in the schematic and each footprint

@@ -6,5 +6,6 @@ mod gerber_export;
 mod kicad_headless;
 mod kicad_project;
 mod library_tools;
+mod sheets_clip;
 mod stdio;
 mod texts;

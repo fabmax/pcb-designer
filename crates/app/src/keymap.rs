@@ -51,6 +51,7 @@ pub enum Action {
     Posture,
     NextCorners,
     RoundCorners,
+    MoveToSheet,
     PcbRoute,
     PcbVia,
     PcbOutline,
@@ -113,6 +114,7 @@ impl Action {
         Action::Posture,
         Action::NextCorners,
         Action::RoundCorners,
+        Action::MoveToSheet,
         Action::PcbRoute,
         Action::PcbVia,
         Action::PcbOutline,
@@ -167,6 +169,7 @@ impl Action {
             Action::Posture => "Corner direction (wires, tracks)",
             Action::NextCorners => "Next corner style (wires, tracks)",
             Action::RoundCorners => "Round track corners",
+            Action::MoveToSheet => "Move to sheet…",
             Action::PcbRoute => "Route tool (PCB)",
             Action::PcbVia => "Via tool (PCB)",
             Action::PcbOutline => "Board outline tool (PCB)",
@@ -197,7 +200,8 @@ impl Action {
             | Action::SchText
             | Action::SchPower
             | Action::SchJunction
-            | Action::SchNoConnect => Some(Context::Schematic),
+            | Action::SchNoConnect
+            | Action::MoveToSheet => Some(Context::Schematic),
             Action::PcbRoute
             | Action::PcbVia
             | Action::PcbOutline
@@ -495,7 +499,7 @@ mod tests {
         let map = Keymap::default();
         assert!(map.conflicts().is_empty());
         // Unbound by default (in a menu).
-        let unbound = [Action::RoundCorners];
+        let unbound = [Action::RoundCorners, Action::MoveToSheet];
         for a in Action::ALL.iter().filter(|a| !unbound.contains(a)) {
             assert!(!map.shortcuts(*a).is_empty(), "{a:?} has no default shortcut");
         }

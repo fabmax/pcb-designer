@@ -862,15 +862,26 @@ impl Properties {
         let Some(part) = project.library.parts.get(c.part).cloned() else { return };
         let fp_name = project.library.footprint_of(c.part, c.variant).map_or("?".into(), |fp| fp.name.clone());
         heading(ui, &c.refdes, &fp_name);
-        let note = if part.is_board_part() {
-            "Board part: placed on the board only, no symbol. Its pads have no net."
-        } else {
-            "Reference and value are edited in the schematic."
-        };
-        ui.label(RichText::new(note).color(theme::text_dim()));
+        if part.is_board_part() {
+            let note = "Board part: placed on the board only, no symbol. Its pads have no net.";
+            ui.label(RichText::new(note).color(theme::text_dim()));
+        }
         ui.add_space(4.0);
+        // Text buffers are kept for selected objects only: key them by the footprint.
+        let target = ObjectId::Footprint(f.id);
         grid(ui, |ui| {
-            row(ui, "Value", c.value.clone());
+            label(ui, "Reference");
+            if let Some(refdes) = self.text(ui, target, "refdes", &c.refdes) {
+                let cmd = Command::SetComponent { id: c.id, refdes: Some(refdes), value: None, variant: None };
+                self.run(cx, cmd, false);
+            }
+            ui.end_row();
+            label(ui, "Value");
+            if let Some(value) = self.text(ui, target, "value", &c.value) {
+                let cmd = Command::SetComponent { id: c.id, refdes: None, value: Some(value), variant: None };
+                self.run(cx, cmd, false);
+            }
+            ui.end_row();
             label(ui, "Footprint");
             self.variant_combo(ui, cx, &c, &part, true);
             ui.end_row();

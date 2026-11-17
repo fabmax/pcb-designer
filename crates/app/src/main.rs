@@ -57,6 +57,7 @@ mod properties;
 mod sch_ui;
 mod script;
 mod settings;
+mod sheet_picker;
 mod theme;
 #[cfg(target_os = "macos")]
 mod title_bar;

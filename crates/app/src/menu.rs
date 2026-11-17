@@ -108,6 +108,8 @@ pub struct MenuState<'a> {
     pub agent_port: u16,
     /// The `claude mcp add` command for the headless (stdio) mode.
     pub headless_command: String,
+    /// The selection holds schematic objects that can move to another sheet.
+    pub move_to_sheet: bool,
 }
 
 pub const APP_NAME: &str = "PCB Designer";
@@ -197,7 +199,11 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
     for a in [Action::SelectAll, Action::Rotate, Action::Mirror, Action::Flip, Action::Delete] {
         edit.push(action(a.label(), a, true));
     }
-    edit.extend([Entry::Separator, action("Round track corners", Action::RoundCorners, true)]);
+    edit.extend([
+        Entry::Separator,
+        action("Move to sheet…", Action::MoveToSheet, s.move_to_sheet),
+        action("Round track corners", Action::RoundCorners, true),
+    ]);
     if !s.native {
         edit.extend([Entry::Separator, action("Settings…", Action::Settings, true)]);
     }
@@ -275,6 +281,40 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
     }
     out.push(menu("Help", vec![item("Keyboard shortcuts", Cmd::ShowShortcuts)]));
     out
+}
+
+/// The context menu of a schematic (`schematic`) or board canvas.
+pub fn canvas_menu(keymap: &Keymap, schematic: bool, selected: bool, move_to_sheet: bool) -> Vec<Entry> {
+    let action = |a: Action, enabled: bool| Entry::Item {
+        label: a.label().to_string(),
+        cmd: Cmd::Action(a),
+        shortcut: keymap.shortcuts(a).first().copied(),
+        enabled,
+    };
+    let mut out = vec![
+        action(Action::Cut, selected),
+        action(Action::Copy, selected),
+        action(Action::Paste, true),
+        action(Action::Duplicate, selected),
+        Entry::Separator,
+        action(Action::Rotate, selected),
+        action(if schematic { Action::Mirror } else { Action::Flip }, selected),
+        action(Action::Delete, selected),
+    ];
+    if schematic {
+        out.extend([Entry::Separator, action(Action::MoveToSheet, move_to_sheet)]);
+    }
+    out
+}
+
+/// Draws `entries` into an open (context) menu. Returns the picked command.
+pub fn entries_menu_ui(ui: &mut egui::Ui, entries: &[Entry]) -> Option<Cmd> {
+    let mut picked = None;
+    entries_ui(ui, entries, &mut picked);
+    if picked.is_some() {
+        ui.close();
+    }
+    picked
 }
 
 /// Draws the menus as an egui menu bar. Returns the picked command.
@@ -355,6 +395,7 @@ mod tests {
             agent_url: None,
             agent_port: 4321,
             headless_command: "claude mcp add …".into(),
+            move_to_sheet: false,
         }
     }
 

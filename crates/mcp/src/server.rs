@@ -65,7 +65,14 @@ component pins. screenshot, \
 get_selection and set_selection take a sheet too. Reference designators are unique \
 across all sheets. Each sheet has a page (A4 landscape by default; size none for no frame) \
 whose lower left corner is the origin: keep objects inside page_rect. update a sheet's page \
-to change it; set_title_block edits the title block shown on every sheet.
+to change it; set_title_block edits the title block shown on every sheet. move_to_sheet {ids, sheet} moves \
+schematic objects to another sheet keeping their ids, positions and references (symbols take \
+their reference/value texts and no-connect flags along; wires not listed stay, so check the \
+nets afterwards); moving a sheet symbol makes its sheet (with its sub-sheets) a sub-sheet of \
+the target, renamed with a number on a name clash. duplicate {ids, delta} copies objects \
+moved by delta: copied components get the next free references, a copied sheet symbol copies \
+its whole sub-sheet tree, and on the board board parts are copied (footprints of schematic \
+parts are not: duplicate their symbols).
 
 Schematic and board are linked: placing a part creates its footprint on the board automatically \
 (in a staging area right of the board outline), deleting the component removes it. Footprints \

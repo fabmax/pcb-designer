@@ -17,6 +17,7 @@ use view::pcb_tools::{PcbPlacer, PcbTool};
 use view::sch_tools::{SchPlacer, SchTool};
 
 use crate::name_prompt::NamePrompt;
+use crate::sheet_picker::SheetPicker;
 use view::project_libs::{self, MissingLibrary};
 use view::tools::Tool;
 use view::{Document, Interaction, KeyAction, LibraryDoc, ViewId, ViewKind};
@@ -205,6 +206,8 @@ enum Deferred {
     /// A sheet symbol was double-clicked: open its sheet.
     EnterSheet(Id),
     Gerber(GerberAct),
+    /// Picked in a canvas's context menu.
+    Action(Action),
 }
 
 /// Which editor takes keyboard shortcuts.
@@ -266,6 +269,8 @@ pub struct PcbApp {
     sch: SchPlacer,
     /// Asking for the name of a new bus or of a signal leaving one.
     name_prompt: Option<NamePrompt>,
+    /// "Move to sheet…" asking for the sheet.
+    sheet_picker: Option<SheetPicker>,
     /// The dock as last saved (the live one is in `settings`).
     saved_dock: Dock,
     /// The Project panel's tree.
@@ -378,6 +383,7 @@ impl PcbApp {
             kicad: KicadImport::new(opts.kicad_paths.clone(), crate::settings::kicad_dir()),
             sch: SchPlacer::default(),
             name_prompt: None,
+            sheet_picker: None,
             saved_dock: Dock::default(),
             project_tree: ProjectPanel::default(),
             rename: None,
@@ -492,7 +498,7 @@ impl PcbApp {
     /// After drawing a bus or a wire to a bus entry, ask for the missing name and add
     /// the label.
     fn name_prompt_ui(&mut self, ctx: &egui::Context) {
-        if self.name_prompt.is_none() {
+        if self.name_prompt.is_none() && self.sheet_picker.is_none() {
             let grid = self.panes.get(self.sheet_view()).it.grid;
             self.name_prompt = self.sch.take_prompt(&mut self.project.lib.doc, grid).map(NamePrompt::new);
         }
@@ -509,6 +515,66 @@ impl PcbApp {
             Some(Err(e)) => self.set_status(e),
             None => {}
         }
+    }
+
+    /// "Move to sheet…": ask where the active sheet's selection goes.
+    /// The selected objects of the sheet being edited, which "Move to sheet…" takes.
+    fn movable_to_sheet(&self) -> Vec<ObjectId> {
+        let view = self.sheet_view();
+        let Some(from) = view.sheet() else { return Vec::new() };
+        movable_ids(self.doc().project(), &self.panes.selection(view), from)
+    }
+
+    fn move_to_sheet(&mut self) {
+        let Some(from) = self.sheet_view().sheet() else { return };
+        let ids = self.movable_to_sheet();
+        if ids.is_empty() {
+            return self.set_status("Select schematic objects to move to another sheet");
+        }
+        match SheetPicker::new(self.doc().project(), ids, from) {
+            Some(p) => self.sheet_picker = Some(p),
+            None => self.set_status("There is no other sheet to move them to"),
+        }
+    }
+
+    /// The sheet picker's dialog; once a sheet is chosen, move the objects there and let
+    /// them follow the pointer on it (Esc undoes the move).
+    fn sheet_picker_ui(&mut self, ctx: &egui::Context) {
+        let Some(picker) = &mut self.sheet_picker else { return };
+        let Some(answer) = picker.ui(ctx) else { return };
+        let ids = std::mem::take(&mut picker.ids);
+        self.sheet_picker = None;
+        let Some(target) = answer else { return };
+        let from = self.sheet_view();
+        let group = view::interaction::new_group();
+        let renamed = match self.move_to_sheet_cmd(ids.clone(), target, group) {
+            Ok(n) => n,
+            Err(e) => return self.set_status(e),
+        };
+        let doc = &mut self.project.lib.doc;
+        let pane = self.panes.get(from);
+        pane.it.set_selection(&mut doc.target(from), Vec::new());
+        let to = ViewId::Sheet(target);
+        self.show_view(to);
+        let doc = &mut self.project.lib.doc;
+        let carried: Vec<ObjectId> = ids.into_iter().filter(|id| !matches!(id, ObjectId::SymbolField(_))).collect();
+        let anchor = carried.iter().find_map(|&id| view::interaction::reference_point(doc.project(), id));
+        let anchor = anchor.unwrap_or_default();
+        self.panes.get(to).it.carry(&mut doc.target(to), carried, anchor, anchor, group);
+        let path = doc.project().schematic.display_path(target);
+        self.set_status(format!("Moved to {path}{}. Click to place them, Esc undoes the move", renamed_note(renamed)));
+    }
+
+    /// Run [`Command::MoveToSheet`] as part of undo `group`. Returns how many nets lost
+    /// their name by it (the move doesn't fix connections, it tells about them).
+    fn move_to_sheet_cmd(&mut self, ids: Vec<ObjectId>, sheet: Id, group: u64) -> Result<usize, String> {
+        let doc = &mut self.project.lib.doc;
+        let nets = |doc: &mut Document| -> std::collections::HashSet<String> {
+            doc.current_connectivity().nets.iter().map(|n| n.name.clone()).filter(|n| !n.is_empty()).collect()
+        };
+        let before = nets(doc);
+        doc.execute_grouped(Command::MoveToSheet { ids, sheet }, Some(group)).map_err(|e| e.to_string())?;
+        Ok(before.difference(&nets(doc)).count())
     }
 
     fn set_status(&mut self, msg: impl Into<String>) {
@@ -1858,6 +1924,7 @@ impl PcbApp {
             }
             Action::ExportGerber => return self.export_gerber(),
             Action::RoundCorners => return self.round_corners(),
+            Action::MoveToSheet => return self.move_to_sheet(),
             Action::Cut | Action::Copy | Action::Paste | Action::Duplicate => return,
             Action::Undo => return self.undo(),
             Action::Redo => return self.redo(),
@@ -1981,7 +2048,8 @@ impl PcbApp {
             | Action::SchNoConnect
             | Action::Posture
             | Action::NextCorners
-            | Action::RoundCorners => None,
+            | Action::RoundCorners
+            | Action::MoveToSheet => None,
             Action::PcbRoute
             | Action::PcbVia
             | Action::PcbOutline
@@ -2062,6 +2130,7 @@ impl PcbApp {
             agent_url: self.agent.url(),
             agent_port: self.agent.port,
             headless_command: format!("claude mcp add pcb-designer -- \"{exe}\" --mcp-stdio{project}"),
+            move_to_sheet: !self.movable_to_sheet().is_empty(),
         })
     }
 
@@ -2391,6 +2460,18 @@ impl PcbApp {
             Act::RenameSheet(sheet) => {
                 if let Some(sh) = self.doc().project().schematic.sheets.get(sheet) {
                     self.rename = Some(Rename { what: Naming::Sheet(sheet), text: sh.name.clone(), focused: false });
+                }
+            }
+            Act::MoveSheet { sheet, to } => {
+                let group = view::interaction::new_group();
+                match self.move_to_sheet_cmd(vec![ObjectId::Sheet(sheet)], to, group) {
+                    Ok(renamed) => {
+                        self.doc_mut().close_group();
+                        let sch = &self.doc().project().schematic;
+                        let msg = format!("Moved to {}{}", sch.display_path(sheet), renamed_note(renamed));
+                        self.set_status(msg);
+                    }
+                    Err(e) => self.set_status(e),
                 }
             }
             Act::DeleteSheet(sheet) => {
@@ -3326,6 +3407,25 @@ impl TreeBehavior<'_> {
                     pane.it.double_click(&mut doc.target(view), add);
                 }
             }
+            // A right click selects what is under the pointer (unless it is selected
+            // already) and opens the context menu.
+            if response.secondary_clicked() && pane.it.is_idle() {
+                if let Some(h) = pane.it.hover
+                    && !pane.it.selection.contains(&h)
+                {
+                    pane.it.set_selection(&mut doc.target(view), vec![h]);
+                } else if pane.it.hover.is_none() {
+                    pane.it.set_selection(&mut doc.target(view), Vec::new());
+                }
+            }
+            let selected = !pane.it.selection.is_empty();
+            let movable = sheet.is_some_and(|s| !movable_ids(doc.project(), &pane.it.selection, s).is_empty());
+            let entries = menu::canvas_menu(self.keymap, sheet.is_some(), selected, movable);
+            response.context_menu(|ui| {
+                if let Some(menu::Cmd::Action(a)) = menu::entries_menu_ui(ui, &entries) {
+                    self.deferred.push(Deferred::Action(a));
+                }
+            });
             if pane.it.is_dragging() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
             } else if pane.it.hover.is_some() && response.hovered() {
@@ -3580,10 +3680,14 @@ impl eframe::App for PcbApp {
         self.paste_text = ctx.input(|i| {
             i.events.iter().find_map(|e| if let egui::Event::Paste(t) = e { Some(t.clone()) } else { None })
         });
-        if self.name_prompt.is_none() && !ctx.egui_wants_keyboard_input() && self.editing_doc().is_some() {
+        if self.name_prompt.is_none()
+            && self.sheet_picker.is_none()
+            && !ctx.egui_wants_keyboard_input()
+            && self.editing_doc().is_some()
+        {
             self.text_edit_input(&ctx);
         }
-        if !self.record_shortcut(&ctx) && self.name_prompt.is_none() {
+        if !self.record_shortcut(&ctx) && self.name_prompt.is_none() && self.sheet_picker.is_none() {
             for action in self.keymap.triggered(&ctx, self.context()) {
                 self.run_action(action);
             }
@@ -3681,6 +3785,7 @@ impl eframe::App for PcbApp {
                 }
                 Deferred::Gerber(GerberAct::Reexport) => self.export_gerber(),
                 Deferred::Gerber(GerberAct::Focus) => self.focus = Focus::Gerber,
+                Deferred::Action(a) => self.run_action(a),
             }
         }
         if let ViewId::Sheet(s) = self.active {
@@ -3738,6 +3843,7 @@ impl eframe::App for PcbApp {
         }
         self.update_dock(&ctx);
         self.name_prompt_ui(&ctx);
+        self.sheet_picker_ui(&ctx);
         self.rename_ui(&ctx);
         self.settings_window(&ctx);
         self.import_report_ui(&ctx);
@@ -3874,6 +3980,20 @@ fn default_tree(root: ViewId) -> Tree<Tab> {
     let mut tree = Tree::new(egui::Id::unique("main_tree"), root, tiles);
     tree.make_active(|id, _| id == sch);
     tree
+}
+
+/// "; N nets were renamed" for the status after a move to another sheet.
+fn renamed_note(renamed: usize) -> String {
+    match renamed {
+        0 => String::new(),
+        1 => "; 1 net was renamed".into(),
+        n => format!("; {n} nets were renamed"),
+    }
+}
+
+/// The objects of `selection` that lie on sheet `from` ("Move to sheet…" moves them).
+fn movable_ids(project: &Project, selection: &[ObjectId], from: Id) -> Vec<ObjectId> {
+    selection.iter().copied().filter(|id| project.schematic.sheet_of(*id) == Some(from)).collect()
 }
 
 /// Schematic left, PCB right (each in its own tab group).
