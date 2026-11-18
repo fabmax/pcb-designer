@@ -68,6 +68,23 @@ pub fn mm6(v: Coord) -> String {
     s
 }
 
+/// An attribute value: the characters the format reserves (`%`, `*`, `,`, `\\`) and
+/// non-ASCII ones as `\\uXXXX` escapes.
+fn escape(v: &str) -> String {
+    let mut s = String::new();
+    for c in v.chars() {
+        if matches!(c, '%' | '*' | ',' | '\\') || !(' '..='~').contains(&c) {
+            let mut buf = [0u16; 2];
+            for u in c.encode_utf16(&mut buf) {
+                let _ = write!(s, "\\u{u:04X}");
+            }
+        } else {
+            s.push(c);
+        }
+    }
+    s
+}
+
 /// One Gerber file being written.
 pub struct GerberWriter {
     header: Vec<String>,
@@ -78,6 +95,8 @@ pub struct GerberWriter {
     pos: Option<Point>,
     dark: bool,
     uses_macro: bool,
+    /// The object attributes (`.N,…`, `.P,…`, `.C,…`) in effect.
+    object: Vec<String>,
 }
 
 const FIRST_D: usize = 10;
@@ -96,6 +115,7 @@ impl GerberWriter {
             pos: None,
             dark: true,
             uses_macro: false,
+            object: Vec::new(),
         }
     }
 
@@ -115,6 +135,32 @@ impl GerberWriter {
             let _ = writeln!(self.body, "D{}*", i + FIRST_D);
             self.current = Some(i);
         }
+    }
+
+    /// Set the object attributes of what follows (`.N,GND`, `.P,R1,2`, `.C,R1`), clearing
+    /// the previous ones. Values are escaped.
+    pub fn object(&mut self, attributes: &[(&str, &[&str])]) {
+        let attrs: Vec<String> = attributes
+            .iter()
+            .map(|(name, values)| {
+                let mut s = name.to_string();
+                for v in *values {
+                    s.push(',');
+                    s.push_str(&escape(v));
+                }
+                s
+            })
+            .collect();
+        if attrs == self.object {
+            return;
+        }
+        if !self.object.is_empty() {
+            self.body.push_str("%TD*%\n");
+        }
+        for a in &attrs {
+            let _ = writeln!(self.body, "%TO{a}*%");
+        }
+        self.object = attrs;
     }
 
     /// Dark (adds) or clear (removes what was drawn before) polarity.
@@ -176,7 +222,8 @@ impl GerberWriter {
         let _ = writeln!(self.body, "X{}Y{}D01*", contour[0].x, contour[0].y);
         self.body.push_str("G37*\n");
         if function.is_some() {
-            self.body.push_str("%TD*%\n");
+            // Only the aperture attribute: object attributes stay in effect.
+            self.body.push_str("%TD.AperFunction*%\n");
         }
         self.pos = Some(contour[0]);
     }
@@ -201,6 +248,9 @@ impl GerberWriter {
             }
         }
         out.push_str(&self.body);
+        if !self.object.is_empty() {
+            out.push_str("%TD*%\n");
+        }
         out.push_str("M02*\n");
         out
     }
@@ -230,5 +280,23 @@ mod tests {
         // The second stroke continues without a move.
         assert_eq!(s.matches("D02*").count(), 1);
         assert!(s.ends_with("M02*\n"));
+    }
+
+    #[test]
+    fn object_attributes_change_only_when_needed() {
+        let mut w = GerberWriter::new(&[]);
+        w.aperture(Aperture::Circle(mm(0.25)), Some("Conductor"));
+        w.object(&[(".N", &["GND"])]);
+        w.line(Point::ZERO, Point::mm(1.0, 0.0));
+        w.object(&[(".N", &["GND"])]);
+        w.region(&[Point::ZERO, Point::mm(1.0, 0.0), Point::mm(1.0, 1.0)], Some("Conductor"));
+        w.object(&[(".N", &["A,B*"]), (".C", &["R1"])]);
+        w.flash(Point::ZERO);
+        let s = w.finish();
+        assert_eq!(s.matches("%TO.N,GND*%").count(), 1);
+        assert!(s.contains("%TD.AperFunction*%"));
+        assert!(s.contains("%TO.N,A\\u002CB\\u002A*%\n%TO.C,R1*%"));
+        assert!(s.ends_with("%TD*%\nM02*\n"));
+        assert_eq!(escape("Ω"), "\\u03A9");
     }
 }

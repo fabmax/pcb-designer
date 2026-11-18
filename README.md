@@ -14,19 +14,25 @@ cargo test --workspace
 ## Manufacturing files
 
 File → Export Gerber files (⇧⌘E) writes Gerber X2 files (copper, solder mask, paste,
-silkscreen, board outline) and Excellon drill files (one more per blind or buried via
-span, e.g. `Demo-front-in1.drl`) into `<project>.pcbproj/output/gerber/`,
-replacing the previous export, plus `output/<name>-gerber.zip` for the manufacturer.
+silkscreen, board outline), Excellon drill files (one more per blind or buried via
+span, e.g. `Demo-front-in1.drl`) and a Gerber job file (`Demo-job.gbrjob`) into
+`<project>.pcbproj/output/gerber/`, replacing the previous export, plus
+`output/<name>-gerber.zip` for the manufacturer. Copper carries net, pad and component
+attributes. For assembly it writes a bill of materials (`Demo-bom.csv`: grouped by
+value, footprint and properties such as an MPN) and component positions
+(`Demo-positions.csv`: board mm, rotation, side) into `output/assembly/`; board parts
+(mounting holes, logos) are left out.
 Zones are refilled and the design rules checked first; violations are reported but don't
 stop the export. Solder mask openings and paste come from the pads (Board setup: mask
 expansion, paste margin). Without a window: `pcb-designer export-gerber PROJECT_DIR`.
 The `output` folder is generated, so you may want it in `.gitignore`.
 
-The Project panel lists the files under Outputs › Gerber (marked *outdated* when the
-design changed since). Double-click opens them read back from disk in a read-only
+The Project panel lists the files under Outputs › Gerber and Outputs › Assembly (marked
+*outdated* when the design changed since); the job file and the CSV files open in your
+system's app. Double-click opens them read back from disk in a read-only
 Gerber tab, stacked like the board in its colours (solder mask inverted, drills as
 holes); double-clicking a single file shows only that one, the layers button toggles
-them, and hovering names the file, aperture and its function. Open the PCB tab side by
+them, and hovering names the file, aperture and its function, and the pad and net. Open the PCB tab side by
 side to compare. Agents can look too: `screenshot` with target `gerber`.
 
 ## Drawing wires and tracks

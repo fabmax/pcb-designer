@@ -30,6 +30,12 @@ fn exports_into_the_project_folder() {
         assert!(dir.join("output/gerber").join(f["name"].as_str().unwrap()).is_file());
     }
     assert!(std::path::Path::new(v["zip"].as_str().unwrap()).is_file());
+    assert!(files.iter().any(|f| f["label"] == "Job File"), "{v}");
+    let assembly = v["assembly"].as_array().unwrap();
+    assert_eq!(assembly.len(), 2, "{v}");
+    for f in assembly {
+        assert!(dir.join("output/assembly").join(f["name"].as_str().unwrap()).is_file());
+    }
     assert!(v["drc_violations"].as_u64().unwrap() > 0, "the demo has unrouted connections");
 
     // The export, read back and rendered (all files, or some).

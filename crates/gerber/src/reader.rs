@@ -161,6 +161,8 @@ pub struct Object {
     pub prims: Vec<Prim>,
     /// Where a flash (or a drill hole) sits.
     pub flash: Option<Point>,
+    /// Its object attributes (`.N`, `.P`, `.C`): an index into [`Image::object_attributes`].
+    pub attributes: Option<u32>,
 }
 
 impl Object {
@@ -195,6 +197,9 @@ pub struct Image {
     /// X2 file attributes without the `%TF`, e.g. `.FileFunction,Copper,L1,Top`.
     pub attributes: Vec<String>,
     pub objects: Vec<Object>,
+    /// The distinct sets of object attributes (`%TO`) the objects carry, each without the
+    /// `%TO` and unescaped, e.g. `.N,GND`.
+    pub object_attributes: Vec<Vec<String>>,
     pub apertures: HashMap<u32, ApertureInfo>,
     /// Problems that were skipped over.
     pub warnings: Vec<String>,
@@ -204,6 +209,12 @@ impl Image {
     /// The `.FileFunction` value, e.g. `Copper,L1,Top`.
     pub fn file_function(&self) -> Option<&str> {
         self.attributes.iter().find_map(|a| a.strip_prefix(".FileFunction,"))
+    }
+
+    /// The value of an object's attribute (`.N`, `.P`, `.C`), e.g. `GND` or `R1,2`.
+    pub fn object_attribute(&self, object: &Object, name: &str) -> Option<&str> {
+        let set = self.object_attributes.get(object.attributes? as usize)?;
+        set.iter().find_map(|a| a.strip_prefix(name)?.strip_prefix(','))
     }
 
     /// `.FilePolarity,Negative`: drawn objects are where the material is *not*.
@@ -450,6 +461,9 @@ struct State {
     rotation: f64,
     scaling: f64,
     pending_function: Option<String>,
+    /// The object attributes in effect, and their index in the image once an object used them.
+    object: Vec<String>,
+    object_index: Option<u32>,
 }
 
 impl State {
@@ -538,6 +552,8 @@ pub fn parse_gerber(text: &str) -> Result<Image, ParseError> {
         rotation: 0.0,
         scaling: 1.0,
         pending_function: None,
+        object: Vec::new(),
+        object_index: None,
     };
     for (line, stmt, extended) in statements(text) {
         let r = if extended { extended_command(&mut st, &mut img, &stmt) } else { word(&mut st, &mut img, &stmt) };
@@ -614,13 +630,66 @@ fn extended_command(st: &mut State, img: &mut Image, block: &str) -> Result<bool
             if td.is_empty() || td == ".AperFunction" {
                 st.pending_function = None;
             }
-        } else if s.starts_with("TO") || s.starts_with("IP") || s.starts_with("IN") || s.starts_with("OF") {
-            // Object attributes, image polarity/name/offset (deprecated): not needed here.
+            if td.is_empty() || !td.starts_with(".AperFunction") {
+                let before = st.object.len();
+                st.object.retain(|a| !td.is_empty() && a.split(',').next() != Some(td));
+                if st.object.len() != before {
+                    st.object_index = None;
+                }
+            }
+        } else if let Some(to) = s.strip_prefix("TO") {
+            let to = unescape(to);
+            let name = to.split(',').next().unwrap_or_default().to_string();
+            st.object.retain(|a| a.split(',').next() != Some(name.as_str()));
+            st.object.push(to);
+            st.object_index = None;
+        } else if s.starts_with("IP") || s.starts_with("IN") || s.starts_with("OF") {
+            // Image polarity/name/offset (deprecated): not needed here.
         } else {
             img.warnings.push(format!("ignored %{s}*%"));
         }
     }
     Ok(false)
+}
+
+/// Add an object with the attributes in effect.
+fn push_object(st: &mut State, img: &mut Image, dcode: Option<u32>, prims: Vec<Prim>, flash: Option<Point>) {
+    let attributes = if st.object.is_empty() {
+        None
+    } else {
+        Some(*st.object_index.get_or_insert_with(|| {
+            img.object_attributes.push(st.object.clone());
+            img.object_attributes.len() as u32 - 1
+        }))
+    };
+    img.objects.push(Object { dark: st.dark, dcode, prims, flash, attributes });
+}
+
+/// An attribute with its `\uXXXX` escapes resolved.
+fn unescape(s: &str) -> String {
+    if !s.contains("\\u") {
+        return s.to_string();
+    }
+    let units: Vec<u16> = {
+        let mut out = Vec::new();
+        let mut rest = s;
+        while let Some(i) = rest.find("\\u") {
+            out.extend(rest[..i].encode_utf16());
+            match u16::from_str_radix(rest.get(i + 2..i + 6).unwrap_or(""), 16) {
+                Ok(u) => {
+                    out.push(u);
+                    rest = &rest[i + 6..];
+                }
+                Err(_) => {
+                    out.extend("\\u".encode_utf16());
+                    rest = &rest[i + 2..];
+                }
+            }
+        }
+        out.extend(rest.encode_utf16());
+        out
+    };
+    String::from_utf16_lossy(&units)
 }
 
 fn word(st: &mut State, img: &mut Image, w: &str) -> Result<bool, String> {
@@ -650,7 +719,7 @@ fn word(st: &mut State, img: &mut Image, w: &str) -> Result<bool, String> {
                 if let Some(contours) = st.region.take() {
                     let prims: Vec<Prim> = contours.into_iter().filter(|c| c.len() >= 3).map(Prim::Polygon).collect();
                     if !prims.is_empty() {
-                        img.objects.push(Object { dark: st.dark, dcode: None, prims, flash: None });
+                        push_object(st, img, None, prims, None);
                     }
                 }
             }
@@ -724,7 +793,7 @@ fn word(st: &mut State, img: &mut Image, w: &str) -> Result<bool, String> {
                 };
                 let width = st.len(width * st.scaling);
                 let prims = points.windows(2).map(|p| Prim::Line { a: st.nm(p[0]), b: st.nm(p[1]), width }).collect();
-                img.objects.push(Object { dark: st.dark, dcode: Some(code), prims, flash: None });
+                push_object(st, img, Some(code), prims, None);
             }
         }
         Some(3) => {
@@ -732,7 +801,7 @@ fn word(st: &mut State, img: &mut Image, w: &str) -> Result<bool, String> {
             let template = st.templates.get(&code).ok_or(format!("undefined aperture D{code}"))?.clone();
             let local = aperture_prims(&template, &mut img.warnings);
             let prims = local.into_iter().map(|p| place(st, p, target)).collect();
-            img.objects.push(Object { dark: st.dark, dcode: Some(code), prims, flash: Some(st.nm(target)) });
+            push_object(st, img, Some(code), prims, Some(st.nm(target)));
         }
         None => {}
         Some(d) => return Err(format!("unknown operation D{d:02}")),
@@ -863,7 +932,13 @@ pub fn parse_excellon(text: &str) -> Result<Image, ParseError> {
                     Some(b) => Prim::Line { a: start, b, width: diameter },
                     None => Prim::Circle { center: start, diameter },
                 };
-                img.objects.push(Object { dark: true, dcode: Some(tool), prims: vec![prim], flash: Some(start) });
+                img.objects.push(Object {
+                    dark: true,
+                    dcode: Some(tool),
+                    prims: vec![prim],
+                    flash: Some(start),
+                    attributes: None,
+                });
             }
             _ => {}
         }
@@ -927,5 +1002,22 @@ mod tests {
         let img = parse_excellon("M48\nMETRIC\nT1C0.300\n%\nT1\nX1.5Y-2.0\nX3.0\nM30\n").unwrap();
         assert_eq!(img.objects.len(), 2);
         assert_eq!(img.objects[1].prims[0], Prim::Circle { center: Point::mm(3.0, -2.0), diameter: mm(0.3) });
+    }
+
+    #[test]
+    fn object_attributes_follow_to_and_td() {
+        let text = "%FSLAX46Y46*%%MOMM*%%ADD10C,0.5*%D10*\n\
+            %TO.N,A\\u002CB*%%TO.C,R1*%X0Y0D03*\n\
+            %TO.N,GND*%X1000000Y0D03*\n\
+            %TD.C*%X2000000Y0D03*\n\
+            %TD*%X3000000Y0D03*M02*";
+        let img = parse_gerber(text).unwrap();
+        let at = |i: usize, name| img.object_attribute(&img.objects[i], name);
+        assert_eq!((at(0, ".N"), at(0, ".C")), (Some("A,B"), Some("R1")));
+        assert_eq!((at(1, ".N"), at(1, ".C")), (Some("GND"), Some("R1")));
+        assert_eq!((at(2, ".N"), at(2, ".C")), (Some("GND"), None));
+        assert_eq!(img.objects[3].attributes, None);
+        assert_eq!(img.object_attributes.len(), 3);
+        assert!(img.warnings.is_empty(), "{:?}", img.warnings);
     }
 }

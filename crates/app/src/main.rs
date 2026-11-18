@@ -11,8 +11,9 @@
 //!        pcb-designer export-gerber PROJECT_DIR
 //!        pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR
 //!
-//! `export-gerber` writes the Gerber and drill files into `PROJECT_DIR/output/gerber/`
-//! without a window, listing design rule violations as warnings.
+//! `export-gerber` writes the Gerber, drill and job files into `PROJECT_DIR/output/gerber/`
+//! and the assembly files (BOM, positions) into `PROJECT_DIR/output/assembly/` without a
+//! window, listing design rule violations as warnings.
 //!
 //! `import-kicad` imports a KiCad project (schematic and board) and saves it as a project
 //! folder, printing the import report. A `.kicad_pro` given to the app opens its import
@@ -217,6 +218,10 @@ fn export_gerber(dir: &std::path::Path) -> Result<(), String> {
     }
     for f in &export.manifest.files {
         println!("{}", export.dir.join(&f.name).display());
+    }
+    let assembly = view::gerber::assembly_dir(dir);
+    for f in &export.manifest.assembly {
+        println!("{}", assembly.join(&f.name).display());
     }
     Ok(())
 }

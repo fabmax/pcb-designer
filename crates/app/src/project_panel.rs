@@ -55,6 +55,11 @@ pub enum NodeId {
     Gerber,
     /// A file in it (by a hash of its name).
     OutputFile(u64),
+    /// The assembly folder (bill of materials, positions).
+    Assembly,
+    /// A file of either folder without an image (job file, BOM, positions), opened in
+    /// the system's app (by a hash of its path in the output folder).
+    DataFile(u64),
 }
 
 /// How a node is drawn, and what its menu offers.
@@ -105,6 +110,8 @@ pub enum Act {
     SaveProject,
     SaveProjectAs,
     Reveal(PathBuf),
+    /// Open a file in the system's default app.
+    OpenFile(PathBuf),
     NewLibrary,
     AddLibrary,
     ImportKicad,
@@ -268,6 +275,18 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
             out.push(A("Open", Act::OpenGerber(info.path.clone())));
             reveal(&mut out);
         }
+        NodeId::Assembly => {
+            out.push(A(if info.flag { "Re-export" } else { "Export Gerber and assembly files" }, Act::ExportGerber));
+            if info.flag {
+                reveal(&mut out);
+            }
+        }
+        NodeId::DataFile(_) => {
+            if let Some(p) = &info.path {
+                out.push(A("Open", Act::OpenFile(p.clone())));
+            }
+            reveal(&mut out);
+        }
         NodeId::Item(owner, item) => {
             let k = key(owner);
             out.push(A("Open", Act::OpenItem(k, open_of(item))));
@@ -306,6 +325,8 @@ pub fn activate(id: NodeId, info: &Info) -> Option<Act> {
         NodeId::Gerber if info.flag => Some(Act::OpenGerber(None)),
         NodeId::Gerber if info.editable => Some(Act::ExportGerber),
         NodeId::OutputFile(_) => Some(Act::OpenGerber(info.path.clone())),
+        NodeId::Assembly if !info.flag && info.editable => Some(Act::ExportGerber),
+        NodeId::DataFile(_) => info.path.clone().map(Act::OpenFile),
         _ => None,
     }
 }
@@ -423,6 +444,22 @@ pub fn reveal(path: &Path) -> std::io::Result<()> {
         c
     };
     c.spawn().map(drop)
+}
+
+/// Open a file in the system's default app.
+pub fn open_file(path: &Path) -> std::io::Result<()> {
+    use std::process::Command;
+    #[cfg(target_os = "macos")]
+    let mut c = Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut c = {
+        let mut c = Command::new("cmd");
+        c.args(["/C", "start", ""]);
+        c
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let mut c = Command::new("xdg-open");
+    c.arg(path).spawn().map(drop)
 }
 
 /// `~/…` for paths in the home folder.

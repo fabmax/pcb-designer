@@ -1,12 +1,13 @@
-//! Fabrication outputs: the Gerber export folder as the Project panel shows it (Outputs ›
-//! Gerber › files, marked outdated when the design changed since), and the read-only
-//! Gerber tab that shows the files as read back from disk.
+//! Fabrication outputs: the Gerber and assembly folders as the Project panel shows them
+//! (Outputs › Gerber › files and Outputs › Assembly › files, marked outdated when the
+//! design changed since), and the read-only Gerber tab that shows the files as read back
+//! from disk.
 
 use std::path::{Path, PathBuf};
 
 use egui::{Align2, RichText};
 use model::{Coord, Point};
-use view::gerber::{self, Manifest, design_hash, gerber_dir, read_manifest};
+use view::gerber::{self, FileKind, Manifest, assembly_dir, design_hash, gerber_dir, read_manifest};
 use view::measure::Measure;
 use view::{Document, GerberView};
 
@@ -25,6 +26,9 @@ pub struct Outputs {
     pub manifest: Option<Manifest>,
     /// Files in the folder, sorted (the manifest's order when there is one).
     pub files: Vec<String>,
+    /// The assembly folder, and its files in the same order.
+    pub assembly_dir: Option<PathBuf>,
+    pub assembly: Vec<String>,
     /// The design hash and the document revision it was computed at.
     hash: Option<(u64, String)>,
 }
@@ -33,36 +37,19 @@ impl Outputs {
     /// Read the folder of the project at `project_dir` again.
     pub fn scan(&mut self, project_dir: Option<&Path>) {
         self.dir = project_dir.map(gerber_dir);
+        self.assembly_dir = project_dir.map(assembly_dir);
         self.manifest = project_dir.and_then(read_manifest);
-        let on_disk: Vec<String> = match &self.dir {
-            Some(d) => match std::fs::read_dir(d) {
-                Ok(entries) => {
-                    let mut v: Vec<String> = entries
-                        .filter_map(|e| e.ok())
-                        .filter(|e| e.path().is_file())
-                        .map(|e| e.file_name().to_string_lossy().into_owned())
-                        .filter(|n| n != gerber::MANIFEST && !n.starts_with('.'))
-                        .collect();
-                    v.sort();
-                    v
-                }
-                Err(_) => Vec::new(),
-            },
-            None => Vec::new(),
-        };
-        self.files = match &self.manifest {
-            Some(m) => {
-                let mut v: Vec<String> =
-                    m.files.iter().map(|f| f.name.clone()).filter(|n| on_disk.contains(n)).collect();
-                v.extend(on_disk.into_iter().filter(|n| !m.files.iter().any(|f| f.name == *n)));
-                v
-            }
-            None => on_disk,
-        };
+        self.files = list(self.dir.as_deref(), self.manifest.as_ref().map(|m| &m.files[..]));
+        self.assembly = list(self.assembly_dir.as_deref(), self.manifest.as_ref().map(|m| &m.assembly[..]));
     }
 
     pub fn exported(&self) -> bool {
         !self.files.is_empty()
+    }
+
+    /// The export folders that exist.
+    pub fn dirs(&self) -> Vec<PathBuf> {
+        [&self.dir, &self.assembly_dir].into_iter().flatten().filter(|d| d.exists()).cloned().collect()
     }
 
     /// The design changed since the export. The hash is recomputed when the document
@@ -75,25 +62,39 @@ impl Outputs {
         self.hash.as_ref().is_some_and(|(_, h)| *h != m.hash)
     }
 
-    fn label(&self, name: &str) -> Option<&str> {
-        self.manifest.as_ref()?.files.iter().find(|f| f.name == name).map(|f| f.label.as_str())
+    fn listed(&self, name: &str) -> Option<&gerber::ManifestFile> {
+        let m = self.manifest.as_ref()?;
+        m.files.iter().chain(&m.assembly).find(|f| f.name == name)
+    }
+
+    /// The nodes of the files in `dir`.
+    fn file_nodes(&self, dir: &Option<PathBuf>, files: &[String], assembly: bool) -> Vec<TreeNode> {
+        files
+            .iter()
+            .map(|name| {
+                let path = dir.as_ref().map(|d| d.join(name));
+                let listed = self.listed(name);
+                let (label, detail) = match listed {
+                    Some(f) => (f.label.clone(), name.clone()),
+                    None => (name.clone(), String::new()),
+                };
+                let hash =
+                    project_panel::path_hash(&Path::new(if assembly { "assembly" } else { "gerber" }).join(name));
+                // Unlisted files in the Gerber folder may be images (another tool's export).
+                let (id, icon) = match listed.map(|f| f.kind) {
+                    Some(k) if k.is_image() => (NodeId::OutputFile(hash), Icon::Layers),
+                    None if !assembly => (NodeId::OutputFile(hash), Icon::Layers),
+                    Some(FileKind::Job) => (NodeId::DataFile(hash), Icon::FileCode),
+                    _ => (NodeId::DataFile(hash), Icon::Spreadsheet),
+                };
+                TreeNode::new(id, label, Info { detail, path, tip: name.clone(), ..Info::icon(icon) })
+            })
+            .collect()
     }
 
     /// The Outputs node.
     pub fn node(&self, outdated: bool) -> TreeNode {
-        let files: Vec<TreeNode> = self
-            .files
-            .iter()
-            .map(|name| {
-                let path = self.dir.as_ref().map(|d| d.join(name));
-                let (label, detail) = match self.label(name) {
-                    Some(l) => (l.to_string(), name.clone()),
-                    None => (name.clone(), String::new()),
-                };
-                let id = NodeId::OutputFile(project_panel::path_hash(Path::new(name)));
-                TreeNode::new(id, label, Info { detail, path, tip: name.clone(), ..Info::icon(Icon::Layers) })
-            })
-            .collect();
+        let files = self.file_nodes(&self.dir, &self.files, false);
         let gerber_info = Info {
             detail: match (self.exported(), outdated) {
                 (false, _) => "not exported".into(),
@@ -113,7 +114,52 @@ impl Outputs {
             ..Info::icon(Icon::Board)
         };
         let gerber = TreeNode::new(NodeId::Gerber, "Gerber", gerber_info).with_children(files);
-        TreeNode::new(NodeId::Outputs, "Outputs", Info::icon(Icon::Folder)).with_children(vec![gerber])
+        let done = !self.assembly.is_empty();
+        let assembly_info = Info {
+            detail: match (done, outdated) {
+                (false, _) => "not exported".into(),
+                (true, true) => format!("outdated · {}", project_panel::count(self.assembly.len(), "file")),
+                (true, false) => project_panel::count(self.assembly.len(), "file"),
+            },
+            warn: done && outdated,
+            dim: !done,
+            editable: self.assembly_dir.is_some(),
+            flag: done,
+            tip: "Bill of materials and component positions (pick and place) for assembly, written \
+                  with the Gerber files"
+                .into(),
+            path: self.assembly_dir.clone(),
+            ..Info::icon(Icon::Part)
+        };
+        let assembly = TreeNode::new(NodeId::Assembly, "Assembly", assembly_info).with_children(self.file_nodes(
+            &self.assembly_dir,
+            &self.assembly,
+            true,
+        ));
+        TreeNode::new(NodeId::Outputs, "Outputs", Info::icon(Icon::Folder)).with_children(vec![gerber, assembly])
+    }
+}
+
+/// The files in `dir` (not the manifest or hidden ones): those `listed` first in their
+/// order, then the others sorted.
+fn list(dir: Option<&Path>, listed: Option<&[gerber::ManifestFile]>) -> Vec<String> {
+    let mut on_disk: Vec<String> = match dir.map(std::fs::read_dir) {
+        Some(Ok(entries)) => entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_file())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n != gerber::MANIFEST && !n.starts_with('.'))
+            .collect(),
+        _ => Vec::new(),
+    };
+    on_disk.sort();
+    match listed {
+        Some(m) => {
+            let mut v: Vec<String> = m.iter().map(|f| f.name.clone()).filter(|n| on_disk.contains(n)).collect();
+            v.extend(on_disk.into_iter().filter(|n| !m.iter().any(|f| f.name == *n)));
+            v
+        }
+        None => on_disk,
     }
 }
 
@@ -333,4 +379,38 @@ pub fn gerber_ui(ui: &mut egui::Ui, pane: &mut GerberPane, outdated: bool, keyma
             });
     }
     act
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outputs_list_gerber_and_assembly_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("demo.pcbproj");
+        let mut doc = Document::new(view::demo::demo_project());
+        doc.save_as(&dir).unwrap();
+        let mut outputs = Outputs::default();
+        outputs.scan(Some(&dir));
+        let node = outputs.node(false);
+        let [gerber, assembly] = &node.children[..] else { panic!() };
+        assert!(gerber.children.is_empty() && assembly.children.is_empty());
+        assert_eq!(assembly.data.detail, "not exported");
+
+        doc.export_gerber().unwrap();
+        outputs.scan(Some(&dir));
+        assert_eq!(outputs.dirs().len(), 2);
+        let node = outputs.node(false);
+        let [gerber, assembly] = &node.children[..] else { panic!() };
+        let job = gerber.children.iter().find(|n| n.label == "Job File").unwrap();
+        assert!(matches!(job.id, NodeId::DataFile(_)), "the job file opens in the system's app");
+        assert!(matches!(gerber.children[0].id, NodeId::OutputFile(_)));
+        let labels: Vec<&str> = assembly.children.iter().map(|n| n.label.as_str()).collect();
+        assert_eq!(labels, ["Bill of Materials", "Component Positions"]);
+        let bom = &assembly.children[0];
+        assert!(bom.data.path.as_ref().unwrap().is_file());
+        assert!(matches!(project_panel::activate(bom.id, &bom.data), Some(project_panel::Act::OpenFile(_))));
+        assert_eq!(assembly.data.detail, "2 files");
+    }
 }

@@ -258,7 +258,7 @@ fn viewer_loads_an_export() {
     let export = doc.export_gerber().unwrap();
     let mut gv = view::GerberView::load(&export.dir).unwrap();
     assert!(gv.errors.is_empty(), "{:?}", gv.errors);
-    assert_eq!(gv.files.len(), export.manifest.files.len());
+    assert_eq!(gv.files.len(), export.manifest.files.iter().filter(|f| f.kind.is_image()).count());
     assert!(gv.files.iter().any(|f| f.label == "Top Copper" && f.layer == Some(LayerId::TOP_COPPER)));
     assert!(gv.files.iter().any(|f| f.drill));
     assert_eq!(gv.layer_menu().len(), gv.files.len());
@@ -271,6 +271,7 @@ fn viewer_loads_an_export() {
     gv.show_only(Some(&gv.files.iter().find(|f| f.label == "Top Copper").unwrap().name.clone()));
     let text = gv.describe([at.x as f64 * 1e-6, at.y as f64 * 1e-6]).unwrap();
     assert!(text.contains("F_Cu") && text.contains("SMDPad"), "{text}");
+    assert!(text.contains(&format!("R1 pad {}", pad.name)) && text.contains(" · net "), "{text}");
     // The measure tool snaps to the pad's flash centre and to track ends.
     let near = at + model::Point::new(model::mm(0.05), 0);
     assert!(gv.snap_points(near, model::mm(0.2)).contains(&at));
@@ -424,4 +425,76 @@ fn texts_round_trip_as_regions() {
         // Only samples within a hair of an edge may disagree (flattening, nm rounding).
         assert!(differ * 50 < inside, "{layer:?}: {differ} of {inside} samples differ");
     }
+}
+
+#[test]
+fn copper_carries_nets_pads_and_components() {
+    let (_tmp, mut doc) = saved_demo();
+    let export = doc.export_gerber().unwrap();
+    let f = export.manifest.files.iter().find(|f| f.kind == FileKind::Layer(LayerId::TOP_COPPER)).unwrap();
+    let top = std::fs::read_to_string(export.dir.join(&f.name)).unwrap();
+    assert!(top.contains("%TO.N,GND*%"), "net attributes");
+    assert!(top.lines().any(|l| l.starts_with("%TO.P,R1,")), "pad attributes");
+    assert!(top.contains("%TO.C,R1*%"), "component attributes");
+    // Every attribute set is cleared again before the next one and at the end.
+    let set = top.lines().filter(|l| l.starts_with("%TO.N")).count();
+    assert!(set > 1 && top.matches("%TD*%").count() >= set - 1);
+    assert!(top.ends_with("%TD*%\nM02*\n"));
+    // The files still read back.
+    gerber::reader::parse_gerber(&top).unwrap();
+}
+
+#[test]
+fn exports_a_job_file_and_assembly_files() {
+    let (_tmp, mut doc) = saved_demo();
+    let export = doc.export_gerber().unwrap();
+    let job = export.manifest.files.iter().find(|f| f.kind == FileKind::Job).unwrap();
+    assert!(job.name.ends_with("-job.gbrjob"));
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(export.dir.join(&job.name)).unwrap()).unwrap();
+    let listed = json["FilesAttributes"].as_array().unwrap();
+    let images = export.manifest.files.iter().filter(|f| f.kind.is_image()).count();
+    assert_eq!(listed.len(), images, "every Gerber and drill file, not the job file itself");
+    assert!(listed.iter().any(|a| a["FileFunction"] == "Copper,L1,Top" && a["FilePolarity"] == "Positive"));
+    assert_eq!(json["GeneralSpecs"]["LayerNumber"], doc.project().board.copper_layers().count());
+    assert!(json["GeneralSpecs"]["Size"]["X"].as_f64().unwrap() > 10.0);
+
+    let project_dir = doc.path.clone().unwrap();
+    let assembly = gerber::assembly_dir(&project_dir);
+    let kinds: Vec<FileKind> = export.manifest.assembly.iter().map(|f| f.kind).collect();
+    assert_eq!(kinds, [FileKind::Bom, FileKind::Positions]);
+    let read = |kind| {
+        let f = export.manifest.assembly.iter().find(|f| f.kind == kind).unwrap();
+        std::fs::read_to_string(assembly.join(&f.name)).unwrap()
+    };
+    let p = doc.project();
+    let assembled = p
+        .board
+        .footprints
+        .iter()
+        .filter(|f| {
+            let c = p.schematic.components.get(f.component).unwrap();
+            !p.library.parts.get(c.part).unwrap().is_board_part()
+        })
+        .count();
+
+    let positions = read(FileKind::Positions);
+    let mut lines = positions.lines();
+    assert_eq!(lines.next().unwrap(), "Designator,Value,Footprint,Mid X,Mid Y,Rotation,Layer");
+    assert_eq!(lines.clone().count(), assembled);
+    assert!(lines.clone().any(|l| l.starts_with("R1,") && (l.ends_with(",Top") || l.ends_with(",Bottom"))));
+
+    let bom = read(FileKind::Bom);
+    assert!(bom.starts_with("Designator,Value,Footprint,Quantity"));
+    let quantities: usize = bom.lines().skip(1).map(quantity).sum();
+    assert_eq!(quantities, assembled, "every placed component on one line\n{bom}");
+}
+
+/// The Quantity column of a BOM line (the fourth, after a possibly quoted designator list).
+fn quantity(line: &str) -> usize {
+    let rest = match line.strip_prefix('"') {
+        Some(r) => &r[r.find('"').unwrap() + 2..],
+        None => &line[line.find(',').unwrap() + 1..],
+    };
+    rest.split(',').nth(2).unwrap().parse().unwrap()
 }

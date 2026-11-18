@@ -559,6 +559,8 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
                 "dir": export.dir,
                 "zip": export.dir.parent().map(|d| d.join(&export.manifest.zip)),
                 "files": export.manifest.files.iter().map(|f| json!({"name": f.name, "label": f.label})).collect::<Vec<_>>(),
+                "assembly_dir": export.dir.parent().map(|d| d.join("assembly")),
+                "assembly": export.manifest.assembly.iter().map(|f| json!({"name": f.name, "label": f.label})).collect::<Vec<_>>(),
                 "drc_violations": export.warnings.len(),
                 "drc_by_kind": by_kind,
             })

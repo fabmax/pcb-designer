@@ -90,6 +90,8 @@ icons! {
     Footprint => "footprint",
     Missing => "tabler/ban",
     Check => "tabler/check",
+    Spreadsheet => "tabler/file-spreadsheet",
+    FileCode => "tabler/file-code",
     /// Corner styles of drawn wires and tracks.
     Corner90 => "corner-90",
     Corner45 => "corner-45",

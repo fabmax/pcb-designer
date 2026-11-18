@@ -303,10 +303,11 @@ the current design of each area with the gotchas a change needs to know, the pla
   outline; mm, format 4.6, so coordinates are nm) and Excellon drills (plated: TH pads
   and through vias; non-plated; one per blind/buried span, `-front-in1.drl`, X2
   `Plated,1,2,Blind`, `FileKind::SpanDrill`), named like KiCad's (`Demo-F_Cu.gbr`,
-  `-PTH.drl`). `export`
-  replaces `<project>/output/gerber/`, writes `output/<name>-gerber.zip` (own minimal
-  zip writer, fixed dates) and `export.json` (`Manifest`: files, labels and
-  `design_hash` of board + schematic + library, for "outdated"). `Document::export_gerber`
+  `-PTH.drl`), and a job file last (`-job.gbrjob`, `FileKind::Job`). `export`
+  replaces `<project>/output/gerber/` and `output/assembly/`, writes
+  `output/<name>-gerber.zip` (own minimal zip writer, fixed dates; the job file is in
+  it) and `export.json` (`Manifest`: files and assembly files with kinds and labels,
+  and `design_hash` of board + schematic + library, for "outdated"). `Document::export_gerber`
   refills, runs DRC (violations are warnings) and needs a saved project and an outline.
   Used by the menu (⇧⌘E), MCP `export_gerber` and `pcb-designer export-gerber DIR`.
 - Pads are flashes; rectangles and ovals at quarter turns use R/O with swapped sides,
@@ -315,6 +316,22 @@ the current design of each area with the gotchas a change needs to know, the pla
   fills are regions; holes are bridged into the outline with cut-in lines
   (`bridge_holes`), never drawn clear, as clear polarity would also erase other copper
   inside the hole. Mask files are written with negative polarity (drawn = opening).
+- Copper carries X2 object attributes: `.N` (net, from `BoardConnectivity`) on fills,
+  tracks, vias and pads, plus `.P` (refdes, pad name) and `.C` on pads of components.
+  `GerberWriter::object` writes `%TO` only when the set changes, `%TD*%` before the
+  next set and at the end; regions clear only their aperture function
+  (`%TD.AperFunction*%`), as a bare `%TD*%` would also drop the object attributes.
+  Values are escaped (`,` `*` `%` `\` and non-ASCII as `\uXXXX`).
+- **Job file** (`job.rs`): JSON with the creation time (UTC, from `SystemTime`; no date
+  crate), the outline size at the stroke centre line, the copper count, a fixed 1.6 mm
+  thickness (no stack-up in the model), the board rules and `FilesAttributes` scanned
+  from each file's own `TF.FileFunction` / `TF.FilePolarity` lines (Gerber `%TF…*%` and
+  Excellon `; #@! TF…`), so the two can't disagree.
+- **Assembly** (`assembly.rs`): `-bom.csv` (lines grouped by value, footprint and all
+  properties; designators naturally sorted and joined; a column per property key used)
+  and `-positions.csv` (footprint origin in board mm as in the Gerbers, rotation as
+  placed, Top/Bottom). Board parts are left out. CRLF and quoted fields, as the
+  assembly services' importers expect.
 - Text is written as regions, one per glyph outline (`font::text_shapes`, holes
   bridged like zone fills), mirrored around its anchor on bottom layers (the editor
   never mirrors text). Glyphs are placed relative to the anchor in f32 and offset in nm:
@@ -331,11 +348,15 @@ the current design of each area with the gotchas a change needs to know, the pla
   labels and kinds from `export.json` (else the X2 `.FileFunction`). Negative files are
   inverted with i_overlay: the outline file's bounding box minus the openings. Clear
   polarity is drawn in the background colour (our files never use it). `describe` (an
-  R-tree over objects, exact `Prim::contains`) names the file, D code, aperture and
-  `.AperFunction` under the pointer. The app's Gerber tab (`Tab::Gerber`, not a
+  R-tree over objects, exact `Prim::contains`) names the file, D code, aperture,
+  `.AperFunction`, pad (`.P`) and net (`.N`) under the pointer. The reader keeps each
+  distinct `%TO` set once (`Image::object_attributes`, objects hold an index).
+  The viewer skips files whose kind isn't an image (the job file). The app's Gerber tab (`Tab::Gerber`, not a
   `ViewId`: it has no document) uses its own `Canvas`; MCP `screenshot` target
   `gerber` (optional `layers`) renders the same view offscreen.
-- **Outputs in the tree** (`app/src/outputs.rs`): Outputs › Gerber › files, scanned
+- **Outputs in the tree** (`app/src/outputs.rs`): Outputs › Gerber › files and
+  Outputs › Assembly › files. Image files open in the Gerber tab; the job file and the
+  CSVs are `NodeId::DataFile` and open in the system's app. Scanned
   when the project folder changes, after an export and when the window regains focus
   (no file watching). "Outdated" compares the manifest's hash with `design_hash`,
   recomputed once per document revision and never while an interaction is running.
@@ -854,9 +875,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-- **M20: Assembly outputs.** BOM and pick-and-place files next to the Gerber export, a
-  `.gbrjob` job file and `%TO` object attributes (nets, pads, components) in the Gerber
-  files, so a board can be ordered assembled (JLCPCB, PCBWay).
 - **M21: Net classes.** Classes with their own clearance and track width (and via size),
   nets assigned to them; routing defaults, routing checks and DRC follow the class. The
   KiCad import keeps its classes.
@@ -899,7 +917,10 @@ defers.
   symbols on import and export.
 
 **Board**
-- Fabrication outputs: fab/courtyard Gerbers, Protel file extensions,
+- Fabrication outputs: fab/courtyard Gerbers, Protel file extensions, a board stack-up
+  (thickness, copper weight, finish) for the job file (1.6 mm fixed today), BOM and
+  position column presets per assembly service, a "do not populate" flag, IPC-D-356
+  netlist,
   silkscreen clipped at mask openings, mirrored bottom text in the editor; in the viewer:
   the mask area from the outline's contour (bounding box today), true clear polarity,
   G74 arcs, LM, thermal primitives, slots in drill files.

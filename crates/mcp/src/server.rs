@@ -595,9 +595,11 @@ impl PcbTools {
     }
 
     #[tool(description = "Export the board for manufacturing: Gerber X2 files (copper, solder \
-        mask, paste, silkscreen, board outline) and Excellon drill files (plated, non-plated) \
-        into <project folder>/output/gerber/, replacing the previous export, plus a zip next to \
-        that folder. Zones are refilled and the design rules checked first; violations are \
+        mask, paste, silkscreen, board outline; copper carries net, pad and component \
+        attributes), Excellon drill files (plated, non-plated) and a Gerber job file \
+        (.gbrjob) into <project folder>/output/gerber/, replacing the previous export, plus a \
+        zip next to that folder; and for assembly a bill of materials and component positions \
+        (pick and place, CSV) into <project folder>/output/assembly/. Zones are refilled and the design rules checked first; violations are \
         reported but don't stop the export. Fails without a board outline or when the project \
         was never saved.")]
     async fn export_gerber(&self) -> Result<CallToolResult, ErrorData> {

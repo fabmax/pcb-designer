@@ -1,7 +1,7 @@
 //! The board as Gerber files, one per layer: copper, solder mask, paste, silkscreen and
 //! the board outline.
 
-use editor_core::copper::BoardConnectivity;
+use editor_core::copper::{BoardConnectivity, CopperItem};
 use editor_core::fab::{PadOutline, pad_copper_layers, pad_mask_layers, pad_outline, pad_paste_layer};
 use editor_core::query::footprint_of_instance;
 use model::*;
@@ -25,11 +25,22 @@ pub enum FileKind {
         from: LayerId,
         to: LayerId,
     },
+    /// The Gerber job file (`.gbrjob`).
+    Job,
+    /// Bill of materials (CSV, in the assembly folder).
+    Bom,
+    /// Component positions (CSV, in the assembly folder).
+    Positions,
 }
 
 impl FileKind {
     pub fn is_drill(self) -> bool {
-        !matches!(self, FileKind::Layer(_))
+        matches!(self, FileKind::PlatedDrill | FileKind::NonPlatedDrill | FileKind::SpanDrill { .. })
+    }
+
+    /// A Gerber or drill file with an image (not the job file or an assembly file).
+    pub fn is_image(self) -> bool {
+        matches!(self, FileKind::Layer(_)) || self.is_drill()
     }
 }
 
@@ -111,10 +122,12 @@ pub fn layer_file(project: &Project, copper: &BoardConnectivity, layer: LayerId)
         for fill in copper.fills.iter().filter(|f| f.layer == layer) {
             for shape in &fill.shapes {
                 let (outer, holes) = shape.split_first().expect("shapes have an outline");
+                net_attribute(&mut w, (!fill.net.is_empty()).then_some(fill.net.as_str()));
                 w.region(&bridge_holes(outer, holes), Some("Conductor"));
             }
         }
         for t in board.tracks.iter().filter(|t| t.layer == layer) {
+            net_attribute(&mut w, copper.net_of(CopperItem::Track(t.id)));
             // Arcs: exact ends, the centre rounded to the nanometre.
             w.aperture(Aperture::Circle(t.width), Some("Conductor"));
             match t.arc() {
@@ -123,6 +136,7 @@ pub fn layer_file(project: &Project, copper: &BoardConnectivity, layer: LayerId)
             }
         }
         for v in board.vias.iter().filter(|v| v.from.0 <= layer.0 && layer.0 <= v.to.0) {
+            net_attribute(&mut w, copper.net_of(CopperItem::Via(v.id)));
             w.aperture(Aperture::Circle(v.diameter), Some("ViaPad"));
             w.flash(v.pos);
         }
@@ -132,6 +146,8 @@ pub fn layer_file(project: &Project, copper: &BoardConnectivity, layer: LayerId)
     for inst in board.footprints.iter() {
         let Some(fp) = footprint_of_instance(project, inst) else { continue };
         let t = inst.transform();
+        let component = project.schematic.components.get(inst.component);
+        let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
         for pad in fp.pads.iter() {
             let (margin, function) = if is_copper {
                 if !pad_copper_layers(pad, inst.side, &copper_ids).contains(&layer) {
@@ -151,12 +167,27 @@ pub fn layer_file(project: &Project, copper: &BoardConnectivity, layer: LayerId)
             } else {
                 continue;
             };
+            if is_copper {
+                // Pads of board parts (no component) have no designator to name them by.
+                let net = copper.net_of(CopperItem::Pad { footprint: inst.id, pad: pad.id });
+                let mut attrs: Vec<(&str, &[&str])> = Vec::new();
+                let pin = [refdes, pad.name.as_str()];
+                let reference = [refdes];
+                let net = net.map(|n| [n]);
+                if let Some(n) = &net {
+                    attrs.push((".N", n));
+                }
+                if component.is_some() {
+                    attrs.push((".P", &pin));
+                    attrs.push((".C", &reference));
+                }
+                w.object(&attrs);
+            }
             if let Some(outline) = pad_outline(pad, &t, margin) {
                 write_pad(&mut w, &outline, function);
             }
         }
-        let component = project.schematic.components.get(inst.component);
-        let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
+        w.object(&[]);
         for g in fp.graphics.iter().filter(|g| g.board_layer(inst.side) == layer) {
             write_shape(&mut w, &g.shape.transformed(&t), graphic_function(layer));
         }
@@ -190,6 +221,14 @@ pub fn layer_file(project: &Project, copper: &BoardConnectivity, layer: LayerId)
         write_text(&mut w, &bt.text, &bt.text.text, is_bottom(layer), text_function(layer));
     }
     w.finish()
+}
+
+/// The `.N` attribute of a net's copper (none for copper without a net).
+fn net_attribute(w: &mut GerberWriter, net: Option<&str>) {
+    match net {
+        Some(n) => w.object(&[(".N", &[n])]),
+        None => w.object(&[]),
+    }
 }
 
 fn graphic_function(layer: LayerId) -> Option<&'static str> {

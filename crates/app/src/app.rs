@@ -1187,12 +1187,12 @@ impl PcbApp {
         match self.doc_mut().export_gerber() {
             Ok(export) => {
                 self.refresh_outputs();
-                let files = export.manifest.files.len();
+                let files = export.manifest.files.len() + export.manifest.assembly.len();
+                let dir = export.dir.parent().unwrap_or(&export.dir).display();
                 self.set_status(match export.warnings.len() {
-                    0 => format!("Exported {files} Gerber and drill files to {}", export.dir.display()),
+                    0 => format!("Exported {files} Gerber, drill and assembly files to {dir}"),
                     n => format!(
-                        "Exported {files} Gerber and drill files to {}, with {n} design rule violation(s) (see Messages)",
-                        export.dir.display()
+                        "Exported {files} Gerber, drill and assembly files to {dir}, with {n} design rule violation(s) (see Messages)"
                     ),
                 });
             }
@@ -1225,12 +1225,14 @@ impl PcbApp {
         self.focus = Focus::Gerber;
     }
 
-    /// Delete the export folder and its zip, after asking.
+    /// Delete the export folders and the zip, after asking.
     fn delete_outputs(&mut self) {
         let Some(dir) = self.outputs.dir.clone() else { return };
+        let dirs = self.outputs.dirs();
+        let names: Vec<String> = dirs.iter().map(|d| d.display().to_string()).collect();
         let answer = rfd::MessageDialog::new()
             .set_title("Delete outputs")
-            .set_description(format!("Delete {} and the Gerber zip?", dir.display()))
+            .set_description(format!("Delete {} and the Gerber zip?", names.join(" and ")))
             .set_buttons(rfd::MessageButtons::OkCancelCustom("Delete".into(), "Cancel".into()))
             .show();
         if !matches!(answer, rfd::MessageDialogResult::Custom(ref b) if b == "Delete") {
@@ -1239,8 +1241,10 @@ impl PcbApp {
         if let Some(zip) = self.outputs.manifest.as_ref().and_then(|m| dir.parent().map(|p| p.join(&m.zip))) {
             let _ = std::fs::remove_file(zip);
         }
-        if let Err(e) = std::fs::remove_dir_all(&dir) {
-            self.set_status(format!("Could not delete {}: {e}", dir.display()));
+        for d in dirs {
+            if let Err(e) = std::fs::remove_dir_all(&d) {
+                self.set_status(format!("Could not delete {}: {e}", d.display()));
+            }
         }
         if let Some(tile) = self.tree.tiles.find_pane(&Tab::Gerber) {
             self.tree.remove_recursively(tile);
@@ -3135,6 +3139,11 @@ impl PcbApp {
             Act::DeleteOutputs => self.delete_outputs(),
             Act::SaveProjectAs => {
                 self.save(true);
+            }
+            Act::OpenFile(path) => {
+                if let Err(e) = project_panel::open_file(&path) {
+                    self.set_status(format!("Could not open {}: {e}", path.display()));
+                }
             }
             Act::Reveal(path) => {
                 if let Err(e) = project_panel::reveal(&path) {

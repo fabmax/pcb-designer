@@ -102,7 +102,12 @@ impl GerberView {
     pub fn load(dir: &Path) -> std::io::Result<GerberView> {
         let manifest = dir.parent().and_then(Path::parent).and_then(read_manifest);
         let mut listed: Vec<(String, Option<String>, Option<FileKind>)> = match &manifest {
-            Some(m) => m.files.iter().map(|f| (f.name.clone(), Some(f.label.clone()), Some(f.kind))).collect(),
+            Some(m) => m
+                .files
+                .iter()
+                .filter(|f| f.kind.is_image())
+                .map(|f| (f.name.clone(), Some(f.label.clone()), Some(f.kind)))
+                .collect(),
             None => {
                 let mut names: Vec<String> = std::fs::read_dir(dir)?
                     .filter_map(|e| e.ok())
@@ -265,7 +270,18 @@ impl GerberView {
                 None => format!("D{d}"),
             },
         };
-        Some(format!("{} · {what}", file.name))
+        let mut out = format!("{} · {what}", file.name);
+        let attr = |name| file.image.object_attribute(object, name);
+        if let Some(pin) = attr(".P") {
+            let (refdes, pad) = pin.split_once(',').unwrap_or((pin, ""));
+            out.push_str(&format!(" · {refdes} pad {pad}"));
+        } else if let Some(c) = attr(".C") {
+            out.push_str(&format!(" · {c}"));
+        }
+        if let Some(net) = attr(".N").filter(|n| !n.is_empty()) {
+            out.push_str(&format!(" · net {net}"));
+        }
+        Some(out)
     }
 }
 
