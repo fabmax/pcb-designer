@@ -703,6 +703,14 @@ the current design of each area with the gotchas a change needs to know, the pla
   overflow: egui grows a resizable panel to fit wider content and keeps that size, and
   grids overflow for a frame when they reuse the column widths of the previous
   selection.
+- **Messages panel** (`messages.rs`): one tab per `Category` (Schematic: ERC; Board:
+  live shorts, flagged copper and the last DRC; Libraries: the loaded libraries' issues),
+  the tab headers in the title bar (`panel_frame_ui`), or on a row of their own when the
+  panel is narrower than `TABS_WIDTH` plus the title. `status` counts each category's
+  findings that aren't excluded by severity (shorts in the short rule's severity,
+  flagged copper one warning, library issues warnings); the badge is a check, else the
+  count in the colour of the worst. Opening the panel on a fine tab switches to one with
+  problems (`tab_to_open`). The tab is session only.
 - **Nets panel** (`nets_ui.rs`): rows from the schematic netlist (pins, sheets) and the
   board's ratsnest by net index (routed, n unrouted, no pads), cached per document
   revision and drawn with `show_rows`. A click is `PcbApp::select_net`: the net's
@@ -846,6 +854,13 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
+- **M20: Assembly outputs.** BOM and pick-and-place files next to the Gerber export, a
+  `.gbrjob` job file and `%TO` object attributes (nets, pads, components) in the Gerber
+  files, so a board can be ordered assembled (JLCPCB, PCBWay).
+- **M21: Net classes.** Classes with their own clearance and track width (and via size),
+  nets assigned to them; routing defaults, routing checks and DRC follow the class. The
+  KiCad import keeps its classes.
+
 ## Later
 
 Things decided to do later, by area. Remove an entry when it's done; add what a change
@@ -884,8 +899,7 @@ defers.
   symbols on import and export.
 
 **Board**
-- Fabrication outputs: fab/courtyard Gerbers, `.gbrjob`, pick and place, BOM, Protel
-  file extensions, `%TO` object attributes (nets, pads),
+- Fabrication outputs: fab/courtyard Gerbers, Protel file extensions,
   silkscreen clipped at mask openings, mirrored bottom text in the editor; in the viewer:
   the mask area from the outline's contour (bounding box today), true clear polarity,
   G74 arcs, LM, thermal primitives, slots in drill files.
@@ -911,8 +925,6 @@ defers.
 - Arc outlines in zone fills (circles are 16–64-segment polygons today).
 - Exact courtyard polygons in DRC (bounding boxes today).
 - A board drawing frame / fabrication drawing.
-- Per-net clearance classes (KiCad net classes other than Default are only listed by the
-  import).
 - From KiCad board import (skipped and counted today): dimensions, groups, images, text
   boxes, tables, alignment targets, graphics and texts on documentation and user layers
   (user layers in general), net ties, tuning patterns (their tracks are kept).
@@ -945,7 +957,6 @@ defers.
 - Native menus don't show shortcuts without ⌘ (they would steal typing).
 - Remove weird items in native macOS Edit menu: Autofill, Start dictation, Emoji and symbols?
   Is that even possible? It seems to be there in any app...
-- Revamp message panel, current one is quite placeholdery
 
 **Other**
 - Simulation.

@@ -89,6 +89,7 @@ icons! {
     Symbol => "symbol",
     Footprint => "footprint",
     Missing => "tabler/ban",
+    Check => "tabler/check",
     /// Corner styles of drawn wires and tracks.
     Corner90 => "corner-90",
     Corner45 => "corner-45",

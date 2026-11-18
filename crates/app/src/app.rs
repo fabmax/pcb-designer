@@ -350,6 +350,9 @@ pub struct PcbApp {
     deferred: Vec<Deferred>,
     /// Counts item tab uses ([`ItemTab::used`]).
     tab_clock: u64,
+    /// The Messages panel's tab, and whether the panel was open last frame.
+    message_tab: messages::Category,
+    messages_open: bool,
     #[cfg(target_os = "macos")]
     native_menu: crate::native_menu::NativeMenu,
     pointer_filter: crate::pointer_filter::PointerFilter,
@@ -426,6 +429,8 @@ impl PcbApp {
             focus: Focus::Project,
             deferred: Vec::new(),
             tab_clock: 0,
+            message_tab: messages::Category::default(),
+            messages_open: false,
             paste_text: None,
             copy_out: None,
             carry_clip: None,
@@ -3528,8 +3533,16 @@ impl PcbApp {
     fn panel_frame_ui(&mut self, ui: &mut egui::Ui, group: DockGroup, panel: Panel) -> bool {
         let mut hide = false;
         let mut header_act = None;
+        // The Messages tabs sit in the title bar, or below it in a narrow panel.
+        let message_tabs = (panel == Panel::Messages)
+            .then(|| messages::status(&self.project.lib.doc, &mut self.libraries))
+            .map(|status| (status, ui.available_width() >= messages::TABS_WIDTH + 120.0));
         ui.horizontal(|ui| {
             ui.label(RichText::new(panel.title()).strong());
+            if let Some((status, true)) = &message_tabs {
+                ui.add_space(8.0);
+                messages::tabs_ui(ui, &mut self.message_tab, status);
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let (rect, r) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
                 if r.hovered() {
@@ -3546,6 +3559,10 @@ impl PcbApp {
         });
         if let Some(act) = header_act {
             self.tree_act(act);
+        }
+        if let Some((status, false)) = &message_tabs {
+            ui.add_space(2.0);
+            ui.horizontal(|ui| messages::tabs_ui(ui, &mut self.message_tab, status));
         }
         ui.add_space(4.0);
         // These scroll themselves.
@@ -3610,7 +3627,8 @@ impl PcbApp {
                 None => crate::properties::project_summary(ui, self.doc()),
             },
             Panel::Messages => {
-                if let Some(show) = messages::ui(ui, &mut self.project.lib.doc, &mut self.libraries) {
+                let tab = self.message_tab;
+                if let Some(show) = messages::ui(ui, tab, &mut self.project.lib.doc, &mut self.libraries) {
                     self.show_message(show);
                 }
             }
@@ -3738,6 +3756,13 @@ impl PcbApp {
                 }
             }
         }
+        // Opening the Messages panel on a fine category shows the first one with problems.
+        let open = self.settings.dock.is_open(Panel::Messages);
+        if open && !self.messages_open {
+            let status = messages::status(&self.project.lib.doc, &mut self.libraries);
+            self.message_tab = messages::tab_to_open(self.message_tab, &status);
+        }
+        self.messages_open = open;
         let keys = messages::keys(&self.project.lib.doc, &mut self.libraries);
         self.unseen.update(keys, self.settings.dock.is_open(Panel::Messages));
         // Save once a resize is done.

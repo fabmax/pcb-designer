@@ -1,5 +1,7 @@
-//! The Messages panel: schematic problems (ERC), board problems, design rule check
-//! results and library issues, side by side. Clicking a message shows its objects.
+//! The Messages panel: schematic problems (ERC), board problems with the design rule
+//! check results, and library issues, one tab each (the tabs sit in the panel's title
+//! bar, with a badge of how each category is doing). Clicking a message shows its
+//! objects.
 
 use editor_core::Command;
 use editor_core::copper::{CopperItem, Flag};
@@ -11,6 +13,7 @@ use view::{Document, ViewId};
 use crate::checks_ui;
 use crate::dock::problem_key;
 use crate::fields::hint;
+use crate::icons::{self, Icon};
 use crate::library::LibraryEditor;
 use crate::theme;
 use crate::units;
@@ -21,6 +24,151 @@ pub enum Show {
     Objects(ViewId, Vec<ObjectId>, Option<Point>),
     /// Open a part in a library tab.
     LibraryPart(u64, Id),
+}
+
+/// A tab of the panel.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Category {
+    #[default]
+    Schematic,
+    Board,
+    Libraries,
+}
+
+impl Category {
+    pub const ALL: [Category; 3] = [Category::Schematic, Category::Board, Category::Libraries];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Category::Schematic => "Schematic",
+            Category::Board => "Board",
+            Category::Libraries => "Libraries",
+        }
+    }
+}
+
+/// How a category is doing: its findings that aren't excluded, by severity.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Status {
+    pub errors: usize,
+    pub warnings: usize,
+}
+
+impl Status {
+    pub fn is_ok(self) -> bool {
+        self.errors == 0 && self.warnings == 0
+    }
+
+    fn add(&mut self, severity: Severity) {
+        match severity {
+            Severity::Error => self.errors += 1,
+            Severity::Warning => self.warnings += 1,
+            Severity::Ignore => {}
+        }
+    }
+}
+
+/// The status of each category, in [`Category::ALL`] order. Board: live shorts (in the
+/// short rule's severity), flagged copper (one warning) and the last DRC's findings;
+/// libraries: their issues, as warnings.
+pub fn status(doc: &Document, libraries: &mut [LibraryEditor]) -> [Status; 3] {
+    let mut sch = Status::default();
+    for p in doc.connectivity().problems.iter().filter(|p| !p.excluded) {
+        sch.add(p.severity);
+    }
+    let mut board = Status::default();
+    let short = doc.project().board.drc.severity(ViolationKind::Short);
+    for _ in live_shorts(doc) {
+        board.add(short);
+    }
+    if doc.copper().flagged().any(|c| matches!(c.item, CopperItem::Track(_) | CopperItem::Via(_))) {
+        board.warnings += 1;
+    }
+    if let Some(r) = doc.drc() {
+        for v in r.violations.iter().filter(|v| !v.excluded) {
+            board.add(v.severity);
+        }
+    }
+    let warnings = libraries.iter_mut().map(|l| l.issues().len()).sum();
+    [sch, board, Status { errors: 0, warnings }]
+}
+
+/// The tab to show when the panel opens: `current`, unless it's fine and another
+/// category has problems (errors first).
+pub fn tab_to_open(current: Category, status: &[Status; 3]) -> Category {
+    let of = |c: Category| status[c as usize];
+    if !of(current).is_ok() {
+        return current;
+    }
+    let with = |f: fn(Status) -> bool| Category::ALL.into_iter().find(|&c| f(of(c)));
+    with(|s| s.errors > 0).or(with(|s| !s.is_ok())).unwrap_or(current)
+}
+
+/// About the width of the tab headers.
+pub const TABS_WIDTH: f32 = 290.0;
+
+/// The tab headers (in the title bar): each with its badge. Clicking one shows it.
+pub fn tabs_ui(ui: &mut egui::Ui, current: &mut Category, status: &[Status; 3]) {
+    ui.spacing_mut().item_spacing.x = 2.0;
+    for (c, s) in Category::ALL.into_iter().zip(status) {
+        if tab(ui, c.label(), *s, *current == c).clicked() {
+            *current = c;
+        }
+    }
+}
+
+/// A tab header: a pill (filled when active) with the label and the badge.
+fn tab(ui: &mut egui::Ui, label: &str, status: Status, active: bool) -> egui::Response {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let text_color = if active { ui.visuals().strong_text_color() } else { theme::text_dim() };
+    let galley = ui.painter().layout_no_wrap(label.to_string(), font, text_color);
+    let badge_font = egui::FontId::proportional(11.0);
+    let (badge_text, badge_color) = match status {
+        s if s.is_ok() => (None, theme::success()),
+        s if s.errors > 0 => (Some((s.errors + s.warnings).to_string()), theme::error()),
+        s => (Some(s.warnings.to_string()), theme::warn()),
+    };
+    let badge_galley = badge_text.map(|t| ui.painter().layout_no_wrap(t, badge_font, badge_color));
+    let badge_w = badge_galley.as_ref().map_or(12.0, |g| g.size().x.max(8.0) + 10.0);
+    let (pad, gap, h) = (8.0, 6.0, 22.0);
+    let size = egui::vec2(pad + galley.size().x + gap + badge_w + pad, h);
+    let (rect, r) = ui.allocate_exact_size(size, egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let v = ui.visuals();
+        let fill = if active {
+            v.widgets.inactive.weak_bg_fill
+        } else if r.hovered() {
+            v.widgets.inactive.weak_bg_fill.gamma_multiply(0.5)
+        } else {
+            egui::Color32::TRANSPARENT
+        };
+        ui.painter().rect_filled(rect, 6, fill);
+        let text_pos = egui::pos2(rect.left() + pad, rect.center().y - galley.size().y / 2.0);
+        ui.painter().galley(text_pos, galley.clone(), text_color);
+        let badge = egui::Rect::from_min_size(
+            egui::pos2(text_pos.x + galley.size().x + gap, rect.center().y - 8.0),
+            egui::vec2(badge_w, 16.0),
+        );
+        match badge_galley {
+            None => icons::paint(ui.painter(), badge.shrink(1.0), Icon::Check, badge_color),
+            Some(g) => {
+                ui.painter().rect_filled(badge, 8, badge_color.gamma_multiply(0.18));
+                let pos = badge.center() - g.size() / 2.0;
+                ui.painter().galley(pos, g, badge_color);
+            }
+        }
+    }
+    let tip = match status {
+        s if s.is_ok() => "No problems".to_string(),
+        s => [(s.errors, "error"), (s.warnings, "warning")]
+            .into_iter()
+            .filter(|(n, _)| *n > 0)
+            .map(|(n, what)| format!("{n} {what}{}", if n == 1 { "" } else { "s" }))
+            .collect::<Vec<_>>()
+            .join(", "),
+    };
+    r.on_hover_text(tip)
 }
 
 /// Keys of all current messages (for the unseen-messages badge). Excluded findings don't
@@ -47,29 +195,16 @@ fn live_shorts(doc: &Document) -> impl Iterator<Item = &(Vec<String>, Point)> {
     doc.copper().shorts.iter().filter(move |(nets, _)| shown && drc.excluded(&short_key(nets)).is_none())
 }
 
-/// The panel. Returns a clicked message's target.
-pub fn ui(ui: &mut egui::Ui, doc: &mut Document, libraries: &mut [LibraryEditor]) -> Option<Show> {
-    let mut show = None;
-    ui.columns(3, |cols| {
-        column(&mut cols[0], "messages_sch", |ui| show = show.take().or(schematic(ui, doc)));
-        column(&mut cols[1], "messages_board", |ui| show = show.take().or(board(ui, doc)));
-        column(&mut cols[2], "messages_libs", |ui| show = show.take().or(library_issues(ui, libraries)));
-    });
-    show
-}
-
-fn column(ui: &mut egui::Ui, id: &str, add: impl FnOnce(&mut egui::Ui)) {
-    egui::ScrollArea::vertical().id_salt(id).auto_shrink([false, false]).show(ui, add);
-}
-
-fn heading(ui: &mut egui::Ui, title: &str, count: usize) {
-    let color = if count > 0 { theme::warn() } else { theme::success() };
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(title).strong());
-        let text = if count > 0 { count.to_string() } else { "OK".to_string() };
-        ui.label(RichText::new(text).color(color));
-    });
-    ui.add_space(2.0);
+/// The panel's tab `category`. Returns a clicked message's target.
+pub fn ui(ui: &mut egui::Ui, category: Category, doc: &mut Document, libraries: &mut [LibraryEditor]) -> Option<Show> {
+    let scroll = egui::ScrollArea::vertical().id_salt(("messages", category as u8)).auto_shrink([false, false]);
+    scroll
+        .show(ui, |ui| match category {
+            Category::Schematic => schematic(ui, doc),
+            Category::Board => board(ui, doc),
+            Category::Libraries => library_issues(ui, libraries),
+        })
+        .inner
 }
 
 /// "2 errors, 3 warnings" or "OK", in the colour of the worst.
@@ -82,14 +217,6 @@ fn counts_label(ui: &mut egui::Ui, errors: usize, warnings: usize) {
         (e, w) => (format!("{}, {}", plural(e, "error"), plural(w, "warning")), theme::error()),
     };
     ui.label(RichText::new(text).color(color));
-}
-
-fn severity_heading(ui: &mut egui::Ui, title: &str, errors: usize, warnings: usize) {
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(title).strong());
-        counts_label(ui, errors, warnings);
-    });
-    ui.add_space(2.0);
 }
 
 /// A clickable message line.
@@ -222,8 +349,6 @@ fn more(ui: &mut egui::Ui, total: usize) {
 
 fn schematic(ui: &mut egui::Ui, doc: &mut Document) -> Option<Show> {
     let problems = &doc.connectivity().problems;
-    let count = |s: Severity| problems.iter().filter(|p| !p.excluded && p.severity == s).count();
-    severity_heading(ui, "Schematic", count(Severity::Error), count(Severity::Warning));
     let shown: Vec<&editor_core::connectivity::Problem> = problems.iter().filter(|p| !p.excluded).collect();
     if shown.is_empty() {
         hint(
@@ -289,7 +414,7 @@ fn board(ui: &mut egui::Ui, doc: &mut Document) -> Option<Show> {
         .collect();
     let unconnected = copper.flagged().filter(|c| c.flag == Some(Flag::Unconnected)).count();
     let shorts: Vec<&(Vec<String>, Point)> = live_shorts(doc).collect();
-    heading(ui, "Board", shorts.len() + usize::from(!flagged.is_empty()));
+    ui.label(RichText::new("Copper").strong());
     for (nets, at) in &shorts {
         if item(ui, &format!("Short: {} at {}", nets.join(", "), units::fmt_point(*at))) {
             show = Some(Show::Objects(ViewId::Board, Vec::new(), Some(*at)));
@@ -390,7 +515,6 @@ fn board(ui: &mut egui::Ui, doc: &mut Document) -> Option<Show> {
 fn library_issues(ui: &mut egui::Ui, libraries: &mut [LibraryEditor]) -> Option<Show> {
     let mut show = None;
     let total: usize = libraries.iter_mut().map(|l| l.issues().len()).sum();
-    heading(ui, "Libraries", total);
     if total == 0 {
         hint(ui, "The open libraries have no issues.");
     }
@@ -409,4 +533,38 @@ fn library_issues(ui: &mut egui::Ui, libraries: &mut [LibraryEditor]) -> Option<
         more(ui, issues.len());
     }
     show
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_counts_findings_by_category() {
+        let mut doc = Document::new(view::demo::demo_project());
+        let mut libs = [];
+        assert_eq!(status(&doc, &mut libs), [Status::default(); 3], "the demo is clean");
+        doc.run_drc();
+        let unrouted = doc.drc().unwrap().violations.len();
+        assert_eq!(status(&doc, &mut libs)[1], Status { errors: unrouted, warnings: 0 }, "the DRC's findings");
+        doc.clear_drc();
+
+        // Without wires: unwired pins, and the tracks now join different nets.
+        let ids = doc.project().schematic.wires.iter().map(|w| ObjectId::Wire(w.id)).collect();
+        doc.execute(Command::Delete { ids }).unwrap();
+        doc.update_connectivity(false);
+        let [sch, board, lib] = status(&doc, &mut libs);
+        assert!(!sch.is_ok() && !board.is_ok() && lib.is_ok());
+    }
+
+    #[test]
+    fn opening_shows_a_category_with_problems() {
+        let ok = Status::default();
+        let warn = Status { errors: 0, warnings: 2 };
+        let err = Status { errors: 1, warnings: 0 };
+        assert_eq!(tab_to_open(Category::Schematic, &[ok, warn, err]), Category::Libraries, "errors first");
+        assert_eq!(tab_to_open(Category::Schematic, &[ok, warn, ok]), Category::Board);
+        assert_eq!(tab_to_open(Category::Board, &[err, warn, ok]), Category::Board, "it has problems itself");
+        assert_eq!(tab_to_open(Category::Board, &[ok, ok, ok]), Category::Board);
+    }
 }

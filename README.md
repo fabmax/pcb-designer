@@ -376,7 +376,7 @@ layout** puts them back.
 | Bar | Panel | Shortcut |
 | --- | --- | --- |
 | left | Project: the project tree and its libraries (see below) | ⌘1 |
-| left, bottom panel | Messages: schematic problems, board problems, DRC, library issues | ⌘3 |
+| left, bottom panel | Messages: schematic problems, board problems with the DRC, library issues, one tab each | ⌘3 |
 | right | Properties | ⌘4 |
 | right | Tool settings | ⌘5 |
 | right | Board setup (with DRC severities) | ⌘6 |
@@ -385,8 +385,10 @@ layout** puts them back.
 | right, lower | Nets: every net with its pins, sheets and routing state; click selects it, double-click zooms to it | ⌘9 |
 | left, bottom panel | Agent activity: the agent's calls this session, their arguments and results | – |
 
-Properties, Tool settings and Overview follow the editor tab you used last. Clicking a
-message shows its objects. While Messages is hidden, its icon counts new problems (a dot
+Properties, Tool settings and Overview follow the editor tab you used last. Messages
+has a tab for the schematic, the board and the libraries in its title bar; each tab's
+badge shows a check when all is fine, else the number of problems (red with errors,
+amber with only warnings). Clicking a message shows its objects. While Messages is hidden, its icon counts new problems (a dot
 means only problems you have already seen). Which panels are open, and their sizes, are
 saved with the settings.
 
