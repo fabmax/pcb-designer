@@ -1,0 +1,7 @@
+<!-- The diagonal from a (faint) bus to a wire -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="4.8,1.92 4.8,22.08" stroke-width="4.8" stroke-opacity="0.35"/>
+  <polyline points="4.8,14.88 12.48,7.2" stroke-width="4"/>
+  <polyline points="12.48,7.2 22.08,7.2"/>
+  <circle cx="22.08" cy="7.2" r="1.68" fill="currentColor" stroke="none"/>
+</svg>

@@ -1,0 +1,6 @@
+<!-- A wire between two connections -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="2.4,19.2 12,19.2 12,4.8 21.6,4.8"/>
+  <circle cx="2.4" cy="19.2" r="1.92" fill="currentColor" stroke="none"/>
+  <circle cx="21.6" cy="4.8" r="1.92" fill="currentColor" stroke="none"/>
+</svg>

@@ -1603,11 +1603,8 @@ fn opening_rows(ui: &mut egui::Ui, f: &mut fields::Fields, pads: &mut [Pad], rul
                 changed = Some(true);
             }
             if margin.is_some() {
-                if ui
-                    .small_button("Reset")
-                    .on_hover_text(format!("Back to the design rule ({})", crate::units::fmt(rule)))
-                    .clicked()
-                {
+                let tip = format!("Back to the design rule ({})", crate::units::fmt(rule));
+                if crate::project_panel::header_button(ui, Icon::Reset, &tip, false).clicked() {
                     for p in pads.iter_mut() {
                         if i == 0 { p.mask_margin = None } else { p.paste_margin = None }
                     }

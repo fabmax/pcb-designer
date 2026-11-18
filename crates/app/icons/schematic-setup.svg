@@ -1,0 +1,7 @@
+<!-- A pin conflict matrix with a settings dot -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <g stroke-width="1.6" stroke-opacity=".35"><polyline points="2.4,3.36 16.8,3.36"/><polyline points="2.4,3.36 2.4,17.76"/><polyline points="2.4,8.16 16.8,8.16"/><polyline points="7.2,3.36 7.2,17.76"/><polyline points="2.4,12.96 16.8,12.96"/><polyline points="12,3.36 12,17.76"/><polyline points="2.4,17.76 16.8,17.76"/><polyline points="16.8,3.36 16.8,17.76"/></g>
+  <rect x="2.4" y="3.36" width="14.4" height="14.4"/>
+  <circle cx="18.72" cy="18.24" r="2.64" stroke-width="2.4"/>
+  <circle cx="18.72" cy="18.24" r="0.96" fill="currentColor" stroke="none"/>
+</svg>

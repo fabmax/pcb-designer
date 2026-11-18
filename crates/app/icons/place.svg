@@ -1,0 +1,8 @@
+<!-- A resistor with its leads and a plus -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="0.96,14.88 5.28,14.88"/>
+  <rect x="5.28" y="11.52" width="12.48" height="6.72" rx="0.96"/>
+  <polyline points="17.76,14.88 23.04,14.88"/>
+  <polyline points="18.72,1.92 18.72,8.64"/>
+  <polyline points="15.36,5.28 22.08,5.28"/>
+</svg>

@@ -1,0 +1,6 @@
+<!-- A thick bus with two signals leaving it -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="1.92,7.2 22.08,7.2" stroke-width="4.8"/>
+  <polyline points="7.2,7.2 11.04,12 11.04,21.6"/>
+  <polyline points="14.88,7.2 18.72,12 18.72,21.6"/>
+</svg>

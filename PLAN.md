@@ -649,9 +649,19 @@ the current design of each area with the gotchas a change needs to know, the pla
   selects the object under the pointer unless it's selected, and opens clipboard,
   rotate/mirror (flip on the board), delete and Move to sheet. Picks run as
   `Deferred::Action` after the tiles are drawn.
-- **Floating tool bars** (`toolbar.rs`, vector icons in `icons.rs`) are drawn after the
+- **Floating tool bars** (`toolbar.rs`, icons in `icons.rs`) are drawn after the
   canvas and sense click-and-drag, so presses never reach the canvas. View buttons
   (layers, grid/units/snap, fit) sit at the bottom left.
+- **Icons** (`icons.rs`) are SVG files: generic ones copied from Tabler
+  (`crates/app/icons/tabler/`, MIT, with its licence), electronics ones our own in
+  Tabler's style (`crates/app/icons/`: 24×24 viewBox, stroke 2, round caps and joins).
+  Everything is drawn in `currentColor`; faint parts use `fill-opacity` /
+  `stroke-opacity`, a cut-out ring `#000`. `paint` replaces `currentColor` with white,
+  rasterises with resvg (no text, so `default-features = false`) once per icon and pixel
+  size (cached as textures in the context's temp data), snaps the square to pixels and
+  tints it. So colours stay theme colours: there are no per-theme icon variants. A new
+  icon is a file plus a line in the `icons!` table; the test renders every icon and
+  checks it is non-empty and white only.
 - **Tool windows** (`dock.rs`): icon bars on both edges, never opened automatically.
   Each bar has a top and a bottom `Group`; the left bar also holds the bottom area's group
   at its foot. One open panel per group; a side's two groups stack with a split
@@ -899,10 +909,6 @@ defers.
 - Cache the project tree nodes if big libraries make the per-frame rebuild slow.
 
 **GUI**
-- UI icons as SVG files instead of code (`icons.rs`): `egui_extras` `svg` feature
-  (resvg) with `install_image_loaders`. Monochrome icons drawn white and tinted
-  (`Image::tint`) to follow the theme; multi-colour ones (tab icons) as stacked tinted
-  layers or with colours substituted before parsing. Possibly the app icon too.
 - macOS: a Liquid Glass app icon made with Icon Composer (needs Xcode's `actool`); more
   content in the title strip; "Fill" on title double-click (no public API, zooms today).
 - Native menus don't show shortcuts without ⌘ (they would steal typing).

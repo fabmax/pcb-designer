@@ -1,0 +1,6 @@
+<!-- A resistor zigzag between two connection dots -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="1.44,12 5.28,12 6.96,6.72 9.6,17.28 12,6.72 14.4,17.28 17.04,6.72 18.72,12 22.56,12"/>
+  <circle cx="1.44" cy="12" r="1.92" fill="currentColor" stroke="none"/>
+  <circle cx="22.56" cy="12" r="1.92" fill="currentColor" stroke="none"/>
+</svg>

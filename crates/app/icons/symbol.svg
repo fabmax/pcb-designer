@@ -1,0 +1,7 @@
+<!-- An amplifier triangle with its inputs and output -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polygon points="5.76,3.84 19.68,12 5.76,20.16" fill="currentColor" fill-opacity="0.35"/>
+  <polyline points="1.44,8.16 5.76,8.16"/>
+  <polyline points="1.44,15.84 5.76,15.84"/>
+  <polyline points="19.68,12 23.04,12"/>
+</svg>

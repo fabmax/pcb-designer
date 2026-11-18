@@ -1,0 +1,6 @@
+<!-- Corner style: a rounded 90° corner -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M2.88,20.16 L10.18,20.16 Q21.12,20.16 21.12,10.37 L21.12,3.84" stroke-width="3.6"/>
+  <circle cx="2.88" cy="20.16" r="1.68" fill="currentColor" stroke="none"/>
+  <circle cx="21.12" cy="3.84" r="1.68" fill="currentColor" stroke="none"/>
+</svg>

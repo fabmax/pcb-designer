@@ -169,6 +169,9 @@ which ships with the app under the SIL Open Font License 1.1
 keep their sizes but not their exact widths (KiCad's own font differs). In the Gerber
 files texts are filled regions.
 
+Many UI icons are [Tabler icons](https://tabler.io/icons) (MIT,
+`crates/app/icons/tabler/LICENSE`).
+
 On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.app`
 (`--install` copies it to /Applications). Run from the bundle, the app is named
 "PCB Designer" in the menu bar and Dock; run with `cargo run`, macOS uses the binary's

@@ -1,0 +1,5 @@
+<!-- A zone with a notch cut out of its corner -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polygon points="2.88,3.84 21.12,3.84 21.12,12 12,12 12,21.12 2.88,21.12" fill="currentColor" fill-opacity="0.45"/>
+  <g stroke-width="1.4" stroke-opacity=".8"><polyline points="12,12 21.12,21.12"/><polyline points="21.12,12 21.12,21.12 12,21.12"/></g>
+</svg>

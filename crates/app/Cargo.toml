@@ -21,6 +21,7 @@ eframe.workspace = true
 egui.workspace = true
 egui-wgpu.workspace = true
 egui_tiles.workspace = true
+resvg.workspace = true
 wgpu.workspace = true
 log.workspace = true
 rustc-hash.workspace = true

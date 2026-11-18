@@ -1,0 +1,10 @@
+<!-- Pins joined by a net: a trunk with two branches -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="3.36,7.2 20.64,7.2"/>
+  <polyline points="8.64,7.2 8.64,18.24"/>
+  <polyline points="16.32,7.2 16.32,18.24"/>
+  <circle cx="3.36" cy="7.2" r="1.68" fill="currentColor" stroke="none"/>
+  <circle cx="20.64" cy="7.2" r="1.68" fill="currentColor" stroke="none"/>
+  <circle cx="8.64" cy="18.24" r="1.68" fill="currentColor" stroke="none"/>
+  <circle cx="16.32" cy="18.24" r="1.68" fill="currentColor" stroke="none"/>
+</svg>

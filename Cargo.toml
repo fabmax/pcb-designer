@@ -21,6 +21,7 @@ eframe = { version = "0.37", default-features = false, features = ["default_font
 egui = "0.37"
 egui-wgpu = "0.37"
 egui_tiles = "0.18"
+resvg = { version = "0.50", default-features = false }
 wgpu = "30"
 bytemuck = { version = "1", features = ["derive"] }
 pollster = "1"

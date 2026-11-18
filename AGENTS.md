@@ -81,6 +81,11 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), and `kic
 - **MCP tool:** add a `#[tool]` in `mcp/src/server.rs`, plus a `Request` variant with
   arms in both `describe` and `respond` in `host.rs`. Test it in `mcp/tests/all`. Update
   the tool list in README.md.
+- **Icon:** add an SVG to `crates/app/icons/` and a line to the `icons!` table in
+  `app/src/icons.rs`. Prefer a Tabler outline icon: copy the file unchanged from
+  `https://raw.githubusercontent.com/tabler/tabler-icons/main/icons/outline/NAME.svg`
+  into `icons/tabler/`. Draw our own in Tabler's style (24×24, stroke 2, round caps and
+  joins), in `currentColor` only, faint parts with an opacity; `paint` tints it.
 - **Colours:** canvas palettes live in `view/src/style.rs` (`DARK`, `LIGHT`) and chrome
   in `app/src/theme.rs`. Scenes bake colours when drawn, so a theme switch calls
   `Document::restyle`. Read colours from these files, never as literals in UI code.

@@ -1,0 +1,7 @@
+<!-- A folder with a small board inside -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polygon points="1.44,4.8 9.12,4.8 11.04,7.2 22.56,7.2 22.56,20.16 1.44,20.16" fill="currentColor" fill-opacity="0.35"/>
+  <rect x="7.2" y="10.56" width="9.6" height="6.72" rx="0.48"/>
+  <circle cx="10.08" cy="13.92" r="1.2" fill="currentColor" stroke="none"/>
+  <circle cx="13.92" cy="13.92" r="1.2" fill="currentColor" stroke="none"/>
+</svg>
