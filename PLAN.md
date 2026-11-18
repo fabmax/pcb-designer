@@ -716,7 +716,9 @@ the current design of each area with the gotchas a change needs to know, the pla
   `Deferred::Action` after the tiles are drawn.
 - **Floating tool bars** (`toolbar.rs`, icons in `icons.rs`) are drawn after the
   canvas and sense click-and-drag, so presses never reach the canvas. View buttons
-  (layers, grid/units/snap, fit) sit at the bottom left.
+  (layers, grid/units/snap, fit) sit at the bottom left. Buttons are 36 pt with 24 pt icons, the
+  size of the side bars' buttons (`toolbar::BUTTON`, `DOCK_BUTTON`); the header and
+  view buttons follow `BUTTON`.
 - **Icons** (`icons.rs`) are SVG files: generic ones copied from Tabler
   (`crates/app/icons/tabler/`, MIT, with its licence), electronics ones our own in
   Tabler's style (`crates/app/icons/`: 24×24 viewBox, stroke 2, round caps and joins).
@@ -1004,6 +1006,11 @@ defers.
 - Native menus don't show shortcuts without ⌘ (they would steal typing).
 - Remove weird items in native macOS Edit menu: Autofill, Start dictation, Emoji and symbols?
   Is that even possible? It seems to be there in any app...
+- Unify panel appearances:
+  - Properties and Overview panels have section titles in larger font than all other panels
+  - Overview panel looks a bit odd
+  - Input fields have varying widths
+  - Move large explaining text blocks behind some Info button (i in a circle)?
 
 **Other**
 - Simulation.
