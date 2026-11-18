@@ -3691,9 +3691,9 @@ fn ask_save(question: &str) -> rfd::MessageDialogResult {
 }
 
 /// Width of the panel button bars (points).
-const DOCK_BAR: f32 = 40.0;
+const DOCK_BAR: f32 = 44.0;
 /// The size of a tool window button in the dock bars.
-const DOCK_BUTTON: f32 = 32.0;
+const DOCK_BUTTON: f32 = 36.0;
 
 /// A panel's bar button: its icon, accent-tinted while the panel is open. `badge` is
 /// (new, total) problems: a count bubble for new ones, a dot if only old ones remain.
