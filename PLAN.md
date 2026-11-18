@@ -889,6 +889,7 @@ defers.
   boxes, tables, alignment targets, graphics and texts on documentation and user layers
   (user layers in general), net ties, tuning patterns (their tracks are kept).
 - Autoplacement and autorouting.
+- Reintroduce optional kicad style single line vector font (instead of ttf)
 
 **Libraries and parts**
 - Footprint wizards.
@@ -914,6 +915,8 @@ defers.
 - Native menus don't show shortcuts without ⌘ (they would steal typing).
 - Remove weird items in native macOS Edit menu: Autofill, Start dictation, Emoji and symbols?
   Is that even possible? It seems to be there in any app...
+- Revamp message panel, current one is quite placeholdery
 
 **Other**
 - Simulation.
+- Documentation / manual. E.g. some github pages template (just-the-docs or something similar)
