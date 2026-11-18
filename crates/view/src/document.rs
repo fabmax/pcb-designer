@@ -38,6 +38,10 @@ pub struct Document {
     /// Library objects whose placed symbols and footprints still show the old version (see
     /// [`update_connectivity`](Self::update_connectivity)).
     stale_library: Vec<ObjectId>,
+    /// ERC markers are shown on the sheets.
+    erc_markers: bool,
+    /// The DRC settings changed: the last check is redone with them.
+    drc_settings_changed: bool,
     /// How long redrawing the users of a library edit took last time.
     library_time: Duration,
     /// An interaction is in progress, as of the last `update_connectivity`.
@@ -89,6 +93,8 @@ impl Document {
             copper_time: Duration::ZERO,
             drc: None,
             stale_library: Vec::new(),
+            erc_markers: true,
+            drc_settings_changed: false,
             library_time: Duration::ZERO,
             busy: false,
             slow: Duration::from_millis(4),
@@ -280,6 +286,19 @@ impl Document {
         self.drc.as_ref()
     }
 
+    /// Show or hide the ERC markers on the schematic sheets.
+    pub fn set_erc_markers(&mut self, on: bool) {
+        self.erc_markers = on;
+        for view in &mut self.sheets {
+            view.set_erc_markers(on);
+            view.set_connectivity(&self.connectivity);
+        }
+    }
+
+    pub fn erc_markers(&self) -> bool {
+        self.erc_markers
+    }
+
     /// Forget the design rule check and its markers.
     pub fn clear_drc(&mut self) {
         self.drc = None;
@@ -342,6 +361,13 @@ impl Document {
             self.copper_stale = false;
             self.board.set_copper(self.editor.project(), &self.copper);
             done = true;
+        }
+        if self.drc_settings_changed && !self.copper_stale {
+            self.drc_settings_changed = false;
+            if self.drc.is_some() {
+                self.run_drc();
+                done = true;
+            }
         }
         done
     }
@@ -481,8 +507,11 @@ impl Document {
             return;
         }
         self.revision += 1;
-        if changes.changes.iter().any(|c| c.affects_connectivity()) {
+        if changes.changes.iter().any(|c| c.affects_connectivity()) || changes.erc_changed() {
             self.connectivity_stale = true;
+        }
+        if changes.drc_changed() {
+            self.drc_settings_changed = true;
         }
         if changes.touches_board() || self.connectivity_stale {
             self.copper_stale = true;
@@ -495,6 +524,7 @@ impl Document {
             let has_view = self.sheets.iter().any(|v| v.id == id);
             if exists && !has_view {
                 let mut view = View::new(id, project);
+                view.set_erc_markers(self.erc_markers);
                 view.set_connectivity(&self.connectivity);
                 self.sheets.push(view);
             } else if !exists {

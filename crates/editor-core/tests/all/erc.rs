@@ -67,7 +67,7 @@ fn outputs_driving_each_other() {
     wire(&mut ed, pin(&u1, "Y"), pin(&u2, "Y"));
     let p = problems(&ed);
     assert_eq!(p.len(), 1, "{p:?}");
-    assert!(p[0].contains("Outputs drive against each other: U1-3 (Y), U2-3 (Y)"), "{p:?}");
+    assert!(p[0].contains("Pin conflict (output – output): U1-3 (Y), U2-3 (Y)"), "{p:?}");
 
     // An output driving an input is fine.
     let mut ed = editor();
@@ -143,7 +143,7 @@ fn wired_not_connected_pins() {
     let (_, r2) = place(&mut ed, PART_RESISTOR, 30.0);
     wire(&mut ed, r1[1].1, r2[0].1);
     let p = problems(&ed);
-    assert_eq!(p, ["Pin R1-2 is of kind \"not connected\" but is wired"]);
+    assert_eq!(p, ["Pin conflict (passive – not connected): R2-1, R1-2"]);
 }
 
 #[test]
@@ -169,4 +169,65 @@ fn reused_references_are_reported() {
         ed.execute(Command::SetComponent { id: s, refdes: Some("R?".into()), value: None, variant: None }).unwrap();
     }
     assert!(Connectivity::build(ed.project()).problems.iter().all(|p| !p.message.starts_with("Reference")));
+}
+
+#[test]
+fn power_flags_power_their_net() {
+    let mut ed = editor();
+    let (_, u1) = place(&mut ed, PART_74HC00, 0.0);
+    wire(&mut ed, pin(&u1, "A"), pin(&u1, "B"));
+    assert_eq!(problems(&ed).len(), 1, "inputs not driven");
+    ed.execute(Command::AddPowerFlag { sheet: None, pos: pin(&u1, "A"), rotation: Angle::ZERO }).unwrap();
+    assert_eq!(problems(&ed), Vec::<String>::new());
+
+    // Away from everything it is a problem of its own.
+    let changes =
+        ed.execute(Command::AddPowerFlag { sheet: None, pos: Point::mm(99.0, 99.0), rotation: Angle::ZERO }).unwrap();
+    let p = Connectivity::build(ed.project()).problems;
+    let stray = p.iter().find(|p| p.rule == ErcRule::PowerFlagMisplaced).expect("reported");
+    assert_eq!(stray.severity, Severity::Warning);
+    assert_eq!(stray.objects, changes.ids().collect::<Vec<_>>());
+}
+
+#[test]
+fn severities_matrix_and_exclusions() {
+    let mut ed = editor();
+    let (_, u1) = place(&mut ed, PART_74HC00, 0.0);
+    let (_, u2) = place(&mut ed, PART_74HC00, 30.0);
+    wire(&mut ed, pin(&u1, "Y"), pin(&u2, "Y"));
+    let conflict =
+        |ed: &Editor| Connectivity::build(ed.project()).problems.into_iter().find(|p| p.rule == ErcRule::PinConflict);
+    let p = conflict(&ed).unwrap();
+    assert_eq!((p.severity, p.excluded), (Severity::Error, false));
+
+    // The matrix says how bad a pair is; Ignore drops it.
+    let mut erc = ed.project().schematic.erc.clone();
+    erc.set_pin_pair(PinKind::Output, PinKind::Output, Severity::Warning);
+    ed.execute(Command::SetErcSettings { erc: erc.clone() }).unwrap();
+    assert_eq!(conflict(&ed).unwrap().severity, Severity::Warning);
+    erc.set_pin_pair(PinKind::Output, PinKind::Output, Severity::Ignore);
+    ed.execute(Command::SetErcSettings { erc: erc.clone() }).unwrap();
+    assert!(conflict(&ed).is_none());
+    ed.undo();
+    ed.undo();
+
+    // Excluded: still listed, last, flagged; it survives moving the parts.
+    let mut erc = ed.project().schematic.erc.clone();
+    erc.exclusions.push(Exclusion { key: p.key.clone(), message: p.message.clone(), comment: "on purpose".into() });
+    ed.execute(Command::SetErcSettings { erc }).unwrap();
+    let all = Connectivity::build(ed.project()).problems;
+    assert!(all.last().unwrap().excluded && all.last().unwrap().key == p.key);
+    let u2 = ed.project().schematic.symbols.iter().nth(1).unwrap().id;
+    ed.execute(Command::Move { ids: vec![ObjectId::Symbol(u2)], delta: Point::mm(0.0, 10.0), keep_connected: true })
+        .unwrap();
+    assert!(conflict(&ed).unwrap().excluded);
+
+    // A rule set to Ignore drops its findings, and the unconnected pins' rings.
+    let rings = Connectivity::build(ed.project()).unconnected.len();
+    assert!(rings > 0);
+    let mut erc = ed.project().schematic.erc.clone();
+    erc.set_severity(ErcRule::UnconnectedPin, Severity::Ignore);
+    ed.execute(Command::SetErcSettings { erc }).unwrap();
+    let c = Connectivity::build(ed.project());
+    assert!(c.unconnected.is_empty() && c.problems.iter().all(|p| p.rule != ErcRule::UnconnectedPin));
 }

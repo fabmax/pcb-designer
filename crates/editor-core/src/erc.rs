@@ -1,21 +1,20 @@
-//! Electrical rules on top of connectivity: pin kinds that fight or go undriven, wired
-//! pins of kind "not connected" and reused reference designators. The findings join the
-//! schematic's [`Problem`]s.
+//! Electrical rules on top of connectivity: pin kinds that conflict or go undriven, and
+//! reused reference designators. The findings join the schematic's [`Problem`]s; their
+//! severities and exclusions are applied afterwards (`Connectivity::apply_settings`).
 //!
-//! Pin kinds, as in KiCad's default matrix (simplified):
-//! - Drivers: output and power output drive hard; tri-state and open collector share a
-//!   net but not with a hard driver. Two hard drivers (or one with a tri-state or open
-//!   collector pin) conflict.
+//! - Pin conflicts: every pair of pin kinds on a wired net is looked up in the pin
+//!   conflict matrix ([`ErcSettings::pin_pair`], KiCad's defaults); one finding per
+//!   conflicting pair of kinds, listing the pins.
 //! - An input needs some other pin that can drive it (anything but inputs, power inputs
-//!   and "not connected"), or a power port.
-//! - A power input needs a power output pin or a power port (power ports are KiCad's
-//!   power symbols, whose pin is a power output).
+//!   and "not connected"), a power port or a power flag.
+//! - A power input needs a power output pin, a power port or a power flag. Power ports
+//!   and power flags are no pins, so they take no part in the matrix.
 
 use rustc_hash::FxHashMap as HashMap;
 
 use model::*;
 
-use crate::connectivity::{Net, NetPin, Problem};
+use crate::connectivity::{Net, NetPin, Problem, pin_part};
 
 /// Problems of `nets` (pins, wires and labels already grouped).
 pub fn check(project: &Project, nets: &[Net]) -> Vec<Problem> {
@@ -40,7 +39,8 @@ fn list(pins: &[&NetPin]) -> String {
     pins.iter().map(|p| pin_text(p)).collect::<Vec<_>>().join(", ")
 }
 
-fn problem(message: String, pins: &[&NetPin]) -> Problem {
+/// A finding about `pins`, keyed by them.
+fn problem(rule: ErcRule, message: String, pins: &[&NetPin]) -> Problem {
     let mut objects: Vec<ObjectId> = Vec::new();
     for p in pins {
         let o = ObjectId::Symbol(p.symbol);
@@ -48,7 +48,8 @@ fn problem(message: String, pins: &[&NetPin]) -> Problem {
             objects.push(o);
         }
     }
-    Problem { message, objects, pos: pins.first().map(|p| p.pos) }
+    let parts: Vec<String> = pins.iter().map(|p| pin_part(p.symbol, &p.pin_number)).collect();
+    Problem::new(rule, message, objects, pins.first().map(|p| p.pos)).keyed(&parts)
 }
 
 fn check_net(project: &Project, net: &Net, problems: &mut Vec<Problem>) {
@@ -65,27 +66,40 @@ fn check_net(project: &Project, net: &Net, problems: &mut Vec<Problem>) {
     if !wired {
         return;
     }
+    let erc = &project.schematic.erc;
     let of = |kinds: &[PinKind]| -> Vec<&NetPin> { net.pins.iter().filter(|p| kinds.contains(&p.kind)).collect() };
 
-    let nc = of(&[PinKind::NotConnected]);
-    if !nc.is_empty() {
-        let message = if nc.len() == 1 {
-            format!("Pin {} is of kind \"not connected\" but is wired", list(&nc))
-        } else {
-            format!("Pins {} are of kind \"not connected\" but are wired", list(&nc))
-        };
-        problems.push(problem(message, &nc));
+    for (i, &a) in PIN_KINDS.iter().enumerate() {
+        let pa = of(&[a]);
+        if pa.is_empty() {
+            continue;
+        }
+        for &b in &PIN_KINDS[i..] {
+            let severity = erc.pin_pair(a, b);
+            if severity == Severity::Ignore {
+                continue;
+            }
+            let pins: Vec<&NetPin> = if a == b {
+                if pa.len() < 2 {
+                    continue;
+                }
+                pa.clone()
+            } else {
+                let pb = of(&[b]);
+                if pb.is_empty() {
+                    continue;
+                }
+                pa.iter().chain(&pb).copied().collect()
+            };
+            let what = format!("{} – {}", a.label().to_lowercase(), b.label().to_lowercase());
+            let mut p = problem(ErcRule::PinConflict, format!("Pin conflict ({what}): {}", list(&pins)), &pins);
+            p.severity = severity;
+            problems.push(p);
+        }
     }
 
-    let hard = of(&[PinKind::Output, PinKind::PowerOut]);
-    let shared = of(&[PinKind::TriState, PinKind::OpenCollector]);
-    if hard.len() > 1 || (hard.len() == 1 && !shared.is_empty()) {
-        let pins: Vec<&NetPin> = hard.iter().chain(&shared).copied().collect();
-        problems.push(problem(format!("Outputs drive against each other: {}", list(&pins)), &pins));
-    }
-
-    let power_port =
-        net.labels.iter().filter_map(|&l| project.schematic.labels.get(l)).any(|l| l.kind == LabelKind::Power);
+    let powered = !net.power_flags.is_empty()
+        || net.labels.iter().filter_map(|&l| project.schematic.labels.get(l)).any(|l| l.kind == LabelKind::Power);
     let inputs = of(&[PinKind::Input]);
     let drivers = of(&[
         PinKind::Output,
@@ -95,24 +109,24 @@ fn check_net(project: &Project, net: &Net, problems: &mut Vec<Problem>) {
         PinKind::OpenCollector,
         PinKind::Passive,
     ]);
-    if !inputs.is_empty() && drivers.is_empty() && !power_port {
+    if !inputs.is_empty() && drivers.is_empty() && !powered {
         let message = if inputs.len() == 1 {
             format!("Input {} is not driven", list(&inputs))
         } else {
             format!("Inputs {} are not driven", list(&inputs))
         };
-        problems.push(problem(message, &inputs));
+        problems.push(problem(ErcRule::UndrivenInput, message, &inputs));
     }
 
     let power_in = of(&[PinKind::PowerIn]);
-    if !power_in.is_empty() && !power_port && of(&[PinKind::PowerOut]).is_empty() {
+    if !power_in.is_empty() && !powered && of(&[PinKind::PowerOut]).is_empty() {
         let pins = list(&power_in);
         let message = if power_in.len() == 1 {
-            format!("Power input {pins} has no power source (power port or power output)")
+            format!("Power input {pins} has no power source (power port, power flag or power output)")
         } else {
-            format!("Power inputs {pins} have no power source (power port or power output)")
+            format!("Power inputs {pins} have no power source (power port, power flag or power output)")
         };
-        problems.push(problem(message, &power_in));
+        problems.push(problem(ErcRule::PowerInputUnpowered, message, &power_in));
     }
 }
 
@@ -140,6 +154,6 @@ fn duplicate_references(project: &Project, problems: &mut Vec<Problem>) {
         let symbols: Vec<&SymbolInstance> = s.symbols.iter().filter(|i| ids.contains(&i.component)).collect();
         let objects = symbols.iter().map(|i| ObjectId::Symbol(i.id)).collect();
         let message = format!("Reference {refdes} is used by {} parts", ids.len());
-        problems.push(Problem { message, objects, pos: symbols.first().map(|i| i.pos) });
+        problems.push(Problem::new(ErcRule::DuplicateReference, message, objects, symbols.first().map(|i| i.pos)));
     }
 }

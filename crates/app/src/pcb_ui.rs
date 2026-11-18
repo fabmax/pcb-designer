@@ -419,4 +419,6 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
          Pads open the solder mask, grown by the mask expansion (vias stay covered); SMD pads get paste, \
          grown by the paste margin (negative shrinks).",
     );
+    ui.add_space(12.0);
+    crate::checks_ui::drc_severities(ui, doc, message);
 }

@@ -25,6 +25,11 @@ pub fn warn() -> Color32 {
     if dark() { Color32::from_rgb(0xf0, 0xb4, 0x5a) } else { Color32::from_rgb(0xb0, 0x60, 0x00) }
 }
 
+/// Errors (ERC and DRC findings).
+pub fn error() -> Color32 {
+    if dark() { Color32::from_rgb(0xff, 0x6b, 0x7f) } else { Color32::from_rgb(0xc8, 0x14, 0x3c) }
+}
+
 pub fn success() -> Color32 {
     if dark() { Color32::from_rgb(0x5f, 0xd3, 0xa0) } else { Color32::from_rgb(0x12, 0x80, 0x50) }
 }

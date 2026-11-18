@@ -105,8 +105,19 @@ fn finds_seeded_errors() {
     assert_eq!(count(K::Unconnected), 3, "thin track and both vias");
     assert_eq!(count(K::Unrouted), 0);
     assert_eq!(count(K::Short), 0);
-    // Most severe first.
-    assert!(v.windows(2).all(|w| w[0].kind <= w[1].kind));
+    // Errors first (by kind), then warnings.
+    assert!(v.windows(2).all(|w| (w[0].severity, w[0].kind) <= (w[1].severity, w[1].kind)));
+    assert_eq!(cy.severity, Severity::Warning);
+
+    // Ignored kinds go; excluded findings stay, last and flagged.
+    let mut drc = ed.project().board.drc.clone();
+    drc.set_severity(K::Drill, Severity::Ignore);
+    drc.exclusions.push(Exclusion { key: cy.key.clone(), message: cy.message.clone(), comment: String::new() });
+    ed.execute(Command::SetDrcSettings { drc }).unwrap();
+    let v = check(&ed);
+    assert!(v.iter().all(|x| x.kind != K::Drill));
+    let last = v.last().unwrap();
+    assert!(last.excluded && last.kind == K::Courtyard);
 }
 
 #[test]

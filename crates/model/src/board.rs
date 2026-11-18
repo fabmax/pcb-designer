@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::checks::DrcSettings;
 use crate::geom::{Angle, Point, Shape, Text, Transform};
 use crate::id::Id;
 use crate::library::{FootprintLayer, has_id};
@@ -589,6 +590,9 @@ pub struct Board {
     pub graphics: Store<BoardGraphic>,
     #[serde(default)]
     pub texts: Store<BoardText>,
+    /// Severities and exclusions of the design rules check.
+    #[serde(default, skip_serializing_if = "DrcSettings::is_default")]
+    pub drc: DrcSettings,
 }
 
 impl Default for Board {
@@ -638,6 +642,7 @@ impl Board {
             keepouts: Store::default(),
             graphics: Store::default(),
             texts: Store::default(),
+            drc: DrcSettings::default(),
         }
     }
 

@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use model::{BoardLayer, DesignRules, Object, ObjectId, Project};
+use model::{BoardLayer, DesignRules, DrcSettings, ErcSettings, Object, ObjectId, Project};
 
 use crate::CommandError;
 
@@ -43,21 +43,31 @@ impl Change {
     }
 }
 
-/// The board's layer stack and design rules. Not objects: changed as a whole.
+/// The project's settings that aren't objects: the board's layer stack and design rules,
+/// and the settings of the electrical and design rules checks. Changed as a whole.
 #[derive(Clone, Debug, PartialEq)]
-pub struct BoardSetup {
+pub struct Setup {
     pub layers: Vec<BoardLayer>,
     pub rules: DesignRules,
+    pub erc: ErcSettings,
+    pub drc: DrcSettings,
 }
 
-impl BoardSetup {
-    pub fn of(project: &Project) -> BoardSetup {
-        BoardSetup { layers: project.board.layers.clone(), rules: project.board.rules.clone() }
+impl Setup {
+    pub fn of(project: &Project) -> Setup {
+        Setup {
+            layers: project.board.layers.clone(),
+            rules: project.board.rules.clone(),
+            erc: project.schematic.erc.clone(),
+            drc: project.board.drc.clone(),
+        }
     }
 
     fn apply(&self, project: &mut Project) {
         project.board.layers = self.layers.clone();
         project.board.rules = self.rules.clone();
+        project.schematic.erc = self.erc.clone();
+        project.board.drc = self.drc.clone();
     }
 }
 
@@ -66,7 +76,7 @@ impl BoardSetup {
 pub struct ChangeSet {
     pub changes: Vec<Change>,
     /// Board setup before and after, if it changed.
-    pub setup: Option<(BoardSetup, BoardSetup)>,
+    pub setup: Option<(Setup, Setup)>,
     /// The project's library files before and after, if they changed.
     pub libraries: Option<(Vec<PathBuf>, Vec<PathBuf>)>,
 }
@@ -85,7 +95,22 @@ impl ChangeSet {
     }
 
     pub fn touches_board(&self) -> bool {
-        self.setup.is_some() || self.ids().any(|id| id.kind().is_board())
+        self.board_setup_changed() || self.ids().any(|id| id.kind().is_board())
+    }
+
+    /// The layer stack or the design rules changed.
+    pub fn board_setup_changed(&self) -> bool {
+        self.setup.as_ref().is_some_and(|(b, a)| b.layers != a.layers || b.rules != a.rules)
+    }
+
+    /// The electrical rules check's settings changed.
+    pub fn erc_changed(&self) -> bool {
+        self.setup.as_ref().is_some_and(|(b, a)| b.erc != a.erc)
+    }
+
+    /// The design rules check's settings changed.
+    pub fn drc_changed(&self) -> bool {
+        self.setup.as_ref().is_some_and(|(b, a)| b.drc != a.drc)
     }
 
     /// `self` followed by `next`, as one change set.
@@ -104,7 +129,7 @@ impl ChangeSet {
     /// inserted again keeps both changes: it is appended, not back at its old index.
     fn coalesce(
         changes: Vec<Change>,
-        setup: Option<(BoardSetup, BoardSetup)>,
+        setup: Option<(Setup, Setup)>,
         libraries: Option<(Vec<PathBuf>, Vec<PathBuf>)>,
     ) -> ChangeSet {
         let mut out: Vec<Option<Change>> = Vec::with_capacity(changes.len());
@@ -232,7 +257,7 @@ pub struct Transaction<'p> {
     project: &'p mut Project,
     changes: Vec<Change>,
     /// Board setup before the first [`Transaction::set_setup`].
-    setup_before: Option<BoardSetup>,
+    setup_before: Option<Setup>,
     /// Library files before the first [`Transaction::set_libraries`].
     libraries_before: Option<Vec<PathBuf>>,
 }
@@ -289,10 +314,10 @@ impl<'p> Transaction<'p> {
         Ok(())
     }
 
-    /// Change the layer stack and design rules.
-    pub fn set_setup(&mut self, setup: BoardSetup) {
+    /// Change the layer stack, design rules or check settings.
+    pub fn set_setup(&mut self, setup: Setup) {
         if self.setup_before.is_none() {
-            self.setup_before = Some(BoardSetup::of(self.project));
+            self.setup_before = Some(Setup::of(self.project));
         }
         setup.apply(self.project);
     }
@@ -317,7 +342,7 @@ impl<'p> Transaction<'p> {
     }
 
     pub fn finish(self) -> ChangeSet {
-        let setup = self.setup_before.map(|b| (b, BoardSetup::of(self.project)));
+        let setup = self.setup_before.map(|b| (b, Setup::of(self.project)));
         let libraries = self.libraries_before.map(|b| (b, self.project.libraries.clone()));
         ChangeSet::coalesce(self.changes, setup, libraries)
     }

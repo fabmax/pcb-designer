@@ -96,6 +96,9 @@ add_bus_entry) only group signals: name a bus with a label whose name is a bus n
 leave through bus entries on wires labelled with a member name. Bus wires never connect \
 to wires or pins. Pins left open on purpose get a no-connect flag (add_no_connect at the pin \
 end; it moves and is deleted with the symbol); other unconnected pins are reported as problems. \
+A net powered from outside the schematic (a connector, a supply) gets a power flag \
+(add_power_flag on a wire or pin end; KiCad's PWR_FLAG): its power inputs and inputs count as \
+driven. \
 move, rotate, mirror and flip_side take keep_connected (default false), as a drag in the GUI: \
 wires attached to what moves follow (keeping horizontal and vertical wires so), ends of moved \
 wires stay on what stays put (joined by a short wire), and on the board tracks ending on moved \
@@ -224,6 +227,24 @@ pub struct GetObjectsParams {
 pub struct DrcParams {
     /// Maximum number of violations to list (default 200; the counts cover all).
     pub limit: Option<usize>,
+    /// List excluded violations too (marked excluded).
+    pub include_excluded: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+pub struct NetlistParams {
+    /// List excluded problems too (marked excluded).
+    pub include_excluded: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ExcludeParams {
+    /// Keys of findings (`key` of get_netlist problems or run_drc violations).
+    pub keys: Vec<String>,
+    /// Why they are fine (shown next to them).
+    pub comment: Option<String>,
+    /// Include them again instead.
+    pub include: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -499,14 +520,47 @@ impl PcbTools {
         its pins (reference, pin name, footprint pads, position), plus unconnected pins (without \
         those under a no-connect flag or of kind not_connected) and \
         connectivity and ERC problems (e.g. two different labels on one net, misused buses, \
-        outputs driving each other, undriven inputs, reused references; each with \
-        message, objects and position). Pins connect where wire ends, pins, labels and \
+        pin kinds that conflict per the pin conflict matrix, undriven inputs, power inputs \
+        without a power output, power port or power flag, reused references; each with rule, \
+        severity (error/warning), message, objects, position and key; errors first; excluded \
+        ones only with include_excluded). Pins connect where wire ends, pins, labels and \
         junctions coincide, where a wire ends on another wire, and through same-named labels \
         (local: same sheet; global and power: all sheets); \
         crossing wires connect only with a junction. Also lists buses with their members and \
         the net and pins of each member (null if no such net).")]
-    async fn get_netlist(&self) -> Result<CallToolResult, ErrorData> {
-        self.call(Request::Netlist).await
+    async fn get_netlist(&self, Parameters(p): Parameters<NetlistParams>) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::Netlist { include_excluded: p.include_excluded.unwrap_or(false) }).await
+    }
+
+    #[tool(description = "Exclude ERC or DRC findings the design means (e.g. an intended \
+        courtyard overlap): by their key from get_netlist problems or run_drc violations, with an \
+        optional comment. Excluded findings are kept in the project, listed apart and not \
+        counted; a finding whose pins or objects change gets a new key and shows again. \
+        include: true includes them again. One undo step.")]
+    async fn exclude_findings(&self, Parameters(p): Parameters<ExcludeParams>) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::ExcludeFindings {
+            keys: p.keys,
+            comment: p.comment.unwrap_or_default(),
+            include: p.include.unwrap_or(false),
+        })
+        .await
+    }
+
+    #[tool(description = "Change how the checks rate findings: erc {rule: severity} for \
+        schematic rules (undriven_input, power_input_unpowered, unconnected_pin, \
+        no_connect_misplaced, power_flag_misplaced, net_names, duplicate_reference, \
+        sheet_pin_unconnected, hier_label_on_root, bus_misuse), drc {kind: severity} for design \
+        rule check kinds (short, clearance, keepout, board_edge, courtyard, track_width, drill, \
+        via_span, zone_net, unconnected, unrouted), matrix [{a, b, severity}] for pairs of pin kinds \
+        on one net (input, output, bidirectional, tri_state, passive, power_in, power_out, \
+        open_collector, not_connected; ignore = fine). Severity: error, warning or ignore (not \
+        reported). reset: true starts from the defaults (KiCad's). Returns the resulting \
+        severities. One undo step.")]
+    async fn set_check_settings(
+        &self,
+        Parameters(p): Parameters<crate::host::CheckSettings>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::SetCheckSettings(p)).await
     }
 
     #[tool(description = "Board routing state: unrouted connections (ratsnest lines between the \
@@ -522,10 +576,13 @@ impl PcbTools {
     #[tool(description = "Run the design rule check on the board: shorts, clearance between \
         copper of different nets, copper at or outside the board edge, overlapping courtyards, \
         track width and drill below the minimums, copper touching no pad, unrouted connections. \
-        Violations are sorted most severe first, with a message, position (nm) and the objects \
-        involved (footprints for pads). The GUI marks them too.")]
+        Violations are sorted errors first (by kind), then warnings, with kind, severity, message, \
+        position (nm), the objects involved (footprints for pads) and key (for \
+        exclude_findings); excluded ones only with include_excluded. Severities: \
+        set_check_settings. The GUI marks them too.")]
     async fn run_drc(&self, Parameters(p): Parameters<DrcParams>) -> Result<CallToolResult, ErrorData> {
-        self.call(Request::Drc { limit: p.limit.unwrap_or(200) }).await
+        self.call(Request::Drc { limit: p.limit.unwrap_or(200), include_excluded: p.include_excluded.unwrap_or(false) })
+            .await
     }
 
     #[tool(description = "Measure the gap between two things on the board: a pad {type: pad, \

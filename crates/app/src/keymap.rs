@@ -50,6 +50,8 @@ pub enum Action {
     SchPower,
     SchJunction,
     SchNoConnect,
+    SchPowerFlag,
+    ToggleErcMarkers,
     Posture,
     NextCorners,
     RoundCorners,
@@ -71,6 +73,7 @@ pub enum Action {
     PanelProperties,
     PanelToolSettings,
     PanelBoardSetup,
+    PanelSchematicSetup,
     PanelOverview,
 }
 
@@ -119,6 +122,8 @@ impl Action {
         Action::SchPower,
         Action::SchJunction,
         Action::SchNoConnect,
+        Action::SchPowerFlag,
+        Action::ToggleErcMarkers,
         Action::Posture,
         Action::NextCorners,
         Action::RoundCorners,
@@ -140,6 +145,7 @@ impl Action {
         Action::PanelProperties,
         Action::PanelToolSettings,
         Action::PanelBoardSetup,
+        Action::PanelSchematicSetup,
         Action::PanelOverview,
     ];
 
@@ -180,6 +186,8 @@ impl Action {
             Action::SchPower => "Power port tool (schematic)",
             Action::SchJunction => "Junction tool (schematic)",
             Action::SchNoConnect => "No-connect flag tool (schematic)",
+            Action::SchPowerFlag => "Power flag tool (schematic)",
+            Action::ToggleErcMarkers => "Show/hide ERC markers (schematic)",
             Action::Posture => "Corner direction (wires, tracks)",
             Action::NextCorners => "Next corner style (wires, tracks)",
             Action::RoundCorners => "Round track corners",
@@ -201,6 +209,7 @@ impl Action {
             Action::PanelProperties => "Show/hide Properties panel",
             Action::PanelToolSettings => "Show/hide Tool settings panel",
             Action::PanelBoardSetup => "Show/hide Board setup panel",
+            Action::PanelSchematicSetup => "Show/hide Schematic setup panel",
             Action::PanelOverview => "Show/hide Overview panel",
         }
     }
@@ -223,6 +232,7 @@ impl Action {
             | Action::SchPower
             | Action::SchJunction
             | Action::SchNoConnect
+            | Action::SchPowerFlag
             | Action::MoveToSheet => Some(Context::Schematic),
             Action::PcbRoute
             | Action::PcbVia
@@ -420,6 +430,7 @@ impl Default for Keymap {
             (Action::SchPower, vec![S::key(Key::P)]),
             (Action::SchJunction, vec![S::key(Key::J)]),
             (Action::SchNoConnect, vec![S::key(Key::Q)]),
+            (Action::SchPowerFlag, vec![S::shift(Key::P)]),
             (Action::Posture, vec![S::key(Key::Slash)]),
             (Action::NextCorners, vec![S::shift(Key::Space)]),
             (Action::PcbRoute, vec![S::key(Key::T)]),
@@ -437,6 +448,7 @@ impl Default for Keymap {
             (Action::PanelToolSettings, vec![S::cmd(Key::Num5)]),
             (Action::PanelBoardSetup, vec![S::cmd(Key::Num6)]),
             (Action::PanelOverview, vec![S::cmd(Key::Num7)]),
+            (Action::PanelSchematicSetup, vec![S::cmd(Key::Num8)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
     }
@@ -527,7 +539,13 @@ mod tests {
         let map = Keymap::default();
         assert!(map.conflicts().is_empty());
         // Unbound by default (in a menu).
-        let unbound = [Action::RoundCorners, Action::MoveToSheet, Action::PcbCutout, Action::ConvertToPolygon];
+        let unbound = [
+            Action::RoundCorners,
+            Action::MoveToSheet,
+            Action::PcbCutout,
+            Action::ConvertToPolygon,
+            Action::ToggleErcMarkers,
+        ];
         for a in Action::ALL.iter().filter(|a| !unbound.contains(a)) {
             assert!(!map.shortcuts(*a).is_empty(), "{a:?} has no default shortcut");
         }

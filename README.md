@@ -174,6 +174,23 @@ On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.a
 "PCB Designer" in the menu bar and Dock; run with `cargo run`, macOS uses the binary's
 name, `pcb-designer`.
 
+## Checking the design (ERC and DRC)
+
+The schematic is checked as you edit (Messages, ⌘3); the board's design rules when you
+press **Run DRC**. Errors are listed before warnings, and errors and warnings are marked
+on the canvas (View → ERC markers turns the schematic's off).
+
+- **Severities:** each rule is an error, a warning or ignored: ERC rules and the pin
+  conflict matrix (which pin kinds may share a net, defaults as in KiCad) in the
+  Schematic setup panel, DRC rules in Board setup. Click a matrix cell to cycle it.
+- **Exclusions:** right-click a finding → **Exclude** (with an optional comment). It moves
+  into the collapsed *Excluded* list and no longer counts; **Include again** brings it
+  back. Exclusions are saved with the project and follow the objects when they move.
+  One that matches nothing any more shows as unused; **Remove unused** clears those.
+- **Power flags** (⇧P): a power input fed from a connector or another passive pin
+  needs a power source. Put a power flag on its net (on a wire or a pin) to say the
+  net is powered, like KiCad's PWR_FLAG.
+
 ## Letting an agent use the app (MCP)
 
 The app can run an [MCP](https://modelcontextprotocol.io) server so AI agents can inspect
@@ -192,7 +209,8 @@ open project, so only turn it on when you need it.
 Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `search_kicad`, `import_kicad`, `download_kicad_libraries`, `import_kicad_project`, `list_objects`, `get_objects`, `get_component`,
 `get_netlist` (nets, buses and their members, schematic and ERC problems), `get_routing`,
-`run_drc`, `measure_clearance`, `export_gerber`, `execute` (any editor command, as one undo step, e.g.
+`run_drc`, `exclude_findings` (exclude or include ERC/DRC findings by key, with a
+comment), `set_check_settings` (severities and the pin conflict matrix), `measure_clearance`, `export_gerber`, `execute` (any editor command, as one undo step, e.g.
 `add_text` on a sheet or a board layer), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
 or the whole window) and `save_project`. Sheets are added, renamed and deleted with
 `execute` (`add_sheet`, `update`, `delete`), and `move_to_sheet` moves objects (or
@@ -352,8 +370,9 @@ panel at a time.
 | left, bottom panel | Messages: schematic problems, board problems, DRC, library issues | ⌘3 |
 | right | Properties | ⌘4 |
 | right | Tool settings | ⌘5 |
-| right | Board setup | ⌘6 |
+| right | Board setup (with DRC severities) | ⌘6 |
 | right | Overview (project or library statistics) | ⌘7 |
+| right | Schematic setup: ERC severities and the pin conflict matrix | ⌘8 |
 
 Properties, Tool settings and Overview follow the editor tab you used last. Clicking a
 message shows its objects. While Messages is hidden, its icon counts new problems (a dot

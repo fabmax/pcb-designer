@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::checks::ErcSettings;
 use crate::geom::{Angle, Point, Rect, Size, Text, Transform};
 use crate::id::Id;
 use crate::library::{has_id, natural_cmp};
@@ -357,6 +358,19 @@ pub struct NoConnect {
     pub pos: Point,
 }
 
+/// Power flag (a pennant on a wire or pin end): its net is powered from somewhere the
+/// schematic doesn't show (a connector, a supply), so power inputs and inputs on it count
+/// as driven. KiCad's PWR_FLAG. Names no net and takes no part in the pin conflict matrix.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct PowerFlag {
+    pub id: Id,
+    pub sheet: Id,
+    pub pos: Point,
+    /// Direction the flag points from `pos` (0°: up).
+    #[serde(default)]
+    pub rotation: Angle,
+}
+
 /// What a label connects to, as in KiCad.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -576,7 +590,20 @@ impl SymbolField {
     }
 }
 
-has_id!(Sheet, Component, SymbolInstance, Wire, BusWire, BusEntry, Junction, NoConnect, NetLabel, SchText, SymbolField);
+has_id!(
+    Sheet,
+    Component,
+    SymbolInstance,
+    Wire,
+    BusWire,
+    BusEntry,
+    Junction,
+    NoConnect,
+    PowerFlag,
+    NetLabel,
+    SchText,
+    SymbolField
+);
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Schematic {
@@ -595,6 +622,8 @@ pub struct Schematic {
     pub junctions: Store<Junction>,
     #[serde(default, skip_serializing_if = "Store::is_empty")]
     pub no_connects: Store<NoConnect>,
+    #[serde(default, skip_serializing_if = "Store::is_empty")]
+    pub power_flags: Store<PowerFlag>,
     #[serde(default)]
     pub labels: Store<NetLabel>,
     #[serde(default)]
@@ -602,6 +631,9 @@ pub struct Schematic {
     /// Reference and value texts of placed symbols.
     #[serde(default)]
     pub fields: Store<SymbolField>,
+    /// Severities, pin conflict matrix and exclusions of the electrical rules check.
+    #[serde(default, skip_serializing_if = "ErcSettings::is_default")]
+    pub erc: ErcSettings,
 }
 
 impl Schematic {
@@ -747,6 +779,7 @@ impl Schematic {
             ObjectId::BusEntry(o) => self.bus_entries.get(o).map(|o| o.sheet),
             ObjectId::Junction(o) => self.junctions.get(o).map(|o| o.sheet),
             ObjectId::NoConnect(o) => self.no_connects.get(o).map(|o| o.sheet),
+            ObjectId::PowerFlag(o) => self.power_flags.get(o).map(|o| o.sheet),
             ObjectId::Label(o) => self.labels.get(o).map(|o| o.sheet),
             ObjectId::SchText(o) => self.texts.get(o).map(|o| o.sheet),
             ObjectId::SymbolField(o) => self.fields.get(o).and_then(|f| self.symbols.get(f.symbol)).map(|s| s.sheet),
@@ -765,6 +798,7 @@ impl Schematic {
             .chain(self.bus_entries.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::BusEntry(o.id)))
             .chain(self.junctions.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::Junction(o.id)))
             .chain(self.no_connects.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::NoConnect(o.id)))
+            .chain(self.power_flags.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::PowerFlag(o.id)))
             .chain(self.labels.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::Label(o.id)))
             .chain(self.texts.iter().filter(|o| on(o.sheet)).map(|o| ObjectId::SchText(o.id)))
             .chain(

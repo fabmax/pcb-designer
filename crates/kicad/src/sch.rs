@@ -49,6 +49,8 @@ pub struct SchImport {
     pub bus_entries: Vec<BusEntry>,
     pub junctions: Vec<Junction>,
     pub no_connects: Vec<NoConnect>,
+    /// From PWR_FLAG symbols.
+    pub power_flags: Vec<PowerFlag>,
     pub labels: Vec<NetLabel>,
     pub texts: Vec<SchText>,
     /// Symbols refused because of hidden power pins: `Lib:Name: reason`.
@@ -208,6 +210,9 @@ fn to_pages(out: &mut SchImport) {
     }
     for n in &mut out.no_connects {
         n.pos = n.pos + up(n.sheet);
+    }
+    for f in &mut out.power_flags {
+        f.pos = f.pos + up(f.sheet);
     }
     for l in &mut out.labels {
         l.pos = l.pos + up(l.sheet);
@@ -539,7 +544,8 @@ impl Loader<'_> {
         self.out.instances.push(inst);
     }
 
-    /// A power symbol: a power label at its pin (power flags are skipped).
+    /// A power symbol: a power label at its pin, or a power flag for PWR_FLAG (its pin is
+    /// a power output).
     #[allow(clippy::too_many_arguments)]
     fn power(
         &mut self,
@@ -554,18 +560,23 @@ impl Loader<'_> {
     ) {
         let Some(unit) = sym.units.first() else { return };
         let pins: Vec<&Pin> = unit.pins.iter().collect();
-        if pins.len() != 1 || pins[0].kind != PinKind::PowerIn {
-            self.report.skip("power flags (PWR_FLAG)");
+        let flag = pins.len() == 1 && pins[0].kind == PinKind::PowerOut;
+        if pins.len() != 1 || !(pins[0].kind == PinKind::PowerIn || flag) {
+            self.report.skip("power symbols with several pins or other pin kinds");
             return;
         }
         let t = Transform::new(pos, rotation, mirror);
         let at = t.point(pins[0].pos);
-        let name = plain(props.get("Value").map_or("", String::as_str));
-        let style = power_style(lib_id, &name);
         // Unrotated, KiCad's power symbols draw their glyph above the pin (ground: below),
         // as ours do: our rotation is where the symbol's "up" ends up.
         let up = Transform::new(Point::ZERO, rotation, mirror).point(Point::new(0, 1_000_000));
         let rotation = Angle::deg((up.y as f64).atan2(up.x as f64).to_degrees() - 90.0);
+        if flag {
+            self.out.power_flags.push(PowerFlag { id, sheet, pos: at, rotation });
+            return;
+        }
+        let name = plain(props.get("Value").map_or("", String::as_str));
+        let style = power_style(lib_id, &name);
         self.out.labels.push(NetLabel {
             id,
             sheet,

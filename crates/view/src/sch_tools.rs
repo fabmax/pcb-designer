@@ -21,6 +21,8 @@ pub enum SchTool {
     Junction,
     /// No-connect flags on pin ends.
     NoConnect,
+    /// Power flags on wires and pin ends.
+    PowerFlag,
     /// Free text: a click starts typing it in place.
     Text,
     /// Place parts (see [`SchPlacer::placing`]).
@@ -40,6 +42,7 @@ impl SchTool {
         SchTool::Power,
         SchTool::Junction,
         SchTool::NoConnect,
+        SchTool::PowerFlag,
         SchTool::Text,
     ];
 
@@ -53,6 +56,7 @@ impl SchTool {
             SchTool::Power => "Power",
             SchTool::Junction => "Junction",
             SchTool::NoConnect => "No connect",
+            SchTool::PowerFlag => "Power flag",
             SchTool::Text => "Text",
             SchTool::Place => "Place",
             SchTool::Sheet => "Sheet",
@@ -73,6 +77,7 @@ impl SchTool {
             SchTool::Label | SchTool::Power => "Click to place · R rotate · Esc done",
             SchTool::Junction => "Click to place a junction · Esc done",
             SchTool::NoConnect => "Click a pin end to mark it unconnected on purpose · Esc done",
+            SchTool::PowerFlag => "Click a wire or pin to mark its net as powered from elsewhere · R rotate · Esc done",
             SchTool::Text => "Click to place, then type · Shift+Enter new line · Enter done · Esc cancel · R rotate",
             SchTool::Place => "Click to place · R rotate · X mirror · Esc done",
             SchTool::Sheet => "Click to place the sheet's top left corner · Esc cancels",
@@ -146,6 +151,7 @@ pub enum SchGhost {
     Entry(Point, EntryDir),
     Junction(Point),
     NoConnect(Point),
+    PowerFlag(Point, Angle),
     Label(NetLabel),
     Symbol {
         part: Id,
@@ -411,7 +417,7 @@ impl SchPlacer {
         if tool != SchTool::Sheet {
             self.new_sheet = None;
         }
-        if matches!(tool, SchTool::Label | SchTool::Power | SchTool::Place) {
+        if matches!(tool, SchTool::Label | SchTool::Power | SchTool::PowerFlag | SchTool::Place) {
             self.settings.rotation = Angle::ZERO;
             self.settings.mirror = false;
         }
@@ -601,6 +607,12 @@ impl SchPlacer {
                 }
                 Command::AddNoConnect { sheet: Some(sheet), pos: p }
             }
+            SchTool::PowerFlag => {
+                if doc.project().schematic.power_flags.iter().any(|f| f.sheet == sheet && f.pos == p) {
+                    return Ok(placed);
+                }
+                Command::AddPowerFlag { sheet: Some(sheet), pos: p, rotation: self.settings.rotation }
+            }
             SchTool::Sheet => {
                 let Some(name) = self.new_sheet.clone() else { return Ok(placed) };
                 // The cursor is the top left corner (y points up).
@@ -747,6 +759,7 @@ impl SchPlacer {
             SchTool::Junction => vec![SchGhost::Junction(p)],
             SchTool::Text => vec![SchGhost::Text(Text { text: "Text".into(), ..self.new_text(p) })],
             SchTool::NoConnect => vec![SchGhost::NoConnect(p)],
+            SchTool::PowerFlag => vec![SchGhost::PowerFlag(p, self.settings.rotation)],
             SchTool::Sheet => self
                 .new_sheet
                 .iter()

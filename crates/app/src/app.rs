@@ -1585,6 +1585,7 @@ impl PcbApp {
             Action::SchPower => SchTool::Power,
             Action::SchJunction => SchTool::Junction,
             Action::SchNoConnect => SchTool::NoConnect,
+            Action::SchPowerFlag => SchTool::PowerFlag,
             Action::ToolSelect => SchTool::Select,
             Action::Posture => {
                 self.sch.toggle_posture();
@@ -1997,6 +1998,11 @@ impl PcbApp {
             Action::RoundCorners => return self.round_corners(),
             Action::ConvertToPolygon => return self.convert_to_polygon(),
             Action::MoveToSheet => return self.move_to_sheet(),
+            Action::ToggleErcMarkers => {
+                let on = !self.doc().erc_markers();
+                self.doc_mut().set_erc_markers(on);
+                return self.set_status(if on { "ERC markers shown" } else { "ERC markers hidden" });
+            }
             Action::CreateArray => {
                 return self.set_status("Select one pad or pin in a footprint or symbol to make an array of");
             }
@@ -2028,6 +2034,7 @@ impl PcbApp {
             | Action::SchPower
             | Action::SchJunction
             | Action::SchNoConnect
+            | Action::SchPowerFlag
             | Action::Posture
             | Action::NextCorners
             | Action::PcbRoute
@@ -2044,6 +2051,7 @@ impl PcbApp {
             | Action::PanelProperties
             | Action::PanelToolSettings
             | Action::PanelBoardSetup
+            | Action::PanelSchematicSetup
             | Action::PanelOverview => return,
         };
         let view = self.active;
@@ -2147,6 +2155,8 @@ impl PcbApp {
             | Action::SchPower
             | Action::SchJunction
             | Action::SchNoConnect
+            | Action::SchPowerFlag
+            | Action::ToggleErcMarkers
             | Action::NextCorners
             | Action::RoundCorners
             | Action::MoveToSheet => None,
@@ -2164,6 +2174,7 @@ impl PcbApp {
             | Action::PanelProperties
             | Action::PanelToolSettings
             | Action::PanelBoardSetup
+            | Action::PanelSchematicSetup
             | Action::PanelOverview => None,
         };
         if let Some(m) = msg {
@@ -2233,6 +2244,7 @@ impl PcbApp {
             agent_port: self.agent.port,
             headless_command: format!("claude mcp add pcb-designer -- \"{exe}\" --mcp-stdio{project}"),
             move_to_sheet: !self.movable_to_sheet().is_empty(),
+            erc_markers: self.doc().erc_markers(),
         })
     }
 
@@ -2945,6 +2957,7 @@ impl PcbApp {
                 }
             }
             Panel::BoardSetup => pcb_ui::board_setup(ui, self.doc_mut(), &mut message),
+            Panel::SchematicSetup => crate::checks_ui::schematic_setup(ui, self.doc_mut(), &mut message),
             Panel::Overview => match self.focused_lib() {
                 Some(l) => l.overview_ui(ui),
                 None => crate::properties::project_summary(ui, self.doc()),

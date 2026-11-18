@@ -62,6 +62,7 @@ impl ViewKind {
                     | ObjectKind::BusEntry
                     | ObjectKind::Junction
                     | ObjectKind::NoConnect
+                    | ObjectKind::PowerFlag
                     | ObjectKind::Label
                     | ObjectKind::SchText
                     | ObjectKind::SymbolField
@@ -135,7 +136,9 @@ pub struct View {
     /// Highlighted nets (board), by name.
     nets: Vec<String>,
     /// Positions of design rule violations (board).
-    drc: Vec<Point>,
+    drc: Vec<(Point, Severity)>,
+    /// Draw markers of ERC findings (schematic sheets).
+    erc_markers: bool,
     /// Cross-probed objects.
     probed: Vec<ObjectId>,
 }
@@ -182,6 +185,7 @@ impl View {
             hover: None,
             nets: Vec::new(),
             drc: Vec::new(),
+            erc_markers: true,
             probed: Vec::new(),
         };
         v.draw_all(project);
@@ -333,6 +337,7 @@ impl View {
                     .chain(s.bus_entries.ids().map(ObjectId::BusEntry))
                     .chain(s.junctions.ids().map(ObjectId::Junction))
                     .chain(s.no_connects.ids().map(ObjectId::NoConnect))
+                    .chain(s.power_flags.ids().map(ObjectId::PowerFlag))
                     .chain(s.labels.ids().map(ObjectId::Label))
                     .chain(s.texts.ids().map(ObjectId::SchText))
                     .chain(s.fields.ids().map(ObjectId::SymbolField))
@@ -379,7 +384,7 @@ impl View {
 
     /// Redraw the changed schematic or board objects (library edits aside).
     pub fn apply_objects(&mut self, project: &Project, changes: &ChangeSet) {
-        if changes.setup.is_some() && self.kind == ViewKind::Board {
+        if changes.board_setup_changed() && self.kind == ViewKind::Board {
             // Layers come and go.
             self.rebuild(project);
             return;
@@ -524,7 +529,22 @@ impl View {
         for &(_, _, p) in c.unconnected.iter().filter(|u| self.index.bounds(ObjectId::Symbol(u.0)).is_some()) {
             out.push((l.pins, Instance::circle_outline(mmf(p), 0.4, 0.12, pal().sch_pin)));
         }
+        // Findings about objects drawn here (unconnected pins have their rings).
+        if self.erc_markers {
+            let layer = self.hover_layer;
+            for f in c.problems.iter().filter(|f| !f.excluded && f.rule != ErcRule::UnconnectedPin) {
+                let here = f.objects.iter().any(|&o| self.index.bounds(o).is_some());
+                if let (true, Some(p)) = (here, f.pos) {
+                    push_marker(&mut out, layer, p, f.severity);
+                }
+            }
+        }
         self.scene.set_item(CONNECTIVITY_ITEM, out);
+    }
+
+    /// Show or hide the ERC markers (call [`View::set_connectivity`] afterwards).
+    pub fn set_erc_markers(&mut self, on: bool) {
+        self.erc_markers = on;
     }
 
     /// Show what a schematic creation tool would add (empty slice clears).
@@ -542,6 +562,7 @@ impl View {
                 SchGhost::Entry(pos, dir) => p.line(l.wires, *pos, *pos + dir.offset(), BUS_WIDTH, pal().sch_bus),
                 SchGhost::Junction(pos) => p.circle(l.wires, *pos, JUNCTION_RADIUS, pal().sch_junction),
                 SchGhost::NoConnect(pos) => draw_no_connect(*pos, l, &mut p),
+                SchGhost::PowerFlag(pos, rotation) => draw_power_flag(*pos, *rotation, l, &mut p),
                 SchGhost::Target(pos) => {
                     p.push(l.wires, Instance::circle_outline(mmf(*pos), 0.6, 0.12, pal().hover.with_alpha(0xc0)))
                 }
@@ -707,7 +728,7 @@ impl View {
 
     /// Mark design rule violations (board only; empty clears).
     pub fn set_drc(&mut self, violations: &[editor_core::drc::Violation]) {
-        self.drc = violations.iter().map(|v| v.pos).collect();
+        self.drc = violations.iter().filter(|v| !v.excluded).map(|v| (v.pos, v.severity)).collect();
         self.draw_drc();
     }
 
@@ -718,12 +739,8 @@ impl View {
         }
         let layer = self.hover_layer;
         let mut out = Vec::new();
-        for &p in &self.drc {
-            let c = mmf(p);
-            out.push((layer, Instance::circle_outline(c, 0.6, 0.12, pal().drc_marker)));
-            let d = 0.35;
-            out.push((layer, Instance::line([c[0] - d, c[1] - d], [c[0] + d, c[1] + d], 0.12, pal().drc_marker)));
-            out.push((layer, Instance::line([c[0] - d, c[1] + d], [c[0] + d, c[1] - d], 0.12, pal().drc_marker)));
+        for &(p, severity) in &self.drc {
+            push_marker(&mut out, layer, p, severity);
         }
         self.scene.set_item(DRC_ITEM, out);
     }
@@ -897,6 +914,12 @@ impl View {
                 ObjectId::NoConnect(n) => {
                     project.schematic.no_connects.get(n).map(|n| dist(p, n.pos) - NO_CONNECT_HALF as f64)
                 }
+                ObjectId::PowerFlag(f) => project.schematic.power_flags.get(f).map(|f| {
+                    let t = Transform::new(f.pos, f.rotation, false);
+                    let tip = t.point(Point::mm(0.0, POWER_FLAG_HEIGHT));
+                    let flag = t.point(Point::mm(0.9, POWER_FLAG_HEIGHT - 0.6));
+                    seg_dist(p, f.pos, tip).min(dist(p, flag) - mm(0.7) as f64)
+                }),
                 ObjectId::Via(v) => project.board.vias.get(v).map(|v| dist(p, v.pos) - v.diameter as f64 / 2.0),
                 ObjectId::Track(t) => project.board.tracks.get(t).map(|t| {
                     t.path(10_000).windows(2).map(|w| seg_dist(p, w[0], w[1])).fold(f64::MAX, f64::min)
@@ -999,6 +1022,9 @@ impl View {
                 .is_some(),
             (Layers::Sch(l), ObjectId::NoConnect(i)) => {
                 project.schematic.no_connects.get(i).map(|n| draw_no_connect(n.pos, l, p)).is_some()
+            }
+            (Layers::Sch(l), ObjectId::PowerFlag(i)) => {
+                project.schematic.power_flags.get(i).map(|f| draw_power_flag(f.pos, f.rotation, l, p)).is_some()
             }
             (Layers::Sch(l), ObjectId::Label(i)) => {
                 project.schematic.labels.get(i).map(|lab| draw_label(lab, l, p)).is_some()
@@ -1283,6 +1309,31 @@ fn draw_no_connect(pos: Point, l: &SchLayers, p: &mut Painter) {
     for (a, b) in [(Point::new(-h, -h), Point::new(h, h)), (Point::new(-h, h), Point::new(h, -h))] {
         p.line(l.labels, pos + a, pos + b, WIRE_WIDTH, pal().sch_no_connect);
     }
+}
+
+/// A finding's marker: a circled X in the error or warning colour.
+fn push_marker(out: &mut Vec<(RLayer, Instance)>, layer: RLayer, p: Point, severity: Severity) {
+    let color = if severity == Severity::Error { pal().drc_marker } else { pal().warning_marker };
+    let c = mmf(p);
+    out.push((layer, Instance::circle_outline(c, 0.6, 0.12, color)));
+    let d = 0.35;
+    out.push((layer, Instance::line([c[0] - d, c[1] - d], [c[0] + d, c[1] + d], 0.12, color)));
+    out.push((layer, Instance::line([c[0] - d, c[1] + d], [c[0] + d, c[1] - d], 0.12, color)));
+}
+
+/// Height of a power flag's stem, in mm.
+const POWER_FLAG_HEIGHT: f64 = 2.54;
+
+/// A power flag: a stem from the attach point with a pennant at its end.
+fn draw_power_flag(pos: Point, rotation: Angle, l: &SchLayers, p: &mut Painter) {
+    let t = Transform::new(pos, rotation, false);
+    let c = pal().sch_power;
+    let h = POWER_FLAG_HEIGHT;
+    let pts = [(0.0, 0.0), (0.0, h), (1.8, h - 0.6), (0.0, h - 1.2)];
+    for w in pts.windows(2) {
+        p.line(l.labels, t.point(Point::mm(w[0].0, w[0].1)), t.point(Point::mm(w[1].0, w[1].1)), WIRE_WIDTH, c);
+    }
+    p.fill(l.labels, pts[1..].iter().map(|&(x, y)| t.point(Point::mm(x, y))), c.with_alpha(0x60));
 }
 
 /// Half the height of a global or hierarchical label's outline, in mm.

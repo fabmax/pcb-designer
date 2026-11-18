@@ -309,6 +309,22 @@ impl Properties {
                     row(ui, "Position", fmt_point(n.pos));
                 });
             }
+            Object::PowerFlag(mut f) => {
+                heading(ui, "Power flag", "");
+                grid(ui, |ui| {
+                    row(ui, "Position", fmt_point(f.pos));
+                    label(ui, "Rotation");
+                    if let Some(a) =
+                        crate::fields::rotation_combo(ui, "flag_rot", f.rotation, ["Up", "Left", "Down", "Right"])
+                    {
+                        f.rotation = a;
+                        self.update(cx, Object::PowerFlag(f.clone()), false);
+                    }
+                    ui.end_row();
+                    net_rows(ui, cx.doc, id);
+                });
+                crate::fields::hint(ui, "Its net counts as powered: power inputs and inputs on it are driven.");
+            }
             Object::Junction(j) => {
                 heading(ui, "Junction", "");
                 grid(ui, |ui| {

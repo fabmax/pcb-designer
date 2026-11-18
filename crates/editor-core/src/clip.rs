@@ -236,6 +236,7 @@ fn is_schematic_copyable(kind: ObjectKind) -> bool {
             | ObjectKind::BusEntry
             | ObjectKind::Junction
             | ObjectKind::NoConnect
+            | ObjectKind::PowerFlag
             | ObjectKind::Label
             | ObjectKind::SchText
             | ObjectKind::Sheet

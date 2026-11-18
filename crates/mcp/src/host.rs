@@ -44,13 +44,24 @@ pub enum Request {
         refdes: String,
     },
     /// Nets of the schematic.
-    Netlist,
+    Netlist {
+        include_excluded: bool,
+    },
     /// Board routing state: ratsnest, shorts, layers, rules.
     Routing,
     /// Design rule check (also marks the violations in the GUI).
     Drc {
         limit: usize,
+        include_excluded: bool,
     },
+    /// Exclude ERC or DRC findings by key (or include them again).
+    ExcludeFindings {
+        keys: Vec<String>,
+        comment: String,
+        include: bool,
+    },
+    /// Change ERC and DRC severities and pin conflict matrix cells.
+    SetCheckSettings(CheckSettings),
     /// The gap between two board features.
     MeasureClearance {
         a: editor_core::clearance::Feature,
@@ -173,7 +184,10 @@ impl Request {
             Request::ListObjects { .. } => "list objects".into(),
             Request::GetObjects { ids } => format!("read {} object(s)", ids.len()),
             Request::Component { refdes } => format!("read {refdes}"),
-            Request::Netlist => "read netlist".into(),
+            Request::Netlist { .. } => "read netlist".into(),
+            Request::ExcludeFindings { keys, include: false, .. } => format!("exclude {} finding(s)", keys.len()),
+            Request::ExcludeFindings { keys, include: true, .. } => format!("include {} finding(s)", keys.len()),
+            Request::SetCheckSettings(_) => "change check settings".into(),
             Request::Routing => "read routing state".into(),
             Request::Drc { .. } => "run the design rule check".into(),
             Request::MeasureClearance { .. } => "measure a clearance".into(),
@@ -209,6 +223,8 @@ impl Request {
             Request::ImportParts { .. }
                 | Request::UpdateParts { .. }
                 | Request::Execute { .. }
+                | Request::ExcludeFindings { .. }
+                | Request::SetCheckSettings(_)
                 | Request::Undo
                 | Request::Redo
                 | Request::Save { .. }
@@ -439,26 +455,32 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             json!(ids.iter().map(|&id| p.get(id)).collect::<Vec<_>>())
         }
         Request::Component { refdes } => component(host.document().project(), &refdes)?,
-        Request::Netlist => {
+        Request::Netlist { include_excluded } => {
             let doc = host.document_mut();
             doc.update_connectivity(false);
-            netlist(doc.project(), doc.connectivity())
+            netlist(doc.project(), doc.connectivity(), include_excluded)
         }
         Request::Routing => {
             let doc = host.document_mut();
             doc.update_connectivity(false);
             routing(doc.project(), doc.copper())
         }
-        Request::Drc { limit } => {
+        Request::Drc { limit, include_excluded } => {
             let report = host.document_mut().run_drc();
-            let v = &report.violations;
+            let excluded = report.violations.iter().filter(|v| v.excluded).count();
+            let v: Vec<&editor_core::drc::Violation> =
+                report.violations.iter().filter(|v| include_excluded || !v.excluded).collect();
+            let count = |s: Severity| v.iter().filter(|x| !x.excluded && x.severity == s).count();
             let mut by_kind: std::collections::BTreeMap<&str, usize> = Default::default();
-            for x in v {
+            for x in &v {
                 *by_kind.entry(x.kind.label()).or_default() += 1;
             }
             json!({
-                "clean": v.is_empty(),
+                "clean": v.iter().all(|x| x.excluded),
                 "count": v.len(),
+                "errors": count(Severity::Error),
+                "warnings": count(Severity::Warning),
+                "excluded": excluded,
                 "by_kind": by_kind,
                 "violations": &v[..v.len().min(limit)],
                 "truncated": v.len() > limit,
@@ -502,6 +524,10 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             unreachable!("answered by the host")
         }
         Request::Execute { commands } => execute_json(host.document_mut(), commands)?,
+        Request::ExcludeFindings { keys, comment, include } => {
+            exclude_findings(host.document_mut(), &keys, &comment, include)?
+        }
+        Request::SetCheckSettings(c) => set_check_settings(host.document_mut(), c)?,
         Request::Undo => {
             let doc = host.document_mut();
             let label = doc.editor().history().undo_label().map(str::to_string).ok_or("nothing to undo")?;
@@ -811,7 +837,104 @@ pub fn render_png(
     Ok(renderer.render(scene, &camera, background, width, height).encode_png())
 }
 
-fn netlist(project: &Project, c: &editor_core::connectivity::Connectivity) -> Value {
+/// ERC and DRC severities and pin conflict matrix cells to change.
+#[derive(Clone, Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct CheckSettings {
+    /// Severity per schematic rule (pin_conflict takes its from the matrix).
+    #[serde(default)]
+    pub erc: std::collections::BTreeMap<ErcRule, Severity>,
+    /// Severity per design rule check kind.
+    #[serde(default)]
+    pub drc: std::collections::BTreeMap<ViolationKind, Severity>,
+    /// Pin conflict matrix cells (symmetric; severity ignore = the pair is fine).
+    #[serde(default)]
+    pub matrix: Vec<MatrixCell>,
+    /// Start from the defaults (exclusions stay).
+    #[serde(default)]
+    pub reset: bool,
+}
+
+fn set_check_settings(doc: &mut Document, c: CheckSettings) -> Result<Value, String> {
+    let p = doc.project();
+    let (mut erc, mut drc) = (p.schematic.erc.clone(), p.board.drc.clone());
+    if c.reset {
+        erc.severities.clear();
+        erc.matrix.clear();
+        drc.severities.clear();
+    }
+    for (rule, s) in c.erc {
+        erc.set_severity(rule, s);
+    }
+    for cell in c.matrix {
+        erc.set_pin_pair(cell.a, cell.b, cell.severity);
+    }
+    for (kind, s) in c.drc {
+        drc.set_severity(kind, s);
+    }
+    let group = Some(new_group());
+    let p = doc.project();
+    let (erc_changed, drc_changed) = (erc != p.schematic.erc, drc != p.board.drc);
+    if erc_changed {
+        doc.execute_grouped(Command::SetErcSettings { erc: erc.clone() }, group).map_err(|e| e.to_string())?;
+    }
+    if drc_changed {
+        doc.execute_grouped(Command::SetDrcSettings { drc: drc.clone() }, group).map_err(|e| e.to_string())?;
+    }
+    doc.close_group();
+    let erc_severities: std::collections::BTreeMap<ErcRule, Severity> =
+        ErcRule::ALL.iter().map(|&r| (r, erc.severity(r))).collect();
+    let drc_severities: std::collections::BTreeMap<ViolationKind, Severity> =
+        ViolationKind::ALL.iter().map(|&k| (k, drc.severity(k))).collect();
+    Ok(json!({
+        "changed": erc_changed || drc_changed,
+        "erc": erc_severities,
+        "drc": drc_severities,
+        "matrix_changes": erc.matrix,
+    }))
+}
+
+/// Exclude findings (or include them again) by key: schematic findings first, else the
+/// design rule check's (run now).
+fn exclude_findings(doc: &mut Document, keys: &[String], comment: &str, include: bool) -> Result<Value, String> {
+    doc.update_connectivity(false);
+    let mut erc = doc.project().schematic.erc.clone();
+    let mut drc = doc.project().board.drc.clone();
+    let sch: Vec<(String, String)> =
+        doc.connectivity().problems.iter().map(|p| (p.key.clone(), p.message.clone())).collect();
+    let board: Vec<(String, String)> =
+        doc.run_drc().violations.iter().map(|v| (v.key.clone(), v.message.clone())).collect();
+    for key in keys {
+        let (list, found) = if let Some(f) = sch.iter().find(|f| &f.0 == key) {
+            (&mut erc.exclusions, Some(f))
+        } else if let Some(f) = board.iter().find(|f| &f.0 == key) {
+            (&mut drc.exclusions, Some(f))
+        } else if erc.exclusions.iter().any(|e| &e.key == key) {
+            (&mut erc.exclusions, None)
+        } else if drc.exclusions.iter().any(|e| &e.key == key) {
+            (&mut drc.exclusions, None)
+        } else {
+            return Err(format!("no finding with key {key} (see get_netlist problems and run_drc)"));
+        };
+        list.retain(|e| &e.key != key);
+        if !include {
+            let message = found.map_or(String::new(), |f| f.1.clone());
+            list.push(Exclusion { key: key.clone(), message, comment: comment.to_string() });
+        }
+    }
+    let group = Some(new_group());
+    let p = doc.project();
+    let (erc_changed, drc_changed) = (erc != p.schematic.erc, drc != p.board.drc);
+    if erc_changed {
+        doc.execute_grouped(Command::SetErcSettings { erc }, group).map_err(|e| e.to_string())?;
+    }
+    if drc_changed {
+        doc.execute_grouped(Command::SetDrcSettings { drc }, group).map_err(|e| e.to_string())?;
+    }
+    doc.close_group();
+    Ok(json!({ "changed": erc_changed || drc_changed, "keys": keys, "excluded": !include }))
+}
+
+fn netlist(project: &Project, c: &editor_core::connectivity::Connectivity, include_excluded: bool) -> Value {
     let nets: Vec<Value> = c
         .netlist()
         .filter(|n| n.pins.len() > 1 || n.named)
@@ -857,7 +980,18 @@ fn netlist(project: &Project, c: &editor_core::connectivity::Connectivity) -> Va
             })
         })
         .collect();
-    json!({ "nets": nets, "buses": buses, "unconnected_pins": unconnected, "problems": c.problems })
+    let problems: Vec<&editor_core::connectivity::Problem> =
+        c.problems.iter().filter(|p| include_excluded || !p.excluded).collect();
+    let count = |s: Severity| c.problems.iter().filter(|p| !p.excluded && p.severity == s).count();
+    json!({
+        "nets": nets,
+        "buses": buses,
+        "unconnected_pins": unconnected,
+        "problems": problems,
+        "errors": count(Severity::Error),
+        "warnings": count(Severity::Warning),
+        "excluded": c.problems.iter().filter(|p| p.excluded).count(),
+    })
 }
 
 fn routing(p: &Project, c: &editor_core::copper::BoardConnectivity) -> Value {

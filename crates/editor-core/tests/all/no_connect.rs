@@ -106,7 +106,8 @@ fn flags_move_and_go_with_their_symbol() {
     let pins = pin_positions(ed.project(), r1);
     assert_eq!(ed.project().schematic.no_connects.get(f).unwrap().pos, pins[0].2, "still on pin 1");
     assert_eq!(ed.project().schematic.no_connects.get(stray).unwrap().pos, Point::mm(20.0, 20.0));
-    assert_eq!(problems(&ed), ["No-connect flag is not on a pin", "Unconnected pin R1-2"]);
+    // Errors first.
+    assert_eq!(problems(&ed), ["Unconnected pin R1-2", "No-connect flag is not on a pin"]);
 
     let before = files(ed.project());
     ed.execute(Command::Delete { ids: vec![ObjectId::Symbol(r1)] }).unwrap();

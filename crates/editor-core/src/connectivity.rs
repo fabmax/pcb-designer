@@ -63,6 +63,8 @@ pub struct Net {
     pub entries: Vec<Id>,
     /// Sheet pins on this net: (sub-sheet, pin name).
     pub sheet_pins: Vec<(Id, String)>,
+    /// Power flags on this net: it is powered from elsewhere.
+    pub power_flags: Vec<Id>,
 }
 
 /// Touching bus wires with their labels and entries.
@@ -81,15 +83,40 @@ pub struct Bus {
 /// Something wrong in the schematic, with the objects involved.
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct Problem {
+    pub rule: ErcRule,
+    pub severity: Severity,
     pub message: String,
     pub objects: Vec<ObjectId>,
     pub pos: Option<Point>,
+    /// The stable identity exclusions match ([`finding_key`]).
+    pub key: String,
+    /// Excluded in the ERC settings: listed apart, not drawn, not counted.
+    pub excluded: bool,
 }
 
 impl Problem {
-    fn new(message: String, objects: Vec<ObjectId>, pos: Option<Point>) -> Self {
-        Problem { message, objects, pos }
+    /// A finding about `objects` (its key is made of them).
+    pub(crate) fn new(rule: ErcRule, message: String, objects: Vec<ObjectId>, pos: Option<Point>) -> Self {
+        let parts: Vec<String> = objects.iter().map(|&o| object_part(o)).collect();
+        let key = finding_key(rule.code(), &parts);
+        Problem { rule, severity: rule.default_severity(), message, objects, pos, key, excluded: false }
     }
+
+    /// The same, keyed by `parts` instead (pins: [`pin_part`]).
+    pub(crate) fn keyed(mut self, parts: &[String]) -> Self {
+        self.key = finding_key(self.rule.code(), parts);
+        self
+    }
+}
+
+/// An object as part of a finding key.
+pub fn object_part(o: ObjectId) -> String {
+    serde_json::to_string(&o).unwrap_or_default()
+}
+
+/// A pin as part of a finding key: its symbol and number.
+pub fn pin_part(symbol: Id, number: &str) -> String {
+    format!("pin:{symbol}/{number}")
 }
 
 /// Connectivity of a whole schematic.
@@ -125,6 +152,7 @@ enum Node {
     Entry(Id),
     /// Index into the sheet pins.
     SheetPin(usize),
+    PowerFlag(Id),
 }
 
 /// Grid cell size for finding wires through a point.
@@ -244,6 +272,7 @@ impl Connectivity {
         nodes.extend(s.labels.iter().filter(|l| !bus_label(l)).map(|l| Node::Label(l.id)));
         nodes.extend(s.junctions.ids().map(Node::Junction));
         nodes.extend(s.bus_entries.ids().map(Node::Entry));
+        nodes.extend(s.power_flags.ids().map(Node::PowerFlag));
         // Sheet pins: (sub-sheet, parent sheet, pin).
         let mut ports: HashMap<Id, Vec<(&str, LabelShape)>> = HashMap::default();
         for l in s.labels.iter().filter(|l| l.kind == LabelKind::Hierarchical) {
@@ -294,6 +323,9 @@ impl Connectivity {
             let at = points.entry((j.sheet, j.pos)).or_default();
             at.nodes.push(index[&Node::Junction(j.id)]);
             at.junction = true;
+        }
+        for f in s.power_flags.iter() {
+            points.entry((f.sheet, f.pos)).or_default().nodes.push(index[&Node::PowerFlag(f.id)]);
         }
         for (i, (_, parent, pin)) in sheet_pins.iter().enumerate() {
             let at = points.entry((*parent, pin.pos)).or_default();
@@ -360,6 +392,7 @@ impl Connectivity {
             match by_name.get(&(Some(*sheet), pin.name.as_str())) {
                 Some(&label) => uf.union(label, n),
                 None => problems.push(Problem::new(
+                    ErcRule::BusMisuse,
                     format!(
                         "Sheet pin {} of {}: hierarchical bus pins don't connect yet",
                         pin.name,
@@ -373,6 +406,7 @@ impl Connectivity {
                 || on_wire.contains(&(*parent, pin.pos));
             if !wired {
                 problems.push(Problem::new(
+                    ErcRule::SheetPinUnconnected,
                     format!("Sheet pin {} of {} is not connected", pin.name, s.display_path(*sheet)),
                     vec![ObjectId::Sheet(*sheet)],
                     Some(pin.pos),
@@ -382,6 +416,7 @@ impl Connectivity {
         for l in s.labels.iter().filter(|l| l.kind == LabelKind::Hierarchical) {
             if s.sheets.get(l.sheet).is_some_and(Sheet::is_root) {
                 problems.push(Problem::new(
+                    ErcRule::HierLabelOnRoot,
                     format!(
                         "Hierarchical label {} is on the root sheet: there is no sheet pin to connect it to",
                         l.name
@@ -402,7 +437,25 @@ impl Connectivity {
             } else {
                 continue;
             };
-            problems.push(Problem::new(message.into(), vec![ObjectId::NoConnect(n.id)], Some(n.pos)));
+            problems.push(Problem::new(
+                ErcRule::NoConnectMisplaced,
+                message.into(),
+                vec![ObjectId::NoConnect(n.id)],
+                Some(n.pos),
+            ));
+        }
+
+        // ---- Power flags belong on a wire or pin.
+        for f in s.power_flags.iter() {
+            let alone = points.get(&(f.sheet, f.pos)).is_none_or(|at| at.nodes.len() < 2);
+            if alone && !on_wire.contains(&(f.sheet, f.pos)) {
+                problems.push(Problem::new(
+                    ErcRule::PowerFlagMisplaced,
+                    "Power flag is not on a wire or pin".into(),
+                    vec![ObjectId::PowerFlag(f.id)],
+                    Some(f.pos),
+                ));
+            }
         }
 
         // ---- Group into nets
@@ -417,11 +470,22 @@ impl Connectivity {
                 Node::Junction(id) => net.junctions.push(id),
                 Node::Entry(id) => net.entries.push(id),
                 Node::SheetPin(i) => net.sheet_pins.push((sheet_pins[i].0, sheet_pins[i].2.name.clone())),
+                Node::PowerFlag(id) => net.power_flags.push(id),
             }
         }
         let mut unconnected = Vec::new();
         let mut nets: Vec<Net> = Vec::new();
         for (_, mut net) in groups {
+            // A lone power flag is no net (it is reported above).
+            if net.pins.is_empty()
+                && net.wires.is_empty()
+                && net.labels.is_empty()
+                && net.sheet_pins.is_empty()
+                && net.entries.is_empty()
+                && net.junctions.is_empty()
+            {
+                continue;
+            }
             if net.pins.len() > 1 {
                 net.pins.sort_by(|a, b| {
                     natural_cmp(&a.refdes, &b.refdes).then_with(|| natural_cmp(pin_key(a), pin_key(b)))
@@ -436,17 +500,20 @@ impl Connectivity {
             {
                 let p = &net.pins[0];
                 if !intentional.contains(&(p.symbol, p.pin)) {
-                    unconnected.push((p.symbol, p.pin, p.pos));
                     let name = if p.pin_name.is_empty() || p.pin_name == p.pin_number {
                         String::new()
                     } else {
                         format!(" ({})", p.pin_name)
                     };
-                    problems.push(Problem::new(
+                    let problem = Problem::new(
+                        ErcRule::UnconnectedPin,
                         format!("Unconnected pin {}-{}{name}", p.refdes, p.pin_number),
                         vec![ObjectId::Symbol(p.symbol)],
                         Some(p.pos),
-                    ));
+                    )
+                    .keyed(&[pin_part(p.symbol, &p.pin_number)]);
+                    unconnected.push(((p.symbol, p.pin, p.pos), problem.key.clone()));
+                    problems.push(problem);
                 }
             }
             // Name, as KiCad does: power ports first, then global labels, then local and
@@ -482,7 +549,7 @@ impl Connectivity {
                         let objects: Vec<ObjectId> = here.iter().map(|l| ObjectId::Label(l.id)).collect();
                         let pos = here.first().map(|l| l.pos);
                         let msg = format!("Net has several names: {}", all.join(", "));
-                        problems.push(Problem::new(msg, objects, pos));
+                        problems.push(Problem::new(ErcRule::NetNames, msg, objects, pos));
                     }
                 }
                 net.name = name.clone();
@@ -498,7 +565,7 @@ impl Connectivity {
                 .then_with(|| natural_cmp(&a.name, &b.name))
                 .then_with(|| a.wires.first().cmp(&b.wires.first()))
         });
-        unconnected.sort_by_key(|&(s, p, _)| (s, p));
+        unconnected.sort_by_key(|&((s, p, _), _)| (s, p));
         flagged.sort();
         problems.extend(crate::erc::check(project, &nets));
 
@@ -514,6 +581,9 @@ impl Connectivity {
             for &j in &net.junctions {
                 net_of.insert(ObjectId::Junction(j), i);
             }
+            for &f in &net.power_flags {
+                net_of.insert(ObjectId::PowerFlag(f), i);
+            }
             for &e in &net.entries {
                 net_of.insert(ObjectId::BusEntry(e), i);
             }
@@ -521,6 +591,7 @@ impl Connectivity {
                 pin_net.insert((p.symbol, p.pin), i);
             }
         }
+        let (unconnected, unconnected_keys): (Vec<_>, Vec<_>) = unconnected.into_iter().unzip();
         let mut c = Connectivity {
             nets,
             net_of,
@@ -533,7 +604,25 @@ impl Connectivity {
             problems,
         };
         c.build_buses(project, &bus_pins);
+        c.apply_settings(&s.erc, unconnected_keys);
         c
+    }
+
+    /// Severities and exclusions: ignored findings go, the rest get their severity
+    /// (pin conflicts have theirs from the matrix) and are sorted errors first, excluded
+    /// ones last. Unconnected-pin rings only stay for findings still shown.
+    fn apply_settings(&mut self, erc: &ErcSettings, unconnected_keys: Vec<String>) {
+        for p in &mut self.problems {
+            if p.rule != ErcRule::PinConflict {
+                p.severity = erc.severity(p.rule);
+            }
+            p.excluded = erc.excluded(&p.key).is_some();
+        }
+        self.problems.retain(|p| p.severity != Severity::Ignore);
+        self.problems.sort_by_key(|p| (p.excluded, p.severity));
+        let shown: HashSet<&str> = self.problems.iter().filter(|p| !p.excluded).map(|p| p.key.as_str()).collect();
+        let mut keys = unconnected_keys.iter();
+        self.unconnected.retain(|_| keys.next().is_some_and(|k| shown.contains(k.as_str())));
     }
 
     /// Group bus wires into buses, attach their labels and entries, and check how they
@@ -603,6 +692,7 @@ impl Connectivity {
                     }
                 }
                 None => problems.push(Problem::new(
+                    ErcRule::BusMisuse,
                     format!("Bus label {} is not on a bus", l.name),
                     vec![ObjectId::Label(l.id)],
                     Some(l.pos),
@@ -613,6 +703,7 @@ impl Connectivity {
             match first_wire(e.sheet, e.pos) {
                 Some(w) => groups.get_mut(&uf.find(w)).unwrap().entries.push(e.id),
                 None => problems.push(Problem::new(
+                    ErcRule::BusMisuse,
                     "Bus entry is not on a bus".into(),
                     vec![ObjectId::BusEntry(e.id)],
                     Some(e.pos),
@@ -650,6 +741,7 @@ impl Connectivity {
             for p in [w.a, w.b] {
                 if let Some(b) = bus_at(w.sheet, p) {
                     problems.push(Problem::new(
+                        ErcRule::BusMisuse,
                         format!("Wire touches {} directly; connect it through a bus entry", name_of(b)),
                         vec![ObjectId::Wire(w.id), ObjectId::BusWire(b)],
                         Some(p),
@@ -660,6 +752,7 @@ impl Connectivity {
         for (symbol, p, sheet, pin) in pins {
             if let Some(b) = bus_at(*sheet, *p) {
                 problems.push(Problem::new(
+                    ErcRule::BusMisuse,
                     format!("Pin {pin} touches {} directly; connect it through a bus entry", name_of(b)),
                     vec![ObjectId::Symbol(*symbol), ObjectId::BusWire(b)],
                     Some(*p),
@@ -670,6 +763,7 @@ impl Connectivity {
             if bus.name.is_empty() {
                 let pos = s.bus_wires.get(bus.wires[0]).map(|w| w.a);
                 problems.push(Problem::new(
+                    ErcRule::BusMisuse,
                     "Bus has no bus label (like D[0..7] or {SDA SCL})".into(),
                     bus.wires.iter().map(|&w| ObjectId::BusWire(w)).collect(),
                     pos,
@@ -686,6 +780,7 @@ impl Connectivity {
                 objects.extend(net.wires.iter().map(|&w| ObjectId::Wire(w)));
                 if !net.named {
                     problems.push(Problem::new(
+                        ErcRule::BusMisuse,
                         format!("Wire from a bus entry of {} has no label", name_of(bus.wires[0])),
                         objects,
                         pos,
@@ -697,6 +792,7 @@ impl Connectivity {
                     let name = net.labels.first().and_then(|&l| s.labels.get(l)).map_or(net.name.as_str(), |l| &l.name);
                     objects.extend(net.labels.iter().map(|&l| ObjectId::Label(l)));
                     problems.push(Problem::new(
+                        ErcRule::BusMisuse,
                         format!("{name} is not a member of {}", name_of(bus.wires[0])),
                         objects,
                         pos,

@@ -59,6 +59,16 @@ fn hierarchical_routed_project() {
     assert!(conn.nets.iter().any(|n| n.name == "GND" && n.pins.iter().any(|x| x.refdes == "R3")));
     assert!(conn.nets.iter().any(|n| n.name == "VIN" && n.pins.iter().any(|x| x.refdes == "R1")));
 
+    // PWR_FLAG is a power flag; the project's ERC and DRC severities come along.
+    assert_eq!(p.schematic.power_flags.len(), 1);
+    let flag = p.schematic.power_flags.iter().next().unwrap().id;
+    assert!(conn.nets.iter().any(|n| n.name == "GND" && n.power_flags.contains(&flag)));
+    assert!(!report.contains("PWR_FLAG"), "{report}");
+    assert_eq!(p.schematic.erc.severity(ErcRule::NetNames), Severity::Error);
+    assert_eq!(p.schematic.erc.severity(ErcRule::UnconnectedPin), Severity::Warning);
+    assert_eq!(p.schematic.erc.pin_pair(PinKind::Output, PinKind::Output), Severity::Warning);
+    assert_eq!(p.board.drc.severity(ViolationKind::Courtyard), Severity::Ignore);
+
     // The board is fully routed, with an arc and two vias.
     let bc = BoardConnectivity::build(p, &conn);
     assert_eq!(bc.unrouted(), 0, "{:?}", bc.ratsnest);

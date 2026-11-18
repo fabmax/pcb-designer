@@ -93,6 +93,7 @@ pub fn import_project(pro: &Path) -> Result<ProjectImport, String> {
     let pcb = if pcb_path.exists() { pcb::import(&pcb_path, &mut report)? } else { PcbImport::default() };
     let mut project = assemble(&stem, sch, pcb, &mut report);
     design_rules(&settings, &mut project.board.rules, &mut report);
+    check_settings(&settings, &mut project, &mut report);
     let issues = project.validate();
     if !issues.is_empty() {
         return Err(format!("the imported project is inconsistent (a bug):\n{}", issues.join("\n")));
@@ -279,6 +280,9 @@ fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report)
     for n in sch.no_connects {
         p.schematic.no_connects.insert(n);
     }
+    for f in sch.power_flags {
+        p.schematic.power_flags.insert(f);
+    }
     for l in sch.labels {
         p.schematic.labels.insert(l);
     }
@@ -437,6 +441,92 @@ fn resolve_zone_nets(p: &mut Project, kicad: &[(Id, String, String)], report: &m
         let mut z = p.board.zones.get(id).unwrap().clone();
         z.net = net;
         p.board.zones.replace(z);
+    }
+}
+
+/// KiCad's rule severity names.
+fn severity(v: &serde_json::Value) -> Option<Severity> {
+    match v.as_str()? {
+        "error" => Some(Severity::Error),
+        "warning" => Some(Severity::Warning),
+        "ignore" => Some(Severity::Ignore),
+        _ => None,
+    }
+}
+
+/// ERC and DRC severities and the pin conflict matrix from the project file, where we
+/// have an equivalent. Exclusions aren't imported (KiCad keys them by its own positions
+/// and ids).
+fn check_settings(settings: &serde_json::Value, project: &mut Project, report: &mut Report) {
+    let erc_rules = &settings["erc"]["rule_severities"];
+    let erc = &mut project.schematic.erc;
+    for (kicad, rule) in [
+        ("pin_not_driven", ErcRule::UndrivenInput),
+        ("power_pin_not_driven", ErcRule::PowerInputUnpowered),
+        ("pin_not_connected", ErcRule::UnconnectedPin),
+        ("no_connect_connected", ErcRule::NoConnectMisplaced),
+        ("multiple_net_names", ErcRule::NetNames),
+        ("duplicate_reference", ErcRule::DuplicateReference),
+        ("hier_label_mismatch", ErcRule::SheetPinUnconnected),
+        ("bus_entry_needed", ErcRule::BusMisuse),
+    ] {
+        if let Some(s) = severity(&erc_rules[kicad]) {
+            erc.set_severity(rule, s);
+        }
+    }
+    // KiCad's pin types: input, output, bidirectional, tri-state, passive, free,
+    // unspecified, power in, power out, open collector, open emitter, not connected.
+    const KICAD: [Option<PinKind>; 12] = [
+        Some(PinKind::Input),
+        Some(PinKind::Output),
+        Some(PinKind::Bidirectional),
+        Some(PinKind::TriState),
+        Some(PinKind::Passive),
+        None,
+        None,
+        Some(PinKind::PowerIn),
+        Some(PinKind::PowerOut),
+        Some(PinKind::OpenCollector),
+        None,
+        Some(PinKind::NotConnected),
+    ];
+    let pin_to_pin_off = severity(&erc_rules["pin_to_pin"]) == Some(Severity::Ignore);
+    if let Some(rows) = settings["erc"]["pin_map"].as_array() {
+        for (i, row) in rows.iter().enumerate().take(KICAD.len()) {
+            let Some(row) = row.as_array() else { continue };
+            for (j, cell) in row.iter().enumerate().take(i + 1) {
+                let (Some(a), Some(b)) = (KICAD[i], KICAD.get(j).copied().flatten()) else { continue };
+                let s = match cell.as_u64() {
+                    Some(1) => Severity::Warning,
+                    Some(2) => Severity::Error,
+                    _ => Severity::Ignore,
+                };
+                erc.set_pin_pair(a, b, if pin_to_pin_off { Severity::Ignore } else { s });
+            }
+        }
+    }
+    if settings["erc"]["erc_exclusions"].as_array().is_some_and(|e| !e.is_empty()) {
+        report.skip("ERC exclusions (exclude the findings again in Messages)");
+    }
+    let drc_rules = &settings["board"]["design_settings"]["rule_severities"];
+    let drc = &mut project.board.drc;
+    for (kicad, kind) in [
+        ("shorting_items", ViolationKind::Short),
+        ("clearance", ViolationKind::Clearance),
+        ("items_not_allowed", ViolationKind::Keepout),
+        ("copper_edge_clearance", ViolationKind::BoardEdge),
+        ("courtyards_overlap", ViolationKind::Courtyard),
+        ("track_width", ViolationKind::TrackWidth),
+        ("drill_out_of_range", ViolationKind::Drill),
+        ("track_dangling", ViolationKind::Unconnected),
+        ("unconnected_items", ViolationKind::Unrouted),
+    ] {
+        if let Some(s) = severity(&drc_rules[kicad]) {
+            drc.set_severity(kind, s);
+        }
+    }
+    if settings["board"]["design_settings"]["drc_exclusions"].as_array().is_some_and(|e| !e.is_empty()) {
+        report.skip("DRC exclusions (exclude the findings again in Messages)");
     }
 }
 

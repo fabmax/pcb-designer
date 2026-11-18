@@ -110,6 +110,8 @@ pub struct MenuState<'a> {
     pub headless_command: String,
     /// The selection holds schematic objects that can move to another sheet.
     pub move_to_sheet: bool,
+    /// ERC markers are shown on the schematic.
+    pub erc_markers: bool,
 }
 
 pub const APP_NAME: &str = "PCB Designer";
@@ -226,6 +228,14 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
             checked: s.side_by_side,
             radio: true,
             hover: Some("Schematic left, PCB right"),
+        },
+        Entry::Separator,
+        Entry::Check {
+            label: "ERC markers".into(),
+            cmd: Cmd::Action(Action::ToggleErcMarkers),
+            checked: s.erc_markers,
+            radio: false,
+            hover: Some("Mark errors and warnings of the electrical rules check on the schematic"),
         },
         Entry::Separator,
     ];
@@ -423,6 +433,7 @@ mod tests {
             agent_port: 4321,
             headless_command: "claude mcp add …".into(),
             move_to_sheet: false,
+            erc_markers: true,
         }
     }
 

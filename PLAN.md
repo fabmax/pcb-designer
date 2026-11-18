@@ -73,8 +73,9 @@ the current design of each area with the gotchas a change needs to know, the pla
   runs in a `Transaction` with object-level before/after snapshots; on error it rolls
   back. Schematic → board sync runs in the same transaction, so one undo reverts both.
   Tests check byte-identical files after undo all / redo all.
-- The `ChangeSet` drives incremental updates. Board setup and the library list ride
-  along as before/after (`setup`, `libraries`); views ignore them. Gotcha:
+- The `ChangeSet` drives incremental updates. The `Setup` (layers, rules, ERC and DRC
+  settings) and the library list ride along as before/after (`setup`, `libraries`;
+  `board_setup_changed`, `erc_changed`, `drc_changed` say which part); views ignore them. Gotcha:
   `ChangeSet::coalesce` (also behind `then`, which merges grouped commands into one undo
   step) folds only updates into an earlier change of the same object. Removals and
   re-insertions keep their event order, because undo re-inserts removed objects at
@@ -167,7 +168,7 @@ the current design of each area with the gotchas a change needs to know, the pla
   that expect no problems must wire or flag every pin, or filter "Unconnected pin". "Several names" is reported per sheet only (a net
   may be named differently on each side of a sheet pin). Gotcha: local nets are
   `/NAME`; tests that only need a named net use global labels. Problems are `Problem
-  {message, objects, pos}`.
+  {rule, severity, message, objects, pos, key, excluded}`.
 - **Sheet pins** are derived, never stored: one per hierarchical label name of the
   sub-sheet (`Schematic::hier_ports`, first label's shape), laid out by `Sheet::layout`
   (inputs left, the rest right, by name, 2.54 mm from the top; the drawn rectangle grows
@@ -188,13 +189,30 @@ the current design of each area with the gotchas a change needs to know, the pla
   short each other. Zones keep clearance from them like from any other net. Gotcha:
   overlapping footprints now short through such pads too.
 - **ERC** (`erc.rs`, run at the end of `Connectivity::build`, its findings join
-  `problems`): per wired net (lone pins are left to "Unconnected pin"), from
-  `NetPin::kind`: two hard drivers (output, power output), or one with a tri-state or
-  open collector pin, conflict; inputs need a driver (any other kind but power input
-  and not connected, or a power port); power inputs need a power output pin or a power
-  port (power ports stand in for KiCad's power symbols; there is no PWR_FLAG); wired
-  pins of kind not connected. Plus components sharing a reference (`R?` and empty
-  ones aside). Messages name pins as `U1-14 (VCC)`, not nets.
+  `problems`): per wired net (lone pins are left to "Unconnected pin"), every pair of
+  pin kinds present is looked up in the pin matrix (`ErcSettings::pin_pair`, a symmetric
+  9×9 over `PIN_KINDS` with KiCad's defaults in `DEFAULT_MATRIX`), one finding per
+  conflicting pair per net. Inputs need a driver (any other kind but power input and not
+  connected, a power port or a power flag); power inputs need a power output pin, a power
+  port or a power flag. Power ports and flags are not in the matrix. Plus components
+  sharing a reference (`R?` and empty ones aside). Messages name pins as `U1-14 (VCC)`.
+- **Power flags** (`PowerFlag`, KiCad's PWR_FLAG): a pennant at a point that powers its
+  net and otherwise behaves like a no-connect flag (moves and deletes with the symbol
+  whose pin it sits on, `flags_on_pins`). One touching no wire or pin is a warning.
+- **Findings review** (`model::checks`): every problem has an `ErcRule` and every DRC
+  violation a `ViolationKind`, each with a default `Severity` (Error, Warning, Ignore).
+  Their identity is a key `finding_key(rule code, parts)`: an FNV hash of the sorted
+  object ids, pins as `pin:{symbol}/{number}` (`pin_part`), nets for shorts
+  (`short_key`), so it survives moves and edits. Settings live in the project:
+  `Schematic::erc` (severities, matrix, exclusions) and `Board::drc` (severities,
+  exclusions), both storing only changes from the defaults, and change through
+  `SetErcSettings` / `SetDrcSettings` (part of `Setup` in the change set, with layers and
+  rules; an ERC change makes connectivity stale, a DRC change re-runs an existing report).
+  `apply_settings` (both sides) sets severities, flags excluded findings (kept, listed
+  last), drops ignored ones and sorts errors first; the unconnected-pin rings, the canvas
+  markers (`View::set_erc_markers`, View menu) and the live board shorts in Messages
+  follow it too. An exclusion keeps the message it was made for, so one that matches
+  nothing any more is shown as unused and can be removed.
 - **Arc tracks** are a `Track` with `mid` (a point on the arc, KiCad's start/mid/end);
   `a`/`b` stay the ends, so anchors, ratsnest and routing don't know about arcs.
   `Track::arc()` gives the exact `Shape::Arc` (drawing, Gerber G02/G03 with exact ends),
@@ -556,8 +574,10 @@ the current design of each area with the gotchas a change needs to know, the pla
     without symbol become board parts (duplicate or `REF**` references renumbered).
   - Schematic: KiCad files are y-down (`common::point(.., true)`), libraries y-up.
     `(mirror y)` → (−angle, mirrored), `(mirror x)` → (180 − angle, mirrored). Single
-    `power_in` symbols become power labels (style from `power_style`), `PWR_FLAG` is
-    dropped. Every sheet instance becomes a sheet (reused files get ids derived from the
+    `power_in` symbols become power labels (style from `power_style`), `PWR_FLAG`
+    (a single `power_out` pin) becomes a power flag. `.kicad_pro` `erc.rule_severities`,
+    `erc.pin_map` (KiCad's 12 pin kinds folded onto our 9) and the board's
+    `rule_severities` map onto `ErcSettings` / `DrcSettings` where a rule matches. Every sheet instance becomes a sheet (reused files get ids derived from the
     instance path); sheet pins are laid out by name here, so wires ending on KiCad's pin
     positions are stretched to ours. Refdes from the symbol's `instances`, else the root
     `symbol_instances` (KiCad 6), else the Reference property. Each file's `paper`
@@ -731,12 +751,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-**M17: ERC review**
-- Excluding single findings (kept in the project).
-- Configurable severities and a pin conflict matrix.
-- A PWR_FLAG equivalent (a power input fed from a connector's passive pin needs a power
-  port today).
-
 **M18: Workspace and settings**
 - Save the window layout and pane sizes (eframe persistence is off).
 - UI scale; per-layer colour customisation.
@@ -764,6 +778,9 @@ defers.
 - After sheets: hierarchical bus pins (bus-named hierarchical labels are drawn as pins
   but don't connect), ERC of pin directions across sheet pins.
 - KiCad's "unfold bus".
+- ERC/DRC review: importing KiCad's exclusions (their keys are KiCad's own; reported as
+  skipped); the flagged-copper line in Messages ignores DRC severities (only shorts
+  follow them); the ERC markers toggle is per session.
 - Pins lying on a moved wire's inside (not at its ends) are left behind.
 - Inner-layer footprint graphics.
 - Reference and value texts: re-sync fields when the library templates change; fields

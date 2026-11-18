@@ -46,6 +46,12 @@ pub fn toolbar(ui: &mut egui::Ui, canvas: egui::Rect, sch: &SchPlacer, keymap: &
             "Mark a pin as unconnected on purpose with a no-connect flag.",
             Action::SchNoConnect,
         ),
+        b(
+            SchTool::PowerFlag,
+            Icon::PowerFlag,
+            "Mark a net as powered from elsewhere (a connector, a supply) with a power flag.",
+            Action::SchPowerFlag,
+        ),
     ];
     let place = [ToolButton {
         tool: SchTool::Place,
@@ -208,6 +214,21 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
             "Click a pin end that stays unconnected on purpose: it is no longer reported as unconnected. \
              The flag moves and is deleted with its symbol.",
         ),
+        SchTool::PowerFlag => {
+            hint(
+                ui,
+                "Click a wire or pin whose net is powered from outside the schematic (a connector, a supply): \
+                 its power inputs and inputs count as driven. On a pin end, the flag moves and is deleted with \
+                 its symbol.",
+            );
+            grid(ui, "sch_tool", |ui| {
+                label(ui, "Rotation");
+                if let Some(a) = fields::rotation_combo(ui, "sch_rot", s.rotation, ["Up", "Left", "Down", "Right"]) {
+                    s.rotation = a;
+                }
+                ui.end_row();
+            });
+        }
         SchTool::Place => {
             let Some(pl) = sch.placing else { return };
             let project = doc.project();

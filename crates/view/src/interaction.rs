@@ -586,6 +586,7 @@ pub fn reference_point(project: &Project, id: ObjectId) -> Option<Point> {
         ObjectId::BusEntry(i) => s.bus_entries.get(i).map(|o| o.pos),
         ObjectId::Junction(i) => s.junctions.get(i).map(|o| o.pos),
         ObjectId::NoConnect(i) => s.no_connects.get(i).map(|o| o.pos),
+        ObjectId::PowerFlag(i) => s.power_flags.get(i).map(|o| o.pos),
         ObjectId::Label(i) => s.labels.get(i).map(|o| o.pos),
         ObjectId::SchText(i) => s.texts.get(i).map(|o| o.text.pos),
         ObjectId::Footprint(i) => b.footprints.get(i).map(|o| o.pos),

@@ -63,8 +63,10 @@ pub struct Palette {
     pub ratsnest: Color,
     /// Halo around flagged tracks and vias (shorts, unconnected copper).
     pub flagged: Color,
-    /// Design rule violation markers.
+    /// Markers of errors (design rule violations, ERC errors).
     pub drc_marker: Color,
+    /// Markers of warnings.
+    pub warning_marker: Color,
     /// Copper of highlighted nets.
     pub net_highlight: Color,
     /// Objects selected in the other view (cross-probing).
@@ -124,6 +126,7 @@ pub static DARK: Palette = Palette {
     ratsnest: Color::rgba(0xe8, 0xe8, 0xf0, 0xb0),
     flagged: Color::rgba(0xff, 0x9a, 0x2e, 0x70),
     drc_marker: Color::rgba(0xff, 0x4d, 0x6a, 0xe0),
+    warning_marker: Color::rgba(0xff, 0xb4, 0x30, 0xe0),
     net_highlight: Color::rgba(0xff, 0xff, 0xff, 0x60),
     probe: Color::rgba(0xff, 0xd0, 0x4c, 0xd0),
     probe_fill: Color::rgba(0xff, 0xd0, 0x4c, 0x22),
@@ -183,6 +186,7 @@ pub static LIGHT: Palette = Palette {
     ratsnest: Color::rgba(0x30, 0x30, 0x38, 0xb0),
     flagged: Color::rgba(0xff, 0x80, 0x00, 0x80),
     drc_marker: Color::rgba(0xd0, 0x10, 0x40, 0xe0),
+    warning_marker: Color::rgba(0xc0, 0x78, 0x00, 0xe0),
     net_highlight: Color::rgba(0x00, 0x00, 0x00, 0x48),
     probe: Color::rgba(0xd0, 0x90, 0x00, 0xe0),
     probe_fill: Color::rgba(0xff, 0xc0, 0x00, 0x30),

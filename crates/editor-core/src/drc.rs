@@ -11,52 +11,56 @@ use serde::Serialize;
 
 use crate::copper::{BoardConnectivity, CopperItem, Flag, Geo, Grid, RegionIndex, layer_bit};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ViolationKind {
-    Short,
-    Clearance,
-    /// Copper or a footprint inside a keepout that forbids it.
-    Keepout,
-    BoardEdge,
-    Courtyard,
-    TrackWidth,
-    Drill,
-    /// A via whose layers aren't two different copper layers of the board, top one first.
-    ViaSpan,
-    /// A zone's net name matches no net on the board (renamed, or its pads are gone),
-    /// so it connects nothing.
-    ZoneNet,
-    Unconnected,
-    Unrouted,
-}
-
-impl ViolationKind {
-    pub fn label(self) -> &'static str {
-        match self {
-            ViolationKind::Short => "Short",
-            ViolationKind::Clearance => "Clearance",
-            ViolationKind::Keepout => "Keepout",
-            ViolationKind::BoardEdge => "Board edge",
-            ViolationKind::Courtyard => "Courtyard overlap",
-            ViolationKind::TrackWidth => "Track width",
-            ViolationKind::Drill => "Drill",
-            ViolationKind::ViaSpan => "Via span",
-            ViolationKind::ZoneNet => "Zone net",
-            ViolationKind::Unconnected => "Unconnected copper",
-            ViolationKind::Unrouted => "Unrouted",
-        }
-    }
-}
+pub use model::ViolationKind;
 
 #[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 pub struct Violation {
     pub kind: ViolationKind,
+    pub severity: Severity,
     pub message: String,
     /// Where it is (for centering the view).
     pub pos: Point,
     /// Objects involved (footprints for pads).
     pub objects: Vec<ObjectId>,
+    /// The stable identity exclusions match ([`finding_key`]): the kind and the objects
+    /// (shorts: the nets).
+    pub key: String,
+    /// Excluded in the DRC settings: listed apart, not marked, not counted.
+    pub excluded: bool,
+}
+
+impl Default for Violation {
+    fn default() -> Self {
+        Violation {
+            kind: ViolationKind::Short,
+            severity: Severity::Error,
+            message: String::new(),
+            pos: Point::ZERO,
+            objects: Vec::new(),
+            key: String::new(),
+            excluded: false,
+        }
+    }
+}
+
+/// The key of a short between `nets` (the same for the live board problems and DRC).
+pub fn short_key(nets: &[String]) -> String {
+    finding_key(ViolationKind::Short.code(), nets)
+}
+
+/// Keys, severities and exclusions: ignored kinds go, the rest are sorted errors first
+/// (by kind within), excluded ones last.
+fn apply_settings(out: &mut Vec<Violation>, drc: &DrcSettings) {
+    for v in out.iter_mut() {
+        if v.key.is_empty() {
+            let parts: Vec<String> = v.objects.iter().map(|&o| crate::connectivity::object_part(o)).collect();
+            v.key = finding_key(v.kind.code(), &parts);
+        }
+        v.severity = drc.severity(v.kind);
+        v.excluded = drc.excluded(&v.key).is_some();
+    }
+    out.retain(|v| v.severity != Severity::Ignore);
+    out.sort_by_key(|v| (v.excluded, v.severity, v.kind));
 }
 
 fn fmt_mm(v: f64) -> String {
@@ -113,6 +117,8 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
             message: format!("Short between {}", nets.join(" and ")),
             pos: *at,
             objects,
+            key: short_key(nets),
+            ..Default::default()
         });
     }
 
@@ -153,6 +159,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
                 ),
                 pos: midpoint(a, b),
                 objects: vec![a.item.object(), b.item.object()],
+                ..Default::default()
             });
         }
     });
@@ -175,6 +182,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
                     message: format!("{} is inside a keepout", name(c)),
                     pos: c.anchors[0],
                     objects: vec![c.item.object(), ObjectId::Keepout(k.id)],
+                    ..Default::default()
                 });
             }
         }
@@ -198,6 +206,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
                         message: format!("{} is inside a keepout", refdes(f)),
                         pos: f.pos,
                         objects: vec![ObjectId::Footprint(f.id), ObjectId::Keepout(k.id)],
+                        ..Default::default()
                     });
                 }
             }
@@ -231,7 +240,13 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
                 } else {
                     format!("{} is outside the board", name(c))
                 };
-                out.push(Violation { kind: ViolationKind::BoardEdge, message, pos: p, objects: vec![c.item.object()] });
+                out.push(Violation {
+                    kind: ViolationKind::BoardEdge,
+                    message,
+                    pos: p,
+                    objects: vec![c.item.object()],
+                    ..Default::default()
+                });
             }
         }
     }
@@ -269,6 +284,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
                 message: format!("Courtyards of {} and {} overlap", a.1, b.1),
                 pos: overlap.center(),
                 objects: vec![ObjectId::Footprint(a.0), ObjectId::Footprint(b.0)],
+                ..Default::default()
             });
         }
     });
@@ -280,6 +296,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
             message: format!("Zone net {:?} has no pads on the board", z.net),
             pos: z.outline.first().copied().unwrap_or_default(),
             objects: vec![ObjectId::Zone(z.id)],
+            ..Default::default()
         });
     }
 
@@ -294,6 +311,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
             ),
             pos: Point::new((t.a.x + t.b.x) / 2, (t.a.y + t.b.y) / 2),
             objects: vec![ObjectId::Track(t.id)],
+            ..Default::default()
         });
     }
     let drill = |what: String, d: Coord, pos: Point, id: ObjectId| Violation {
@@ -301,6 +319,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
         message: format!("{what} drill {} is below the minimum {}", fmt_mm(d as f64), fmt_mm(rules.min_drill as f64)),
         pos,
         objects: vec![id],
+        ..Default::default()
     };
     let copper_layer = |l: LayerId| board.copper_layers().any(|c| c.id == l);
     for v in board.vias.iter() {
@@ -318,6 +337,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
             message: format!("Via {problem}"),
             pos: v.pos,
             objects: vec![ObjectId::Via(v.id)],
+            ..Default::default()
         });
     }
     for v in board.vias.iter().filter(|v| v.drill < rules.min_drill) {
@@ -346,6 +366,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
             message: format!("{} touches no pad", name(c)),
             pos: c.anchors[0],
             objects: vec![c.item.object()],
+            ..Default::default()
         });
     }
     for r in &copper.ratsnest {
@@ -362,10 +383,11 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
             message: format!("{net}: unrouted connection ({})", fmt_mm((r.b - r.a).length())),
             pos: Point::new((r.a.x + r.b.x) / 2, (r.a.y + r.b.y) / 2),
             objects,
+            ..Default::default()
         });
     }
 
-    out.sort_by_key(|v| v.kind);
+    apply_settings(&mut out, &board.drc);
     out
 }
 

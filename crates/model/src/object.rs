@@ -10,7 +10,8 @@ use crate::id::Id;
 use crate::library::{Footprint, Part, Symbol};
 use crate::project::Project;
 use crate::schematic::{
-    BusEntry, BusWire, Component, Junction, NetLabel, NoConnect, SchText, Sheet, SymbolField, SymbolInstance, Wire,
+    BusEntry, BusWire, Component, Junction, NetLabel, NoConnect, PowerFlag, SchText, Sheet, SymbolField,
+    SymbolInstance, Wire,
 };
 
 macro_rules! objects {
@@ -126,6 +127,7 @@ objects! {
     BusEntry(BusEntry) => schematic.bus_entries;
     Junction(Junction) => schematic.junctions;
     NoConnect(NoConnect) => schematic.no_connects;
+    PowerFlag(PowerFlag) => schematic.power_flags;
     Label(NetLabel) => schematic.labels;
     SchText(SchText) => schematic.texts;
     SymbolField(SymbolField) => schematic.fields;
@@ -155,6 +157,7 @@ impl ObjectKind {
                 | ObjectKind::BusEntry
                 | ObjectKind::Junction
                 | ObjectKind::NoConnect
+                | ObjectKind::PowerFlag
                 | ObjectKind::Label
                 | ObjectKind::SchText
                 | ObjectKind::SymbolField

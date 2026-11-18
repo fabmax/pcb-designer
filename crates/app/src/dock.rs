@@ -20,6 +20,7 @@ pub enum Panel {
     Properties,
     ToolSettings,
     BoardSetup,
+    SchematicSetup,
     Overview,
 }
 
@@ -32,14 +33,23 @@ pub enum Side {
 
 impl Panel {
     /// In bar order: left bar (top group, then the bottom panels), then the right bar.
-    pub const ALL: [Panel; 6] =
-        [Panel::Project, Panel::Messages, Panel::Properties, Panel::ToolSettings, Panel::BoardSetup, Panel::Overview];
+    pub const ALL: [Panel; 7] = [
+        Panel::Project,
+        Panel::Messages,
+        Panel::Properties,
+        Panel::ToolSettings,
+        Panel::BoardSetup,
+        Panel::SchematicSetup,
+        Panel::Overview,
+    ];
 
     pub fn side(self) -> Side {
         match self {
             Panel::Project => Side::Left,
             Panel::Messages => Side::Bottom,
-            Panel::Properties | Panel::ToolSettings | Panel::BoardSetup | Panel::Overview => Side::Right,
+            Panel::Properties | Panel::ToolSettings | Panel::BoardSetup | Panel::SchematicSetup | Panel::Overview => {
+                Side::Right
+            }
         }
     }
 
@@ -50,6 +60,7 @@ impl Panel {
             Panel::Properties => "Properties",
             Panel::ToolSettings => "Tool settings",
             Panel::BoardSetup => "Board setup",
+            Panel::SchematicSetup => "Schematic setup",
             Panel::Overview => "Overview",
         }
     }
@@ -61,6 +72,7 @@ impl Panel {
             Panel::Properties => Icon::Properties,
             Panel::ToolSettings => Icon::Wrench,
             Panel::BoardSetup => Icon::BoardSetup,
+            Panel::SchematicSetup => Icon::SchematicSetup,
             Panel::Overview => Icon::Info,
         }
     }
@@ -73,6 +85,7 @@ impl Panel {
             Panel::Properties => Action::PanelProperties,
             Panel::ToolSettings => Action::PanelToolSettings,
             Panel::BoardSetup => Action::PanelBoardSetup,
+            Panel::SchematicSetup => Action::PanelSchematicSetup,
             Panel::Overview => Action::PanelOverview,
         }
     }

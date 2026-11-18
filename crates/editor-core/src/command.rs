@@ -8,7 +8,7 @@ use model::*;
 
 use crate::CommandError;
 use crate::clip::{Clip, ClipContent};
-use crate::transaction::{BoardSetup, Transaction};
+use crate::transaction::{Setup, Transaction};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "command", rename_all = "snake_case")]
@@ -114,6 +114,16 @@ pub enum Command {
         sheet: Option<Id>,
         pos: Point,
     },
+    /// A power flag on a wire or pin end: its net is powered from elsewhere (KiCad's
+    /// PWR_FLAG). It moves and is deleted with the symbol whose pin end it is on.
+    AddPowerFlag {
+        #[serde(default)]
+        sheet: Option<Id>,
+        pos: Point,
+        /// Direction the flag points (0°: up).
+        #[serde(default)]
+        rotation: Angle,
+    },
     AddLabel {
         #[serde(default)]
         sheet: Option<Id>,
@@ -199,6 +209,15 @@ pub enum Command {
     /// Replace the design rules (track width, via size, clearance, …).
     SetDesignRules {
         rules: DesignRules,
+    },
+    /// Replace the electrical rules check's settings (severities, pin conflict matrix,
+    /// exclusions).
+    SetErcSettings {
+        erc: ErcSettings,
+    },
+    /// Replace the design rules check's settings (severities, exclusions).
+    SetDrcSettings {
+        drc: DrcSettings,
     },
     AddVia {
         pos: Point,
@@ -315,6 +334,7 @@ impl Command {
             Command::AddBusEntry { .. } => "Add bus entry".into(),
             Command::AddJunction { .. } => "Add junction".into(),
             Command::AddNoConnect { .. } => "Add no-connect flag".into(),
+            Command::AddPowerFlag { .. } => "Add power flag".into(),
             Command::AddLabel { name, .. } => format!("Add label {name}"),
             Command::AddText { .. } => "Add text".into(),
             Command::AddSheet { name, .. } => format!("Add sheet {name}"),
@@ -325,6 +345,8 @@ impl Command {
             Command::AddCutout { .. } => "Add cutout".into(),
             Command::SetCopperLayers { count } => format!("{count} copper layers"),
             Command::SetDesignRules { .. } => "Edit design rules".into(),
+            Command::SetErcSettings { .. } => "Edit electrical rules check settings".into(),
+            Command::SetDrcSettings { .. } => "Edit design rules check settings".into(),
             Command::SetTitleBlock { .. } => "Edit title block".into(),
             Command::Move { ids, .. } => format!("Move {} object(s)", ids.len()),
             Command::Rotate { ids, .. } => format!("Rotate {} object(s)", ids.len()),
@@ -434,6 +456,13 @@ impl Command {
                     return Err(CommandError::Invalid("there is a no-connect flag here already".into()));
                 }
                 tx.insert(Object::NoConnect(NoConnect { id: Id::new(), sheet, pos })).map(drop)
+            }
+            Command::AddPowerFlag { sheet, pos, rotation } => {
+                let sheet = resolve_sheet(tx, sheet)?;
+                if tx.project().schematic.power_flags.iter().any(|f| f.sheet == sheet && f.pos == pos) {
+                    return Err(CommandError::Invalid("there is a power flag here already".into()));
+                }
+                tx.insert(Object::PowerFlag(PowerFlag { id: Id::new(), sheet, pos, rotation })).map(drop)
             }
             Command::AddLabel { sheet, pos, name, kind, shape, style, rotation } => {
                 if name.trim().is_empty() {
@@ -564,8 +593,20 @@ impl Command {
                 if rules.mask_expansion < 0 {
                     return Err(CommandError::Invalid("the solder mask expansion can't be negative".into()));
                 }
-                let mut setup = BoardSetup::of(tx.project());
+                let mut setup = Setup::of(tx.project());
                 setup.rules = rules;
+                tx.set_setup(setup);
+                Ok(())
+            }
+            Command::SetErcSettings { erc } => {
+                let mut setup = Setup::of(tx.project());
+                setup.erc = erc;
+                tx.set_setup(setup);
+                Ok(())
+            }
+            Command::SetDrcSettings { drc } => {
+                let mut setup = Setup::of(tx.project());
+                setup.drc = drc;
                 tx.set_setup(setup);
                 Ok(())
             }
@@ -776,6 +817,11 @@ fn paste(tx: &mut Transaction, clip: Clip, sheet: Option<Id>, at: Point) -> Resu
                         (n.id, n.sheet) = (Id::new(), on(n.sheet));
                         (Object::NoConnect(n), is_top)
                     }
+                    Object::PowerFlag(mut f) => {
+                        let is_top = top(f.sheet);
+                        (f.id, f.sheet) = (Id::new(), on(f.sheet));
+                        (Object::PowerFlag(f), is_top)
+                    }
                     Object::Label(mut l) => {
                         let is_top = top(l.sheet);
                         (l.id, l.sheet) = (Id::new(), on(l.sheet));
@@ -904,22 +950,15 @@ fn move_to_sheet(tx: &mut Transaction, ids: &[ObjectId], target: Id) -> Result<(
                 }
             }
             ObjectId::Symbol(sym) => {
-                // No-connect flags on its pins go along.
-                let from = sch.sheet_of(id);
-                for (_, _, p) in crate::query::pin_positions(tx.project(), sym) {
-                    moves.extend(
-                        sch.no_connects
-                            .iter()
-                            .filter(|n| Some(n.sheet) == from && n.pos == p)
-                            .map(|n| ObjectId::NoConnect(n.id)),
-                    );
-                }
+                // No-connect and power flags on its pins go along.
+                moves.extend(flags_on_pins(tx.project(), sym));
             }
             ObjectId::Wire(_)
             | ObjectId::BusWire(_)
             | ObjectId::BusEntry(_)
             | ObjectId::Junction(_)
             | ObjectId::NoConnect(_)
+            | ObjectId::PowerFlag(_)
             | ObjectId::Label(_)
             | ObjectId::SchText(_) => {}
             other => {
@@ -960,6 +999,7 @@ fn move_to_sheet(tx: &mut Transaction, ids: &[ObjectId], target: Id) -> Result<(
                 Object::BusEntry(x) => x.sheet = target,
                 Object::Junction(x) => x.sheet = target,
                 Object::NoConnect(x) => x.sheet = target,
+                Object::PowerFlag(x) => x.sheet = target,
                 Object::Label(x) => x.sheet = target,
                 Object::SchText(x) => x.sheet = target,
                 _ => {}
@@ -1464,6 +1504,10 @@ fn transform_objects(tx: &mut Transaction, ids: &[ObjectId], t: Transform, edit:
                 }
                 Object::Junction(j) => j.pos = t.point(j.pos),
                 Object::NoConnect(n) => n.pos = t.point(n.pos),
+                Object::PowerFlag(f) => {
+                    f.pos = t.point(f.pos);
+                    f.rotation = t.angle(f.rotation);
+                }
                 Object::Sheet(sh) => {
                     if sh.is_root() {
                         return Err(CommandError::Invalid("the root sheet has no symbol to move".into()));
@@ -1537,15 +1581,17 @@ fn reject_mirror_on_board(edit: Edit) -> Result<(), CommandError> {
     }
 }
 
-/// The no-connect flags on the pin ends of symbol `sym`.
+/// The no-connect and power flags on the pin ends of symbol `sym`.
 fn flags_on_pins(p: &Project, sym: Id) -> Vec<ObjectId> {
     let Some(inst) = p.schematic.symbols.get(sym) else { return Vec::new() };
     let pins: Vec<Point> = crate::query::pin_positions(p, sym).into_iter().map(|(_, _, pt)| pt).collect();
-    p.schematic
-        .no_connects
+    let s = &p.schematic;
+    let on = |sheet: Id, pos: Point| sheet == inst.sheet && pins.contains(&pos);
+    s.no_connects
         .iter()
-        .filter(|n| n.sheet == inst.sheet && pins.contains(&n.pos))
+        .filter(|n| on(n.sheet, n.pos))
         .map(|n| ObjectId::NoConnect(n.id))
+        .chain(s.power_flags.iter().filter(|f| on(f.sheet, f.pos)).map(|f| ObjectId::PowerFlag(f.id)))
         .collect()
 }
 
@@ -1683,6 +1729,7 @@ fn check_references(p: &Project, o: &Object) -> Result<(), CommandError> {
         | Object::BusEntry(BusEntry { sheet, .. })
         | Object::Junction(Junction { sheet, .. })
         | Object::NoConnect(NoConnect { sheet, .. })
+        | Object::PowerFlag(PowerFlag { sheet, .. })
         | Object::Label(NetLabel { sheet, .. })
         | Object::SchText(SchText { sheet, .. }) => {
             if sheet_ok(*sheet) {
@@ -1799,7 +1846,7 @@ fn set_copper_layers(tx: &mut Transaction, count: u16) -> Result<(), CommandErro
     if !used.is_empty() {
         return Err(CommandError::Invalid(format!("{} still has copper on it", used.join(", "))));
     }
-    let mut setup = BoardSetup::of(tx.project());
+    let mut setup = Setup::of(tx.project());
     setup.layers.retain(|l| !removed.contains(&l.id));
     for n in 1..=inner {
         if !setup.layers.iter().any(|l| l.id == LayerId::inner(n)) {

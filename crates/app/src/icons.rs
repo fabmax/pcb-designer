@@ -16,6 +16,7 @@ pub enum Icon {
     Power,
     Junction,
     NoConnect,
+    PowerFlag,
     Place,
     Route,
     Via,
@@ -45,6 +46,7 @@ pub enum Icon {
     Messages,
     Info,
     BoardSetup,
+    SchematicSetup,
     /// Hide a panel.
     Minus,
     /// Panel header buttons.
@@ -172,6 +174,12 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             seg(p(0.08, 0.5), p(0.64, 0.5), line);
             seg(p(0.42, 0.28), p(0.86, 0.72), line);
             seg(p(0.42, 0.72), p(0.86, 0.28), line);
+        }
+        Icon::PowerFlag => {
+            // A wire with a pennant on a stem.
+            seg(p(0.06, 0.86), p(0.94, 0.86), line);
+            seg(p(0.36, 0.86), p(0.36, 0.12), line);
+            poly(vec![p(0.36, 0.12), p(0.86, 0.3), p(0.36, 0.48)], faint, line);
         }
         Icon::Place => {
             // A resistor with its leads and a "+".
@@ -375,6 +383,17 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             poly(sheet(0.44), faint, line);
             ring(p(0.78, 0.24), 0.11, Stroke::new(w * 1.2, color));
             dot(p(0.78, 0.24), 0.04);
+        }
+        Icon::SchematicSetup => {
+            // A pin conflict matrix (a grid) with a settings dot.
+            for i in 0..4 {
+                let t = 0.14 + 0.2 * i as f32;
+                seg(p(0.1, t), p(0.7, t), Stroke::new(w * 0.8, faint));
+                seg(p(t - 0.04, 0.14), p(t - 0.04, 0.74), Stroke::new(w * 0.8, faint));
+            }
+            painter.rect_stroke(rect_of(0.1, 0.14, 0.7, 0.74), 1.0, line, egui::StrokeKind::Middle);
+            ring(p(0.78, 0.76), 0.11, Stroke::new(w * 1.2, color));
+            dot(p(0.78, 0.76), 0.04);
         }
         Icon::Minus => {
             seg(p(0.22, 0.5), p(0.78, 0.5), line);

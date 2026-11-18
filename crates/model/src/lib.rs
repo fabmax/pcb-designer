@@ -10,6 +10,7 @@
 
 pub mod board;
 pub mod builtin;
+pub mod checks;
 pub mod geom;
 pub mod hash;
 pub mod id;
@@ -22,6 +23,7 @@ pub mod store;
 pub mod units;
 
 pub use board::*;
+pub use checks::*;
 pub use geom::*;
 pub use hash::Fnv1a;
 pub use id::Id;

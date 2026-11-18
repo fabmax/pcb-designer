@@ -34,6 +34,7 @@ mod agent;
 mod app;
 mod array_form;
 mod canvas;
+mod checks_ui;
 mod clipboard;
 mod dock;
 mod fields;
