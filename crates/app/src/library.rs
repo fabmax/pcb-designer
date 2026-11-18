@@ -1604,7 +1604,7 @@ fn opening_rows(ui: &mut egui::Ui, f: &mut fields::Fields, pads: &mut [Pad], rul
             }
             if margin.is_some() {
                 if ui
-                    .small_button("↺")
+                    .small_button("Reset")
                     .on_hover_text(format!("Back to the design rule ({})", crate::units::fmt(rule)))
                     .clicked()
                 {

@@ -12,7 +12,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::tess::{Triangle, region_triangles};
 
-static REGULAR: &[u8] = include_bytes!("../fonts/JetBrainsMono-Regular.ttf");
+/// JetBrains Mono Regular (also the UI's fallback font for arrows and key symbols).
+pub static REGULAR: &[u8] = include_bytes!("../fonts/JetBrainsMono-Regular.ttf");
 static BOLD: &[u8] = include_bytes!("../fonts/JetBrainsMono-Bold.ttf");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

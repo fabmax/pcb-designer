@@ -759,6 +759,11 @@ the current design of each area with the gotchas a change needs to know, the pla
   `replace_document` and at startup (not with `--side-by-side`). Tabs that no longer
   resolve (deleted sheets, libraries not loaded) are dropped; a layout with nothing left
   keeps the default tree.
+- **UI fonts** (`theme::install_fonts`): egui's defaults plus JetBrains Mono (the canvas
+  font's bytes, `render::font::REGULAR`) as the last fallback of both families, for
+  arrows and ⌘ ⇧ ⌥ (so `format_shortcut` shows symbols, not "Cmd+"). ↺ and other
+  symbols are still missing: `theme::tests::ui_strings_have_glyphs` scans the string
+  literals of `app` and `view` and fails on a character without a glyph.
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
   `theme::bold_label`) and, for non-modal resizable ones, `theme::window` (same frame
   and title bar, a × button, opens centred; Settings, KiCad import). Bus prompts are `name_prompt.rs`.

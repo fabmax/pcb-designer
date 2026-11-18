@@ -220,6 +220,18 @@ pub fn round_corners(painter: &Painter, rect: Rect) {
 }
 
 /// Apply the theme to egui (call after [`view::style::set_theme`]).
+/// egui's fonts plus JetBrains Mono (embedded for canvas text anyway) as the last
+/// fallback of both families: egui's defaults lack arrows and the key symbols ⌘ ⇧ ⌥.
+pub fn install_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    let name = "JetBrainsMono";
+    fonts.font_data.insert(name.into(), std::sync::Arc::new(egui::FontData::from_static(render::font::REGULAR)));
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        fonts.families.entry(family).or_default().push(name.into());
+    }
+    ctx.set_fonts(fonts);
+}
+
 pub fn apply(ctx: &egui::Context) {
     let dark = dark();
     let mut v = if dark { Visuals::dark() } else { Visuals::light() };
@@ -274,5 +286,47 @@ pub fn apply_to_window(ctx: &egui::Context) {
     if cfg!(target_os = "macos") {
         let t = if dark() { egui::SystemTheme::Dark } else { egui::SystemTheme::Light };
         ctx.send_viewport_cmd(egui::ViewportCommand::SetTheme(t));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Every character in the string literals of the UI code has a glyph in the UI fonts
+    /// (with the fallback of [`super::install_fonts`]), so none shows as a box. Test
+    /// modules, comments and doc comments are skipped.
+    #[test]
+    fn ui_strings_have_glyphs() {
+        let ctx = egui::Context::default();
+        super::install_fonts(&ctx);
+        let mut out = ctx.run_ui(Default::default(), |_| {});
+        out.textures_delta.clear();
+        let font = egui::FontId::proportional(14.0);
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut missing = Vec::new();
+        for dir in ["app/src", "view/src"] {
+            for entry in std::fs::read_dir(root.join(dir)).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().is_none_or(|e| e != "rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).unwrap();
+                let code = text.split("#[cfg(test)]").next().unwrap_or_default();
+                for (n, line) in code.lines().enumerate() {
+                    if line.trim_start().starts_with("//") {
+                        continue;
+                    }
+                    // Characters between double quotes (good enough for this code base).
+                    let mut inside = false;
+                    for c in line.chars() {
+                        if c == '"' {
+                            inside = !inside;
+                        } else if inside && !c.is_ascii() && !ctx.fonts_mut(|f| f.has_glyph(&font, c)) {
+                            missing.push(format!("{}:{}: {c}", path.display(), n + 1));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(missing.is_empty(), "characters the UI font lacks:\n{}", missing.join("\n"));
     }
 }

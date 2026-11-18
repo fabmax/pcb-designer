@@ -345,6 +345,7 @@ impl PcbApp {
         // ⌘+ / ⌘− zoom the canvases, not the UI (Settings → Appearance → UI scale).
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         cc.egui_ctx.set_zoom_factor(settings.ui_scale());
+        theme::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx);
         theme::apply_to_window(&cc.egui_ctx);
         let keymap = opts.keymap.unwrap_or_else(|| settings.keymap());
