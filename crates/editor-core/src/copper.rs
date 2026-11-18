@@ -447,6 +447,15 @@ impl BoardConnectivity {
         self.get(item).and_then(|c| c.net).map(|n| self.nets[n as usize].as_str())
     }
 
+    /// The clearance of each net's class, by net index.
+    pub fn clearances(&self, rules: &DesignRules) -> Clearances {
+        Clearances {
+            nets: self.nets.iter().map(|n| rules.for_net(Some(n)).clearance).collect(),
+            default: rules.clearance,
+            max: rules.max_clearance(),
+        }
+    }
+
     pub fn net_index(&self, name: &str) -> Option<u32> {
         self.net_index.get(name).copied()
     }
@@ -489,6 +498,28 @@ impl BoardConnectivity {
             CopperItem::Zone { .. } => 3,
         };
         self.items.iter().filter(|c| c.layers & bit != 0 && c.geo.contains(p)).min_by_key(|c| rank(c))
+    }
+}
+
+/// Clearances by net (see [`BoardConnectivity::clearances`]).
+#[derive(Clone, Debug)]
+pub struct Clearances {
+    nets: Vec<Coord>,
+    /// Of copper without a net (the Default class).
+    pub default: Coord,
+    /// The largest of any class, for search distances.
+    pub max: Coord,
+}
+
+impl Clearances {
+    /// The clearance of a net's copper.
+    pub fn of(&self, net: Option<u32>) -> Coord {
+        net.and_then(|n| self.nets.get(n as usize).copied()).unwrap_or(self.default)
+    }
+
+    /// The clearance between copper of two nets: the larger of their classes'.
+    pub fn between(&self, a: Option<u32>, b: Option<u32>) -> Coord {
+        self.of(a).max(self.of(b))
     }
 }
 

@@ -593,6 +593,7 @@ impl Command {
                 if rules.mask_expansion < 0 {
                     return Err(CommandError::Invalid("the solder mask expansion can't be negative".into()));
                 }
+                check_net_classes(&rules).map_err(CommandError::Invalid)?;
                 let mut setup = Setup::of(tx.project());
                 setup.rules = rules;
                 tx.set_setup(setup);
@@ -1914,6 +1915,30 @@ fn check_kind_kept(project: &Project, c: &Component, part: &Part) -> Result<(), 
             "{} is placed in the schematic; its part needs a symbol unit",
             c.refdes
         )));
+    }
+    Ok(())
+}
+
+/// Net classes need distinct names (not "Default"), positive sizes and vias larger than
+/// their drill (with the board's values filled in).
+fn check_net_classes(rules: &DesignRules) -> Result<(), String> {
+    let mut names = HashSet::new();
+    for c in &rules.net_classes {
+        let name = c.name.trim();
+        if name.is_empty() || name.eq_ignore_ascii_case(DEFAULT_NET_CLASS) {
+            return Err(format!("a net class needs a name other than {DEFAULT_NET_CLASS:?}"));
+        }
+        if !names.insert(name.to_lowercase()) {
+            return Err(format!("two net classes are named {name:?}"));
+        }
+        let sizes = [c.clearance, c.track_width, c.via_diameter, c.via_drill];
+        if sizes.iter().flatten().any(|&v| v <= 0) {
+            return Err(format!("net class {name}: sizes must be positive"));
+        }
+        let diameter = c.via_diameter.unwrap_or(rules.via_diameter);
+        if c.via_drill.unwrap_or(rules.via_drill) >= diameter {
+            return Err(format!("net class {name}: vias must be larger than their drill"));
+        }
     }
     Ok(())
 }

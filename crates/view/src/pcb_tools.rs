@@ -200,6 +200,8 @@ pub struct PcbPlacer {
     start: Option<Point>,
     /// Net being routed, or of the zone being drawn.
     net: Option<String>,
+    /// The net under the Via tool's cursor (its class sizes the via).
+    via_net: Option<String>,
     /// Corners of the zone being drawn.
     corners: Vec<Point>,
     cursor: Option<Point>,
@@ -237,6 +239,7 @@ impl Default for PcbPlacer {
             settings: PcbSettings::default(),
             start: None,
             net: None,
+            via_net: None,
             corners: Vec::new(),
             cursor: None,
             on_copper: false,
@@ -397,8 +400,13 @@ impl PcbPlacer {
         true
     }
 
+    /// The track width: the tool's, else the routed net's class's.
     fn width(&self, doc: &Document) -> Coord {
-        self.settings.width.unwrap_or(doc.project().board.rules.track_width)
+        self.settings.width.unwrap_or_else(|| doc.project().board.rules.for_net(self.net.as_deref()).track_width)
+    }
+
+    fn via_diameter(doc: &Document, net: Option<&str>) -> Coord {
+        doc.project().board.rules.for_net(net).via_diameter
     }
 
     /// Switch to the next copper layer. While routing, a via joins the layers at the
@@ -422,7 +430,7 @@ impl PcbPlacer {
                 let span = self.settings.via_pair.then_some([cur, next]).filter(|s| !is_through(s));
                 let via = Probe::Via {
                     pos: p,
-                    diameter: doc.project().board.rules.via_diameter,
+                    diameter: Self::via_diameter(doc, self.net.as_deref()),
                     layers: span_mask(doc.project(), span),
                 };
                 if let Some(c) = doc.route_clash(&[via], self.net.as_deref(), &[(cur, p)])
@@ -483,7 +491,6 @@ impl PcbPlacer {
             }
             PcbTool::Via => {
                 let layers = span_mask(doc.project(), self.tool_span(doc));
-                let diameter = doc.project().board.rules.via_diameter;
                 // The via takes the net of the copper under it.
                 let under: Vec<LayerId> = doc.project().board.copper_layers().map(|l| l.id).collect();
                 let copper = doc.current_copper();
@@ -495,7 +502,9 @@ impl PcbPlacer {
                     Some((l, net)) => (vec![(l, p)], net),
                     None => (Vec::new(), None),
                 };
+                let diameter = Self::via_diameter(doc, net.as_deref());
                 self.clash = doc.route_clash(&[Probe::Via { pos: p, diameter, layers }], net.as_deref(), &ends);
+                self.via_net = net;
             }
             _ => {}
         }
@@ -756,7 +765,7 @@ impl PcbPlacer {
             }
             PcbTool::Via => g.push(PcbGhost::Via {
                 pos: p,
-                diameter: doc.project().board.rules.via_diameter,
+                diameter: Self::via_diameter(doc, self.via_net.as_deref()),
                 bad: self.clash.is_some(),
             }),
             PcbTool::Place => g.extend(self.placing.map(|part| PcbGhost::Footprint {

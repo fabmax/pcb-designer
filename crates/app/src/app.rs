@@ -3644,6 +3644,13 @@ impl PcbApp {
             Panel::Nets => match self.nets.ui(ui, &self.project.lib.doc) {
                 Some(NetsAct::Select(net)) => self.select_net(&net, false),
                 Some(NetsAct::Zoom(net)) => self.select_net(&net, true),
+                Some(NetsAct::SetClass(net, class)) => {
+                    let mut rules = self.doc().project().board.rules.clone();
+                    rules.assign_net(&net, class.as_deref());
+                    if let Err(e) = self.doc_mut().execute(Command::SetDesignRules { rules }) {
+                        self.set_status(e.to_string());
+                    }
+                }
                 None => {}
             },
             Panel::Activity => {

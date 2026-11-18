@@ -46,6 +46,14 @@ tracks (the arc styles round the corner as widely as the legs allow). Edit → R
 corners rounds the corners between the selected tracks with the Route tool's corner
 radius.
 
+**Net classes** (Board setup → Net classes) give nets their own clearance, track width
+and via size; values left at *default* are the board's (the Default class). A class lists
+its nets by name or by pattern (`GND, +*V`, `/USB_D?`); a name beats a pattern, else the
+first class matching wins. The Nets panel shows each net's class, and its context menu
+puts a net into one. New tracks and vias take their net's class sizes (unless the Route
+tool has a width of its own), and copper keeps the larger clearance of the two classes
+in routing checks, zone fills and DRC. KiCad imports keep their net classes.
+
 While routing and placing vias, the design rules are checked: clearance to other nets'
 pads, tracks and vias, keepouts and the board outline. A track or via that breaks them is
 drawn in the warning colour with a marker where it clashes, the hint bar says why, and
@@ -359,7 +367,7 @@ your designs without restrictions (see the KiCad library license).
 
 **File → Import KiCad project…** picks a `.kicad_pro` (KiCad 6 or newer) and opens its
 schematic (with all sheets) and board (footprints, tracks, vias, zones, keepouts,
-outline, design rules) as a new, unsaved project. A report window lists warnings, notes
+outline, design rules and net classes) as a new, unsaved project. A report window lists warnings, notes
 on conversions, and what wasn't imported (e.g. dimensions, title block, user-layer
 graphics). Parts come from the project itself, so no libraries are needed; they land in
 the Project Library. Projects from KiCad 5 or older (`.sch`) are refused: open and save

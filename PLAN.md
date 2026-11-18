@@ -238,6 +238,21 @@ the current design of each area with the gotchas a change needs to know, the pla
   never saved.
   Two-pass connectivity: copper without zones → fill → rebuild with fills.
   `RegionIndex` grids fill edges (without it, touch tests on 80k vertices took 0.7 s).
+- **Net classes** (`DesignRules::net_classes`, edited with `SetDesignRules` like the
+  other rules): a class has optional clearance, track width, via diameter and drill
+  (`None`: the board's, the "Default" class) and `nets`, exact names or `*` `?`
+  patterns (`glob_match`). `class_of`: a class listing the exact name wins, else the
+  first matching pattern. `assign_net` moves a net by exact name (the Nets panel's
+  menu). By name, not by net id: nets are named in the schematic and a renamed net
+  falls out of its class unless a pattern catches it. `BoardConnectivity::clearances`
+  resolves the clearance per net index once per check (`Clearances::between` is the
+  larger of two nets'); DRC, `route_check`, the Measure tool's `clearance::rule` and
+  zone fills use it (a zone's own clearance, else its net's class's, against the
+  other copper's class). Board edge clearance stays the board's. Commands don't know
+  nets, so `Document::execute_grouped` fills in `AddTrack.width` / `AddVia` sizes from
+  the class of the copper at the track's ends / the via (only when classes exist);
+  the Route tool sizes its tracks and vias by the routed net, the Via tool by the net
+  under the cursor. Track widths aren't checked against the class (only the minimum).
 - **DRC** (`drc::run`, pure, most severe first): shorts, clearance (pads within one
   footprint and fills skipped), keepouts, board edge, courtyard overlaps (bounding
   boxes), track width and drill minimums, via spans (`ViaSpan`: a layer off the board,
@@ -613,7 +628,10 @@ the current design of each area with the gotchas a change needs to know, the pla
     bottom. Reference/Value become `${REF}`/`${VALUE}` templates plus per-instance
     fields. Zone nets are resolved through the pads of the KiCad net (KiCad names like
     `Net-(R3-Pad1)` differ from ours), else kept with a warning. Rules from the Default
-    net class and board setup.
+    net class and board setup; the other classes with their nets (KiCad 6: `nets` in
+    the class; 7+: `netclass_assignments` by name, a string or in 9 a list, and
+    `netclass_patterns`). KiCad net names are kept, so they match ours only where the
+    import keeps the name (labelled nets).
   - Tests (`kicad/tests/all/project_import.rs`): a hierarchical, routed fixture; with
     `KICAD_CLI` and `KICAD_TEMPLATE_DIR` set, every KiCad template is compared against
     `kicad-cli`: schematic nets (`sch export netlist`) and pad positions (`pcb export
@@ -738,6 +756,10 @@ the current design of each area with the gotchas a change needs to know, the pla
   wires, labels and junctions on the sheet worked on (else the first sheet with any;
   the parts when it has no wires); with the board active its selection is cleared so
   the cross-probe shows the net's copper. A double click also fits the active view.
+  Rows show the net class; the context menu assigns one (`NetsAct::SetClass`).
+- **Board setup** (`pcb_ui::board_setup`): the Default class's sizes and the board
+  rules, then a card per net class (name and nets commit on Enter / focus loss through
+  `committed_text`; sizes live while dragging, one undo group), then DRC severities.
 - **Agent activity** (`activity_ui.rs`, `Agent::activity`, at most 500): each call's
   request name (snake case of the `Request` variant, not always the tool's name), its
   `describe`, the `Debug` arguments and `mcp::Outcome` (`handle` returns it: the result
@@ -875,9 +897,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-- **M21: Net classes.** Classes with their own clearance and track width (and via size),
-  nets assigned to them; routing defaults, routing checks and DRC follow the class. The
-  KiCad import keeps its classes.
 
 ## Later
 
@@ -929,6 +948,10 @@ defers.
   libraries (needs design; P on the board stays unassigned until then).
 - Cutouts that split a zone into two pieces (refused today; would need a second zone).
 - Push-and-shove routing.
+- Net classes: diff pairs and their gap, class colours on the board and ratsnest,
+  per-class minimums checked by DRC (track width below the class's), a separate edge
+  clearance, schematic directive labels (net class flags) and KiCad's own class rules
+  (`.kicad_dru`).
 - Routing checks: clearance to zone fills of other nets, an index for huge boards
   (linear per check today), checking the vias L adds against the next layer's copper
   only once the layer changes; blind and buried vias drawn differently from through
@@ -951,6 +974,9 @@ defers.
   (user layers in general), net ties, tuning patterns (their tracks are kept).
 - Autoplacement and autorouting.
 - Reintroduce optional kicad style single line vector font (instead of ttf)
+- Placing an invalid track (one that has rule violations) is currently completely blocked. This
+  can be a bit annoying. It should be possible to place it anyway. Not sure if right away
+  or with a warning popup, mod key or something like that
 
 **Libraries and parts**
 - Footprint wizards.

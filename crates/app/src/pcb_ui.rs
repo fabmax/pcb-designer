@@ -158,8 +158,14 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
             });
             ui.checkbox(&mut s.allow_violations, "Allow violations")
                 .on_hover_text("Add tracks and vias that break the clearance, keepout or board edge rules");
-            if s.width.is_some() && ui.small_button("Use the design rule width").clicked() {
-                s.width = None;
+            let classes = !rules.net_classes.is_empty();
+            if s.width.is_some() {
+                let text = if classes { "Use the net class width" } else { "Use the design rule width" };
+                if ui.small_button(text).clicked() {
+                    s.width = None;
+                }
+            } else if classes {
+                hint(ui, "Tracks take the width of their net's class.");
             }
             ui.add_space(6.0);
             hint(
@@ -171,8 +177,12 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
         PcbTool::Via => {
             let layers = doc.project().board.copper_layers().count();
             grid(ui, "pcb_tool", |ui| {
-                row(ui, "Diameter", units::fmt(rules.via_diameter));
-                row(ui, "Drill", units::fmt(rules.via_drill));
+                if rules.net_classes.is_empty() {
+                    row(ui, "Diameter", units::fmt(rules.via_diameter));
+                    row(ui, "Drill", units::fmt(rules.via_drill));
+                } else {
+                    row(ui, "Size", "by net class".into());
+                }
                 if layers > 2 {
                     label(ui, "From layer");
                     layer_combo(ui, "via_from", &mut s.via_span[0], doc);
@@ -420,5 +430,125 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
          grown by the paste margin (negative shrinks).",
     );
     ui.add_space(12.0);
+    net_classes(ui, doc, message);
+    ui.add_space(12.0);
     crate::checks_ui::drc_severities(ui, doc, message);
+}
+
+/// The net classes: a card per class with its sizes (empty: the board's) and nets.
+fn net_classes(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<String>) {
+    let mut rules = doc.project().board.rules.clone();
+    let nets: Vec<String> = doc.connectivity().netlist().map(|n| n.name.clone()).collect();
+    ui.label(RichText::new("Net classes").strong());
+    ui.add_space(2.0);
+    let mut changed = false;
+    let mut active = false;
+    let mut remove = None;
+    let board = [rules.clearance, rules.track_width, rules.via_diameter, rules.via_drill];
+    for (i, class) in rules.net_classes.iter_mut().enumerate() {
+        egui::Frame::group(ui.style()).corner_radius(6.0).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                let id = ui.make_persistent_id(("net_class_name", i));
+                if let Some(name) = committed_text(ui, id, &class.name, 140.0) {
+                    class.name = name.trim().to_string();
+                    changed = true;
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("Remove").clicked() {
+                        remove = Some(i);
+                    }
+                });
+            });
+            grid(ui, &format!("net_class_{i}"), |ui| {
+                for (k, (name, value)) in [
+                    ("Clearance", &mut class.clearance),
+                    ("Track width", &mut class.track_width),
+                    ("Via diameter", &mut class.via_diameter),
+                    ("Via drill", &mut class.via_drill),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    label(ui, name);
+                    ui.horizontal(|ui| {
+                        let (r, v) = units::drag(ui, value.unwrap_or(board[k]), mm(0.05), mm(20.0));
+                        if let Some(v) = v {
+                            *value = Some(v);
+                            changed = true;
+                        }
+                        active |= r.dragged() || r.has_focus();
+                        if value.is_some() {
+                            let tip = format!("Back to the board's value ({})", units::fmt(board[k]));
+                            if crate::project_panel::header_button(ui, Icon::Reset, &tip, false).clicked() {
+                                *value = None;
+                                changed = true;
+                            }
+                        } else {
+                            ui.label(RichText::new("default").color(theme::text_dim()))
+                                .on_hover_text("The Default class's value (above)");
+                        }
+                    });
+                    ui.end_row();
+                }
+                label(ui, "Nets");
+                let id = ui.make_persistent_id(("net_class_nets", i));
+                if let Some(text) = committed_text(ui, id, &class.nets.join(", "), ui.available_width()) {
+                    class.nets = text.split([',', ' ']).filter(|p| !p.is_empty()).map(str::to_string).collect();
+                    changed = true;
+                }
+                ui.end_row();
+            });
+            let count = nets.iter().filter(|n| class.matches(n)).count();
+            let members = match count {
+                0 => "no nets yet".to_string(),
+                1 => "1 net".to_string(),
+                n => format!("{n} nets"),
+            };
+            hint(ui, &members);
+        });
+        ui.add_space(4.0);
+    }
+    if let Some(i) = remove {
+        rules.net_classes.remove(i);
+        changed = true;
+    }
+    if ui.button("Add net class").clicked() {
+        let name = (1..).map(|n| format!("Class {n}")).find(|n| !rules.net_classes.iter().any(|c| &c.name == n));
+        rules.net_classes.push(NetClass { name: name.expect("a free name"), ..Default::default() });
+        changed = true;
+    }
+    // Live while dragging or typing; one undo step per edit.
+    let key = ui.make_persistent_id("net_classes_group");
+    if changed {
+        let group = ui.data_mut(|d| *d.get_temp_mut_or_insert_with(key, new_group));
+        if let Err(e) = doc.execute_grouped(Command::SetDesignRules { rules }, Some(group)) {
+            *message = Some(e.to_string());
+        }
+    }
+    if !active && ui.data_mut(|d| d.remove_temp::<u64>(key)).is_some() {
+        doc.close_group();
+    }
+    ui.add_space(2.0);
+    hint(
+        ui,
+        "Nets by name or by a pattern (* any characters, ? one), separated by commas; a name beats a \
+         pattern, else the first class matching wins. Other nets are in the Default class (the values \
+         above). Between two classes the larger clearance applies. The Nets panel's context menu \
+         puts a net into a class.",
+    );
+}
+
+/// A text field that hands back its text when editing ends (Enter or focus lost) with a
+/// change; while it has focus it keeps its own text.
+fn committed_text(ui: &mut egui::Ui, id: egui::Id, current: &str, width: f32) -> Option<String> {
+    let mut text = ui.data_mut(|d| d.get_temp::<String>(id)).unwrap_or_else(|| current.to_string());
+    let r = ui.add(egui::TextEdit::singleline(&mut text).id(id).desired_width(width));
+    if r.has_focus() {
+        ui.data_mut(|d| d.insert_temp(id, text.clone()));
+        None
+    } else {
+        ui.data_mut(|d| d.remove_temp::<String>(id));
+        (r.lost_focus() && text != current).then_some(text)
+    }
 }

@@ -51,7 +51,8 @@ pub fn check(
     ends: &[(LayerId, Point)],
 ) -> Option<Clash> {
     let board = &project.board;
-    let clearance = board.rules.clearance;
+    let clear = copper.clearances(&board.rules);
+    let net_rules = board.rules.for_net(net);
     let net = net.and_then(|n| copper.net_index(n));
     // Islands the route connects to: at its start (and at its end if the net isn't
     // known, as the end then decides it).
@@ -68,7 +69,7 @@ pub fn check(
 
     for (geo, probe) in &geos {
         let bits = probe.layers();
-        let reach = geo.bounds().grow(clearance);
+        let reach = geo.bounds().grow(clear.max.max(net_rules.clearance));
         for c in &copper.items {
             if c.layers & bits == 0
                 || matches!(c.item, CopperItem::Zone { .. })
@@ -78,6 +79,8 @@ pub fn check(
             {
                 continue;
             }
+            // The new copper's class is known by name even before its net has copper.
+            let clearance = net_rules.clearance.max(clear.of(c.net));
             let d = c.geo.distance(geo);
             if d < clearance as f64 {
                 let other = c.net.map_or("unconnected copper".to_string(), |n| copper.nets[n as usize].clone());
@@ -121,7 +124,7 @@ pub fn check(
             let edge = rings
                 .iter()
                 .flat_map(|r| (0..r.len()).map(move |i| Geo::Capsule { a: r[i], b: r[(i + 1) % r.len()], r: 0 }))
-                .find(|e| e.distance(geo) < clearance as f64);
+                .find(|e| e.distance(geo) < clear.default as f64);
             let probe_point = match geo {
                 Geo::Capsule { a, .. } => *a,
                 _ => geo.bounds().center(),
@@ -129,7 +132,7 @@ pub fn check(
             if let Some(e) = edge {
                 return Some(Clash {
                     at: nearest(geo, &e),
-                    message: format!("too close to the board edge (clearance {})", mm(clearance as f64)),
+                    message: format!("too close to the board edge (clearance {})", mm(clear.default as f64)),
                 });
             }
             if !inside(probe_point) {

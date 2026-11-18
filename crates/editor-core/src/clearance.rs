@@ -156,7 +156,7 @@ pub fn gap(project: &Project, copper: &BoardConnectivity, a: Feature, b: Feature
 /// The design rule clearance between two features: copper of different nets (or
 /// without a net) on a common layer, and copper to the board edge.
 fn rule(project: &Project, copper: &BoardConnectivity, a: Feature, b: Feature) -> Option<Coord> {
-    let clearance = project.board.rules.clearance;
+    let clear = copper.clearances(&project.board.rules);
     let info = |f: Feature| -> Option<(u64, Option<u32>)> {
         let item = match f {
             Feature::Zone { id } => {
@@ -169,11 +169,11 @@ fn rule(project: &Project, copper: &BoardConnectivity, a: Feature, b: Feature) -
     };
     match (a, b) {
         (Feature::Edge, Feature::Edge) => None,
-        (Feature::Edge, other) | (other, Feature::Edge) => info(other).map(|_| clearance),
+        (Feature::Edge, other) | (other, Feature::Edge) => info(other).map(|_| clear.default),
         _ => {
             let ((la, na), (lb, nb)) = (info(a)?, info(b)?);
             let same_net = na.is_some() && na == nb;
-            (la & lb != 0 && !same_net).then_some(clearance)
+            (la & lb != 0 && !same_net).then_some(clear.between(na, nb))
         }
     }
 }

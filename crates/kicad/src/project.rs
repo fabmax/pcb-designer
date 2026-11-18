@@ -92,7 +92,7 @@ pub fn import_project(pro: &Path) -> Result<ProjectImport, String> {
     }
     let pcb = if pcb_path.exists() { pcb::import(&pcb_path, &mut report)? } else { PcbImport::default() };
     let mut project = assemble(&stem, sch, pcb, &mut report);
-    design_rules(&settings, &mut project.board.rules, &mut report);
+    design_rules(&settings, &mut project.board.rules);
     check_settings(&settings, &mut project, &mut report);
     let issues = project.validate();
     if !issues.is_empty() {
@@ -530,27 +530,61 @@ fn check_settings(settings: &serde_json::Value, project: &mut Project, report: &
     }
 }
 
-/// Design rules from the project file: the Default net class and the board's minimums.
-fn design_rules(settings: &serde_json::Value, rules: &mut DesignRules, report: &mut Report) {
+/// Design rules from the project file: the Default net class, the other classes with
+/// their nets (KiCad 6 lists them in the class; 7 and later assign them by name and by
+/// pattern) and the board's minimums.
+fn design_rules(settings: &serde_json::Value, rules: &mut DesignRules) {
     let mm = |v: &serde_json::Value| v.as_f64().filter(|&x| x > 0.0).map(crate::common::nm);
-    if let Some(classes) = settings["net_settings"]["classes"].as_array() {
-        for c in classes {
-            if c["name"] == "Default" {
-                if let Some(v) = mm(&c["clearance"]) {
-                    rules.clearance = v;
-                }
-                if let Some(v) = mm(&c["track_width"]) {
-                    rules.track_width = v;
-                }
-                if let Some(v) = mm(&c["via_diameter"]) {
-                    rules.via_diameter = v;
-                }
-                if let Some(v) = mm(&c["via_drill"]) {
-                    rules.via_drill = v;
-                }
-            } else if let Some(name) = c["name"].as_str() {
-                report.skip(&format!("net class {name} (per-net rules aren't supported; the Default class applies)"));
+    let ns = &settings["net_settings"];
+    for c in ns["classes"].as_array().into_iter().flatten() {
+        let Some(name) = c["name"].as_str() else { continue };
+        if name == "Default" {
+            if let Some(v) = mm(&c["clearance"]) {
+                rules.clearance = v;
             }
+            if let Some(v) = mm(&c["track_width"]) {
+                rules.track_width = v;
+            }
+            if let Some(v) = mm(&c["via_diameter"]) {
+                rules.via_diameter = v;
+            }
+            if let Some(v) = mm(&c["via_drill"]) {
+                rules.via_drill = v;
+            }
+            continue;
+        }
+        let nets = c["nets"].as_array().into_iter().flatten().filter_map(|n| n.as_str()).map(str::to_string);
+        rules.net_classes.push(NetClass {
+            name: name.to_string(),
+            clearance: mm(&c["clearance"]),
+            track_width: mm(&c["track_width"]),
+            via_diameter: mm(&c["via_diameter"]),
+            via_drill: mm(&c["via_drill"]),
+            nets: nets.collect(),
+        });
+    }
+    let mut add = |class: &str, net: &str| match rules.net_classes.iter_mut().find(|c| c.name == class) {
+        Some(c) if !c.nets.iter().any(|n| n == net) => c.nets.push(net.to_string()),
+        _ => {}
+    };
+    // By name first: an exact name beats a pattern here as in KiCad.
+    for (net, class) in ns["netclass_assignments"].as_object().into_iter().flatten() {
+        // KiCad 7 and 8 give a class name, 9 a list of them.
+        let class = class.as_str().or_else(|| class.as_array().and_then(|a| a.first()).and_then(|c| c.as_str()));
+        if let Some(class) = class {
+            add(class, net);
+        }
+    }
+    for p in ns["netclass_patterns"].as_array().into_iter().flatten() {
+        if let (Some(class), Some(pattern)) = (p["netclass"].as_str(), p["pattern"].as_str()) {
+            add(class, pattern);
+        }
+    }
+    // Classes whose vias would be smaller than their drill keep the board's via.
+    for c in &mut rules.net_classes {
+        if c.via_drill.unwrap_or(rules.via_drill) >= c.via_diameter.unwrap_or(rules.via_diameter) {
+            c.via_diameter = None;
+            c.via_drill = None;
         }
     }
     let r = &settings["board"]["design_settings"]["rules"];

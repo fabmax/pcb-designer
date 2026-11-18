@@ -125,15 +125,17 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
     // Clearance between copper of different islands (unless of the same net).
     let checked: Vec<usize> =
         (0..copper.items.len()).filter(|&i| !matches!(copper.items[i].item, CopperItem::Zone { .. })).collect();
-    let bounds: Vec<Rect> = checked.iter().map(|&i| copper.items[i].geo.bounds().grow(rules.clearance)).collect();
+    let clear = copper.clearances(rules);
+    let bounds: Vec<Rect> = checked.iter().map(|&i| copper.items[i].geo.bounds().grow(clear.max)).collect();
     let mut seen: HashSet<(usize, usize)> = HashSet::default();
     Grid::new(&bounds).pairs(|i, j| {
         let (i, j) = (checked[i.min(j)], checked[i.max(j)]);
         let (a, b) = (&copper.items[i], &copper.items[j]);
+        let clearance = clear.between(a.net, b.net);
         if a.layers & b.layers == 0
             || a.island == b.island
             || (a.net.is_some() && a.net == b.net)
-            || !a.geo.bounds().grow(rules.clearance).intersects(&b.geo.bounds())
+            || !a.geo.bounds().grow(clearance).intersects(&b.geo.bounds())
         {
             return;
         }
@@ -147,7 +149,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
             return;
         }
         let d = a.geo.distance(&b.geo);
-        if d < rules.clearance as f64 {
+        if d < clearance as f64 {
             out.push(Violation {
                 kind: ViolationKind::Clearance,
                 message: format!(
@@ -155,7 +157,7 @@ pub fn run(project: &Project, copper: &BoardConnectivity) -> Vec<Violation> {
                     name(a),
                     name(b),
                     fmt_mm(d),
-                    fmt_mm(rules.clearance as f64)
+                    fmt_mm(clearance as f64)
                 ),
                 pos: midpoint(a, b),
                 objects: vec![a.item.object(), b.item.object()],

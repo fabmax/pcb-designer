@@ -1,6 +1,7 @@
-//! The Nets panel: every net with its pin count, the sheets it is on and its routing
-//! state, filtered by a search field. A click selects the net (its wires and labels in the
-//! schematic; the board highlights its copper), a double click also zooms to it.
+//! The Nets panel: every net with its net class, pin count, the sheets it is on and its
+//! routing state, filtered by a search field. A click selects the net (its wires and
+//! labels in the schematic; the board highlights its copper), a double click also zooms
+//! to it, and the context menu puts it into a net class.
 
 use std::collections::HashMap;
 
@@ -14,6 +15,8 @@ pub enum NetsAct {
     Select(String),
     /// Select and zoom to it.
     Zoom(String),
+    /// Put the net into a class (`None`: Default) by its name.
+    SetClass(String, Option<String>),
 }
 
 /// How far a net is routed on the board.
@@ -31,6 +34,8 @@ pub struct NetRow {
     pub pins: usize,
     pub sheets: usize,
     pub routing: Routing,
+    /// Its net class (`None`: Default), and whether by its exact name (else a pattern).
+    pub class: Option<(String, bool)>,
 }
 
 /// The rows, sorted by name (natural order: `D2` before `D10`).
@@ -61,7 +66,8 @@ pub fn rows(doc: &Document) -> Vec<NetRow> {
                     None => Routing::Routed,
                 },
             };
-            NetRow { name: n.name.clone(), pins: n.pins.len(), sheets: sheets.len(), routing }
+            let class = project.board.rules.class_of(&n.name).map(|c| (c.name.clone(), c.lists(&n.name)));
+            NetRow { name: n.name.clone(), pins: n.pins.len(), sheets: sheets.len(), routing, class }
         })
         .collect();
     rows.sort_by(|a, b| natural_cmp(&a.name, &b.name));
@@ -89,6 +95,33 @@ fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
         parts
     };
     key(a).cmp(&key(b)).then_with(|| a.cmp(b))
+}
+
+/// The net class submenu of a row.
+fn class_menu(ui: &mut Ui, row: &NetRow, rules: &model::DesignRules) -> Option<NetsAct> {
+    let mut act = None;
+    ui.label(RichText::new("Net class").color(theme::text_dim()).size(12.0));
+    let current = row.class.as_ref().map(|(c, _)| c.as_str());
+    let by_pattern = row.class.as_ref().is_some_and(|(_, exact)| !exact);
+    let default = ui.radio(current.is_none(), model::DEFAULT_NET_CLASS);
+    if default.clicked() && current.is_some() {
+        act = Some(NetsAct::SetClass(row.name.clone(), None));
+        ui.close();
+    }
+    for c in &rules.net_classes {
+        let mut r = ui.radio(current == Some(c.name.as_str()), &c.name);
+        if by_pattern && current == Some(c.name.as_str()) {
+            r = r.on_hover_text("By a pattern of the class (Board setup)");
+        }
+        if r.clicked() && (current != Some(c.name.as_str()) || by_pattern) {
+            act = Some(NetsAct::SetClass(row.name.clone(), Some(c.name.clone())));
+            ui.close();
+        }
+    }
+    if rules.net_classes.is_empty() {
+        ui.label(RichText::new("Add net classes in Board setup").color(theme::text_dim()).size(12.0));
+    }
+    act
 }
 
 #[derive(Default)]
@@ -144,6 +177,10 @@ impl NetsPanel {
                     color,
                 );
                 let pins = if row.pins == 1 { "1 pin".to_string() } else { format!("{} pins", row.pins) };
+                let pins = match &row.class {
+                    Some((class, _)) => format!("{class} · {pins}"),
+                    None => pins,
+                };
                 let sheets = if row.sheets > 1 { format!(" · {} sheets", row.sheets) } else { String::new() };
                 let mid = painter.text(
                     egui::pos2(right.left() - 10.0, y),
@@ -165,6 +202,11 @@ impl NetsPanel {
                 } else if r.clicked() {
                     act = Some(NetsAct::Select(row.name.clone()));
                 }
+                r.context_menu(|ui| {
+                    if let Some(a) = class_menu(ui, row, &doc.project().board.rules) {
+                        act = Some(a);
+                    }
+                });
             }
         });
         if let Some(NetsAct::Select(n) | NetsAct::Zoom(n)) = &act {

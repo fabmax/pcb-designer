@@ -300,3 +300,49 @@ fn routing_keeps_clearance_to_other_nets() {
     t.hover(&mut doc, Some((across, across)), mm(0.0));
     assert!(t.clash().is_some_and(|c| c.message.contains("touch")), "{:?}", t.clash());
 }
+
+#[test]
+fn routes_and_vias_take_their_net_class_sizes() {
+    let mut doc = Document::new(Project::new("T"));
+    let parts = vec![PART_RESISTOR, PART_HEADER_1X4];
+    doc.execute(Command::import_parts(&builtin::builtin_library(), &parts).unwrap()).unwrap();
+    let (sj, fj) = place(&mut doc, PART_HEADER_1X4, 0.0, Point::mm(0.0, 0.0));
+    let (sr, fr) = place(&mut doc, PART_RESISTOR, 20.32, Point::mm(10.0, 0.0));
+    let (pa, pb) = (pin(&doc, sj, "1"), pin(&doc, sr, "1"));
+    let pts = if pa.x == pb.x || pa.y == pb.y { vec![pa, pb] } else { vec![pa, Point::new(pb.x, pa.y), pb] };
+    doc.execute(Command::AddWire { sheet: None, points: pts }).unwrap();
+    let mut rules = doc.project().board.rules.clone();
+    rules.net_classes = vec![NetClass {
+        name: "Power".into(),
+        track_width: Some(mm(0.6)),
+        via_diameter: Some(mm(0.9)),
+        via_drill: Some(mm(0.4)),
+        nets: vec!["*".into()],
+        ..Default::default()
+    }];
+    doc.execute(Command::SetDesignRules { rules }).unwrap();
+
+    // The Route tool: J1.1 → a corner, a via there.
+    let mut t = PcbPlacer::default();
+    t.set_tool(PcbTool::Route);
+    let j1 = pad(&doc, fj, "1");
+    click_near(&mut t, &mut doc, j1);
+    let corner = Point::new(j1.x + mm(3.0), j1.y + mm(3.0));
+    t.hover(&mut doc, Some((corner, corner)), mm(0.3));
+    t.click(&mut doc).unwrap();
+    t.next_layer(&mut doc).unwrap();
+    let board = &doc.project().board;
+    assert!(board.tracks.iter().all(|tr| tr.width == mm(0.6)));
+    let via = board.vias.iter().next().unwrap();
+    assert_eq!((via.diameter, via.drill), (mm(0.9), mm(0.4)));
+
+    // Commands without sizes (as an agent sends them) too; copper without a net doesn't.
+    let r1 = pad(&doc, fr, "1");
+    let points = vec![r1, Point::new(r1.x, r1.y + mm(2.0))];
+    doc.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points, width: None, mids: Vec::new() }).unwrap();
+    let free = vec![Point::mm(30.0, 30.0), Point::mm(32.0, 30.0)];
+    doc.execute(Command::AddTrack { layer: LayerId::TOP_COPPER, points: free, width: None, mids: Vec::new() }).unwrap();
+    let widths: Vec<Coord> = doc.project().board.tracks.iter().map(|t| t.width).collect();
+    assert_eq!(widths.iter().filter(|&&w| w == mm(0.6)).count(), widths.len() - 1, "{widths:?}");
+    assert!(widths.contains(&doc.project().board.rules.track_width));
+}

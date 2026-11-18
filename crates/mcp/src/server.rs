@@ -568,7 +568,9 @@ impl PcbTools {
         (tracks/vias in a short or touching no pad, kept after schematic changes), copper layers \
         and design rules. Route with `execute` add_track (points on pad centers; tracks get their \
         net from the pads they touch; mids for arc segments) and add_via (through all layers, or \
-        span [from, to] for blind and buried vias).")]
+        span [from, to] for blind and buried vias). Without a width or size they take the net \
+        class's (rules.net_classes: per class clearance, track_width, via_diameter, via_drill \
+        and nets, exact names or * ? patterns; change them with `execute` set_design_rules).")]
     async fn get_routing(&self) -> Result<CallToolResult, ErrorData> {
         self.call(Request::Routing).await
     }

@@ -257,9 +257,14 @@ pub fn fill_zones(project: &Project, copper: &BoardConnectivity) -> Vec<ZoneFill
     let outline_area = board_area(board);
     let mut zones: Vec<&Zone> = board.zones.iter().filter(|z| z.outline.len() >= 3).collect();
     zones.sort_by_key(|z| std::cmp::Reverse(z.priority));
+    let clear = copper.clearances(rules);
     let mut fills: Vec<ZoneFill> = Vec::new();
     for z in zones {
-        let clearance = z.clearance.unwrap_or(rules.clearance);
+        // The zone's own clearance, else its net's class's; to other copper the larger of
+        // that and the other net's class clearance.
+        let own = (!z.net.is_empty()).then_some(z.net.as_str());
+        let clearance = z.clearance.unwrap_or(rules.for_net(own).clearance);
+        let to = |other: Option<u32>| clearance.max(clear.of(other));
         let bit = layer_bit(z.layer);
         let net = if z.net.is_empty() { None } else { copper.net_index(&z.net) };
         let (gap, spoke) = (z.thermal_gap.unwrap_or(rules.thermal_gap), z.thermal_spoke.unwrap_or(rules.thermal_spoke));
@@ -287,7 +292,9 @@ pub fn fill_zones(project: &Project, copper: &BoardConnectivity) -> Vec<ZoneFill
                 }
             }
         }
-        let zb = Rect::union_all(z.outline.iter().map(|&p| Rect::from_points(p, p))).unwrap().grow(clearance * 4);
+        let zb = Rect::union_all(z.outline.iter().map(|&p| Rect::from_points(p, p)))
+            .unwrap()
+            .grow(to(None).max(clear.max) * 4);
         for c in copper.items.iter().filter(|c| c.layers & bit != 0 && c.geo.bounds().intersects(&zb)) {
             let same = net.is_some() && c.net == net;
             match c.item {
@@ -299,17 +306,18 @@ pub fn fill_zones(project: &Project, copper: &BoardConnectivity) -> Vec<ZoneFill
                     ZoneConnection::ThermalThroughHole | ZoneConnection::Solid => {}
                     ZoneConnection::None => clip.extend(inflate(&c.geo, clearance)),
                 },
-                CopperItem::Pad { .. } => clip.extend(inflate(&c.geo, clearance)),
+                CopperItem::Pad { .. } => clip.extend(inflate(&c.geo, to(c.net))),
                 // Own tracks and vias are flooded; so is copper without a net (stitching
                 // vias), unless the zone has no net either.
                 _ if same || (net.is_some() && c.net.is_none()) => {}
-                _ => clip.extend(inflate(&c.geo, clearance)),
+                _ => clip.extend(inflate(&c.geo, to(c.net))),
             }
         }
         for f in fills.iter().filter(|f| f.layer == z.layer && f.net != z.net) {
+            let other = (!f.net.is_empty()).then(|| copper.net_index(&f.net)).flatten();
             for shape in &f.shapes {
                 let (outer, holes) = shape.split_first().expect("shapes have an outline");
-                clip.extend(grown(outer, holes, clearance));
+                clip.extend(grown(outer, holes, to(other)));
             }
         }
         let filled =

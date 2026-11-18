@@ -12,6 +12,7 @@ mod erc;
 mod fields;
 mod footprintless;
 mod library_update;
+mod net_classes;
 mod netlist;
 mod no_connect;
 mod outline;

@@ -105,7 +105,16 @@ fn hierarchical_routed_project() {
     let r = &p.board.rules;
     assert_eq!((r.clearance, r.track_width, r.min_track_width, r.min_drill), (200_000, 250_000, 150_000, 250_000));
     assert_eq!((r.mask_expansion, r.paste_margin), (50_000, -30_000));
-    for s in ["net class Power", "schematic graphics", "board texts on documentation", "zone minimum widths"] {
+    let power = r.class_of("VIN").unwrap();
+    assert_eq!(
+        (power.name.as_str(), power.clearance, power.track_width, power.via_diameter),
+        ("Power", Some(300_000), Some(500_000), None)
+    );
+    assert_eq!(r.class_of("GND").unwrap().name, "Power");
+    assert_eq!(r.class_of("/amp/OUT").unwrap().name, "Signal");
+    assert!(r.class_of("Net-(R3-Pad1)").is_none());
+    assert!(!report.contains("net class"), "{report}");
+    for s in ["schematic graphics", "board texts on documentation", "zone minimum widths"] {
         assert!(report.contains(s), "{s}: {report}");
     }
 

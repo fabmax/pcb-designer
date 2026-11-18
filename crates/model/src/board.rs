@@ -536,6 +536,110 @@ pub struct DesignRules {
     /// Added to SMD pads for their paste (negative shrinks, as in KiCad).
     #[serde(default)]
     pub paste_margin: Coord,
+    /// Nets with their own clearance, track width and via size. A net belongs to the
+    /// class listing its exact name, else to the first class with a pattern matching it;
+    /// other nets use the values above (the "Default" class).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub net_classes: Vec<NetClass>,
+}
+
+/// A group of nets with their own rules; values left out are the board's.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct NetClass {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clearance: Option<Coord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub track_width: Option<Coord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via_diameter: Option<Coord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via_drill: Option<Coord>,
+    /// Net names of the class: exact names or patterns with `*` (any characters) and `?`
+    /// (one character), e.g. `GND`, `+*V`, `/USB_D?`.
+    #[serde(default)]
+    pub nets: Vec<String>,
+}
+
+impl NetClass {
+    pub fn matches(&self, net: &str) -> bool {
+        self.nets.iter().any(|p| glob_match(p, net))
+    }
+
+    /// The class lists `net` by its exact name.
+    pub fn lists(&self, net: &str) -> bool {
+        self.nets.iter().any(|p| p == net)
+    }
+}
+
+/// The rules a net's copper follows (its class's, else the board's).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NetRules {
+    pub clearance: Coord,
+    pub track_width: Coord,
+    pub via_diameter: Coord,
+    pub via_drill: Coord,
+}
+
+/// The name of the class of nets that are in no other.
+pub const DEFAULT_NET_CLASS: &str = "Default";
+
+impl DesignRules {
+    /// The class of a net (`None`: the Default class).
+    pub fn class_of(&self, net: &str) -> Option<&NetClass> {
+        self.net_classes.iter().find(|c| c.lists(net)).or_else(|| self.net_classes.iter().find(|c| c.matches(net)))
+    }
+
+    /// Put a net into a class by its exact name (`None`: no longer listed by name, so
+    /// in the Default class unless a pattern matches it).
+    pub fn assign_net(&mut self, net: &str, class: Option<&str>) {
+        for c in &mut self.net_classes {
+            c.nets.retain(|p| p != net);
+        }
+        if let Some(c) = class.and_then(|name| self.net_classes.iter_mut().find(|c| c.name == name)) {
+            c.nets.push(net.to_string());
+        }
+    }
+
+    /// The rules of a net (`None`: copper without a net, which follows the Default class).
+    pub fn for_net(&self, net: Option<&str>) -> NetRules {
+        let class = net.and_then(|n| self.class_of(n));
+        NetRules {
+            clearance: class.and_then(|c| c.clearance).unwrap_or(self.clearance),
+            track_width: class.and_then(|c| c.track_width).unwrap_or(self.track_width),
+            via_diameter: class.and_then(|c| c.via_diameter).unwrap_or(self.via_diameter),
+            via_drill: class.and_then(|c| c.via_drill).unwrap_or(self.via_drill),
+        }
+    }
+
+    /// The largest clearance of any class (for search distances).
+    pub fn max_clearance(&self) -> Coord {
+        self.net_classes.iter().filter_map(|c| c.clearance).fold(self.clearance, Coord::max)
+    }
+}
+
+/// Does `name` match `pattern` (`*`: any characters, `?`: one character)?
+pub fn glob_match(pattern: &str, name: &str) -> bool {
+    let (p, n): (Vec<char>, Vec<char>) = (pattern.chars().collect(), name.chars().collect());
+    // Greedy with backtracking to the last `*`.
+    let (mut i, mut j) = (0, 0);
+    let mut star: Option<(usize, usize)> = None;
+    while j < n.len() {
+        if i < p.len() && (p[i] == '?' || p[i] == n[j]) {
+            i += 1;
+            j += 1;
+        } else if i < p.len() && p[i] == '*' {
+            star = Some((i, j));
+            i += 1;
+        } else if let Some((si, sj)) = star {
+            i = si + 1;
+            j = sj + 1;
+            star = Some((si, sj + 1));
+        } else {
+            return false;
+        }
+    }
+    p[i..].iter().all(|&c| c == '*')
 }
 
 fn default_mask_expansion() -> Coord {
@@ -563,6 +667,7 @@ impl Default for DesignRules {
             thermal_spoke: default_thermal_spoke(),
             mask_expansion: default_mask_expansion(),
             paste_margin: 0,
+            net_classes: Vec::new(),
         }
     }
 }
@@ -664,5 +769,55 @@ mod tests {
         let b = Board::with_copper_layers(4);
         let copper: Vec<LayerId> = b.copper_layers().map(|l| l.id).collect();
         assert_eq!(copper, vec![LayerId(0), LayerId(1), LayerId(2), LayerId::BOTTOM_COPPER]);
+    }
+}
+
+#[cfg(test)]
+mod net_class_tests {
+    use super::*;
+
+    #[test]
+    fn patterns() {
+        assert!(glob_match("GND", "GND"));
+        assert!(!glob_match("GND", "AGND"));
+        assert!(glob_match("*GND", "AGND"));
+        assert!(glob_match("+*V", "+3.3V"));
+        assert!(!glob_match("+*V", "+3.3V0"));
+        assert!(glob_match("/USB_D?", "/USB_D+"));
+        assert!(glob_match("a*b*c", "aXbYbc"));
+        assert!(glob_match("*", ""));
+    }
+
+    #[test]
+    fn nets_follow_the_first_matching_class() {
+        let mut rules = DesignRules {
+            net_classes: vec![
+                NetClass {
+                    name: "Power".into(),
+                    track_width: Some(mm(0.5)),
+                    nets: vec!["+*".into(), "GND".into()],
+                    ..Default::default()
+                },
+                NetClass {
+                    name: "Wide".into(),
+                    clearance: Some(mm(0.4)),
+                    nets: vec!["*".into()],
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let power = rules.for_net(Some("+5V"));
+        assert_eq!((power.track_width, power.clearance), (mm(0.5), rules.clearance));
+        assert_eq!(rules.class_of("SIG").unwrap().name, "Wide");
+        assert_eq!(rules.for_net(Some("SIG")).clearance, mm(0.4));
+        assert_eq!(rules.for_net(None).clearance, rules.clearance);
+        assert_eq!(rules.max_clearance(), mm(0.4));
+        // An exact name beats a pattern of an earlier class.
+        rules.assign_net("+5V", Some("Wide"));
+        assert_eq!(rules.class_of("+5V").unwrap().name, "Wide");
+        rules.assign_net("+5V", None);
+        assert_eq!(rules.class_of("+5V").unwrap().name, "Power");
+        assert!(!rules.net_classes[1].lists("+5V"));
     }
 }

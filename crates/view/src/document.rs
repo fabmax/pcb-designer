@@ -464,9 +464,53 @@ impl Document {
         if let Some(why) = &self.read_only {
             return Err(CommandError::Forbidden(why.clone()));
         }
+        let command = self.with_class_sizes(command);
         let changes = self.editor.execute_grouped(command, group)?;
         self.changed(&changes);
         Ok(changes)
+    }
+
+    /// A track or via added without sizes gets those of the net class of the copper it
+    /// starts on (the command alone would take the board's: it doesn't know the nets).
+    fn with_class_sizes(&mut self, mut command: Command) -> Command {
+        if self.editor.project().board.rules.net_classes.is_empty() {
+            return command;
+        }
+        match &mut command {
+            Command::AddTrack { layer, points, width: width @ None, .. } => {
+                let net = self
+                    .net_at(&points.first().into_iter().chain(points.last()).map(|&p| (*layer, p)).collect::<Vec<_>>());
+                *width = net.map(|n| self.editor.project().board.rules.for_net(Some(&n)).track_width);
+            }
+            Command::AddVia { pos, diameter, drill, span } if diameter.is_none() || drill.is_none() => {
+                let [from, to] = span.unwrap_or([LayerId::TOP_COPPER, LayerId::BOTTOM_COPPER]);
+                let (lo, hi) = (from.0.min(to.0), from.0.max(to.0));
+                let layers: Vec<(LayerId, Point)> = self
+                    .editor
+                    .project()
+                    .board
+                    .copper_layers()
+                    .filter(|l| (lo..=hi).contains(&l.id.0))
+                    .map(|l| (l.id, *pos))
+                    .collect();
+                if let Some(n) = self.net_at(&layers) {
+                    let r = self.editor.project().board.rules.for_net(Some(&n));
+                    diameter.get_or_insert(r.via_diameter);
+                    drill.get_or_insert(r.via_drill);
+                }
+            }
+            _ => {}
+        }
+        command
+    }
+
+    /// The net of the first copper with a net at one of `points`.
+    fn net_at(&mut self, points: &[(LayerId, Point)]) -> Option<String> {
+        self.update_connectivity(false);
+        points.iter().find_map(|&(l, p)| {
+            let c = self.copper.at(p, l)?;
+            self.copper.net_of(c.item).map(str::to_string)
+        })
     }
 
     /// See [`Editor::set_library_name`].
