@@ -85,6 +85,7 @@ const ENTRIES: &[Entry] = &[
     entry(Page::Agent, "Start on launch", "mcp startup automatic"),
     entry(Page::Agent, "Connect a client", "claude code json config copy command url"),
     entry(Page::Agent, "Headless mode", "stdio claude code command copy window"),
+    entry(Page::Libraries, "Most library tabs", "tabs preview limit maximum open items parts symbols footprints"),
     entry(Page::Libraries, "KiCad library folder", "download path directory kicad"),
     entry(Page::Libraries, "Settings file", "config configuration path json location folder"),
 ];
@@ -181,6 +182,8 @@ pub struct Changes {
     pub forget_tools: bool,
     /// The KiCad download folder changed.
     pub kicad_dir: bool,
+    /// The most library item tabs changed.
+    pub library_tabs: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -564,6 +567,16 @@ impl SettingsWindow {
     }
 
     fn libraries(&mut self, ui: &mut Ui, rows: &mut Rows, settings: &mut Settings, changes: &mut Changes) {
+        let help = "Parts, symbols and footprints open in tabs of their own; past this many, the tabs used \
+                    longest ago close (nothing is lost).";
+        rows.row(ui, "Most library tabs", Some(help), |ui| {
+            let mut n = settings.max_library_tabs();
+            if ui.add(egui::DragValue::new(&mut n).range(crate::settings::LIBRARY_TABS_RANGE)).changed() {
+                settings.library_tabs = (n != crate::settings::LIBRARY_TABS).then_some(n);
+                changes.library_tabs = true;
+                changes.save = true;
+            }
+        });
         let shown = settings.kicad_dir().map(|p| p.display().to_string()).unwrap_or_default();
         rows.row(ui, "KiCad library folder", Some("Where File → Download KiCad libraries puts them."), |ui| {
             let text = self.kicad_text.get_or_insert_with(|| shown.clone());
@@ -592,7 +605,9 @@ impl SettingsWindow {
         reset(ui, rows, || {
             settings.kicad_dir = None;
             self.kicad_text = None;
+            settings.library_tabs = None;
             changes.kicad_dir = true;
+            changes.library_tabs = true;
             changes.save = true;
         });
     }

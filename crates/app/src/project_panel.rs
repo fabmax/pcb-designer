@@ -17,7 +17,6 @@ use std::path::{Path, PathBuf};
 use egui::{Color32, Key, Modifiers, RichText, Sense, Ui, vec2};
 use model::{Id, ObjectId};
 use view::ViewId;
-use view::item::Item;
 use view::tree::{Node, Row, TreeEvent, TreeKey, TreeState};
 
 use crate::icons::{self, Icon};
@@ -109,8 +108,10 @@ pub enum Act {
     NewLibrary,
     AddLibrary,
     ImportKicad,
-    OpenLibrary(u64),
+    /// Open an item in a tab of its own.
     OpenItem(u64, Open),
+    /// Show an item in the preview tab.
+    PreviewItem(u64, Open),
     SaveLibrary(u64),
     SaveLibraryAs(u64),
     /// Close an unsaved library (asking about its changes).
@@ -202,8 +203,6 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
         NodeId::Board => out.push(A("Open", Act::ShowView(ViewId::Board))),
         NodeId::ExternalLibraries => out = add_menu(),
         NodeId::Library(Owner::Project) => {
-            out.push(A("Open", Act::OpenLibrary(PROJECT_LIB)));
-            out.push(Separator);
             for g in [Group::Parts, Group::Symbols, Group::Footprints] {
                 let (label, act) = group_items(g);
                 out.push(A(label, act(PROJECT_LIB)));
@@ -219,12 +218,10 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
             }
         }
         NodeId::Library(Owner::Lib(k)) => {
-            out.push(A("Open", Act::OpenLibrary(k)));
             if !info.editable {
                 out.push(A("Save a copy as…", Act::SaveLibraryAs(k)));
                 return out;
             }
-            out.push(Separator);
             for g in [Group::Parts, Group::Symbols, Group::Footprints] {
                 let (label, act) = group_items(g);
                 out.push(A(label, act(k)));
@@ -274,6 +271,7 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
         NodeId::Item(owner, item) => {
             let k = key(owner);
             out.push(A("Open", Act::OpenItem(k, open_of(item))));
+            out.push(Separator);
             if let ObjectId::LibPart(p) = item {
                 // Board parts (their own icon) are placed on the board.
                 let board = info.icon == Some(Icon::BoardPart);
@@ -303,7 +301,6 @@ pub fn activate(id: NodeId, info: &Info) -> Option<Act> {
     match id {
         NodeId::Sheet(s) => Some(Act::ShowView(ViewId::Sheet(s))),
         NodeId::Board => Some(Act::ShowView(ViewId::Board)),
-        NodeId::Library(owner) => Some(Act::OpenLibrary(key(owner))),
         NodeId::Missing(_) => info.path.clone().map(Act::Locate),
         NodeId::Item(owner, item) => Some(Act::OpenItem(key(owner), open_of(item))),
         NodeId::Gerber if info.flag => Some(Act::OpenGerber(None)),
@@ -313,13 +310,17 @@ pub fn activate(id: NodeId, info: &Info) -> Option<Act> {
     }
 }
 
-pub fn open_of(item: ObjectId) -> Open {
-    match item {
-        ObjectId::LibPart(p) => Open::Part(p),
-        ObjectId::LibSymbol(s) => Open::Item(Item::Symbol(s)),
-        ObjectId::LibFootprint(f) => Open::Item(Item::Footprint(f)),
-        _ => Open::None,
+/// What a single click or arrow key landing on a node does: items show in the preview tab.
+pub fn preview(id: NodeId) -> Option<Act> {
+    match id {
+        NodeId::Item(owner, item) => Some(Act::PreviewItem(key(owner), open_of(item))),
+        _ => None,
     }
+}
+
+/// The item a library item node shows (nodes hold library objects only).
+pub fn open_of(item: ObjectId) -> Open {
+    Open::of(item).unwrap_or_else(|| panic!("not a library item: {item:?}"))
 }
 
 /// "1 part", "3 parts".
@@ -452,6 +453,8 @@ pub struct ProjectPanel {
     focus_tree: bool,
     /// The sheet being dragged onto another.
     drag: Option<Id>,
+    /// A node to select and reveal next frame.
+    reveal: Option<NodeId>,
 }
 
 /// Whether sheet `sheet` can become a sub-sheet of `to`: not onto itself, its own
@@ -488,6 +491,11 @@ impl ProjectPanel {
         {
             self.scroll = true;
         }
+    }
+
+    /// Select and reveal a node (next frame).
+    pub fn reveal(&mut self, node: NodeId) {
+        self.reveal = Some(node);
     }
 
     /// Expand the project and External Libraries on first use.
@@ -533,6 +541,12 @@ impl ProjectPanel {
     /// The tree. Returns what the user asked for.
     pub fn ui(&mut self, ui: &mut Ui, roots: &[TreeNode]) -> Option<Act> {
         let mut act = None;
+        if let Some(n) = self.reveal.take()
+            && !self.state.is_searching()
+            && self.state.reveal(roots, n)
+        {
+            self.scroll = true;
+        }
         if self.state.is_searching() {
             act = self.search_ui(ui, roots);
         }
@@ -714,6 +728,9 @@ impl ProjectPanel {
             if r.clicked() && on_chevron && row.expandable && !self.state.is_searching() {
                 self.state.toggle(node.id);
             }
+            if r.clicked() {
+                act = preview(node.id);
+            }
         }
         if r.double_clicked() {
             match activate(node.id, info) {
@@ -796,8 +813,13 @@ impl ProjectPanel {
         act
     }
 
+    /// A key moving the selection previews what it lands on; Enter activates.
     fn tree_key(&mut self, rows: &[Row<NodeId, Info>], key: TreeKey) -> Option<Act> {
-        match self.state.key(rows, key)? {
+        let before = self.state.selected;
+        let Some(event) = self.state.key(rows, key) else {
+            return self.state.selected.filter(|s| Some(*s) != before).and_then(preview);
+        };
+        match event {
             TreeEvent::Activate(id) => {
                 let row = rows.iter().find(|r| r.node.id == id)?;
                 match activate(id, &row.node.data) {
@@ -914,7 +936,7 @@ fn chevron_paint(painter: &egui::Painter, rect: egui::Rect, open: bool, color: C
 }
 
 /// Node icons take the colour of what they stand for (like the tab icons).
-fn icon_color(icon: Icon) -> Color32 {
+pub fn icon_color(icon: Icon) -> Color32 {
     let pal = view::style::pal();
     let c = |c: render::Color| {
         let [r, g, b, _] = c.0;
@@ -946,7 +968,7 @@ mod tests {
     #[test]
     fn menus_follow_what_a_node_allows() {
         let builtin = Info { editable: false, ..Default::default() };
-        assert_eq!(acts(menu(NodeId::Library(Owner::Lib(0)), &builtin)), [Act::OpenLibrary(0), Act::SaveLibraryAs(0)]);
+        assert_eq!(acts(menu(NodeId::Library(Owner::Lib(0)), &builtin)), [Act::SaveLibraryAs(0)]);
         let listed = Info { editable: true, flag: true, path: Some("/l.pcblib".into()), ..Default::default() };
         let a = acts(menu(NodeId::Library(Owner::Lib(1)), &listed));
         assert!(a.contains(&Act::RemoveLibrary(1)) && a.contains(&Act::SaveLibrary(1)));
@@ -979,6 +1001,17 @@ mod tests {
         let sub = acts(menu(NodeId::Sheet(s), &Info { editable: true, ..Default::default() }));
         assert!(sub.contains(&Act::RenameSheet(s)) && sub.contains(&Act::DeleteSheet(s)));
         assert_eq!(activate(NodeId::Project, &Info::default()), None, "expands");
+        assert_eq!(activate(NodeId::Library(Owner::Project), &Info::default()), None, "expands");
+    }
+
+    #[test]
+    fn items_preview_on_selection_and_open_on_activation() {
+        let part = Id::new();
+        let node = NodeId::Item(Owner::Lib(3), ObjectId::LibPart(part));
+        assert_eq!(preview(node), Some(Act::PreviewItem(3, Open::Part(part))));
+        assert_eq!(activate(node, &Info::default()), Some(Act::OpenItem(3, Open::Part(part))));
+        assert_eq!(preview(NodeId::Board), None);
+        assert_eq!(preview(NodeId::Library(Owner::Project)), None);
     }
 
     #[test]

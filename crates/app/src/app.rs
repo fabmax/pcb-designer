@@ -27,10 +27,11 @@ use crate::canvas::{self, Canvas, CanvasResources};
 use crate::clipboard;
 use crate::dock::{Dock, DropZone, Group as DockGroup, Panel, Side, Unseen};
 use crate::icons::{self, Icon};
+use crate::item_tabs;
 use crate::keymap::{Action, Context, Keymap, Shortcut};
 use crate::kicad_import::{ImportAction, KicadImport};
 use crate::libraries::Libraries;
-use crate::library::{LibraryEditor, Open, PROJECT_LIB};
+use crate::library::{ItemEditor, ItemTab, LibraryEditor, Open, PROJECT_LIB};
 use crate::menu::{self, Cmd, Menu, MenuState};
 use crate::messages;
 use crate::nets_ui::{NetsAct, NetsPanel};
@@ -47,7 +48,7 @@ use crate::theme;
 use crate::title_bar;
 use crate::toolbar;
 use crate::units::{self, GridKind};
-use crate::workspace::{self, ItemRef, LibRef, TabRef, ViewState, Workspace};
+use crate::workspace::{self, ItemRef, ItemState, LibRef, TabRef, ViewState, Workspace};
 
 pub enum Startup {
     Open(PathBuf),
@@ -112,8 +113,8 @@ enum Naming {
 pub(crate) enum Tab {
     /// A schematic sheet or the board.
     View(ViewId),
-    /// Library editor, by [`LibraryEditor::key`].
-    Library(u64),
+    /// A library item, by [`ItemTab::id`].
+    Item(u64),
     /// The Gerber export, read back from disk (read-only).
     Gerber,
 }
@@ -217,6 +218,23 @@ impl Panes {
     }
 }
 
+/// An item tab's item in the workspace.
+fn item_ref(open: Open) -> ItemRef {
+    match open {
+        Open::Item(Item::Symbol(id)) => ItemRef::Symbol(id),
+        Open::Item(Item::Footprint(id)) => ItemRef::Footprint(id),
+        Open::Part(id) => ItemRef::Part(id),
+    }
+}
+
+fn open_of_ref(item: ItemRef) -> Open {
+    match item {
+        ItemRef::Symbol(id) => Open::Item(Item::Symbol(id)),
+        ItemRef::Footprint(id) => Open::Item(Item::Footprint(id)),
+        ItemRef::Part(id) => Open::Part(id),
+    }
+}
+
 /// Work the tab tree asks for while it is drawn (when it can't borrow all of
 /// `PcbApp`), done right after.
 enum Deferred {
@@ -227,6 +245,8 @@ enum Deferred {
     Gerber(GerberAct),
     /// Picked in a canvas's context menu.
     Action(Action),
+    /// An item tab asked to open another item ("Edit footprint" of a part).
+    Navigate(u64, Open),
 }
 
 /// Which editor takes keyboard shortcuts.
@@ -234,15 +254,15 @@ enum Deferred {
 enum Focus {
     /// The project pane [`PcbApp::active`].
     Project,
-    /// A library tab (the Project Library's too).
-    Library(u64),
+    /// A library item tab, by [`ItemTab::id`] (the Project Library's too).
+    Item(u64),
     /// The Gerber tab: it takes the measure keys; other view keys do nothing.
     Gerber,
 }
 
 impl Focus {
-    fn library(self) -> Option<u64> {
-        if let Focus::Library(key) = self { Some(key) } else { None }
+    fn item(self) -> Option<u64> {
+        if let Focus::Item(tab) = self { Some(tab) } else { None }
     }
 }
 
@@ -300,7 +320,7 @@ pub struct PcbApp {
     name_prompt: Option<NamePrompt>,
     /// "Move to sheet…" asking for the sheet.
     sheet_picker: Option<SheetPicker>,
-    /// Array mode opened the Tool settings panel: the library editor and the panel it
+    /// Array mode opened the Tool settings panel: the item tab and the panel it
     /// replaced, shown again when the mode ends.
     array_dock: Option<(u64, Option<Panel>)>,
     /// The dock as last saved (the live one is in `settings`).
@@ -328,6 +348,8 @@ pub struct PcbApp {
     gerber: GerberPane,
     /// What the tab tree asked for while it was drawn.
     deferred: Vec<Deferred>,
+    /// Counts item tab uses ([`ItemTab::used`]).
+    tab_clock: u64,
     #[cfg(target_os = "macos")]
     native_menu: crate::native_menu::NativeMenu,
     pointer_filter: crate::pointer_filter::PointerFilter,
@@ -403,6 +425,7 @@ impl PcbApp {
             last_sheet: root.sheet(),
             focus: Focus::Project,
             deferred: Vec::new(),
+            tab_clock: 0,
             paste_text: None,
             copy_out: None,
             carry_clip: None,
@@ -641,9 +664,7 @@ impl PcbApp {
     }
 
     fn busy(&self) -> bool {
-        self.panes.iter().any(|p| !p.it.is_idle())
-            || !self.project.it.is_idle()
-            || self.libraries.iter().any(|l| !l.it.is_idle())
+        self.panes.iter().any(|p| !p.it.is_idle()) || self.all_libs().any(|l| l.tabs.iter().any(|t| !t.it.is_idle()))
     }
 
     /// A library editor by key, including the Project Library's.
@@ -678,47 +699,79 @@ impl PcbApp {
         self.libraries.by_key_mut(key)
     }
 
+    /// The Project Library and the loaded libraries.
+    fn all_libs(&self) -> impl Iterator<Item = &LibraryEditor> {
+        std::iter::once(&self.project).chain(self.libraries.iter())
+    }
+
+    fn all_libs_mut(&mut self) -> impl Iterator<Item = &mut LibraryEditor> {
+        std::iter::once(&mut self.project).chain(self.libraries.iter_mut())
+    }
+
+    /// The library an item tab belongs to.
+    fn lib_of_tab(&self, tab: u64) -> Option<&LibraryEditor> {
+        self.all_libs().find(|l| l.tab(tab).is_some())
+    }
+
+    /// An item tab with its library, for editing.
+    fn editor(&mut self, tab: u64) -> Option<ItemEditor<'_>> {
+        self.all_libs_mut().find(|l| l.tab(tab).is_some())?.editor(tab)
+    }
+
+    /// The library of the focused item tab.
+    fn focused_lib_key(&self) -> Option<u64> {
+        self.lib_of_tab(self.focus.item()?).map(|l| l.key)
+    }
+
     /// The Gerber tab is open and has focus.
     fn gerber_focused(&self) -> bool {
         self.focus == Focus::Gerber && self.tree.tiles.find_pane(&Tab::Gerber).is_some()
     }
 
-    /// The focused library editor (the Project Library's too).
+    /// The library of the focused item tab (the Project Library's too).
     fn focused_lib_ref(&self) -> Option<&LibraryEditor> {
-        match self.focus.library()? {
-            PROJECT_LIB => Some(&self.project),
-            k => self.libraries.by_key(k),
-        }
+        self.lib_of_tab(self.focus.item()?)
     }
 
-    fn focused_lib(&mut self) -> Option<&mut LibraryEditor> {
-        let key = self.focus.library()?;
-        self.lib(key)
+    /// The focused item tab.
+    fn focused_tab(&self) -> Option<&ItemTab> {
+        let tab = self.focus.item()?;
+        self.lib_of_tab(tab)?.tab(tab)
     }
 
     // ------------------------------------------------------------------------------------
     // Workspace (tabs, cameras, hidden layers; saved in the project folder)
 
-    /// A library tab's file reference and open item.
+    /// How the workspace names a library (`None`: unsaved, not kept).
+    fn lib_ref_of(&self, l: &LibraryEditor) -> Option<LibRef> {
+        Some(match &l.lib.path {
+            _ if l.is_project() => LibRef::Project,
+            Some(p) => LibRef::File(project_libs::absolute(p)),
+            None if l.is_builtin() => LibRef::Builtin,
+            None => return None,
+        })
+    }
+
+    /// The loaded library a workspace reference names.
+    fn lib_key_of(&self, r: &LibRef) -> Option<u64> {
+        Some(match r {
+            LibRef::Project => PROJECT_LIB,
+            LibRef::Builtin => self.libraries.iter().find(|l| l.lib.is_builtin())?.key,
+            LibRef::File(path) => {
+                self.libraries.iter().find(|l| l.lib.path.as_deref().is_some_and(|p| same_file(p, path)))?.key
+            }
+        })
+    }
+
+    /// A tab's reference in the workspace.
     fn tab_ref(&self, tab: Tab) -> Option<TabRef> {
         Some(match tab {
             Tab::View(v) => workspace::view_ref(v),
             Tab::Gerber => TabRef::Gerber,
-            Tab::Library(key) => {
-                let ed = self.lib_ref(key)?;
-                let lib = match &ed.lib.path {
-                    _ if key == PROJECT_LIB => LibRef::Project,
-                    Some(p) => LibRef::File(project_libs::absolute(p)),
-                    None if ed.lib.is_builtin() => LibRef::Builtin,
-                    None => return None,
-                };
-                let item = match ed.open {
-                    Open::None => None,
-                    Open::Item(Item::Symbol(id)) => Some(ItemRef::Symbol(id)),
-                    Open::Item(Item::Footprint(id)) => Some(ItemRef::Footprint(id)),
-                    Open::Part(id) => Some(ItemRef::Part(id)),
-                };
-                TabRef::Library { lib, item }
+            Tab::Item(id) => {
+                let l = self.lib_of_tab(id)?;
+                let t = l.tab(id)?;
+                TabRef::Library { lib: self.lib_ref_of(l)?, item: item_ref(t.open), preview: t.preview }
             }
         })
     }
@@ -735,15 +788,33 @@ impl PcbApp {
                 hidden: doc.view(p.view).hidden_layers(),
             })
             .collect();
+        let mut items: Vec<(u64, ItemState)> = self
+            .all_libs()
+            .filter_map(|l| Some((l, self.lib_ref_of(l)?)))
+            .flat_map(|(l, lib)| {
+                l.tabs.iter().map(move |t| {
+                    let camera = &t.canvas.camera;
+                    let state = ItemState {
+                        lib: lib.clone(),
+                        item: item_ref(t.open),
+                        center: camera.center,
+                        zoom: camera.zoom,
+                    };
+                    (t.used, state)
+                })
+            })
+            .collect();
+        items.sort_by_key(|(used, _)| *used);
         let active = match self.focus {
             Focus::Project => Some(Tab::View(self.active)),
-            Focus::Library(key) => Some(Tab::Library(key)),
+            Focus::Item(id) => Some(Tab::Item(id)),
             Focus::Gerber => Some(Tab::Gerber),
         };
         Workspace {
             layout: workspace::layout_of(&self.tree, &|t| self.tab_ref(*t)),
             active: active.and_then(|t| self.tab_ref(t)),
             views,
+            items: items.into_iter().map(|(_, s)| s).collect(),
             layer: Some(self.pcb.settings.layer),
         }
     }
@@ -760,8 +831,8 @@ impl PcbApp {
         }
     }
 
-    /// The tab a saved reference names, if it still exists (library tabs only of loaded
-    /// libraries; their item is shown).
+    /// The tab a saved reference names, if it still exists (item tabs only of loaded
+    /// libraries' items; made if there is none).
     fn open_tab_ref(&mut self, r: &TabRef) -> Option<Tab> {
         match r {
             TabRef::Sheet(s) => {
@@ -769,26 +840,18 @@ impl PcbApp {
             }
             TabRef::Board => Some(Tab::View(ViewId::Board)),
             TabRef::Gerber => self.outputs.dir.is_some().then_some(Tab::Gerber),
-            TabRef::Library { lib, item } => {
-                let key = match lib {
-                    LibRef::Project => PROJECT_LIB,
-                    LibRef::Builtin => self.libraries.iter().find(|l| l.lib.is_builtin())?.key,
-                    LibRef::File(path) => {
-                        self.libraries.iter().find(|l| l.lib.path.as_deref().is_some_and(|p| same_file(p, path)))?.key
-                    }
-                };
-                let open = match item {
-                    None => Open::None,
-                    Some(ItemRef::Symbol(id)) => Open::Item(Item::Symbol(*id)),
-                    Some(ItemRef::Footprint(id)) => Open::Item(Item::Footprint(*id)),
-                    Some(ItemRef::Part(id)) => Open::Part(*id),
-                };
-                if let Some(ed) = self.lib(key)
-                    && ed.exists(open)
-                {
-                    ed.show(open);
+            TabRef::Library { lib, item, preview } => {
+                let key = self.lib_key_of(lib)?;
+                let open = open_of_ref(*item);
+                let l = self.lib(key)?;
+                if !l.exists(open) {
+                    return None;
                 }
-                Some(Tab::Library(key))
+                let id = match l.tab_of(open) {
+                    Some(t) => t.id,
+                    None => l.add_tab(open, *preview),
+                };
+                Some(Tab::Item(id))
             }
         }
     }
@@ -809,6 +872,7 @@ impl PcbApp {
                 self.gerber.load(&d, None);
             }
         }
+        self.drop_orphan_tabs();
         for v in &ws.views {
             let Some(view) = workspace::view_of(&v.view) else { continue };
             if view.sheet().is_some_and(|s| !self.doc().project().schematic.sheets.contains(s)) {
@@ -819,6 +883,17 @@ impl PcbApp {
                 self.panes.get(view).canvas.set_camera(camera);
             }
             self.doc_mut().view_mut(view).set_hidden_layers(&v.hidden);
+        }
+        for s in &ws.items {
+            let Some(key) = self.lib_key_of(&s.lib) else { continue };
+            let used = self.tick();
+            let Some(t) = self.lib(key).and_then(|l| l.tabs.iter_mut().find(|t| t.open == open_of_ref(s.item))) else {
+                continue;
+            };
+            t.used = used;
+            if s.zoom.is_finite() && s.zoom > 0.0 {
+                t.canvas.set_camera(render::Camera { center: s.center, zoom: s.zoom });
+            }
         }
         if let Some(layer) = ws.layer.filter(|l| self.doc().project().board.layers.iter().any(|x| x.id == *l)) {
             self.pcb.settings.layer = layer;
@@ -835,10 +910,11 @@ impl PcbApp {
                         self.last_sheet = Some(s);
                     }
                 }
-                Tab::Library(key) => self.focus = Focus::Library(key),
+                Tab::Item(id) => self.focus = Focus::Item(id),
                 Tab::Gerber => self.focus = Focus::Gerber,
             }
         }
+        self.drop_orphan_tabs();
         self.follow_visible_tabs();
     }
 
@@ -1061,12 +1137,12 @@ impl PcbApp {
         }
         self.doc_mut().restyle();
         for l in self.libraries.iter_mut() {
-            l.canvas.background = view::style::background(l.canvas.background.grid);
             l.lib.doc.restyle();
-            l.view.restyle();
         }
-        self.project.canvas.background = view::style::background(self.project.canvas.background.grid);
-        self.project.view.restyle();
+        for t in self.all_libs_mut().flat_map(|l| l.tabs.iter_mut()) {
+            t.canvas.background = view::style::background(t.canvas.background.grid);
+            t.view.restyle();
+        }
         self.gerber.restyle();
         self.probe_key = None;
     }
@@ -1176,44 +1252,225 @@ impl PcbApp {
         self.libraries.add(lib)
     }
 
-    /// Load a library and show it in a tab (next to the schematic), optionally focused.
-    fn add_library(&mut self, lib: LibraryDoc, focus: bool) -> u64 {
+    /// Load a library; `show`: show it in the Project panel.
+    fn add_library(&mut self, lib: LibraryDoc, show: bool) -> u64 {
         let key = self.load_library(lib);
-        self.open_library_tab(key, focus);
+        if show {
+            self.show_library_node(key);
+        }
         key
     }
 
-    /// Show a loaded library's tab, adding it next to the schematic if it has none.
-    fn open_library_tab(&mut self, key: u64, focus: bool) {
-        let tile = match self.tree.tiles.find_pane(&Tab::Library(key)) {
-            Some(tile) => tile,
+    /// Show a library's node in the Project panel.
+    fn show_library_node(&mut self, key: u64) {
+        let owner = if key == PROJECT_LIB { Owner::Project } else { Owner::Lib(key) };
+        self.project_tree.reveal(NodeId::Library(owner));
+        self.settings.dock.show(Panel::Project);
+    }
+
+    /// The next value of the tab clock (when item tabs were used).
+    fn tick(&mut self) -> u64 {
+        self.tab_clock += 1;
+        self.tab_clock
+    }
+
+    /// The preview tab, if one is open.
+    fn preview_tab(&self) -> Option<u64> {
+        self.all_libs().flat_map(|l| &l.tabs).find(|t| t.preview).map(|t| t.id)
+    }
+
+    /// Show a library item: in its tab if it has one (a normal open keeps a preview open),
+    /// else in the preview tab (`preview`: the item replaces the preview's) or a new tab
+    /// next to the item tab used last. The tab comes to the front; `focus`: it takes the
+    /// keyboard. Returns the tab.
+    fn open_item(&mut self, key: u64, open: Open, preview: bool, focus: bool) -> Option<u64> {
+        self.commit_text_edit();
+        let old_preview = self.preview_tab();
+        let last_used = self.all_libs().flat_map(|l| &l.tabs).max_by_key(|t| t.used).map(|t| t.id);
+        let l = self.lib(key)?;
+        if !l.exists(open) {
+            return None;
+        }
+        let (id, tile) = match l.tabs.iter_mut().find(|t| t.open == open) {
+            Some(t) => {
+                t.preview &= preview;
+                let id = t.id;
+                (id, self.tree.tiles.find_pane(&Tab::Item(id)))
+            }
             None => {
-                let near = [Tab::View(self.sheet_view()), Tab::Library(PROJECT_LIB), Tab::View(ViewId::Board)];
-                insert_tab(&mut self.tree, Tab::Library(key), None, &near)
+                let id = l.add_tab(open, preview);
+                let replaced = old_preview.filter(|_| preview).and_then(|old| {
+                    let tile = self.tree.tiles.find_pane(&Tab::Item(old))?;
+                    self.tree.tiles.insert(tile, Tile::Pane(Tab::Item(id)));
+                    self.remove_item_tab(old);
+                    Some(tile)
+                });
+                (id, replaced)
             }
         };
-        if focus {
-            self.tree.make_active(|id, _| id == tile);
-            self.focus = Focus::Library(key);
+        let tile = match tile {
+            Some(tile) => tile,
+            None => self.insert_item_tab(id, last_used),
+        };
+        self.tree.make_active(|t, _| t == tile);
+        // A tab it covers hands it the focus (browsing in the Project panel goes on).
+        let covered = self.focus.item().is_some_and(|f| !self.is_tab_visible(Tab::Item(f)));
+        let used = self.tick();
+        if let Some(t) = self.lib(key).and_then(|l| l.tab_mut(id)) {
+            t.used = used;
+        }
+        if focus || covered {
+            self.focus = Focus::Item(id);
+        }
+        self.limit_item_tabs(&[id]);
+        Some(id)
+    }
+
+    /// Add item tab `id` to the tree: right after tab `after`, else next to the schematic.
+    fn insert_item_tab(&mut self, id: u64, after: Option<u64>) -> TileId {
+        let tab = Tab::Item(id);
+        let tiles = &self.tree.tiles;
+        let at = after.and_then(|a| tiles.find_pane(&Tab::Item(a))).and_then(|a| Some((tiles.parent_of(a)?, a)));
+        if let Some((group, after)) = at {
+            let tile = self.tree.tiles.insert_pane(tab);
+            if let Some(Tile::Container(Container::Tabs(tabs))) = self.tree.tiles.get_mut(group) {
+                let i = tabs.children.iter().position(|&c| c == after).map_or(tabs.children.len(), |i| i + 1);
+                tabs.children.insert(i, tile);
+                return tile;
+            }
+            self.tree.tiles.remove(tile);
+        }
+        let near = [Tab::View(self.sheet_view()), Tab::View(ViewId::Board)];
+        insert_tab(&mut self.tree, tab, None, &near)
+    }
+
+    /// The revision of an item tab's library document.
+    fn tab_revision(&self, id: u64) -> Option<u64> {
+        Some(self.lib_of_tab(id)?.lib.doc.revision)
+    }
+
+    /// An edit made in item tab `id` (its library's revision was `before`): a preview tab
+    /// becomes a normal one.
+    fn keep_if_edited(&mut self, id: u64, before: Option<u64>) {
+        if self.tab_revision(id) != before
+            && let Some(t) = self.all_libs_mut().find_map(|l| l.tab_mut(id))
+        {
+            t.preview = false;
         }
     }
 
-    fn focus_library_tab(&mut self, key: u64) {
-        self.open_library_tab(key, true);
+    /// After an undo or redo in library `key`: bring the open tab of an item it changed
+    /// to the front, with focus.
+    fn front_tab_of(&mut self, key: u64, changed: &[ObjectId]) {
+        let Some(l) = self.lib_ref(key) else { return };
+        let Some(id) = l.tabs.iter().find(|t| changed.contains(&t.open.object_id())).map(|t| t.id) else { return };
+        if let Some(tile) = self.tree.tiles.find_pane(&Tab::Item(id)) {
+            self.tree.make_active(|t, _| t == tile);
+            self.focus = Focus::Item(id);
+        }
     }
 
-    fn close_library_tab(&mut self, key: u64) {
-        if let Some(tile) = self.tree.tiles.find_pane(&Tab::Library(key)) {
+    /// Close item tabs over the maximum (least recently used first), never `keep` nor
+    /// the focused tab.
+    fn limit_item_tabs(&mut self, keep: &[u64]) {
+        let visible: Vec<Tab> =
+            self.tree.active_tiles().into_iter().filter_map(|t| self.tree.tiles.get_pane(&t).copied()).collect();
+        let tabs: Vec<item_tabs::TabInfo> = self
+            .all_libs()
+            .flat_map(|l| &l.tabs)
+            .map(|t| item_tabs::TabInfo {
+                id: t.id,
+                used: t.used,
+                preview: t.preview,
+                visible: visible.contains(&Tab::Item(t.id)),
+            })
+            .collect();
+        let mut keep = keep.to_vec();
+        keep.extend(self.focus.item());
+        for id in item_tabs::to_close(&tabs, self.settings.max_library_tabs(), &keep) {
+            self.close_item_tab(id);
+        }
+    }
+
+    /// Close an item tab. Nothing is lost: its edits are the library's.
+    fn close_item_tab(&mut self, id: u64) {
+        if let Some(ed) = self.editor(id) {
+            if let Err(e) = ed.lib.doc.commit_text_edit() {
+                *ed.message = Some(e);
+            }
+            ed.lib.doc.close_group();
+        }
+        if let Some(tile) = self.tree.tiles.find_pane(&Tab::Item(id)) {
             self.tree.remove_recursively(tile);
         }
-        if self.focus.library() == Some(key) {
+        self.remove_item_tab(id);
+    }
+
+    /// Drop an item tab's state (its tile is gone or replaced).
+    fn remove_item_tab(&mut self, id: u64) {
+        for l in self.all_libs_mut() {
+            l.remove_tab(id);
+        }
+        if self.focus.item() == Some(id) {
             self.focus = Focus::Project;
         }
     }
 
-    /// Unload a library and close its tab (unsaved changes are lost).
+    /// Close the item tabs of a library.
+    fn close_lib_tabs(&mut self, key: u64) {
+        let ids: Vec<u64> = self.lib_ref(key).map_or(Vec::new(), |l| l.tabs.iter().map(|t| t.id).collect());
+        for id in ids {
+            self.close_item_tab(id);
+        }
+    }
+
+    /// Per frame: tabs of deleted items close, and the focused tab is the most recently
+    /// used.
+    fn maintain_item_tabs(&mut self) {
+        self.drop_orphan_tabs();
+        let Some(id) = self.focus.item() else { return };
+        let clock = self.tab_clock;
+        if self.all_libs().flat_map(|l| &l.tabs).any(|t| t.id == id && t.used != clock) {
+            let used = self.tick();
+            if let Some(t) = self.all_libs_mut().find_map(|l| l.tab_mut(id)) {
+                t.used = used;
+            }
+        }
+    }
+
+    /// Tabs whose item is gone close; item tab states without a tile (a restored layout
+    /// left them out) and tiles without a state are dropped.
+    fn drop_orphan_tabs(&mut self) {
+        let gone: Vec<u64> =
+            self.all_libs().flat_map(|l| l.tabs.iter().filter(move |t| !l.exists(t.open)).map(|t| t.id)).collect();
+        for id in gone {
+            self.close_item_tab(id);
+        }
+        let tree = &self.tree;
+        let orphans: Vec<u64> = self
+            .all_libs()
+            .flat_map(|l| &l.tabs)
+            .map(|t| t.id)
+            .filter(|&id| tree.tiles.find_pane(&Tab::Item(id)).is_none())
+            .collect();
+        for id in orphans {
+            self.remove_item_tab(id);
+        }
+        // And tiles without a state (the Project Library of a replaced project).
+        let stale: Vec<TileId> = (self.tree.tiles.iter())
+            .filter_map(|(&tile, t)| match t {
+                Tile::Pane(Tab::Item(id)) if self.lib_of_tab(*id).is_none() => Some(tile),
+                _ => None,
+            })
+            .collect();
+        for tile in stale {
+            self.tree.remove_recursively(tile);
+        }
+    }
+
+    /// Unload a library and close its tabs (unsaved changes are lost).
     fn unload_library(&mut self, key: u64) {
-        self.close_library_tab(key);
+        self.close_lib_tabs(key);
         self.libraries.remove(key);
     }
 
@@ -1221,8 +1478,13 @@ impl PcbApp {
     /// project, adding or removing a library, undo and redo of those).
     fn sync_libraries(&mut self) {
         for l in self.libraries.sync(&self.project.lib.doc.project().libraries) {
-            self.close_library_tab(l.key);
+            for t in &l.tabs {
+                if let Some(tile) = self.tree.tiles.find_pane(&Tab::Item(t.id)) {
+                    self.tree.remove_recursively(tile);
+                }
+            }
         }
+        self.drop_orphan_tabs();
     }
 
     /// Whether the project lists the library's file.
@@ -1230,13 +1492,13 @@ impl PcbApp {
         lib.path.as_deref().is_some_and(|p| self.doc().project().libraries.contains(&project_libs::absolute(p)))
     }
 
-    /// Add a library (saved to a file) to the project and show it in a focused tab.
-    fn add_to_project(&mut self, lib: LibraryDoc) -> Option<u64> {
+    /// Add a library (saved to a file) to the project; `show`: show it in the Project panel.
+    fn add_to_project(&mut self, lib: LibraryDoc, show: bool) -> Option<u64> {
         let loaded: Vec<&LibraryDoc> = self.libraries.iter().map(|l| &l.lib).collect();
         match project_libs::add_to_project(&mut self.project.lib.doc, &loaded, &lib) {
             Ok(()) => {
                 let name = lib.name().to_string();
-                let key = self.add_library(lib, true);
+                let key = self.add_library(lib, show);
                 self.set_status(format!("Added library {name} to the project"));
                 Some(key)
             }
@@ -1248,7 +1510,7 @@ impl PcbApp {
     }
 
     /// Add a library file to the project (or show it, if it is already there).
-    fn add_library_file(&mut self, path: &std::path::Path, focus: bool) {
+    fn add_library_file(&mut self, path: &std::path::Path, show: bool) {
         if let Some(l) = self.libraries.iter().find(|l| l.lib.path.as_deref().is_some_and(|p| same_file(p, path))) {
             let key = l.key;
             if !self.is_listed(&self.libraries.by_key(key).unwrap().lib) {
@@ -1258,16 +1520,14 @@ impl PcbApp {
                     return self.set_status(e.to_string());
                 }
             }
-            return self.open_library_tab(key, focus);
+            if show {
+                self.show_library_node(key);
+            }
+            return;
         }
         match LibraryDoc::open(path) {
             Ok(lib) => {
-                if let Some(key) = self.add_to_project(lib)
-                    && !focus
-                {
-                    self.focus = Focus::Project;
-                    self.open_library_tab(key, false);
-                }
+                self.add_to_project(lib, show);
             }
             Err(e) => self.set_status(format!("Could not open library: {e}")),
         }
@@ -1291,7 +1551,7 @@ impl PcbApp {
         let mut lib = LibraryDoc::new(Library::new(name));
         match lib.save_as(&path) {
             Ok(()) => {
-                self.add_to_project(lib);
+                self.add_to_project(lib, true);
             }
             Err(e) => self.set_status(format!("Could not create library: {e}")),
         }
@@ -1352,7 +1612,7 @@ impl PcbApp {
             self.set_status(format!("Save failed: {e}"));
             return false;
         }
-        self.add_to_project(copy).is_some()
+        self.add_to_project(copy, true).is_some()
     }
 
     fn confirm_discard_library(&mut self, key: u64) -> bool {
@@ -1370,16 +1630,13 @@ impl PcbApp {
         }
     }
 
-    /// Close a library's tab. Project libraries stay loaded; discarded changes are
-    /// dropped (the file is loaded again). Libraries outside the project are unloaded.
+    /// Close a library outside the project (Project panel), asking about its changes:
+    /// its tabs close and it is unloaded.
     fn close_library(&mut self, key: u64) {
-        if key == PROJECT_LIB {
-            return self.close_library_tab(key);
-        }
-        if !self.confirm_discard_library(key) {
+        if key == PROJECT_LIB || !self.confirm_discard_library(key) {
             return;
         }
-        self.close_library_tab(key);
+        self.close_lib_tabs(key);
         let Some(l) = self.libraries.by_key(key) else { return };
         let (builtin, listed, discarded) = (l.is_builtin(), self.is_listed(&l.lib), l.lib.is_modified());
         if !builtin && (discarded || !listed) {
@@ -1452,13 +1709,11 @@ impl PcbApp {
                 footprint.map(|f| Open::Item(Item::Footprint(f.id)))
             }
         };
-        let Some((l, open)) = self.libraries.iter_mut().rev().find_map(|l| find(l.lib.library()).map(|o| (l, o)))
+        let Some((key, open)) = self.libraries.iter().rev().find_map(|l| find(l.lib.library()).map(|o| (l.key, o)))
         else {
             return;
         };
-        l.show(open);
-        let key = l.key;
-        self.focus_library_tab(key);
+        self.open_item(key, open, false, true);
     }
 
     /// Import from KiCad into library `target` (or a new library named `new_name`).
@@ -1490,22 +1745,9 @@ impl PcbApp {
                 self.add_library(lib, false)
             }
         };
-        let first = if let Some(p) = imported.parts.first() {
-            Open::Part(p.id)
-        } else if let Some(s) = imported.symbols.first() {
-            Open::Item(Item::Symbol(s.id))
-        } else if let Some(f) = imported.footprints.first() {
-            Open::Item(Item::Footprint(f.id))
-        } else {
-            Open::None
-        };
         let l = self.lib(key).ok_or("library closed")?;
         let (added, replaced) =
             l.lib.upsert(imported.symbols.clone(), imported.footprints.clone(), imported.parts.clone())?;
-        l.refresh();
-        if first != Open::None {
-            l.show(first);
-        }
         Ok((key, imported, added, replaced))
     }
 
@@ -1518,7 +1760,13 @@ impl PcbApp {
                 self.kicad.finish();
                 self.import_report = Some(ImportReport::parts(&imported, &name, added, replaced));
                 self.set_status(format!("Imported from KiCad into {name}"));
-                self.focus_library_tab(key);
+                let first = (imported.parts.first().map(|p| Open::Part(p.id)))
+                    .or(imported.symbols.first().map(|s| Open::Item(Item::Symbol(s.id))))
+                    .or(imported.footprints.first().map(|f| Open::Item(Item::Footprint(f.id))));
+                match first {
+                    Some(open) => _ = self.open_item(key, open, false, true),
+                    None => self.show_library_node(key),
+                }
             }
             Err(e) => self.import_report = Some(ImportReport::failed(e)),
         }
@@ -1612,23 +1860,21 @@ impl PcbApp {
     }
 
     /// After tab changes (clicks, drag and drop, closing): keyboard focus goes to a view
-    /// or library that is visible.
+    /// or item tab that is visible.
     fn follow_visible_tabs(&mut self) {
         let visible: Vec<Tab> =
             self.tree.active_tiles().into_iter().filter_map(|t| self.tree.tiles.get_pane(&t).copied()).collect();
         match self.focus {
-            Focus::Library(key) if !visible.contains(&Tab::Library(key)) => self.focus = Focus::Project,
+            Focus::Item(id) if !visible.contains(&Tab::Item(id)) => self.focus = Focus::Project,
             Focus::Gerber if !visible.contains(&Tab::Gerber) => self.focus = Focus::Project,
             _ => {}
         }
-        if self.focus.library().is_none() && !visible.contains(&Tab::View(self.active)) {
+        if self.focus.item().is_none() && !visible.contains(&Tab::View(self.active)) {
             match visible.iter().find_map(|t| if let Tab::View(k) = t { Some(*k) } else { None }) {
                 Some(kind) => self.active = kind,
                 None if self.focus == Focus::Project => {
-                    if let Some(key) =
-                        visible.iter().find_map(|t| if let Tab::Library(k) = t { Some(*k) } else { None })
-                    {
-                        self.focus = Focus::Library(key);
+                    if let Some(id) = visible.iter().find_map(|t| if let Tab::Item(k) = t { Some(*k) } else { None }) {
+                        self.focus = Focus::Item(id);
                     }
                 }
                 None => {}
@@ -1643,6 +1889,11 @@ impl PcbApp {
             (Some(a), Some(b)) => a != b,
             _ => false,
         }
+    }
+
+    /// Is the tab in front of its group?
+    fn is_tab_visible(&self, tab: Tab) -> bool {
+        self.tree.active_tiles().into_iter().any(|t| self.tree.tiles.get_pane(&t) == Some(&tab))
     }
 
     /// Does the view have a tab (it may be behind another one)?
@@ -1677,8 +1928,8 @@ impl PcbApp {
     fn set_layout(&mut self, side_by_side: bool) {
         let root = self.doc().root();
         let sheets = self.doc().sheet_views().map(|v| Tab::View(v.id)).filter(|t| *t != Tab::View(root));
-        let libs = std::iter::once(PROJECT_LIB).chain(self.libraries.iter().map(|l| l.key)).map(Tab::Library);
-        let others: Vec<Tab> = sheets.chain(libs).filter(|t| self.tree.tiles.find_pane(t).is_some()).collect();
+        let items: Vec<Tab> = self.all_libs().flat_map(|l| &l.tabs).map(|t| Tab::Item(t.id)).collect();
+        let others: Vec<Tab> = sheets.chain(items).filter(|t| self.tree.tiles.find_pane(t).is_some()).collect();
         let mut tree = if side_by_side { side_by_side_tree(root) } else { default_tree(root) };
         let group =
             tree.tiles.find_pane(&Tab::View(root)).and_then(|t| tree.tiles.parent_of(t)).expect("schematic tab");
@@ -1698,8 +1949,8 @@ impl PcbApp {
     }
 
     /// Bring a view's tab to the front and give it keyboard focus, opening it if it was
-    /// closed: in the tab group it was in, else next to the schematic, the libraries or
-    /// the board.
+    /// closed: in the tab group it was in, else next to the schematic, the item tab used
+    /// last or the board.
     fn show_view(&mut self, view: ViewId) {
         let sheet = self.sheet_view();
         self.active = view;
@@ -1711,10 +1962,12 @@ impl PcbApp {
             Some(tile) => tile,
             None => {
                 let root = self.doc().root();
-                let near = match view {
-                    ViewId::Board => vec![Tab::View(sheet), Tab::View(root), Tab::Library(PROJECT_LIB)],
-                    _ => vec![Tab::View(sheet), Tab::View(root), Tab::Library(PROJECT_LIB), Tab::View(ViewId::Board)],
-                };
+                let item = self.all_libs().flat_map(|l| &l.tabs).max_by_key(|t| t.used).map(|t| Tab::Item(t.id));
+                let mut near = vec![Tab::View(sheet), Tab::View(root)];
+                near.extend(item);
+                if view != ViewId::Board {
+                    near.push(Tab::View(ViewId::Board));
+                }
                 let group = self.view_groups.iter().find(|(v, _)| *v == view).map(|(_, g)| *g);
                 let tile = insert_tab(&mut self.tree, Tab::View(view), group, &near);
                 self.panes.get(view).canvas.request_fit();
@@ -1773,7 +2026,7 @@ impl PcbApp {
 
     /// Where keyboard shortcuts go.
     fn context(&self) -> Context {
-        match (self.focus.library(), self.active.kind()) {
+        match (self.focus.item(), self.active.kind()) {
             (Some(_), _) => Context::Library,
             (None, ViewKind::Schematic) => Context::Schematic,
             (None, ViewKind::Board) => Context::Board,
@@ -1900,8 +2153,11 @@ impl PcbApp {
         if self.gerber_focused() {
             return;
         }
-        let result = if let Some(key) = self.focus.library() {
-            self.lib_clipboard(key, action)
+        let result = if let Some(id) = self.focus.item() {
+            let before = self.tab_revision(id);
+            let r = self.lib_clipboard(id, action);
+            self.keep_if_edited(id, before);
+            r
         } else if self.is_open(self.active) {
             self.view_clipboard(action)
         } else {
@@ -1918,9 +2174,9 @@ impl PcbApp {
         if self.gerber_focused() {
             return self.gerber.measure.reading().filter(|_| self.gerber.measuring).map(text);
         }
-        if let Some(key) = self.focus.library() {
-            let l = self.lib(key)?;
-            return l.placer.measure.reading().filter(|_| l.placer.tool == Tool::Measure).map(text);
+        if self.focus.item().is_some() {
+            let t = self.focused_tab()?;
+            return t.placer.measure.reading().filter(|_| t.placer.tool == Tool::Measure).map(text);
         }
         if self.active != ViewId::Board || self.pcb.tool() != PcbTool::Measure {
             return None;
@@ -1937,9 +2193,9 @@ impl PcbApp {
         Clip::from_text(&text).unwrap_or_else(|| Err("The clipboard holds no objects to paste".into()))
     }
 
-    fn lib_clipboard(&mut self, key: u64, action: Action) -> Result<Option<String>, String> {
+    fn lib_clipboard(&mut self, tab: u64, action: Action) -> Result<Option<String>, String> {
         let pasted = if action == Action::Paste { Some(self.clip_from_clipboard()?) } else { None };
-        let l = self.lib(key).ok_or("The library is gone")?;
+        let mut l = self.editor(tab).ok_or("The tab is gone")?;
         match action {
             Action::Paste => l.paste(&pasted.expect("read above"))?,
             Action::Duplicate => {
@@ -2159,10 +2415,15 @@ impl PcbApp {
         if matches!(action, Action::Cut | Action::Copy | Action::Paste | Action::Duplicate) {
             return self.clipboard_action(action);
         }
-        if let Some(key) = self.focus.library()
-            && self.lib_action(key, action)
-        {
-            return;
+        if let Some(id) = self.focus.item() {
+            let before = self.tab_revision(id);
+            let handled = self.lib_action(id, action);
+            if !matches!(action, Action::Undo | Action::Redo) {
+                self.keep_if_edited(id, before);
+            }
+            if handled {
+                return;
+            }
         }
         let gerber = self.gerber_focused();
         if gerber && self.gerber_action(action) {
@@ -2170,7 +2431,7 @@ impl PcbApp {
         }
         // A closed view takes no keys (only the project-level actions below), nor does
         // one without focus while the Gerber tab has it.
-        let view_keys = !gerber && (self.focus.library().is_some() || self.is_open(self.active));
+        let view_keys = !gerber && (self.focus.item().is_some() || self.is_open(self.active));
         if view_keys && self.context() == Context::Schematic && self.sch_action(action) {
             return;
         }
@@ -2299,8 +2560,10 @@ impl PcbApp {
         matches!(answer, rfd::MessageDialogResult::Custom(ref b) if b == "Delete")
     }
 
-    /// Handle an action for a focused library. Returns false for project-level actions.
-    fn lib_action(&mut self, key: u64, action: Action) -> bool {
+    /// Handle an action for the focused item tab `tab`. Returns false for project-level
+    /// actions.
+    fn lib_action(&mut self, tab: u64, action: Action) -> bool {
+        let Some(key) = self.lib_of_tab(tab).map(|l| l.key) else { return false };
         match action {
             Action::New | Action::Open | Action::Settings | Action::ExportGerber => return false,
             Action::Save | Action::SaveAs => {
@@ -2309,27 +2572,37 @@ impl PcbApp {
             }
             _ => {}
         }
-        let Some(l) = self.lib(key) else { return false };
+        if let Some(ed) = self.editor(tab)
+            && matches!(action, Action::Undo | Action::Redo)
+        {
+            let mut ed = ed;
+            let done = if action == Action::Undo { ed.undo() } else { ed.redo() };
+            if let Some((msg, changed)) = done {
+                self.set_status(msg);
+                self.front_tab_of(key, &changed);
+            }
+            return true;
+        }
+        let Some(mut l) = self.editor(tab) else { return false };
         let msg = match action {
-            Action::Undo => l.undo(),
-            Action::Redo => l.redo(),
+            Action::Undo | Action::Redo => None,
             Action::FitView => {
-                l.canvas.request_fit();
+                l.tab.canvas.request_fit();
                 None
             }
-            Action::SelectAll => key_msg(l, KeyAction::SelectAll),
-            Action::Rotate => key_msg(l, KeyAction::Rotate),
-            Action::Mirror | Action::Flip => key_msg(l, KeyAction::Mirror),
+            Action::SelectAll => key_msg(&mut l, KeyAction::SelectAll),
+            Action::Rotate => key_msg(&mut l, KeyAction::Rotate),
+            Action::Mirror | Action::Flip => key_msg(&mut l, KeyAction::Mirror),
             Action::Delete => match l.delete_hovered_corner() {
                 Some(r) => r.err(),
-                None => key_msg(l, KeyAction::Delete),
+                None => key_msg(&mut l, KeyAction::Delete),
             },
             Action::ConvertToPolygon => l.convert_to_polygon().err(),
             Action::CreateArray => {
                 if l.start_array() {
                     let group = self.settings.dock.group_of(Panel::ToolSettings);
                     if !self.settings.dock.is_open(Panel::ToolSettings) {
-                        self.array_dock = Some((key, self.settings.dock.open(group)));
+                        self.array_dock = Some((tab, self.settings.dock.open(group)));
                     }
                     self.settings.dock.show(Panel::ToolSettings);
                     None
@@ -2337,20 +2610,20 @@ impl PcbApp {
                     l.message.take()
                 }
             }
-            Action::Cancel => key_msg(l, KeyAction::Escape),
-            Action::ToolSelect => tool_msg(l, Tool::Select),
-            Action::ToolPin => tool_msg(l, Tool::Pin),
-            Action::ToolLine => tool_msg(l, Tool::Line),
-            Action::ToolRect => tool_msg(l, Tool::Rect),
-            Action::ToolCircle => tool_msg(l, Tool::Circle),
-            Action::ToolArc => tool_msg(l, Tool::Arc),
-            Action::ToolPolygon => tool_msg(l, Tool::Polygon),
+            Action::Cancel => key_msg(&mut l, KeyAction::Escape),
+            Action::ToolSelect => tool_msg(&mut l, Tool::Select),
+            Action::ToolPin => tool_msg(&mut l, Tool::Pin),
+            Action::ToolLine => tool_msg(&mut l, Tool::Line),
+            Action::ToolRect => tool_msg(&mut l, Tool::Rect),
+            Action::ToolCircle => tool_msg(&mut l, Tool::Circle),
+            Action::ToolArc => tool_msg(&mut l, Tool::Arc),
+            Action::ToolPolygon => tool_msg(&mut l, Tool::Polygon),
             Action::Posture => {
-                l.placer.flip_arc();
+                l.tab.placer.flip_arc();
                 None
             }
-            Action::ToolText => tool_msg(l, Tool::Text),
-            Action::ToolMeasure => tool_msg(l, Tool::Measure),
+            Action::ToolText => tool_msg(&mut l, Tool::Text),
+            Action::ToolMeasure => tool_msg(&mut l, Tool::Measure),
             Action::Cut | Action::Copy | Action::Paste | Action::Duplicate => None,
             Action::New | Action::Open | Action::Save | Action::SaveAs | Action::Settings | Action::ExportGerber => {
                 None
@@ -2433,14 +2706,14 @@ impl PcbApp {
     }
 
     fn menus(&self, native: bool) -> Vec<Menu> {
-        let h = match self.focus.library().and_then(|k| self.libraries.by_key(k)) {
+        let h = match self.focused_lib_ref() {
             Some(l) => l.lib.doc.editor().history(),
             None => self.doc().editor().history(),
         };
         menu::menus(&MenuState {
             native,
             keymap: &self.keymap,
-            library_focus: self.focus.library().is_some_and(|k| k != PROJECT_LIB),
+            library_focus: self.focused_lib_key().is_some_and(|k| k != PROJECT_LIB),
             recent: &self.settings.recent,
             undo: h.undo_label().map(|l| format!("Undo {l}")),
             redo: h.redo_label().map(|l| format!("Redo {l}")),
@@ -2562,10 +2835,12 @@ impl PcbApp {
             self.settings.tools.clear();
             self.sch.settings = SchSettings::default();
             self.pcb.settings = PcbSettings { layer: self.pcb.settings.layer, ..Default::default() };
-            self.project.forget_tools();
-            for l in self.libraries.iter_mut() {
-                l.forget_tools();
+            for t in self.all_libs_mut().flat_map(|l| l.tabs.iter_mut()) {
+                t.forget_tools();
             }
+        }
+        if c.library_tabs {
+            self.limit_item_tabs(&[]);
         }
         if c.kicad_dir {
             self.kicad.set_root(self.settings.kicad_dir());
@@ -2605,10 +2880,8 @@ impl PcbApp {
             ("schematic", remember(&self.sch.settings), remember(&SchSettings::default())),
             ("board", remember(&self.pcb.settings), remember(&PcbSettings::default())),
         ];
-        if let Some(key) = self.focus.library()
-            && let Some(ed) = self.lib_ref(key)
-        {
-            let defaults = LibraryEditor::default_remembered();
+        if let Some(ed) = self.focused_tab() {
+            let defaults = ItemTab::default_remembered();
             current.extend(ed.remembered().into_iter().zip(defaults).map(|((k, v), (_, d))| (k, v, d)));
         }
         let tools = &mut self.settings.tools;
@@ -2625,9 +2898,9 @@ impl PcbApp {
         }
         // Editors opened since, and the others after a change, take the remembered ones.
         let tools = &self.settings.tools;
-        self.project.recall(tools);
-        for l in self.libraries.iter_mut() {
-            l.recall(tools);
+        let tabs = std::iter::once(&mut self.project).chain(self.libraries.iter_mut()).flat_map(|l| l.tabs.iter_mut());
+        for t in tabs {
+            t.recall(tools);
         }
         if changed {
             self.tools_changed = Some(Instant::now());
@@ -2791,15 +3064,10 @@ impl PcbApp {
 
     /// The tree node of the focused tab (the item open in a library tab).
     fn focus_node(&self) -> Option<NodeId> {
-        match self.focused_lib_ref() {
-            Some(l) => {
+        match self.focused_lib_ref().zip(self.focused_tab()) {
+            Some((l, t)) => {
                 let owner = if l.is_project() { Owner::Project } else { Owner::Lib(l.key) };
-                Some(match l.open {
-                    Open::Part(p) => NodeId::Item(owner, ObjectId::LibPart(p)),
-                    Open::Item(Item::Symbol(s)) => NodeId::Item(owner, ObjectId::LibSymbol(s)),
-                    Open::Item(Item::Footprint(f)) => NodeId::Item(owner, ObjectId::LibFootprint(f)),
-                    Open::None => NodeId::Library(owner),
-                })
+                Some(NodeId::Item(owner, t.open.object_id()))
             }
             None if !self.is_open(self.active) => None,
             None => Some(match self.active {
@@ -2871,13 +3139,8 @@ impl PcbApp {
             Act::NewLibrary => self.new_library(),
             Act::AddLibrary => self.open_library(),
             Act::ImportKicad => self.kicad.open = true,
-            Act::OpenLibrary(key) => self.focus_library_tab(key),
-            Act::OpenItem(key, open) => {
-                if let Some(l) = self.lib(key) {
-                    l.show(open);
-                }
-                self.focus_library_tab(key);
-            }
+            Act::OpenItem(key, open) => _ = self.open_item(key, open, false, true),
+            Act::PreviewItem(key, open) => _ = self.open_item(key, open, true, false),
             Act::SaveLibrary(key) => {
                 self.save_library(key, false);
             }
@@ -2927,9 +3190,7 @@ impl PcbApp {
             }
             Act::Delete(key, item) => {
                 let Some(l) = self.lib(key) else { return };
-                let r = l.lib.delete(item);
-                l.refresh();
-                if let Err(e) = r {
+                if let Err(e) = l.lib.delete(item) {
                     self.set_status(e);
                 }
             }
@@ -2983,21 +3244,14 @@ impl PcbApp {
                     )),
                     Err(e) => self.set_status(e.to_string()),
                 }
-                self.project.refresh();
             }
         }
     }
 
-    /// Show a newly created library item in its tab.
+    /// Show a newly created library item in a tab of its own.
     fn show_created(&mut self, key: u64, created: Result<Open, String>) {
         match created {
-            Ok(open) => {
-                if let Some(l) = self.lib(key) {
-                    l.refresh();
-                    l.show(open);
-                }
-                self.focus_library_tab(key);
-            }
+            Ok(open) => _ = self.open_item(key, open, false, true),
             Err(e) => self.set_status(e),
         }
     }
@@ -3063,9 +3317,7 @@ impl PcbApp {
         match what {
             Naming::Item(key, item) => {
                 let Some(l) = self.lib(key) else { return };
-                let r = l.lib.rename(item, &text);
-                l.refresh();
-                if let Err(e) = r {
+                if let Err(e) = l.lib.rename(item, &text) {
                     self.set_status(e);
                 }
             }
@@ -3316,8 +3568,12 @@ impl PcbApp {
                 self.project_panel_ui(ui, &roots);
             }
             Panel::Properties => {
-                if let Some(l) = self.focused_lib() {
-                    return l.properties_ui(ui);
+                if let Some(id) = self.focus.item() {
+                    let before = self.tab_revision(id);
+                    if let Some(mut ed) = self.editor(id) {
+                        ed.properties_ui(ui);
+                    }
+                    return self.keep_if_edited(id, before);
                 }
                 let view = self.active;
                 let mut selection = if self.is_open(view) { self.panes.selection(view) } else { Vec::new() };
@@ -3330,8 +3586,12 @@ impl PcbApp {
                 self.properties.ui(ui, &mut self.project.lib.doc, &selection, &mut message);
             }
             Panel::ToolSettings => {
-                if let Some(l) = self.focused_lib() {
-                    return l.tool_settings_ui(ui);
+                if let Some(id) = self.focus.item() {
+                    let before = self.tab_revision(id);
+                    if let Some(mut ed) = self.editor(id) {
+                        ed.tool_settings_ui(ui);
+                    }
+                    return self.keep_if_edited(id, before);
                 }
                 match self.active.kind() {
                     ViewKind::Schematic if self.sch.is_placing() => {
@@ -3345,7 +3605,7 @@ impl PcbApp {
             }
             Panel::BoardSetup => pcb_ui::board_setup(ui, self.doc_mut(), &mut message),
             Panel::SchematicSetup => crate::checks_ui::schematic_setup(ui, self.doc_mut(), &mut message),
-            Panel::Overview => match self.focused_lib() {
+            Panel::Overview => match self.focused_lib_key().and_then(|k| self.lib(k)) {
                 Some(l) => l.overview_ui(ui),
                 None => crate::properties::project_summary(ui, self.doc()),
             },
@@ -3461,19 +3721,14 @@ impl PcbApp {
                     }
                 }
             }
-            messages::Show::LibraryPart(key, part) => {
-                self.focus_library_tab(key);
-                if let Some(l) = self.lib(key) {
-                    l.show(Open::Part(part));
-                }
-            }
+            messages::Show::LibraryPart(key, part) => _ = self.open_item(key, Open::Part(part), false, true),
         }
     }
 
     /// Per frame: the Messages badge, saving the dock.
     fn update_dock(&mut self, ctx: &egui::Context) {
-        if let Some((key, before)) = self.array_dock
-            && !self.lib(key).is_some_and(|l| l.in_array())
+        if let Some((tab, before)) = self.array_dock
+            && !self.lib_of_tab(tab).and_then(|l| l.tab(tab)).is_some_and(|t| t.in_array())
         {
             self.array_dock = None;
             if self.settings.dock.is_open(Panel::ToolSettings) {
@@ -3494,21 +3749,20 @@ impl PcbApp {
 
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            let lib = self.focused_lib_ref();
+            let lib = self.focused_lib_ref().zip(self.focused_tab());
             // Nothing about an editor when none is showing (all view tabs closed).
             let editor = match lib {
-                Some(l) => Some({
-                    let what = match l.open {
+                Some((l, t)) => Some({
+                    let what = match t.open {
                         Open::Item(Item::Symbol(_)) => "Symbol editor",
                         Open::Item(Item::Footprint(_)) => "Footprint editor",
                         Open::Part(_) => "Part",
-                        Open::None => "Library",
                     };
                     (
                         format!("{what} · {}", l.lib.name()),
-                        l.canvas.cursor_world,
-                        (l.it.grid, l.it.snap),
-                        l.it.selection.len(),
+                        t.canvas.cursor_world,
+                        (t.it.grid, t.it.snap),
+                        t.it.selection.len(),
                     )
                 }),
                 None if !self.is_open(self.active) => None,
@@ -3671,12 +3925,12 @@ fn copied(action: Action, n: usize) -> String {
     if n == 1 { format!("{verb} 1 object") } else { format!("{verb} {n} objects") }
 }
 
-fn key_msg(l: &mut LibraryEditor, action: KeyAction) -> Option<String> {
+fn key_msg(l: &mut ItemEditor, action: KeyAction) -> Option<String> {
     l.key(action);
     None
 }
 
-fn tool_msg(l: &mut LibraryEditor, tool: Tool) -> Option<String> {
+fn tool_msg(l: &mut ItemEditor, tool: Tool) -> Option<String> {
     l.set_tool(tool);
     None
 }
@@ -3785,19 +4039,6 @@ impl mcp::library::Libraries for AgentLibraries<'_> {
     fn remove(&mut self, index: usize) {
         let key = self.0.libraries[index].key;
         self.0.unload_library(key);
-    }
-
-    /// Show what the agent changed in its library tab (without switching tabs).
-    fn changed(&mut self, index: usize, show: Option<ObjectId>) {
-        let l = &mut self.0.libraries[index];
-        l.refresh();
-        let open = match show {
-            Some(ObjectId::LibPart(id)) => Open::Part(id),
-            Some(ObjectId::LibSymbol(id)) => Open::Item(Item::Symbol(id)),
-            Some(ObjectId::LibFootprint(id)) => Open::Item(Item::Footprint(id)),
-            _ => return,
-        };
-        l.show(open);
     }
 
     fn offscreen(&mut self) -> &mut Option<render::offscreen::Offscreen> {
@@ -4097,19 +4338,40 @@ impl TreeBehavior<'_> {
             _ => None,
         }
     }
+
+    /// The library of an item tab.
+    fn lib_of(&self, tab: u64) -> Option<&LibraryEditor> {
+        std::iter::once(&*self.project).chain(self.libraries.iter()).find(|l| l.tab(tab).is_some())
+    }
+
+    fn lib_of_mut(&mut self, tab: u64) -> Option<&mut LibraryEditor> {
+        std::iter::once(&mut *self.project).chain(self.libraries.iter_mut()).find(|l| l.tab(tab).is_some())
+    }
+
+    /// An item tab's icon: what it shows.
+    fn item_icon(&self, tab: u64) -> Icon {
+        let Some(l) = self.lib_of(tab) else { return Icon::Library };
+        match l.tab(tab).map(|t| t.open) {
+            Some(Open::Item(Item::Symbol(_))) => Icon::Symbol,
+            Some(Open::Item(Item::Footprint(_))) => Icon::Footprint,
+            Some(Open::Part(p)) if l.lib.library().parts.get(p).is_some_and(Part::is_board_part) => Icon::BoardPart,
+            _ => Icon::Part,
+        }
+    }
 }
 
 impl Behavior<Tab> for TreeBehavior<'_> {
     fn tab_title_for_pane(&mut self, tab: &Tab) -> WidgetText {
         match tab {
             Tab::View(view) => PcbApp::view_title(self.project.lib.doc.project(), *view).into(),
-            Tab::Library(key) => {
-                let l = if *key == PROJECT_LIB {
-                    Some(&*self.project)
-                } else {
-                    self.libraries.iter().find(|l| l.key == *key)
+            Tab::Item(id) => {
+                let Some((l, t)) = self.lib_of(*id).and_then(|l| Some((l, l.tab(*id)?))) else {
+                    return "".into();
                 };
-                l.map_or("Library".into(), |l| l.title()).into()
+                let name = l.item_name(t.open).unwrap_or_default();
+                let dot = if l.lib.is_modified() && !l.is_project() { " •" } else { "" };
+                let text = RichText::new(format!("{name}{dot}"));
+                if t.preview { text.italics().into() } else { text.into() }
             }
             Tab::Gerber => "Gerber".into(),
         }
@@ -4118,20 +4380,24 @@ impl Behavior<Tab> for TreeBehavior<'_> {
     fn pane_ui(&mut self, ui: &mut egui::Ui, _tile_id: TileId, tab: &mut Tab) -> UiResponse {
         match *tab {
             Tab::View(view) => self.view_ui(ui, view),
-            Tab::Library(key) => {
-                let l = if key == PROJECT_LIB {
-                    Some(&mut *self.project)
-                } else {
-                    self.libraries.iter_mut().find(|l| l.key == key)
-                };
-                if let Some(l) = l {
-                    if l.center_ui(ui, self.keymap) {
-                        *self.focus = Focus::Library(key);
-                    }
-                    if let Some(a) = l.picked.take() {
-                        *self.focus = Focus::Library(key);
-                        self.deferred.push(Deferred::Action(a));
-                    }
+            Tab::Item(id) => {
+                let keymap = self.keymap;
+                let Some(mut ed) = self.lib_of_mut(id).and_then(|l| l.editor(id)) else { return UiResponse::None };
+                let before = ed.lib.doc.revision;
+                let pressed = ed.center_ui(ui, keymap);
+                // An edit made in a preview tab keeps it.
+                if ed.lib.doc.revision != before {
+                    ed.tab.preview = false;
+                }
+                let (picked, navigate) = (ed.tab.picked.take(), ed.tab.navigate.take());
+                if pressed || picked.is_some() {
+                    *self.focus = Focus::Item(id);
+                }
+                if let Some(a) = picked {
+                    self.deferred.push(Deferred::Action(a));
+                }
+                if let Some(open) = navigate {
+                    self.deferred.push(Deferred::Navigate(id, open));
                 }
             }
             Tab::Gerber => {
@@ -4144,10 +4410,16 @@ impl Behavior<Tab> for TreeBehavior<'_> {
     }
 
     fn on_tab_button(&mut self, tiles: &mut Tiles<Tab>, tile_id: TileId, response: egui::Response) -> egui::Response {
-        if response.clicked() || response.drag_started() {
+        if response.clicked() || response.drag_started() || response.double_clicked() {
             match Self::tab_of(tiles, tile_id) {
-                Some(Tab::Library(key)) => {
-                    *self.focus = Focus::Library(key);
+                Some(Tab::Item(id)) => {
+                    *self.focus = Focus::Item(id);
+                    // A double click keeps a preview tab.
+                    if response.double_clicked()
+                        && let Some(t) = self.lib_of_mut(id).and_then(|l| l.tab_mut(id))
+                    {
+                        t.preview = false;
+                    }
                 }
                 Some(Tab::View(view)) => {
                     *self.active = view;
@@ -4225,10 +4497,15 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         let close = 14.0;
         // An icon in the colour of what the tab shows: schematic wires, copper, libraries.
         let icon = match Self::tab_of(tiles, tile_id) {
-            Some(Tab::View(ViewId::Sheet(_))) => (Icon::Schematic, view::style::pal().sch_wire),
-            Some(Tab::View(ViewId::Board)) => (Icon::Board, view::style::pal().top_copper),
-            Some(Tab::Gerber) => (Icon::Layers, view::style::pal().top_copper),
-            _ => (Icon::Library, view::style::pal().sch_label),
+            Some(Tab::View(ViewId::Sheet(_))) => Icon::Schematic,
+            Some(Tab::View(ViewId::Board)) => Icon::Board,
+            Some(Tab::Gerber) => Icon::Layers,
+            Some(Tab::Item(id)) => self.item_icon(id),
+            None => Icon::Library,
+        };
+        let icon_color = match icon {
+            Icon::Layers => project_panel::icon_color(Icon::Board),
+            i => project_panel::icon_color(i),
         };
         let icon_size = 15.0;
         let icon_gap = 6.0;
@@ -4239,7 +4516,15 @@ impl Behavior<Tab> for TreeBehavior<'_> {
             egui::pos2(rect.left() + 4.0, rect.top() + 4.0),
             egui::pos2(rect.right(), rect.bottom() - 4.0),
         );
-        let response = ui.interact(pill, id, egui::Sense::click_and_drag()).on_hover_cursor(egui::CursorIcon::Default);
+        let mut response =
+            ui.interact(pill, id, egui::Sense::click_and_drag()).on_hover_cursor(egui::CursorIcon::Default);
+        if let Some(Tab::Item(tab)) = Self::tab_of(tiles, tile_id)
+            && let Some(l) = self.lib_of(tab)
+        {
+            let preview = l.tab(tab).is_some_and(|t| t.preview);
+            let tip = if preview { format!("{}\nPreview — double-click to keep open", l.title()) } else { l.title() };
+            response = response.on_hover_text(tip);
+        }
         if ui.is_rect_visible(rect) && !state.is_being_dragged {
             let v = ui.visuals();
             let fill = if state.active {
@@ -4251,14 +4536,12 @@ impl Behavior<Tab> for TreeBehavior<'_> {
             };
             ui.painter().rect_filled(pill, 6, fill);
             let color = if state.active { v.strong_text_color() } else { theme::text_dim() };
-            let [r, g, b, _] = icon.1.0;
-            let icon_color = egui::Color32::from_rgb(r, g, b);
             let icon_color = if state.active { icon_color } else { icon_color.gamma_multiply(0.6) };
             let icon_rect = egui::Rect::from_center_size(
                 egui::pos2(pill.left() + margin + icon_size / 2.0, pill.center().y),
                 egui::vec2(icon_size, icon_size),
             );
-            icons::paint(ui.painter(), icon_rect, icon.0, icon_color);
+            icons::paint(ui.painter(), icon_rect, icon, icon_color);
             let pos = egui::pos2(icon_rect.right() + icon_gap, pill.center().y - galley.size().y / 2.0);
             ui.painter().galley(pos, galley, color);
             if state.closable {
@@ -4426,7 +4709,12 @@ impl eframe::App for PcbApp {
         for d in std::mem::take(&mut self.deferred) {
             match d {
                 Deferred::EnterSheet(sheet) => self.show_view(ViewId::Sheet(sheet)),
-                Deferred::Close(Tab::Library(key)) => self.close_library(key),
+                Deferred::Close(Tab::Item(id)) => self.close_item_tab(id),
+                Deferred::Navigate(from, open) => {
+                    if let Some(key) = self.lib_of_tab(from).map(|l| l.key) {
+                        self.open_item(key, open, false, true);
+                    }
+                }
                 Deferred::Close(Tab::View(view)) => self.close_view(view),
                 Deferred::Close(Tab::Gerber) => {
                     if let Some(tile) = self.tree.tiles.find_pane(&Tab::Gerber) {
@@ -4438,10 +4726,12 @@ impl eframe::App for PcbApp {
                 Deferred::Action(a) => self.run_action(a),
             }
         }
+        self.maintain_item_tabs();
         if let ViewId::Sheet(s) = self.active {
             self.last_sheet = Some(s);
         }
-        if let Some(m) = self.libraries.iter_mut().find_map(|l| l.message.take()) {
+        let message = self.all_libs_mut().find_map(|l| l.message.take());
+        if let Some(m) = message {
             self.set_status(m);
         }
         let save_copy = self.libraries.iter_mut().find_map(|l| std::mem::take(&mut l.save_copy).then_some(l.key));
@@ -4475,7 +4765,7 @@ impl eframe::App for PcbApp {
 
         // Junction dots and unconnected pins follow the schematic.
         // Drags in the Project Library's editors count: they change the project.
-        let busy = self.panes.iter().any(|p| !p.it.is_idle()) || self.project.busy();
+        let busy = self.panes.iter().any(|p| !p.it.is_idle()) || self.project.tabs.iter().any(ItemTab::busy);
         if self.project.lib.doc.update_connectivity(busy) {
             self.probe_key = None;
             ctx.request_repaint();

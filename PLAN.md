@@ -455,7 +455,7 @@ the current design of each area with the gotchas a change needs to know, the pla
   ends stay put). The app (`corner_handles`) runs a drag
   as `Update`s in one undo group from the original object, snapping like Measure (a
   `BoardSnap` built once per drag), Alt free, Shift 0°/45°/90° to the neighbours. The
-  library editor does the same in `LibraryEditor::graphic_handles` with `update_item`.
+  library editor does the same in `ItemEditor::graphic_handles` with `update_item`.
 - `array`: "Create array…" (⌘⇧D, context and Edit menu) on one selected pad or pin.
   `slots` lays out Linear, Dual row (the second row 90° counterclockwise of the first's
   direction, running back: numbers go round counterclockwise), Grid (selected pad top
@@ -464,7 +464,7 @@ the current design of each area with the gotchas a change needs to know, the pla
   sides and ends; end pads turned 90°; an exposed pad isn't part of it). Names go on with
   `increment_name`; pins: Linear only. `apply` is one `update_item` (one undo step); the
   selected element stays first and keeps its id. Clashing names are allowed, the dialog
-  lists them (`clashes`). In the app it's a mode, not a tool: `LibraryEditor::array`
+  lists them (`clashes`). In the app it's a mode, not a tool: `ItemTab::array`
   (item, element) shows the form (`array_form.rs`, one for pads and one for pins,
   remembered like the tool settings) in the Tool settings panel, which the app opens and afterwards gives back to
   the panel it replaced (`App::array_dock`). The copies are the canvas preview; Enter
@@ -623,8 +623,34 @@ the current design of each area with the gotchas a change needs to know, the pla
   use the field path `self.project.lib.doc`. Loaded libraries are `Libraries`
   (`by_key`, `add`, `remove`, `sync` with the project's list, `resync` after a save).
   The tab tree is drawn by `TreeBehavior`, which borrows fields one by one; what it
-  can't do itself goes into `deferred` (`Deferred`: close a tab, enter a sheet, Gerber
-  actions), handled right after the tree is drawn.
+  can't do itself goes into `deferred` (`Deferred`: close a tab, enter a sheet, open
+  another item, Gerber actions), handled right after the tree is drawn.
+- **Library item tabs** (`library.rs`): a `LibraryEditor` is a loaded library (document,
+  issues, message) with its `ItemTab`s, one per open part, symbol or footprint (camera,
+  selection, tool, array mode, part form); at most one tab per item. Libraries have no
+  tab of their own. `ItemEditor` borrows a tab with its library (`LibraryEditor::editor`,
+  `PcbApp::editor`) and holds the editing code. Tab ids (`Tab::Item`, `Focus::Item`)
+  are unique in the run. Undo is the library's, shared by its tabs; an undo or redo
+  brings the tab of an item it changed to the front (`front_tab_of`). A tab never shows
+  another item, except the preview: "Edit footprint" and "New part" in a tab ask for
+  another tab (`ItemTab::navigate`).
+  - `open_item` is the one way in: the item's tab if it has one, else the preview tab
+    (its tile gets a new `ItemTab`, even across libraries) or a new tab right after the
+    tab used last. A single click or arrow key in the Project panel previews
+    (`project_panel::preview`), Enter and double-click open; everything else opens
+    normal tabs; agents open none. A preview that covers the focused tab takes focus
+    (else focus falls to another view and the Project panel's selection follows it
+    away).
+  - A preview becomes normal on a double-click of its tab or an edit made in it: the
+    library's revision is compared around the tab's canvas (`pane_ui`), its panels and
+    its actions (`keep_if_edited`), not undo/redo, so undo, MCP and Project panel edits
+    don't count.
+  - The limit (`Settings::max_library_tabs`, 1–50, default 10) counts item tabs of all
+    libraries. `item_tabs::to_close` picks: hidden before visible, least recently used
+    (`ItemTab::used`, from `tab_clock`; the focused tab is touched each frame) first,
+    the preview last; never the focused or just opened one. Closing loses nothing.
+  - `maintain_item_tabs` (each frame, `drop_orphan_tabs`) closes tabs of deleted items
+    and drops `ItemTab`s without a tile; state and tiles must stay one-to-one.
 - **Layout:** sheets and the PCB are tabs (View → Side by side splits them); a sheet's
   tab is titled with its name, the root's "Schematic". Panels and
   tab groups are rounded with 6 pt gaps of window background. GPU canvases can't be
@@ -736,7 +762,8 @@ the current design of each area with the gotchas a change needs to know, the pla
   worked on). `follow_visible_tabs` (every frame) drops focus from hidden tabs. `works_while_typing` for window-level actions.
 - **Settings** (`settings.rs`, `PCB_DESIGNER_CONFIG` overrides the folder): theme, unit,
   recent projects, changed key bindings, dock, window, MCP port and start-on-launch,
-  KiCad download folder, remembered tool settings, the Settings window's page and size.
+  KiCad download folder, remembered tool settings, the Settings window's page and size,
+  the most library tabs.
   One broken field makes the whole file fall back to defaults, which is why the tool
   settings are kept as untyped JSON values (`tools`, by family).
 - **Settings window** (`settings_ui.rs`): a category list with a search field, the page
@@ -750,7 +777,7 @@ the current design of each area with the gotchas a change needs to know, the pla
   back from the struct's `Default` (container-level `#[serde(default)]`).
   `sync_tool_memory` (every frame) stores what differs from the defaults, saves a second
   after the last change and hands library editor changes to the other editors
-  (`LibraryEditor::recall`). A new settings field is remembered unless skipped.
+  (`ItemTab::recall`). A new settings field is remembered unless skipped.
 - **UI scale** is egui's zoom factor (`Settings::ui_scale`, 80–200 %); egui's own ⌘+/⌘−
   zoom keys are off (`zoom_with_keyboard`), those keys zoom the canvas.
 - **Layer colours** (`view::style::LayerColor`, `set_layer_colors`): changed board layer
@@ -763,8 +790,9 @@ the current design of each area with the gotchas a change needs to know, the pla
   screen that is gone is left to the OS (macOS keeps titled windows on screen).
 - **Workspace** (`workspace.rs`, `PROJECT/.pcb-designer/workspace.json`, the folder has
   a `.gitignore` of `*`): the tab tree as `Node` (tab groups with the front tab, splits
-  with shares), tabs by `TabRef` (sheet id, board, library by file with its open item,
-  Gerber), each pane's camera and hidden layers (by layer name), the routing layer.
+  with shares), tabs by `TabRef` (sheet id, board, item tabs by library file, item and
+  preview flag, Gerber), each pane's camera and hidden layers (by layer name), the item
+  tabs' cameras least recently used first (`items`, their recency), the routing layer.
   Saved on save, before another project replaces it and in `on_exit`; restored in
   `replace_document` and at startup (not with `--side-by-side`). Tabs that no longer
   resolve (deleted sheets, libraries not loaded) are dropped; a layout with nothing left
@@ -910,6 +938,8 @@ defers.
 - Cache the project tree nodes if big libraries make the per-frame rebuild slow.
 
 **GUI**
+- Item tabs: a "Keep preview open" action and a "Close tab" key; a way to discard a
+  listed library's unsaved changes short of removing it from the project.
 - macOS: a Liquid Glass app icon made with Icon Composer (needs Xcode's `actool`); more
   content in the title strip; "Fill" on title double-click (no public API, zooms today).
 - Native menus don't show shortcuts without ⌘ (they would steal typing).

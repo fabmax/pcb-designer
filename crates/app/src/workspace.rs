@@ -1,5 +1,5 @@
 //! The per-project workspace: the editor tabs and their splits, each view's camera and
-//! hidden layers, and the routing layer. Saved in the project folder as
+//! hidden layers, the library item tabs' cameras and recency, and the routing layer. Saved in the project folder as
 //! `.pcb-designer/workspace.json`; the folder ignores itself for git (a `.gitignore`
 //! with `*`). It is written on save, when the project closes and on quit, and is never
 //! part of the project's edits or undo.
@@ -11,13 +11,19 @@ use model::{Id, LayerId};
 use serde::{Deserialize, Serialize};
 use view::ViewId;
 
-/// A tab, by what it shows (library tabs by file, as their keys change every run).
+/// A tab, by what it shows (library item tabs by library file, as their keys change every
+/// run).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TabRef {
     Sheet(Id),
     Board,
-    Library { lib: LibRef, item: Option<ItemRef> },
+    Library {
+        lib: LibRef,
+        item: ItemRef,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        preview: bool,
+    },
     Gerber,
 }
 
@@ -29,7 +35,7 @@ pub enum LibRef {
     File(PathBuf),
 }
 
-/// The item open in a library tab.
+/// The item a library item tab shows.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ItemRef {
@@ -56,6 +62,15 @@ pub struct ViewState {
     pub hidden: Vec<String>,
 }
 
+/// A library item tab's camera.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ItemState {
+    pub lib: LibRef,
+    pub item: ItemRef,
+    pub center: [f64; 2],
+    pub zoom: f64,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Workspace {
@@ -63,6 +78,9 @@ pub struct Workspace {
     /// The tab worked on last.
     pub active: Option<TabRef>,
     pub views: Vec<ViewState>,
+    /// The library item tabs, the least recently used first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub items: Vec<ItemState>,
     /// The board's active copper layer.
     pub layer: Option<LayerId>,
 }
@@ -244,7 +262,7 @@ mod tests {
         match t {
             T::Sch => Some(TabRef::Sheet(SHEET)),
             T::Pcb => Some(TabRef::Board),
-            T::Lib(1) => Some(TabRef::Library { lib: LibRef::Builtin, item: None }),
+            T::Lib(1) => Some(TabRef::Library { lib: LibRef::Builtin, item: ItemRef::Part(SHEET), preview: true }),
             T::Lib(_) => None,
         }
     }

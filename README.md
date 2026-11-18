@@ -292,8 +292,11 @@ sheet (inputs on the left, the others on the right, in name order; the symbol gr
 fit them); wire them there like component pins. The Messages panel lists sheet pins left
 unwired.
 
-Libraries expand to Parts, Symbols and Footprints. Double-click (or Enter) opens an item
-in its library tab. Right-click for more: place a part, copy it to the Project Library
+Libraries expand to Parts, Symbols and Footprints. A click (or the arrow keys) shows an
+item in the preview tab (in italics), which the next item replaces; double-click (or
+Enter) opens it in a tab of its own, as does editing it or double-clicking the preview's
+tab. Past the most library tabs (Settings → Libraries, 10 by default) the tabs used
+longest ago close; nothing is lost, edits stay in the library until it's saved. Right-click for more: place a part, copy it to the Project Library
 (where it can be changed for this design only),
 create, duplicate, rename or delete items, and save, reveal or remove libraries.
 
@@ -402,7 +405,8 @@ apply at once; each page has a **Reset to defaults**.
   routing layer are not. Reset forgets them.
 - **Agent access:** start or stop the MCP server, its port, starting it on launch, and
   the commands and config to connect a client.
-- **Libraries:** where KiCad's libraries are downloaded to.
+- **Libraries:** the most library tabs open at once (1–50, 10 by default), and where
+  KiCad's libraries are downloaded to.
 
 These, the panel layout, the window's size and position and the recent projects are
 saved in `settings.json` in the configuration folder (macOS:
@@ -411,7 +415,7 @@ folder; `--keymap FILE.json` loads key bindings and `--mcp-port PORT` the port f
 session.
 
 Each saved project remembers its workspace: open tabs and splits, the zoom and position
-of each sheet and the board, hidden layers and the routing layer. It's kept in the
+of each sheet, the board and each library tab, hidden layers and the routing layer. It's kept in the
 project folder in `.pcb-designer/`, which ignores itself for git.
 
 For development, `cargo run -p mcp --example mcp_call -- URL TOOL '{"json":"args"}'`

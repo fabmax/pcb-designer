@@ -43,7 +43,13 @@ pub struct Settings {
     /// Changed board layer colours per theme, as `#rrggbb[aa]`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub layer_colors: BTreeMap<Theme, BTreeMap<LayerColor, String>>,
+    /// The most library item tabs open at once; `None`: [`LIBRARY_TABS`].
+    pub library_tabs: Option<usize>,
 }
+
+/// The default and the range of [`Settings::library_tabs`].
+pub const LIBRARY_TABS: usize = 10;
+pub const LIBRARY_TABS_RANGE: std::ops::RangeInclusive<usize> = 1..=50;
 
 /// The UI scales offered.
 pub const UI_SCALES: [f32; 8] = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
@@ -95,6 +101,11 @@ pub fn default_kicad_dir() -> Option<PathBuf> {
 }
 
 impl Settings {
+    /// The most library item tabs open at once.
+    pub fn max_library_tabs(&self) -> usize {
+        self.library_tabs.unwrap_or(LIBRARY_TABS).clamp(*LIBRARY_TABS_RANGE.start(), *LIBRARY_TABS_RANGE.end())
+    }
+
     pub fn path() -> Option<PathBuf> {
         config_dir().map(|d| d.join("settings.json"))
     }

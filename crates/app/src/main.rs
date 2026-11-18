@@ -40,6 +40,7 @@ mod clipboard;
 mod dock;
 mod fields;
 mod icons;
+mod item_tabs;
 mod keymap;
 mod kicad_import;
 mod libraries;

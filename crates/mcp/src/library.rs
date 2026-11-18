@@ -82,12 +82,10 @@ pub trait Libraries {
     fn project_mut(&mut self) -> &mut Document;
     /// Listed library files that could not be loaded.
     fn missing(&self) -> Vec<MissingLibrary>;
-    /// Keep a library loaded (the app shows it in a tab). Returns its index.
+    /// Keep a library loaded. Returns its index.
     fn push(&mut self, lib: LibraryDoc) -> usize;
-    /// Unload a library (the app closes its tab).
+    /// Unload a library (the app closes its tabs).
     fn remove(&mut self, index: usize);
-    /// An agent changed a library; `show` is worth showing the user.
-    fn changed(&mut self, _index: usize, _show: Option<ObjectId>) {}
     /// Offscreen renderer (created on first use).
     fn offscreen(&mut self) -> &mut Option<Offscreen>;
 }
@@ -171,9 +169,7 @@ pub fn respond(request: LibraryRequest, libs: &mut dyn Libraries) -> Result<Repl
         }
         LibraryRequest::Edit { library, upsert, delete } => {
             let i = find(libs, &library)?;
-            let (reply, show) = edit(libs.get_mut(i), upsert, delete)?;
-            libs.changed(i, show);
-            reply
+            edit(libs.get_mut(i), upsert, delete)?
         }
         LibraryRequest::Save { library, path } => {
             let i = find(libs, &library)?;
@@ -196,7 +192,6 @@ pub fn respond(request: LibraryRequest, libs: &mut dyn Libraries) -> Result<Repl
             {
                 libs.project_mut().execute(command).map_err(|e| e.to_string())?;
             }
-            libs.changed(i, None);
             json!({ "library": name, "saved": saved })
         }
         LibraryRequest::Remove { library, discard } => {
@@ -440,12 +435,8 @@ fn remove(lib: &mut Library, id: ObjectId) {
     }
 }
 
-/// Apply an edit as one undo step. Returns the reply and an item to show.
-fn edit(
-    doc: &mut LibraryDoc,
-    mut upsert: Vec<Value>,
-    delete: Vec<String>,
-) -> Result<(Value, Option<ObjectId>), String> {
+/// Apply an edit as one undo step. Returns the reply.
+fn edit(doc: &mut LibraryDoc, mut upsert: Vec<Value>, delete: Vec<String>) -> Result<Value, String> {
     if upsert.is_empty() && delete.is_empty() {
         return Err("nothing to do: pass upsert and/or delete".into());
     }
@@ -524,7 +515,6 @@ fn edit(
         })
         .map(|p| part_report(lib, p))
         .collect();
-    let show = changed.iter().find(|o| is_part(o)).or(changed.first()).map(Object::id);
     let reply = json!({
         "library": lib.name,
         "added": names(true),
@@ -534,7 +524,7 @@ fn edit(
         "saved": false,
         "next": "Check symbols and footprints with render_library_item, then save_library.",
     });
-    Ok((reply, show))
+    Ok(reply)
 }
 
 /// How a part's variants map pads to pins.
