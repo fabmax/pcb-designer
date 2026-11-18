@@ -3119,8 +3119,8 @@ impl PcbApp {
                     let rect = match (buttons.first(), buttons.last()) {
                         (Some(a), Some(b)) => a.union(*b),
                         _ => {
-                            let h = if dragging.is_some() { 28.0 } else { 4.0 };
-                            ui.allocate_exact_size(egui::vec2(28.0, h), egui::Sense::hover()).0
+                            let h = if dragging.is_some() { DOCK_BUTTON } else { 4.0 };
+                            ui.allocate_exact_size(egui::vec2(DOCK_BUTTON, h), egui::Sense::hover()).0
                         }
                     };
                     zones.push(DropZone { group, rect, buttons });
@@ -3141,8 +3141,8 @@ impl PcbApp {
                     ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                         let start = ui.cursor().bottom();
                         let n = self.settings.dock.panels(DockGroup::Bottom).len().max(1) as f32;
-                        let height = n * 28.0 + (n - 1.0) * 4.0;
-                        let (r, _) = ui.allocate_exact_size(egui::vec2(28.0, height), egui::Sense::hover());
+                        let height = n * DOCK_BUTTON + (n - 1.0) * 4.0;
+                        let (r, _) = ui.allocate_exact_size(egui::vec2(DOCK_BUTTON, height), egui::Sense::hover());
                         let mut child = ui.new_child(
                             egui::UiBuilder::new()
                                 .max_rect(egui::Rect::from_min_max(egui::pos2(r.left(), start - height), r.max))
@@ -3187,7 +3187,7 @@ impl PcbApp {
             };
             painter.hline(z.rect.x_range().expand(2.0), y, egui::Stroke::new(2.0, theme::accent()));
         }
-        let rect = egui::Rect::from_center_size(pos, egui::vec2(28.0, 28.0));
+        let rect = egui::Rect::from_center_size(pos, egui::vec2(DOCK_BUTTON, DOCK_BUTTON));
         painter.rect_filled(rect, 6.0, theme::accent().gamma_multiply(0.35));
         icons::paint(&painter, rect.shrink(6.0), panel.icon(), theme::accent());
         ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -3691,7 +3691,9 @@ fn ask_save(question: &str) -> rfd::MessageDialogResult {
 }
 
 /// Width of the panel button bars (points).
-const DOCK_BAR: f32 = 36.0;
+const DOCK_BAR: f32 = 40.0;
+/// The size of a tool window button in the dock bars.
+const DOCK_BUTTON: f32 = 32.0;
 
 /// A panel's bar button: its icon, accent-tinted while the panel is open. `badge` is
 /// (new, total) problems: a count bubble for new ones, a dot if only old ones remain.
@@ -3703,7 +3705,7 @@ fn dock_button(
     keymap: &Keymap,
     dragged: bool,
 ) -> egui::Response {
-    let (rect, r) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::click_and_drag());
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(DOCK_BUTTON, DOCK_BUTTON), egui::Sense::click_and_drag());
     let painter = ui.painter();
     if dragged {
         painter.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, theme::border()), egui::StrokeKind::Inside);
