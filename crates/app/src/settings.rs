@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use view::style::Theme;
+use view::style::{LayerColor, LayerColors, Theme, parse_color_hex};
 
 use crate::keymap::{Action, Keymap, Shortcut};
 use crate::units::Unit;
@@ -37,7 +37,16 @@ pub struct Settings {
     pub kicad_dir: Option<PathBuf>,
     /// The settings window's page and size.
     pub settings_window: crate::settings_ui::WindowMemory,
+    /// Size of the user interface (egui's zoom factor; the canvases keep their zoom);
+    /// `None`: 100 %.
+    pub ui_scale: Option<f32>,
+    /// Changed board layer colours per theme, as `#rrggbb[aa]`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub layer_colors: BTreeMap<Theme, BTreeMap<LayerColor, String>>,
 }
+
+/// The UI scales offered.
+pub const UI_SCALES: [f32; 8] = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
 /// The main window as last closed (points).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -124,6 +133,19 @@ impl Settings {
         self.recent.retain(|p| p != &path);
         self.recent.insert(0, path);
         self.recent.truncate(RECENT);
+    }
+
+    /// The layer colours (unreadable ones left out).
+    pub fn layer_colors(&self) -> LayerColors {
+        self.layer_colors
+            .iter()
+            .map(|(&t, m)| (t, m.iter().filter_map(|(&l, hex)| Some((l, parse_color_hex(hex)?))).collect()))
+            .collect()
+    }
+
+    /// A UI scale within the offered range.
+    pub fn ui_scale(&self) -> f32 {
+        self.ui_scale.filter(|s| s.is_finite()).map_or(1.0, |s| s.clamp(UI_SCALES[0], UI_SCALES[7]))
     }
 
     /// Where KiCad's libraries are downloaded to.

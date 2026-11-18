@@ -2,6 +2,8 @@
 //! global ([`set_theme`]) and baked into the scene when objects are drawn, so views are
 //! rebuilt after a change ([`crate::Document::restyle`]).
 
+use std::collections::BTreeMap;
+use std::sync::RwLock;
 use std::sync::atomic::{AtomicU8, Ordering};
 
 use model::{Coord, LayerId};
@@ -9,7 +11,7 @@ use render::Color;
 use render::gpu::Background;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
     #[default]
@@ -254,21 +256,142 @@ pub const WIRE_WIDTH: Coord = 152_400;
 /// Bus wires and entries: 2.5 wire widths.
 pub const BUS_WIDTH: Coord = WIRE_WIDTH * 5 / 2;
 
-pub fn board_layer_color(layer: LayerId) -> Color {
-    let p = pal();
-    match layer {
-        LayerId::TOP_COPPER => p.top_copper,
-        LayerId::BOTTOM_COPPER => p.bottom_copper,
-        l if l.is_copper() => p.inner_copper[(l.0 as usize - 1) % 4],
-        LayerId::TOP_SILK => p.top_silk,
-        LayerId::BOTTOM_SILK => p.bottom_silk,
-        LayerId::TOP_FAB => p.top_fab,
-        LayerId::BOTTOM_FAB => p.bottom_fab,
-        LayerId::TOP_COURTYARD => p.top_courtyard,
-        LayerId::BOTTOM_COURTYARD => p.bottom_courtyard,
-        LayerId::TOP_MASK | LayerId::BOTTOM_MASK => p.mask,
-        LayerId::TOP_PASTE | LayerId::BOTTOM_PASTE => p.paste,
-        LayerId::OUTLINE => p.outline,
-        _ => p.other_layer,
+/// A board layer colour the user can change (per theme; Settings → Layer colours).
+/// Inner copper layers cycle through four colours.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LayerColor {
+    TopCopper,
+    BottomCopper,
+    Inner1,
+    Inner2,
+    Inner3,
+    Inner4,
+    TopSilk,
+    BottomSilk,
+    TopFab,
+    BottomFab,
+    TopCourtyard,
+    BottomCourtyard,
+    Mask,
+    Paste,
+    Outline,
+}
+
+impl LayerColor {
+    pub const ALL: [LayerColor; 15] = [
+        LayerColor::TopCopper,
+        LayerColor::BottomCopper,
+        LayerColor::Inner1,
+        LayerColor::Inner2,
+        LayerColor::Inner3,
+        LayerColor::Inner4,
+        LayerColor::TopSilk,
+        LayerColor::BottomSilk,
+        LayerColor::TopFab,
+        LayerColor::BottomFab,
+        LayerColor::TopCourtyard,
+        LayerColor::BottomCourtyard,
+        LayerColor::Mask,
+        LayerColor::Paste,
+        LayerColor::Outline,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            LayerColor::TopCopper => "Top copper",
+            LayerColor::BottomCopper => "Bottom copper",
+            LayerColor::Inner1 => "Inner copper 1, 5, …",
+            LayerColor::Inner2 => "Inner copper 2, 6, …",
+            LayerColor::Inner3 => "Inner copper 3, 7, …",
+            LayerColor::Inner4 => "Inner copper 4, 8, …",
+            LayerColor::TopSilk => "Top silkscreen",
+            LayerColor::BottomSilk => "Bottom silkscreen",
+            LayerColor::TopFab => "Top fabrication",
+            LayerColor::BottomFab => "Bottom fabrication",
+            LayerColor::TopCourtyard => "Top courtyard",
+            LayerColor::BottomCourtyard => "Bottom courtyard",
+            LayerColor::Mask => "Solder mask",
+            LayerColor::Paste => "Solder paste",
+            LayerColor::Outline => "Board outline",
+        }
     }
+
+    /// The colour of a board layer, if it's one of these.
+    pub fn of(layer: LayerId) -> Option<LayerColor> {
+        Some(match layer {
+            LayerId::TOP_COPPER => LayerColor::TopCopper,
+            LayerId::BOTTOM_COPPER => LayerColor::BottomCopper,
+            l if l.is_copper() => {
+                [LayerColor::Inner1, LayerColor::Inner2, LayerColor::Inner3, LayerColor::Inner4][(l.0 as usize - 1) % 4]
+            }
+            LayerId::TOP_SILK => LayerColor::TopSilk,
+            LayerId::BOTTOM_SILK => LayerColor::BottomSilk,
+            LayerId::TOP_FAB => LayerColor::TopFab,
+            LayerId::BOTTOM_FAB => LayerColor::BottomFab,
+            LayerId::TOP_COURTYARD => LayerColor::TopCourtyard,
+            LayerId::BOTTOM_COURTYARD => LayerColor::BottomCourtyard,
+            LayerId::TOP_MASK | LayerId::BOTTOM_MASK => LayerColor::Mask,
+            LayerId::TOP_PASTE | LayerId::BOTTOM_PASTE => LayerColor::Paste,
+            LayerId::OUTLINE => LayerColor::Outline,
+            _ => return None,
+        })
+    }
+
+    /// The palette's colour.
+    pub fn default_in(self, p: &Palette) -> Color {
+        match self {
+            LayerColor::TopCopper => p.top_copper,
+            LayerColor::BottomCopper => p.bottom_copper,
+            LayerColor::Inner1 => p.inner_copper[0],
+            LayerColor::Inner2 => p.inner_copper[1],
+            LayerColor::Inner3 => p.inner_copper[2],
+            LayerColor::Inner4 => p.inner_copper[3],
+            LayerColor::TopSilk => p.top_silk,
+            LayerColor::BottomSilk => p.bottom_silk,
+            LayerColor::TopFab => p.top_fab,
+            LayerColor::BottomFab => p.bottom_fab,
+            LayerColor::TopCourtyard => p.top_courtyard,
+            LayerColor::BottomCourtyard => p.bottom_courtyard,
+            LayerColor::Mask => p.mask,
+            LayerColor::Paste => p.paste,
+            LayerColor::Outline => p.outline,
+        }
+    }
+}
+
+/// Changed layer colours per theme (the palettes are the defaults).
+pub type LayerColors = BTreeMap<Theme, BTreeMap<LayerColor, Color>>;
+
+static LAYER_COLORS: RwLock<LayerColors> = RwLock::new(BTreeMap::new());
+
+/// Use these layer colours from now on (redraw with [`crate::Document::restyle`]).
+pub fn set_layer_colors(colors: LayerColors) {
+    *LAYER_COLORS.write().unwrap() = colors;
+}
+
+/// A layer colour in the active theme, changed or the palette's.
+pub fn layer_color(c: LayerColor) -> Color {
+    let t = theme();
+    LAYER_COLORS.read().unwrap().get(&t).and_then(|m| m.get(&c)).copied().unwrap_or_else(|| c.default_in(pal()))
+}
+
+/// `#rrggbbaa` (alpha left out when opaque).
+pub fn color_hex(c: Color) -> String {
+    let [r, g, b, a] = c.0;
+    if a == 0xff { format!("#{r:02x}{g:02x}{b:02x}") } else { format!("#{r:02x}{g:02x}{b:02x}{a:02x}") }
+}
+
+/// `#rrggbb` or `#rrggbbaa`.
+pub fn parse_color_hex(s: &str) -> Option<Color> {
+    let h = s.strip_prefix('#')?;
+    if !matches!(h.len(), 6 | 8) || !h.is_ascii() {
+        return None;
+    }
+    let byte = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
+    Some(Color::rgba(byte(0)?, byte(2)?, byte(4)?, if h.len() == 8 { byte(6)? } else { 0xff }))
+}
+
+pub fn board_layer_color(layer: LayerId) -> Color {
+    LayerColor::of(layer).map_or(pal().other_layer, layer_color)
 }

@@ -722,6 +722,12 @@ the current design of each area with the gotchas a change needs to know, the pla
   `sync_tool_memory` (every frame) stores what differs from the defaults, saves a second
   after the last change and hands library editor changes to the other editors
   (`LibraryEditor::recall`). A new settings field is remembered unless skipped.
+- **UI scale** is egui's zoom factor (`Settings::ui_scale`, 80–200 %); egui's own ⌘+/⌘−
+  zoom keys are off (`zoom_with_keyboard`), those keys zoom the canvas.
+- **Layer colours** (`view::style::LayerColor`, `set_layer_colors`): changed board layer
+  colours per theme, global, read through `board_layer_color` (so board, footprint
+  editor, Gerber viewer and MCP renders in the app follow); a change calls
+  `PcbApp::restyle`. Stored as hex strings in the settings. Schematic colours are fixed.
 - **Window** size, position, maximized and fullscreen are tracked every frame
   (`track_window`) and saved in `on_exit` (eframe persistence stays off). Scripted and
   screenshot runs keep 1600×1000 and never write settings or workspaces. A position on a
@@ -779,8 +785,7 @@ Usability work collected from the Later list, in the suggested order. Remove a m
 when it's done; what it defers goes back to **Later**.
 
 **M18: Workspace and settings** (settings window, window, workspace, MCP and tool
-settings are done)
-- UI scale; per-layer colour customisation (per theme, global; a Layer colours page).
+settings, UI scale and layer colours are done)
 - Tool window bars: drag buttons to reorder or move between bars, two panels stacked on
   one side.
 - A Nets panel; an MCP activity log panel listing agent edits.
@@ -817,6 +822,7 @@ defers.
   `(italic yes)` is ignored); shaping, kerning and right-to-left scripts; a fallback
   font for glyphs JetBrains Mono lacks (CJK; `.notdef` boxes today); level of detail
   for texts on huge boards (a box when a few pixels high) if the GPU time matters.
+- Schematic colours customisable like the board layer colours.
 - Custom power symbols: power ports drawn from a symbol of their own (a part flagged
   power, no footprint), for glyphs beyond `PowerStyle`; maps to KiCad custom power
   symbols on import and export.

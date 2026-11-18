@@ -8,11 +8,12 @@
 
 use egui::text::LayoutJob;
 use egui::{Color32, FontId, Key, RichText, TextFormat, Ui};
+use render::Color;
 use serde::{Deserialize, Serialize};
-use view::style::Theme;
+use view::style::{LayerColor, Theme};
 
 use crate::keymap::{Action, Keymap};
-use crate::settings::Settings;
+use crate::settings::{Settings, UI_SCALES};
 use crate::theme;
 use crate::units::{self, Unit};
 
@@ -23,6 +24,7 @@ const TITLE: &str = "Settings";
 pub enum Page {
     #[default]
     Appearance,
+    LayerColors,
     Keymap,
     Tools,
     Agent,
@@ -30,7 +32,8 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 5] = [Page::Appearance, Page::Keymap, Page::Tools, Page::Agent, Page::Libraries];
+    pub const ALL: [Page; 6] =
+        [Page::Appearance, Page::LayerColors, Page::Keymap, Page::Tools, Page::Agent, Page::Libraries];
 
     /// By its saved name (`agent`), for `--show settings:agent`.
     pub fn parse(name: &str) -> Option<Page> {
@@ -40,6 +43,7 @@ impl Page {
     pub fn title(self) -> &'static str {
         match self {
             Page::Appearance => "Appearance",
+            Page::LayerColors => "Layer colours",
             Page::Keymap => "Keymap",
             Page::Tools => "Tools",
             Page::Agent => "Agent access",
@@ -67,9 +71,14 @@ const fn entry(page: Page, label: &'static str, keywords: &'static str) -> Entry
     Entry { page, label, keywords }
 }
 
+/// Keywords of every layer colour row.
+const COLOR_KEYWORDS: &str = "colour color layer board pcb";
+
 const ENTRIES: &[Entry] = &[
     entry(Page::Appearance, "Theme", "dark light mode colour color"),
     entry(Page::Appearance, "Length units", "mm mil inch metric imperial unit"),
+    entry(Page::Appearance, "UI scale", "size zoom font text bigger smaller interface percent"),
+    entry(Page::LayerColors, "Theme", "dark light mode"),
     entry(Page::Tools, "Remembered tool settings", "corner width size layer forget reset drawing style"),
     entry(Page::Agent, "Server", "mcp status start stop running url"),
     entry(Page::Agent, "Port", "mcp server network tcp"),
@@ -111,6 +120,9 @@ impl Filter {
         let rows = ENTRIES.iter().filter(|e| e.page == page && self.matches(e.label, e.keywords)).count();
         match page {
             Page::Keymap => rows + keymap_rows.iter().filter(|(l, k)| self.matches(l, k)).count(),
+            Page::LayerColors => {
+                rows + LayerColor::ALL.iter().filter(|c| self.matches(c.label(), COLOR_KEYWORDS)).count()
+            }
             _ => rows,
         }
     }
@@ -160,6 +172,8 @@ pub struct Changes {
     /// Settings changed: save them.
     pub save: bool,
     pub theme: Option<Theme>,
+    pub ui_scale: bool,
+    pub layer_colors: bool,
     /// The key bindings changed (`Settings::keymap` is up to date).
     pub keymap: bool,
     pub agent: Option<AgentCmd>,
@@ -197,7 +211,6 @@ pub struct SettingsWindow {
     /// The KiCad folder being typed.
     kicad_text: Option<String>,
 }
-
 
 fn search_id() -> egui::Id {
     egui::Id::unique("settings_search")
@@ -286,6 +299,7 @@ impl SettingsWindow {
                         let mut rows = Rows { filter: &filter, page };
                         match page {
                             Page::Appearance => self.appearance(ui, &mut rows, settings, &mut changes),
+                            Page::LayerColors => self.layer_colors(ui, &mut rows, settings, &mut changes),
                             Page::Keymap => self.keymap(ui, &filter, settings, keymap, &mut changes),
                             Page::Tools => tools(ui, &mut rows, settings, &mut changes),
                             Page::Agent => self.agent(ui, &mut rows, settings, agent, &mut changes),
@@ -318,6 +332,17 @@ impl SettingsWindow {
                 }
             }
         });
+        rows.row(ui, "UI scale", Some("Panels, menus and tool bars; the canvases keep their zoom."), |ui| {
+            let current = settings.ui_scale();
+            for s in UI_SCALES {
+                let text = format!("{}%", (s * 100.0).round());
+                if ui.selectable_label((current - s).abs() < 0.001, text).clicked() && (current - s).abs() >= 0.001 {
+                    settings.ui_scale = (s != 1.0).then_some(s);
+                    changes.ui_scale = true;
+                    changes.save = true;
+                }
+            }
+        });
         rows.row(ui, "Length units", Some("Lengths shown and typed in the panels and the status bar."), |ui| {
             let mut unit = units::unit();
             for u in Unit::ALL {
@@ -333,6 +358,59 @@ impl SettingsWindow {
             changes.theme = Some(Theme::default());
             units::set_unit(Unit::default());
             settings.unit = Unit::default();
+            settings.ui_scale = None;
+            changes.ui_scale = true;
+            changes.save = true;
+        });
+    }
+
+    fn layer_colors(&mut self, ui: &mut Ui, rows: &mut Rows, settings: &mut Settings, changes: &mut Changes) {
+        let current = view::style::theme();
+        rows.row(ui, "Theme", Some("Each theme has its own layer colours; these are the shown theme's."), |ui| {
+            for &t in Theme::ALL {
+                if ui.selectable_label(current == t, t.label()).clicked() && current != t {
+                    changes.theme = Some(t);
+                }
+            }
+        });
+        let palette = view::style::pal();
+        for c in LayerColor::ALL {
+            let default = c.default_in(palette);
+            let mut color = view::style::layer_color(c);
+            let changed = color != default;
+            rows.row_with(ui, c.label(), COLOR_KEYWORDS, None, |ui| {
+                let [r, g, b, a] = color.0;
+                let mut c32 = Color32::from_rgba_unmultiplied(r, g, b, a);
+                let picker = egui::widgets::color_picker::color_edit_button_srgba(
+                    ui,
+                    &mut c32,
+                    egui::widgets::color_picker::Alpha::OnlyBlend,
+                );
+                if picker.changed() {
+                    color = Color(c32.to_srgba_unmultiplied());
+                }
+                ui.label(RichText::new(view::style::color_hex(color)).monospace().color(theme::text_dim()));
+                if changed && ui.small_button("Reset").on_hover_text("Back to the theme's colour").clicked() {
+                    color = default;
+                }
+            });
+            if color != view::style::layer_color(c) {
+                let map = settings.layer_colors.entry(current).or_default();
+                if color == default {
+                    map.remove(&c);
+                } else {
+                    map.insert(c, view::style::color_hex(color));
+                }
+                if map.is_empty() {
+                    settings.layer_colors.remove(&current);
+                }
+                changes.layer_colors = true;
+                changes.save = true;
+            }
+        }
+        reset(ui, rows, || {
+            settings.layer_colors.remove(&current);
+            changes.layer_colors = true;
             changes.save = true;
         });
     }
@@ -545,9 +623,19 @@ const LABEL_WIDTH: f32 = 170.0;
 impl Rows<'_> {
     /// A setting: its label, its widgets and an optional help text below.
     fn row(&mut self, ui: &mut Ui, label: &str, help: Option<&str>, add: impl FnOnce(&mut Ui)) {
-        if !self.filter.entry(self.page, label) {
-            return;
+        if self.filter.entry(self.page, label) {
+            self.draw(ui, label, help, add);
         }
+    }
+
+    /// A row not in [`ENTRIES`], with its keywords.
+    fn row_with(&mut self, ui: &mut Ui, label: &str, keywords: &str, help: Option<&str>, add: impl FnOnce(&mut Ui)) {
+        if self.filter.matches(label, keywords) {
+            self.draw(ui, label, help, add);
+        }
+    }
+
+    fn draw(&mut self, ui: &mut Ui, label: &str, help: Option<&str>, add: impl FnOnce(&mut Ui)) {
         ui.horizontal(|ui| {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(LABEL_WIDTH, 22.0), egui::Sense::hover());
             let galley = ui.painter().layout_job(self.filter.highlight(label, ui.visuals().text_color()));

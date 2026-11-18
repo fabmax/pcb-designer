@@ -385,7 +385,9 @@ saved with the settings.
 (⌘F) to find a setting by name or keyword, or a shortcut by action or key. Changes
 apply at once; each page has a **Reset to defaults**.
 
-- **Appearance:** theme (dark or light), length units (mm, mil or inch).
+- **Appearance:** theme (dark or light), UI scale (80–200 %), length units (mm, mil or
+  inch).
+- **Layer colours:** the board layers' colours, separately for each theme (with alpha).
 - **Keymap:** click `+` next to an action and press the new shortcut, × removes one.
 - **Tools:** the drawing tools' style choices (corner styles, widths, sizes, layers,
   array layouts) are remembered across sessions; rotation, the next name and the

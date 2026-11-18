@@ -332,7 +332,11 @@ impl PcbApp {
     pub fn new(cc: &eframe::CreationContext<'_>, opts: Options) -> Self {
         let mut settings = Settings::load();
         view::style::set_theme(settings.theme);
+        view::style::set_layer_colors(settings.layer_colors());
         units::set_unit(settings.unit);
+        // ⌘+ / ⌘− zoom the canvases, not the UI (Settings → Appearance → UI scale).
+        cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        cc.egui_ctx.set_zoom_factor(settings.ui_scale());
         theme::apply(&cc.egui_ctx);
         theme::apply_to_window(&cc.egui_ctx);
         let keymap = opts.keymap.unwrap_or_else(|| settings.keymap());
@@ -1027,6 +1031,13 @@ impl PcbApp {
     /// Switch the theme of the chrome and every canvas.
     fn set_theme(&mut self, ctx: &egui::Context, t: view::style::Theme) {
         view::style::set_theme(t);
+        self.restyle(ctx);
+        self.settings.theme = t;
+        self.save_settings();
+    }
+
+    /// Redraw everything in the current colours.
+    fn restyle(&mut self, ctx: &egui::Context) {
         theme::apply(ctx);
         theme::apply_to_window(ctx);
         for pane in self.panes.iter_mut() {
@@ -1042,8 +1053,6 @@ impl PcbApp {
         self.project.view.restyle();
         self.gerber.restyle();
         self.probe_key = None;
-        self.settings.theme = t;
-        self.save_settings();
     }
 
     /// Save (or Save As when `choose` or the document has no folder yet).
@@ -2498,6 +2507,13 @@ impl PcbApp {
         let c = self.settings_win.ui(ctx, &mut self.settings, &self.keymap, &status);
         if let Some(t) = c.theme {
             self.set_theme(ctx, t);
+        }
+        if c.ui_scale {
+            ctx.set_zoom_factor(self.settings.ui_scale());
+        }
+        if c.layer_colors {
+            view::style::set_layer_colors(self.settings.layer_colors());
+            self.restyle(ctx);
         }
         if c.keymap {
             self.keymap = self.settings.keymap();
