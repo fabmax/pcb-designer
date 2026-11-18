@@ -370,26 +370,73 @@ pub fn kicad_download_reply(installed: &kicad::download::Installed, downloaded: 
 }
 
 /// Answer one call. Window screenshots may be answered later by the host.
-pub fn handle(call: Call, host: &mut dyn Host) {
+/// What became of a call (for activity logs): answered now, with a short text of the
+/// result or the error, or answered later by the host.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Outcome {
+    Answered(Result<String, String>),
+    Deferred,
+}
+
+/// Longest result text an [`Outcome`] keeps.
+const OUTCOME_TEXT: usize = 4000;
+
+fn outcome_text(reply: &Reply) -> String {
+    match reply {
+        Reply::Json(v) => {
+            let mut text = serde_json::to_string_pretty(v).unwrap_or_default();
+            if text.len() > OUTCOME_TEXT {
+                let mut end = OUTCOME_TEXT;
+                while !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                text.truncate(end);
+                text.push_str("\n…");
+            }
+            text
+        }
+        Reply::Png(png) => format!("PNG image, {} KB", png.len().div_ceil(1024)),
+    }
+}
+
+pub fn handle(call: Call, host: &mut dyn Host) -> Outcome {
     let Call { request, reply } = call;
     host.sync_libraries();
     let request = match request {
-        Request::Screenshot { target: None, .. } => return host.window_screenshot(reply),
-        Request::KicadImport(k) => return host.kicad_import(k, reply),
-        Request::KicadDownload { update } => return host.kicad_download(update, reply),
-        Request::Library(r) => return host.library_request(r, reply),
+        Request::Screenshot { target: None, .. } => {
+            host.window_screenshot(reply);
+            return Outcome::Deferred;
+        }
+        Request::KicadImport(k) => {
+            host.kicad_import(k, reply);
+            return Outcome::Deferred;
+        }
+        Request::KicadDownload { update } => {
+            host.kicad_download(update, reply);
+            return Outcome::Deferred;
+        }
+        Request::Library(r) => {
+            host.library_request(r, reply);
+            return Outcome::Deferred;
+        }
         Request::ImportKicadProject { path } => {
             return match kicad::import_project(&path) {
-                Ok(import) => host.replace_project(import, reply),
+                Ok(import) => {
+                    host.replace_project(import, reply);
+                    Outcome::Deferred
+                }
                 Err(e) => {
-                    let _ = reply.send(Err(e));
+                    let _ = reply.send(Err(e.clone()));
+                    Outcome::Answered(Err(e))
                 }
             };
         }
         r => r,
     };
     let result = respond(request, host);
+    let outcome = Outcome::Answered(result.as_ref().map(outcome_text).map_err(Clone::clone));
     let _ = reply.send(result);
+    outcome
 }
 
 fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {

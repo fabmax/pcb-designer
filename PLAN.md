@@ -652,13 +652,32 @@ the current design of each area with the gotchas a change needs to know, the pla
 - **Floating tool bars** (`toolbar.rs`, vector icons in `icons.rs`) are drawn after the
   canvas and sense click-and-drag, so presses never reach the canvas. View buttons
   (layers, grid/units/snap, fit) sit at the bottom left.
-- **Tool windows** (`dock.rs`): icon bars on both edges, one open panel per side, never
-  opened automatically. Project (⌘1), Messages (⌘3, with an unseen-problems badge),
-  Properties, Tool settings, Board setup, Overview. Saved in settings when no pointer
-  button is down. Panel content is drawn through `dock::fixed_size`, which clips
+- **Tool windows** (`dock.rs`): icon bars on both edges, never opened automatically.
+  Each bar has a top and a bottom `Group`; the left bar also holds the bottom area's group
+  at its foot. One open panel per group; a side's two groups stack with a split
+  (`left_split` / `right_split`). `Dock` keeps the groups' panel order and the open
+  panel per group; `normalize` (on load) puts every panel in exactly one group (new
+  panels go to `Panel::default_group`). Buttons sense click-and-drag: `dock_drag` holds
+  the dragged panel, the bars record `DropZone`s each frame and `dock_drag_ui` (after
+  both bars) draws the indicator and on release moves it (`drop_target`: the nearest
+  group of the bar under the pointer). View → Reset panel layout keeps the sizes. Saved
+  in settings when no pointer button is down; scripted runs never save settings.
+  Panels: Project (⌘1), Messages (⌘3, unseen-problems badge), Properties, Tool settings,
+  Board setup, Overview, Schematic setup, Nets (⌘9), Agent activity (unbound). Panel content is drawn through `dock::fixed_size`, which clips
   overflow: egui grows a resizable panel to fit wider content and keeps that size, and
   grids overflow for a frame when they reuse the column widths of the previous
   selection.
+- **Nets panel** (`nets_ui.rs`): rows from the schematic netlist (pins, sheets) and the
+  board's ratsnest by net index (routed, n unrouted, no pads), cached per document
+  revision and drawn with `show_rows`. A click is `PcbApp::select_net`: the net's
+  wires, labels and junctions on the sheet worked on (else the first sheet with any;
+  the parts when it has no wires); with the board active its selection is cleared so
+  the cross-probe shows the net's copper. A double click also fits the active view.
+- **Agent activity** (`activity_ui.rs`, `Agent::activity`, at most 500): each call's
+  request name (snake case of the `Request` variant, not always the tool's name), its
+  `describe`, the `Debug` arguments and `mcp::Outcome` (`handle` returns it: the result
+  text, truncated, the error, or `Deferred` for calls the app answers later), plus the
+  undo step when the revision changed. Session only.
 - **Properties** (`properties.rs`): a symbol and a footprint both have the component's
   Footprint variant combo (`variant_combo`); on the board it leaves out "no footprint"
   variants, which would delete the selected footprint. Text fields keep their typed
@@ -783,12 +802,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
-
-**M18: Workspace and settings** (settings window, window, workspace, MCP and tool
-settings, UI scale and layer colours are done)
-- Tool window bars: drag buttons to reorder or move between bars, two panels stacked on
-  one side.
-- A Nets panel; an MCP activity log panel listing agent edits.
 
 ## Later
 

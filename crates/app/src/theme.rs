@@ -53,11 +53,6 @@ pub const GAP: i8 = 6;
 /// Corner radius of panels and tab groups.
 pub const RADIUS: u8 = 10;
 
-/// A side panel: rounded, `outer` margin to its neighbours.
-pub fn panel_frame(outer: Margin) -> Frame {
-    Frame::NONE.fill(panel()).corner_radius(RADIUS).inner_margin(Margin::same(8)).outer_margin(outer)
-}
-
 /// Padding of dialogs and windows.
 const PAD: i8 = 18;
 

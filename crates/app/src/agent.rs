@@ -26,6 +26,49 @@ pub enum Job {
     ReplaceProject(Box<kicad::ProjectImport>, Responder),
 }
 
+/// One agent call in the Agent activity panel.
+#[derive(Clone, Debug)]
+pub struct ActivityEntry {
+    pub at: Instant,
+    /// The tool (the request's name in snake case).
+    pub tool: String,
+    pub summary: String,
+    /// The request's arguments (truncated).
+    pub args: String,
+    /// The result or the error; `None`: answered later (library tabs, screenshots).
+    pub result: Option<Result<String, String>>,
+    /// The undo step the call made.
+    pub undo: Option<String>,
+}
+
+/// Most entries the activity log keeps.
+pub const ACTIVITY: usize = 500;
+
+/// `SetCheckSettings { … }` → `set_check_settings`.
+fn tool_name(debug: &str) -> String {
+    let name: String = debug.chars().take_while(|c| c.is_alphanumeric()).collect();
+    let mut out = String::new();
+    for (i, c) in name.chars().enumerate() {
+        if c.is_uppercase() && i > 0 {
+            out.push('_');
+        }
+        out.extend(c.to_lowercase());
+    }
+    out
+}
+
+fn truncated(mut text: String, max: usize) -> String {
+    if text.len() > max {
+        let mut end = max;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.truncate(end);
+        text.push('…');
+    }
+    text
+}
+
 /// Server state owned by the app.
 pub struct Agent {
     server: Option<(McpServer, Receiver<Call>)>,
@@ -34,11 +77,13 @@ pub struct Agent {
     pub calls: usize,
     pub last: Option<(String, Instant)>,
     pub error: Option<String>,
+    /// Calls of this session, oldest first.
+    pub activity: std::collections::VecDeque<ActivityEntry>,
 }
 
 impl Agent {
     pub fn new(port: u16) -> Self {
-        Agent { server: None, port, offscreen: None, calls: 0, last: None, error: None }
+        Agent { server: None, port, offscreen: None, calls: 0, last: None, error: None, activity: Default::default() }
     }
 
     pub fn is_running(&self) -> bool {
@@ -85,10 +130,29 @@ impl Agent {
             self.calls += 1;
             let description = call.request.describe();
             log::info!("MCP: {description}");
+            let debug = format!("{:#?}", call.request);
             if call.request.modifies() {
-                self.last = Some((description, Instant::now()));
+                self.last = Some((description.clone(), Instant::now()));
             }
-            mcp::handle(call, &mut host);
+            let revision = host.doc.revision;
+            let outcome = mcp::handle(call, &mut host);
+            let undo = (host.doc.revision != revision)
+                .then(|| host.doc.editor().history().undo_label().map(str::to_string))
+                .flatten();
+            if self.activity.len() == ACTIVITY {
+                self.activity.pop_front();
+            }
+            self.activity.push_back(ActivityEntry {
+                at: Instant::now(),
+                tool: tool_name(&debug),
+                summary: description,
+                args: truncated(debug, 4000),
+                result: match outcome {
+                    mcp::Outcome::Answered(r) => Some(r),
+                    mcp::Outcome::Deferred => None,
+                },
+                undo,
+            });
         }
         jobs
     }
@@ -176,5 +240,18 @@ impl Host for AppHost<'_> {
             }
         })));
         self.ctx.request_repaint();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_names_and_truncation() {
+        assert_eq!(tool_name("SetCheckSettings {\n x: 1 }"), "set_check_settings");
+        assert_eq!(tool_name("Project"), "project");
+        assert_eq!(truncated("äöü".into(), 3), "ä…");
+        assert_eq!(truncated("ok".into(), 3), "ok");
     }
 }

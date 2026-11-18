@@ -74,6 +74,8 @@ pub enum Action {
     PanelToolSettings,
     PanelBoardSetup,
     PanelSchematicSetup,
+    PanelNets,
+    PanelActivity,
     PanelOverview,
 }
 
@@ -146,6 +148,8 @@ impl Action {
         Action::PanelToolSettings,
         Action::PanelBoardSetup,
         Action::PanelSchematicSetup,
+        Action::PanelNets,
+        Action::PanelActivity,
         Action::PanelOverview,
     ];
 
@@ -210,6 +214,8 @@ impl Action {
             Action::PanelToolSettings => "Show/hide Tool settings panel",
             Action::PanelBoardSetup => "Show/hide Board setup panel",
             Action::PanelSchematicSetup => "Show/hide Schematic setup panel",
+            Action::PanelNets => "Show/hide Nets panel",
+            Action::PanelActivity => "Show/hide Agent activity panel",
             Action::PanelOverview => "Show/hide Overview panel",
         }
     }
@@ -449,6 +455,7 @@ impl Default for Keymap {
             (Action::PanelBoardSetup, vec![S::cmd(Key::Num6)]),
             (Action::PanelOverview, vec![S::cmd(Key::Num7)]),
             (Action::PanelSchematicSetup, vec![S::cmd(Key::Num8)]),
+            (Action::PanelNets, vec![S::cmd(Key::Num9)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
     }
@@ -545,6 +552,7 @@ mod tests {
             Action::PcbCutout,
             Action::ConvertToPolygon,
             Action::ToggleErcMarkers,
+            Action::PanelActivity,
         ];
         for a in Action::ALL.iter().filter(|a| !unbound.contains(a)) {
             assert!(!map.shortcuts(*a).is_empty(), "{a:?} has no default shortcut");

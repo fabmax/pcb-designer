@@ -1,18 +1,21 @@
 //! Tool windows, IntelliJ style: a narrow bar of icon buttons on the left and right
-//! window edges, one button per panel. A side shows at most one panel; clicking its
-//! button again hides it. Panels never open or switch on their own.
+//! window edges, one button per panel. Each bar has a top and a bottom group; the left
+//! bar also holds the bottom area's group at its foot. A group shows at most one panel;
+//! clicking its button again hides it. When both groups of a side show a panel, they
+//! stack (top over bottom) with a draggable split. Buttons are dragged to reorder them or
+//! to move a panel to another group. Panels never open or switch on their own.
 //!
-//! [`Dock`] is the saved state (which panel each side shows, and the sizes). [`Unseen`]
+//! [`Dock`] is the saved state (the groups, which panel each shows, the sizes). [`Unseen`]
 //! counts problems that appeared while the Messages panel was hidden (its badge).
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::icons::Icon;
 use crate::keymap::Action;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Panel {
     Project,
@@ -22,8 +25,22 @@ pub enum Panel {
     BoardSetup,
     SchematicSetup,
     Overview,
+    Nets,
+    Activity,
 }
 
+/// A group of panel buttons and the place its panel shows in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Group {
+    LeftTop,
+    LeftBottom,
+    RightTop,
+    RightBottom,
+    Bottom,
+}
+
+/// A window edge with panels: left and right (each two stacked groups), bottom.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Side {
     Left,
@@ -31,9 +48,21 @@ pub enum Side {
     Bottom,
 }
 
+impl Group {
+    pub const ALL: [Group; 5] = [Group::LeftTop, Group::LeftBottom, Group::RightTop, Group::RightBottom, Group::Bottom];
+
+    /// The groups on a side, top first.
+    pub fn on(side: Side) -> &'static [Group] {
+        match side {
+            Side::Left => &[Group::LeftTop, Group::LeftBottom],
+            Side::Right => &[Group::RightTop, Group::RightBottom],
+            Side::Bottom => &[Group::Bottom],
+        }
+    }
+}
+
 impl Panel {
-    /// In bar order: left bar (top group, then the bottom panels), then the right bar.
-    pub const ALL: [Panel; 7] = [
+    pub const ALL: [Panel; 9] = [
         Panel::Project,
         Panel::Messages,
         Panel::Properties,
@@ -41,15 +70,19 @@ impl Panel {
         Panel::BoardSetup,
         Panel::SchematicSetup,
         Panel::Overview,
+        Panel::Nets,
+        Panel::Activity,
     ];
 
-    pub fn side(self) -> Side {
+    /// Where the panel is by default (and after Reset layout).
+    pub fn default_group(self) -> Group {
         match self {
-            Panel::Project => Side::Left,
-            Panel::Messages => Side::Bottom,
+            Panel::Project => Group::LeftTop,
+            Panel::Messages | Panel::Activity => Group::Bottom,
             Panel::Properties | Panel::ToolSettings | Panel::BoardSetup | Panel::SchematicSetup | Panel::Overview => {
-                Side::Right
+                Group::RightTop
             }
+            Panel::Nets => Group::RightBottom,
         }
     }
 
@@ -62,6 +95,8 @@ impl Panel {
             Panel::BoardSetup => "Board setup",
             Panel::SchematicSetup => "Schematic setup",
             Panel::Overview => "Overview",
+            Panel::Nets => "Nets",
+            Panel::Activity => "Agent activity",
         }
     }
 
@@ -74,6 +109,8 @@ impl Panel {
             Panel::BoardSetup => Icon::BoardSetup,
             Panel::SchematicSetup => Icon::SchematicSetup,
             Panel::Overview => Icon::Info,
+            Panel::Nets => Icon::Nets,
+            Panel::Activity => Icon::Activity,
         }
     }
 
@@ -87,6 +124,8 @@ impl Panel {
             Panel::BoardSetup => Action::PanelBoardSetup,
             Panel::SchematicSetup => Action::PanelSchematicSetup,
             Panel::Overview => Action::PanelOverview,
+            Panel::Nets => Action::PanelNets,
+            Panel::Activity => Action::PanelActivity,
         }
     }
 
@@ -98,73 +137,123 @@ impl Panel {
     pub fn parse(name: &str) -> Option<Panel> {
         serde_json::from_value(serde_json::Value::String(name.replace('-', "_"))).ok()
     }
-
-    pub fn on(side: Side) -> impl Iterator<Item = Panel> {
-        Panel::ALL.into_iter().filter(move |p| p.side() == side)
-    }
 }
 
-/// Which panel each side shows, and the panel sizes (points). Saved in the settings.
+/// The panel groups, which panel each shows, and the sizes (points). Saved in the
+/// settings.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Dock {
-    pub left: Option<Panel>,
-    pub right: Option<Panel>,
-    pub bottom: Option<Panel>,
+    /// The panels of each group in bar order. Panels missing from every group (added in
+    /// a later version) go to their default group.
+    pub groups: BTreeMap<Group, Vec<Panel>>,
+    /// The panel each group shows.
+    pub open: BTreeMap<Group, Panel>,
     pub left_width: f32,
     pub right_width: f32,
     pub bottom_height: f32,
+    /// The upper panel's share of a side's height when two panels stack.
+    pub left_split: f32,
+    pub right_split: f32,
 }
 
 impl Default for Dock {
     fn default() -> Self {
+        let mut groups: BTreeMap<Group, Vec<Panel>> = Group::ALL.iter().map(|&g| (g, Vec::new())).collect();
+        for p in Panel::ALL {
+            groups.entry(p.default_group()).or_default().push(p);
+        }
         Dock {
-            left: Some(Panel::Project),
-            right: Some(Panel::Properties),
-            bottom: None,
+            groups,
+            open: BTreeMap::from([(Group::LeftTop, Panel::Project), (Group::RightTop, Panel::Properties)]),
             left_width: 240.0,
             right_width: 300.0,
             bottom_height: 200.0,
+            left_split: 0.5,
+            right_split: 0.5,
         }
     }
 }
 
 impl Dock {
-    pub fn open(&self, side: Side) -> Option<Panel> {
-        match side {
-            Side::Left => self.left,
-            Side::Right => self.right,
-            Side::Bottom => self.bottom,
+    /// Every panel in exactly one group (after loading a file from another version or a
+    /// hand edit); open panels in their group.
+    pub fn normalize(&mut self) {
+        let mut seen = HashSet::new();
+        for g in Group::ALL {
+            let list = self.groups.entry(g).or_default();
+            list.retain(|p| seen.insert(*p));
+        }
+        for p in Panel::ALL {
+            if !seen.contains(&p) {
+                self.groups.entry(p.default_group()).or_default().push(p);
+            }
+        }
+        let groups = &self.groups;
+        self.open.retain(|g, p| groups.get(g).is_some_and(|l| l.contains(p)));
+        for split in [&mut self.left_split, &mut self.right_split] {
+            if !split.is_finite() {
+                *split = 0.5;
+            }
+            *split = split.clamp(0.15, 0.85);
         }
     }
 
-    fn slot(&mut self, side: Side) -> &mut Option<Panel> {
-        match side {
-            Side::Left => &mut self.left,
-            Side::Right => &mut self.right,
-            Side::Bottom => &mut self.bottom,
-        }
+    /// The panels of `group`, in bar order.
+    pub fn panels(&self, group: Group) -> &[Panel] {
+        self.groups.get(&group).map_or(&[], |v| v.as_slice())
+    }
+
+    /// The group `panel` is in.
+    pub fn group_of(&self, panel: Panel) -> Group {
+        Group::ALL.into_iter().find(|g| self.panels(*g).contains(&panel)).unwrap_or(panel.default_group())
+    }
+
+    /// The panel `group` shows.
+    pub fn open(&self, group: Group) -> Option<Panel> {
+        self.open.get(&group).copied()
     }
 
     pub fn is_open(&self, panel: Panel) -> bool {
-        self.open(panel.side()) == Some(panel)
+        self.open(self.group_of(panel)) == Some(panel)
     }
 
-    /// Show `panel` (replacing its side's panel), or hide it if it is showing.
+    /// Show `panel` (replacing its group's panel), or hide it if it is showing.
     pub fn toggle(&mut self, panel: Panel) {
-        let slot = self.slot(panel.side());
-        *slot = if *slot == Some(panel) { None } else { Some(panel) };
+        if self.is_open(panel) { self.hide(self.group_of(panel)) } else { self.show(panel) }
     }
 
     pub fn show(&mut self, panel: Panel) {
-        *self.slot(panel.side()) = Some(panel);
+        self.open.insert(self.group_of(panel), panel);
     }
 
-    pub fn hide(&mut self, side: Side) {
-        *self.slot(side) = None;
+    pub fn hide(&mut self, group: Group) {
+        self.open.remove(&group);
     }
 
-    /// Size of a side's panel (width, or height for the bottom).
+    /// Put `panel` into `group` before the panel at `index` (of the group as it is now).
+    /// An open panel stays open in its new group.
+    pub fn move_panel(&mut self, panel: Panel, group: Group, index: usize) {
+        let from = self.group_of(panel);
+        let was_open = self.is_open(panel);
+        let list = self.groups.entry(from).or_default();
+        let Some(at) = list.iter().position(|p| *p == panel) else { return };
+        list.remove(at);
+        let index = if from == group && at < index { index - 1 } else { index };
+        let list = self.groups.entry(group).or_default();
+        list.insert(index.min(list.len()), panel);
+        if was_open {
+            self.open.remove(&from);
+            self.open.insert(group, panel);
+        }
+    }
+
+    /// The panels a side shows, top first.
+    pub fn shown(&self, side: Side) -> Vec<(Group, Panel)> {
+        Group::on(side).iter().filter_map(|&g| Some((g, self.open(g)?))).collect()
+    }
+
+    /// Size of a side's panels (width, or height for the bottom).
     pub fn size(&self, side: Side) -> f32 {
         match side {
             Side::Left => self.left_width,
@@ -181,6 +270,41 @@ impl Dock {
             Side::Bottom => self.bottom_height = size,
         }
     }
+
+    /// The upper panel's share when two stack on `side`.
+    pub fn split(&self, side: Side) -> f32 {
+        match side {
+            Side::Left => self.left_split,
+            _ => self.right_split,
+        }
+    }
+
+    pub fn set_split(&mut self, side: Side, split: f32) {
+        let split = (split.clamp(0.15, 0.85) * 1000.0).round() / 1000.0;
+        match side {
+            Side::Left => self.left_split = split,
+            _ => self.right_split = split,
+        }
+    }
+}
+
+/// Where a group was drawn in its bar this frame: its area and its buttons, top first.
+#[derive(Clone, Debug)]
+pub struct DropZone {
+    pub group: Group,
+    pub rect: egui::Rect,
+    pub buttons: Vec<egui::Rect>,
+}
+
+/// Where a dragged button dropped at `pos` goes: the nearest group of the bar under the
+/// pointer (with some slack sideways), before the first button below the pointer.
+pub fn drop_target(zones: &[DropZone], pos: egui::Pos2) -> Option<(Group, usize)> {
+    const SLACK: f32 = 14.0;
+    let zone = zones
+        .iter()
+        .filter(|z| z.rect.x_range().expand(SLACK).contains(pos.x))
+        .min_by(|a, b| a.rect.distance_to_pos(pos).total_cmp(&b.rect.distance_to_pos(pos)))?;
+    Some((zone.group, zone.buttons.iter().filter(|b| b.center().y < pos.y).count()))
 }
 
 /// Problems that appeared since the Messages panel was last seen. Problems are
@@ -232,37 +356,92 @@ mod tests {
     use super::*;
 
     #[test]
-    fn one_panel_per_side() {
+    fn one_panel_per_group() {
         let mut d = Dock::default();
-        assert_eq!((d.left, d.right, d.bottom), (Some(Panel::Project), Some(Panel::Properties), None));
+        assert_eq!((d.open(Group::LeftTop), d.open(Group::RightTop)), (Some(Panel::Project), Some(Panel::Properties)));
         d.toggle(Panel::ToolSettings);
-        assert_eq!(d.right, Some(Panel::ToolSettings), "switches the side's panel");
-        assert_eq!(d.left, Some(Panel::Project), "other sides stay");
+        assert_eq!(d.open(Group::RightTop), Some(Panel::ToolSettings), "switches the group's panel");
+        assert_eq!(d.open(Group::LeftTop), Some(Panel::Project), "other groups stay");
         d.toggle(Panel::ToolSettings);
-        assert_eq!(d.right, None, "clicking the open panel hides it");
+        assert_eq!(d.open(Group::RightTop), None, "clicking the open panel hides it");
         d.toggle(Panel::Messages);
         assert!(d.is_open(Panel::Messages));
         assert_eq!(Panel::parse("board-setup"), Some(Panel::BoardSetup));
         assert_eq!(Panel::parse("board_setup"), Some(Panel::BoardSetup));
-        assert_eq!(Panel::parse("nets"), None);
+        assert_eq!(Panel::parse("nope"), None);
         for p in Panel::ALL {
             assert_eq!(Panel::of_action(p.action()), Some(p));
         }
     }
 
     #[test]
-    fn dock_saves_and_loads() {
+    fn panels_stack_and_move() {
+        let mut d = Dock::default();
+        d.show(Panel::Nets);
+        assert_eq!(d.shown(Side::Right), [(Group::RightTop, Panel::Properties), (Group::RightBottom, Panel::Nets)]);
+        // Reorder within a group: Overview before Properties.
+        d.move_panel(Panel::Overview, Group::RightTop, 0);
+        assert_eq!(d.panels(Group::RightTop)[0], Panel::Overview);
+        // Moving down within the group counts positions as they are now.
+        d.move_panel(Panel::Overview, Group::RightTop, 2);
+        assert_eq!(&d.panels(Group::RightTop)[..3], [Panel::Properties, Panel::Overview, Panel::ToolSettings]);
+        // To another side: an open panel stays open there, replacing that group's one.
+        d.move_panel(Panel::Properties, Group::LeftBottom, 0);
+        assert_eq!(d.group_of(Panel::Properties), Group::LeftBottom);
+        assert_eq!(d.shown(Side::Left), [(Group::LeftTop, Panel::Project), (Group::LeftBottom, Panel::Properties)]);
+        assert_eq!(d.open(Group::RightTop), None);
+        d.move_panel(Panel::Messages, Group::LeftBottom, 9);
+        assert_eq!(d.panels(Group::LeftBottom), [Panel::Properties, Panel::Messages]);
+    }
+
+    #[test]
+    fn dock_saves_loads_and_normalizes() {
         let mut d = Dock::default();
         d.toggle(Panel::Messages);
         d.set_size(Side::Left, 310.4);
+        d.move_panel(Panel::Nets, Group::LeftBottom, 0);
         let json = serde_json::to_string(&d).unwrap();
-        assert!(json.contains(r#""bottom":"messages""#), "{json}");
         let back: Dock = serde_json::from_str(&json).unwrap();
         assert_eq!(back, d);
         assert_eq!(back.left_width, 310.0);
-        // Missing fields fall back to the defaults.
-        let partial: Dock = serde_json::from_str(r#"{"right": null}"#).unwrap();
-        assert_eq!((partial.left, partial.right), (Some(Panel::Project), None));
+        // A file from an older version: missing panels go to their default group,
+        // duplicates and open panels of other groups are dropped.
+        let mut old: Dock = serde_json::from_str(
+            r#"{"groups": {"left_top": ["project", "nets"], "right_top": ["nets", "properties"]},
+                "open": {"right_top": "nets"}, "left_split": 7}"#,
+        )
+        .unwrap();
+        old.normalize();
+        assert_eq!(old.panels(Group::LeftTop), [Panel::Project, Panel::Nets], "the first place wins");
+        assert_eq!(old.panels(Group::RightTop)[..2], [Panel::Properties, Panel::ToolSettings]);
+        assert!(old.panels(Group::Bottom).contains(&Panel::Messages));
+        let placed: usize = Group::ALL.iter().map(|&g| old.panels(g).len()).sum();
+        assert_eq!(placed, Panel::ALL.len(), "every panel once");
+        assert_eq!(old.open(Group::RightTop), None);
+        assert_eq!(old.left_split, 0.85);
+    }
+
+    #[test]
+    fn drops_go_before_the_button_below() {
+        let button = |y: f32| egui::Rect::from_min_size(egui::pos2(0.0, y), egui::vec2(28.0, 28.0));
+        let zones = [
+            DropZone {
+                group: Group::LeftTop,
+                rect: egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(28.0, 64.0)),
+                buttons: vec![button(0.0), button(32.0)],
+            },
+            DropZone {
+                group: Group::LeftBottom,
+                rect: egui::Rect::from_min_max(egui::pos2(0.0, 80.0), egui::pos2(28.0, 92.0)),
+                buttons: vec![],
+            },
+        ];
+        assert_eq!(drop_target(&zones, egui::pos2(14.0, 5.0)), Some((Group::LeftTop, 0)));
+        assert_eq!(drop_target(&zones, egui::pos2(14.0, 30.0)), Some((Group::LeftTop, 1)));
+        assert_eq!(drop_target(&zones, egui::pos2(14.0, 60.0)), Some((Group::LeftTop, 2)));
+        assert_eq!(drop_target(&zones, egui::pos2(14.0, 86.0)), Some((Group::LeftBottom, 0)), "empty group");
+        assert_eq!(drop_target(&zones, egui::pos2(14.0, 300.0)), Some((Group::LeftBottom, 0)), "nearest group");
+        assert_eq!(drop_target(&zones, egui::pos2(300.0, 30.0)), None, "far from any bar");
     }
 
     #[test]

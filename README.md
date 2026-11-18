@@ -361,8 +361,11 @@ you're asked to save unsaved changes first, as with Open.
 ## Panels
 
 Tool windows sit in narrow icon bars on the window edges, IntelliJ style. Click an icon
-(or press its shortcut) to show its panel; click it again to hide it. Each side shows one
-panel at a time.
+(or press its shortcut) to show its panel; click it again to hide it. Each bar has an
+upper and a lower group (the left bar's foot holds the bottom panels); a group shows one
+panel at a time, and when both groups of a side show one they stack, with a draggable
+split. Drag an icon to reorder it or move it to another group; **View → Reset panel
+layout** puts them back.
 
 | Bar | Panel | Shortcut |
 | --- | --- | --- |
@@ -373,6 +376,8 @@ panel at a time.
 | right | Board setup (with DRC severities) | ⌘6 |
 | right | Overview (project or library statistics) | ⌘7 |
 | right | Schematic setup: ERC severities and the pin conflict matrix | ⌘8 |
+| right, lower | Nets: every net with its pins, sheets and routing state; click selects it, double-click zooms to it | ⌘9 |
+| left, bottom panel | Agent activity: the agent's calls this session, their arguments and results | – |
 
 Properties, Tool settings and Overview follow the editor tab you used last. Clicking a
 message shows its objects. While Messages is hidden, its icon counts new problems (a dot

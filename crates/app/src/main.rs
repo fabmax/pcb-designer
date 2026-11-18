@@ -30,6 +30,7 @@
 //!
 //! Without arguments the demo project is opened.
 
+mod activity_ui;
 mod agent;
 mod app;
 mod array_form;
@@ -49,6 +50,7 @@ mod name_prompt;
 #[cfg(target_os = "macos")]
 mod native_menu;
 mod nav_list;
+mod nets_ui;
 mod outputs;
 mod part_form;
 mod pcb_ui;

@@ -47,6 +47,8 @@ pub enum Icon {
     Info,
     BoardSetup,
     SchematicSetup,
+    Nets,
+    Activity,
     /// Hide a panel.
     Minus,
     /// Panel header buttons.
@@ -394,6 +396,22 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             painter.rect_stroke(rect_of(0.1, 0.14, 0.7, 0.74), 1.0, line, egui::StrokeKind::Middle);
             ring(p(0.78, 0.76), 0.11, Stroke::new(w * 1.2, color));
             dot(p(0.78, 0.76), 0.04);
+        }
+        Icon::Nets => {
+            // Three pins joined by a net: a trunk with two branches.
+            seg(p(0.14, 0.3), p(0.86, 0.3), line);
+            seg(p(0.36, 0.3), p(0.36, 0.76), line);
+            seg(p(0.68, 0.3), p(0.68, 0.76), line);
+            for c in [p(0.14, 0.3), p(0.86, 0.3), p(0.36, 0.76), p(0.68, 0.76)] {
+                dot(c, 0.07);
+            }
+        }
+        Icon::Activity => {
+            // A log: lines with a pulse in front.
+            open(vec![p(0.08, 0.5), p(0.24, 0.5), p(0.32, 0.26), p(0.44, 0.74), p(0.52, 0.5), p(0.6, 0.5)], line);
+            for y in [0.24, 0.5, 0.76] {
+                seg(p(0.7, y), p(0.92, y), line);
+            }
         }
         Icon::Minus => {
             seg(p(0.22, 0.5), p(0.78, 0.5), line);

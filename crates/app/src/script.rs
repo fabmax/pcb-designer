@@ -96,6 +96,12 @@ impl Script {
                     let click = if verb == "ui-double-click" { Step2::Double(p) } else { Step2::Right(p) };
                     steps.extend([Step2::Move(p), click].map(Step::Screen));
                 }
+                "ui-press" | "ui-release" => {
+                    let [x, y] = point()?;
+                    let p = Pos2::new(x as f32, y as f32);
+                    let step = if verb == "ui-press" { Step2::Press(p) } else { Step2::Release(p) };
+                    steps.extend([Step2::Move(p), step].map(Step::Screen));
+                }
                 "type" => steps.push_back(Step::Text(arg.to_string())),
                 "ui-move" => {
                     let [x, y] = point()?;

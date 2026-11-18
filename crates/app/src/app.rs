@@ -25,7 +25,7 @@ use view::{Document, Interaction, KeyAction, LibraryDoc, ViewId, ViewKind};
 use crate::agent::{Agent, Job};
 use crate::canvas::{self, Canvas, CanvasResources};
 use crate::clipboard;
-use crate::dock::{Dock, Panel, Side, Unseen};
+use crate::dock::{Dock, DropZone, Group as DockGroup, Panel, Side, Unseen};
 use crate::icons::{self, Icon};
 use crate::keymap::{Action, Context, Keymap, Shortcut};
 use crate::kicad_import::{ImportAction, KicadImport};
@@ -33,6 +33,7 @@ use crate::libraries::Libraries;
 use crate::library::{LibraryEditor, Open, PROJECT_LIB};
 use crate::menu::{self, Cmd, Menu, MenuState};
 use crate::messages;
+use crate::nets_ui::{NetsAct, NetsPanel};
 use crate::outputs::{self, GerberAct, GerberPane, Outputs};
 use crate::pcb_ui;
 use crate::project_panel::{self, Group, NodeId, Owner, ProjectPanel, TreeNode};
@@ -279,6 +280,12 @@ pub struct PcbApp {
     settings_win: SettingsWindow,
     /// The port `--mcp` / `--mcp-port` gave (over the settings' one, for this run).
     mcp_port: Option<u16>,
+    /// The Nets panel's state.
+    nets: NetsPanel,
+    /// A panel button being dragged to another place in the bars.
+    dock_drag: Option<Panel>,
+    /// Where the bars' groups were drawn this frame (drop targets).
+    drop_zones: Vec<DropZone>,
     /// The tool settings changed (saved a second later).
     tools_changed: Option<Instant>,
     /// The main window as of the last frame (saved on quit).
@@ -331,6 +338,7 @@ pub struct PcbApp {
 impl PcbApp {
     pub fn new(cc: &eframe::CreationContext<'_>, opts: Options) -> Self {
         let mut settings = Settings::load();
+        settings.dock.normalize();
         view::style::set_theme(settings.theme);
         view::style::set_layer_colors(settings.layer_colors());
         units::set_unit(settings.unit);
@@ -416,6 +424,9 @@ impl PcbApp {
             settings_win: SettingsWindow::default(),
             mcp_port: opts.mcp,
             tools_changed: None,
+            nets: NetsPanel::default(),
+            dock_drag: None,
+            drop_zones: Vec::new(),
             window_state: None,
             import_report,
             agent: Agent::new(mcp_port),
@@ -1023,6 +1034,10 @@ impl PcbApp {
     }
 
     fn save_settings(&mut self) {
+        // Scripted and screenshot runs leave the settings alone (`--panel` is for one run).
+        if self.screenshot.is_some() || self.script.is_some() {
+            return;
+        }
         if let Err(e) = self.settings.save() {
             self.set_status(format!("Settings not saved: {e}"));
         }
@@ -2242,7 +2257,9 @@ impl PcbApp {
             | Action::PanelToolSettings
             | Action::PanelBoardSetup
             | Action::PanelSchematicSetup
-            | Action::PanelOverview => return,
+            | Action::PanelOverview
+            | Action::PanelNets
+            | Action::PanelActivity => return,
         };
         let view = self.active;
         if key_action == KeyAction::Delete && !self.confirm_sheet_delete(&self.panes.selection(view)) {
@@ -2309,9 +2326,9 @@ impl PcbApp {
             Action::ConvertToPolygon => l.convert_to_polygon().err(),
             Action::CreateArray => {
                 if l.start_array() {
-                    let side = Panel::ToolSettings.side();
+                    let group = self.settings.dock.group_of(Panel::ToolSettings);
                     if !self.settings.dock.is_open(Panel::ToolSettings) {
-                        self.array_dock = Some((key, self.settings.dock.open(side)));
+                        self.array_dock = Some((key, self.settings.dock.open(group)));
                     }
                     self.settings.dock.show(Panel::ToolSettings);
                     None
@@ -2365,7 +2382,9 @@ impl PcbApp {
             | Action::PanelToolSettings
             | Action::PanelBoardSetup
             | Action::PanelSchematicSetup
-            | Action::PanelOverview => None,
+            | Action::PanelOverview
+            | Action::PanelNets
+            | Action::PanelActivity => None,
         };
         if let Some(m) = msg {
             self.set_status(m);
@@ -2484,6 +2503,13 @@ impl PcbApp {
                 }
             }
             Cmd::Copy(text) => ctx.copy_text(text),
+            Cmd::ResetPanels => {
+                let d = &self.settings.dock;
+                let sizes = (d.left_width, d.right_width, d.bottom_height);
+                self.settings.dock = Dock::default();
+                (self.settings.dock.left_width, self.settings.dock.right_width, self.settings.dock.bottom_height) =
+                    sizes;
+            }
             Cmd::ShowShortcuts => self.settings_win.show(Some(SettingsPage::Keymap), &mut self.settings),
         }
     }
@@ -3059,7 +3085,8 @@ impl PcbApp {
         }
     }
 
-    /// A window edge's bar of panel buttons (the left one also holds the bottom panels).
+    /// A window edge's bar of panel buttons: its top and bottom groups; the left one
+    /// also holds the bottom area's group at its foot. Buttons drag to other places.
     fn dock_bar(&mut self, ui: &mut egui::Ui, side: Side) {
         let frame = egui::Frame::NONE.fill(theme::window_bg()).inner_margin(egui::Margin::symmetric(0, 2));
         let panel = match side {
@@ -3067,45 +3094,125 @@ impl PcbApp {
             _ => egui::Panel::right("dock_bar_right"),
         };
         let mut clicked = None;
+        let mut zones = Vec::new();
+        let dragging = self.dock_drag;
         panel.exact_size(DOCK_BAR).resizable(false).show_separator_line(false).frame(frame).show(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.spacing_mut().item_spacing.y = 4.0;
-                let groups: &[Side] = if side == Side::Left { &[Side::Left, Side::Bottom] } else { &[Side::Right] };
-                for (g, &group) in groups.iter().enumerate() {
-                    if g > 0 {
-                        let (r, _) = ui.allocate_exact_size(egui::vec2(20.0, 9.0), egui::Sense::hover());
-                        ui.painter().hline(r.x_range(), r.center().y, egui::Stroke::new(1.0, theme::border()));
-                    }
-                    for panel in Panel::on(group) {
+                let mut group_ui = |ui: &mut egui::Ui, group: DockGroup, zones: &mut Vec<DropZone>| {
+                    let mut buttons = Vec::new();
+                    for &panel in self.settings.dock.panels(group) {
                         let badge = (panel == Panel::Messages && !self.settings.dock.is_open(panel))
                             .then_some((self.unseen.new, self.unseen.total));
                         let open = self.settings.dock.is_open(panel);
-                        if dock_button(ui, panel, open, badge, &self.keymap) {
+                        let r = dock_button(ui, panel, open, badge, &self.keymap, dragging == Some(panel));
+                        if r.clicked() {
                             clicked = Some(panel);
                         }
+                        if r.drag_started() {
+                            self.dock_drag = Some(panel);
+                        }
+                        buttons.push(r.rect);
                     }
+                    // An empty group is still a place to drop on while dragging.
+                    let rect = match (buttons.first(), buttons.last()) {
+                        (Some(a), Some(b)) => a.union(*b),
+                        _ => {
+                            let h = if dragging.is_some() { 28.0 } else { 4.0 };
+                            ui.allocate_exact_size(egui::vec2(28.0, h), egui::Sense::hover()).0
+                        }
+                    };
+                    zones.push(DropZone { group, rect, buttons });
+                };
+                let divider = |ui: &mut egui::Ui| {
+                    let (r, _) = ui.allocate_exact_size(egui::vec2(20.0, 9.0), egui::Sense::hover());
+                    ui.painter().hline(r.x_range(), r.center().y, egui::Stroke::new(1.0, theme::border()));
+                };
+                let [top, bottom] = match side {
+                    Side::Left => [DockGroup::LeftTop, DockGroup::LeftBottom],
+                    _ => [DockGroup::RightTop, DockGroup::RightBottom],
+                };
+                group_ui(ui, top, &mut zones);
+                divider(ui);
+                group_ui(ui, bottom, &mut zones);
+                if side == Side::Left {
+                    // The bottom area's panels sit at the bar's foot.
+                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                        let start = ui.cursor().bottom();
+                        let n = self.settings.dock.panels(DockGroup::Bottom).len().max(1) as f32;
+                        let height = n * 28.0 + (n - 1.0) * 4.0;
+                        let (r, _) = ui.allocate_exact_size(egui::vec2(28.0, height), egui::Sense::hover());
+                        let mut child = ui.new_child(
+                            egui::UiBuilder::new()
+                                .max_rect(egui::Rect::from_min_max(egui::pos2(r.left(), start - height), r.max))
+                                .layout(egui::Layout::top_down(egui::Align::Center)),
+                        );
+                        child.spacing_mut().item_spacing.y = 4.0;
+                        group_ui(&mut child, DockGroup::Bottom, &mut zones);
+                        divider(ui);
+                    });
                 }
             });
         });
+        self.drop_zones.extend(zones);
         if let Some(p) = clicked {
             self.settings.dock.toggle(p);
         }
     }
 
-    /// The panel open on `side`, with a title bar to hide it.
-    fn dock_panel(&mut self, ui: &mut egui::Ui, side: Side) {
-        let Some(panel) = self.settings.dock.open(side) else { return };
-        let gap = theme::GAP;
-        let (container, margin) = match side {
-            Side::Left => (egui::Panel::left("dock_left"), egui::Margin::default()),
-            Side::Right => (egui::Panel::right("dock_right"), egui::Margin::default()),
-            Side::Bottom => {
-                (egui::Panel::bottom("dock_bottom"), egui::Margin { left: gap, right: gap, top: gap, bottom: 0 })
+    /// While a panel button is dragged: the button under the pointer and where it would go;
+    /// on release, move it there. Call after both bars are drawn.
+    fn dock_drag_ui(&mut self, ctx: &egui::Context) {
+        let zones = std::mem::take(&mut self.drop_zones);
+        let Some(panel) = self.dock_drag else { return };
+        let (pos, down) = ctx.input(|i| (i.pointer.interact_pos(), i.pointer.primary_down()));
+        let Some(pos) = pos else { return };
+        let target = crate::dock::drop_target(&zones, pos);
+        if !down {
+            self.dock_drag = None;
+            if let Some((group, index)) = target {
+                self.settings.dock.move_panel(panel, group, index);
             }
+            return;
+        }
+        let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("dock_drag")));
+        if let Some((group, index)) = target
+            && let Some(z) = zones.iter().find(|z| z.group == group)
+        {
+            let y = match (z.buttons.get(index), z.buttons.last()) {
+                (Some(b), _) => b.top() - 2.0,
+                (None, Some(b)) => b.bottom() + 2.0,
+                (None, None) => z.rect.center().y,
+            };
+            painter.hline(z.rect.x_range().expand(2.0), y, egui::Stroke::new(2.0, theme::accent()));
+        }
+        let rect = egui::Rect::from_center_size(pos, egui::vec2(28.0, 28.0));
+        painter.rect_filled(rect, 6.0, theme::accent().gamma_multiply(0.35));
+        icons::paint(&painter, rect.shrink(6.0), panel.icon(), theme::accent());
+        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+    }
+
+    /// The panels shown on `side` (two stack with a draggable split), each with a title bar
+    /// to hide it.
+    fn dock_panel(&mut self, ui: &mut egui::Ui, side: Side) {
+        let shown = self.settings.dock.shown(side);
+        if shown.is_empty() {
+            return;
+        }
+        let gap = theme::GAP;
+        let container = match side {
+            Side::Left => egui::Panel::left("dock_left"),
+            Side::Right => egui::Panel::right("dock_right"),
+            Side::Bottom => egui::Panel::bottom("dock_bottom"),
         };
-        let mut hide = false;
+        let margin = match side {
+            Side::Bottom => egui::Margin { left: gap, right: gap, top: gap, bottom: 0 },
+            _ => egui::Margin::default(),
+        };
+        let mut hide = None;
+        let mut split = None;
         let r = container
-            .frame(theme::panel_frame(margin))
+            .frame(egui::Frame::NONE.outer_margin(margin))
             .show_separator_line(false)
             .resizable(true)
             .default_size(self.settings.dock.size(side))
@@ -3113,43 +3220,91 @@ impl PcbApp {
             .show(ui, |ui| {
                 // The panel's size is the user's: overflowing content is clipped.
                 crate::dock::fixed_size(ui, |ui| {
-                    let mut header_act = None;
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(panel.title()).strong());
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let (rect, r) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
-                            if r.hovered() {
-                                ui.painter().rect_filled(rect, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
+                    let all = ui.available_rect_before_wrap();
+                    let rects = match shown.len() {
+                        1 => vec![all],
+                        _ => {
+                            let g = f32::from(gap);
+                            let top_h = ((all.height() - g) * self.settings.dock.split(side)).round();
+                            let top = egui::Rect::from_min_size(all.min, egui::vec2(all.width(), top_h));
+                            let handle = egui::Rect::from_min_max(
+                                egui::pos2(all.left(), top.bottom()),
+                                egui::pos2(all.right(), top.bottom() + g),
+                            );
+                            let bottom = egui::Rect::from_min_max(egui::pos2(all.left(), handle.bottom()), all.max);
+                            let id = ui.make_persistent_id(("dock_split", side as u8));
+                            let r = ui.interact(handle, id, egui::Sense::drag());
+                            if r.hovered() || r.dragged() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                             }
-                            icons::paint(ui.painter(), rect.shrink(4.0), Icon::Minus, theme::text_dim());
-                            hide = r.on_hover_text("Hide").clicked();
-                            if panel == Panel::Project {
-                                ui.add_space(6.0);
-                                let roots = self.tree_nodes();
-                                header_act = self.project_tree.header_ui(ui, &roots);
+                            if r.dragged()
+                                && let Some(p) = r.interact_pointer_pos()
+                            {
+                                split = Some((p.y - all.top()) / (all.height() - g).max(1.0));
                             }
-                        });
-                    });
-                    if let Some(act) = header_act {
-                        self.tree_act(act);
+                            vec![top, bottom]
+                        }
+                    };
+                    for ((group, panel), rect) in shown.iter().copied().zip(rects) {
+                        ui.painter().rect_filled(rect, theme::RADIUS, theme::panel());
+                        let mut child = ui.new_child(
+                            egui::UiBuilder::new()
+                                .max_rect(rect.shrink(8.0))
+                                .layout(egui::Layout::top_down(egui::Align::Min)),
+                        );
+                        child.set_clip_rect(rect.shrink(4.0));
+                        if self.panel_frame_ui(&mut child, group, panel) {
+                            hide = Some(group);
+                        }
                     }
-                    ui.add_space(4.0);
-                    if panel == Panel::Messages {
-                        self.panel_ui(ui, panel);
-                    } else {
-                        egui::ScrollArea::vertical()
-                            .id_salt(("dock", side as u8))
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| self.panel_ui(ui, panel));
-                    }
+                    ui.advance_cursor_after_rect(all);
                 })
             });
-        if hide {
-            self.settings.dock.hide(side);
+        if let Some(g) = hide {
+            self.settings.dock.hide(g);
+        }
+        if let Some(s) = split {
+            self.settings.dock.set_split(side, s);
         }
         let rect = r.response.rect;
         let size = if side == Side::Bottom { rect.height() } else { rect.width() };
         self.settings.dock.set_size(side, size);
+    }
+
+    /// A panel's title bar and contents. Returns true if its hide button was clicked.
+    fn panel_frame_ui(&mut self, ui: &mut egui::Ui, group: DockGroup, panel: Panel) -> bool {
+        let mut hide = false;
+        let mut header_act = None;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(panel.title()).strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let (rect, r) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                if r.hovered() {
+                    ui.painter().rect_filled(rect, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
+                }
+                icons::paint(ui.painter(), rect.shrink(4.0), Icon::Minus, theme::text_dim());
+                hide = r.on_hover_text("Hide").clicked();
+                if panel == Panel::Project {
+                    ui.add_space(6.0);
+                    let roots = self.tree_nodes();
+                    header_act = self.project_tree.header_ui(ui, &roots);
+                }
+            });
+        });
+        if let Some(act) = header_act {
+            self.tree_act(act);
+        }
+        ui.add_space(4.0);
+        // These scroll themselves.
+        if matches!(panel, Panel::Messages | Panel::Nets | Panel::Activity) {
+            self.panel_ui(ui, panel);
+        } else {
+            egui::ScrollArea::vertical()
+                .id_salt(("dock", group))
+                .auto_shrink([false, false])
+                .show(ui, |ui| self.panel_ui(ui, panel));
+        }
+        hide
     }
 
     fn panel_ui(&mut self, ui: &mut egui::Ui, panel: Panel) {
@@ -3198,9 +3353,93 @@ impl PcbApp {
                     self.show_message(show);
                 }
             }
+            Panel::Nets => match self.nets.ui(ui, &self.project.lib.doc) {
+                Some(NetsAct::Select(net)) => self.select_net(&net, false),
+                Some(NetsAct::Zoom(net)) => self.select_net(&net, true),
+                None => {}
+            },
+            Panel::Activity => {
+                if crate::activity_ui::ui(ui, &self.agent.activity, self.agent.is_running()) {
+                    self.agent.activity.clear();
+                }
+                ui.ctx().request_repaint_after(Duration::from_secs(1));
+            }
         }
         if let Some(m) = message {
             self.status = Some((m, Instant::now()));
+        }
+    }
+
+    /// Select a net (Nets panel): its wires, labels and junctions on the sheet worked on
+    /// (or the first sheet it is on; its parts if it has no wires), which highlights its
+    /// copper on the board. `zoom`: also show all of it in the active view.
+    fn select_net(&mut self, name: &str, zoom: bool) {
+        let doc = &self.project.lib.doc;
+        let Some(net) = doc.connectivity().net(name) else { return };
+        let sch = &doc.project().schematic;
+        let mut objects: Vec<(Id, ObjectId, Vec<Point>)> = Vec::new();
+        for &w in &net.wires {
+            if let Some(w) = sch.wires.get(w) {
+                objects.push((w.sheet, ObjectId::Wire(w.id), vec![w.a, w.b]));
+            }
+        }
+        for &l in &net.labels {
+            if let Some(l) = sch.labels.get(l) {
+                objects.push((l.sheet, ObjectId::Label(l.id), vec![l.pos]));
+            }
+        }
+        for &j in &net.junctions {
+            if let Some(j) = sch.junctions.get(j) {
+                objects.push((j.sheet, ObjectId::Junction(j.id), vec![j.pos]));
+            }
+        }
+        if objects.is_empty() {
+            for p in &net.pins {
+                if let Some(s) = sch.symbols.get(p.symbol) {
+                    objects.push((s.sheet, ObjectId::Symbol(s.id), vec![s.pos]));
+                }
+            }
+        }
+        let here = self.sheet_view().sheet();
+        let Some(sheet) = here.filter(|s| objects.iter().any(|o| o.0 == *s)).or(objects.first().map(|o| o.0)) else {
+            return;
+        };
+        let view = ViewId::Sheet(sheet);
+        let on_sheet: Vec<&(Id, ObjectId, Vec<Point>)> = objects.iter().filter(|o| o.0 == sheet).collect();
+        let mut ids: Vec<ObjectId> = on_sheet.iter().map(|o| o.1).collect();
+        ids.dedup();
+        let points: Vec<Point> = on_sheet.iter().flat_map(|o| o.2.iter().copied()).collect();
+        let board_bounds = zoom
+            .then(|| {
+                let copper = self.doc().copper();
+                let i = copper.net_index(name)?;
+                copper.items_of_net(i).map(|c| c.geo.bounds()).reduce(|a, b| a.union(b))
+            })
+            .flatten();
+        if self.active == ViewId::Board {
+            // The board shows the net through the schematic's selection.
+            let mut doc = self.project.lib.doc.target(ViewId::Board);
+            self.panes.get(ViewId::Board).it.set_selection(&mut doc, Vec::new());
+        } else {
+            self.show_view(view);
+        }
+        let pane = self.panes.get(view);
+        pane.it.set_selection(&mut self.project.lib.doc.target(view), ids);
+        if !zoom {
+            return;
+        }
+        let fit = |pane: &mut Pane, r: Rect| {
+            let b = [to_mm(r.min.x), to_mm(r.min.y), to_mm(r.max.x), to_mm(r.max.y)];
+            let pad = 5.0;
+            let vp = pane.canvas.viewport();
+            pane.canvas.camera.fit([b[0] - pad, b[1] - pad, b[2] + pad, b[3] + pad], vp, 32.0);
+        };
+        if self.active == ViewId::Board {
+            if let Some(r) = board_bounds {
+                fit(self.panes.get(ViewId::Board), r);
+            }
+        } else if let Some(r) = points.iter().map(|&p| Rect::from_points(p, p)).reduce(|a, b| a.union(b)) {
+            fit(self.panes.get(view), r);
         }
     }
 
@@ -3239,7 +3478,7 @@ impl PcbApp {
             if self.settings.dock.is_open(Panel::ToolSettings) {
                 match before {
                     Some(p) => self.settings.dock.show(p),
-                    None => self.settings.dock.hide(Panel::ToolSettings.side()),
+                    None => self.settings.dock.hide(self.settings.dock.group_of(Panel::ToolSettings)),
                 }
             }
         }
@@ -3455,9 +3694,20 @@ const DOCK_BAR: f32 = 36.0;
 
 /// A panel's bar button: its icon, accent-tinted while the panel is open. `badge` is
 /// (new, total) problems: a count bubble for new ones, a dot if only old ones remain.
-fn dock_button(ui: &mut egui::Ui, panel: Panel, open: bool, badge: Option<(usize, usize)>, keymap: &Keymap) -> bool {
-    let (rect, r) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::click());
+fn dock_button(
+    ui: &mut egui::Ui,
+    panel: Panel,
+    open: bool,
+    badge: Option<(usize, usize)>,
+    keymap: &Keymap,
+    dragged: bool,
+) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(28.0, 28.0), egui::Sense::click_and_drag());
     let painter = ui.painter();
+    if dragged {
+        painter.rect_stroke(rect, 6.0, egui::Stroke::new(1.0, theme::border()), egui::StrokeKind::Inside);
+        return r;
+    }
     if open {
         painter.rect_filled(rect, 6.0, theme::accent().gamma_multiply(0.28));
     } else if r.hovered() {
@@ -3493,7 +3743,7 @@ fn dock_button(ui: &mut egui::Ui, panel: Panel, open: bool, badge: Option<(usize
     } else {
         format!("{}  {shortcut}", panel.title())
     };
-    r.on_hover_text(tip).clicked()
+    r.on_hover_text(tip)
 }
 
 /// The open library tabs, as the agent's library tools see them.
@@ -4112,6 +4362,7 @@ impl eframe::App for PcbApp {
             .show(ui, |ui| self.status_bar(ui));
         self.dock_bar(ui, Side::Left);
         self.dock_bar(ui, Side::Right);
+        self.dock_drag_ui(&ctx);
         self.dock_panel(ui, Side::Left);
         self.dock_panel(ui, Side::Right);
         self.dock_panel(ui, Side::Bottom);

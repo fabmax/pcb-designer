@@ -14,5 +14,5 @@ pub mod library;
 pub mod server;
 pub mod stdio;
 
-pub use host::{Call, Host, Reply, Request, handle};
+pub use host::{Call, Host, Outcome, Reply, Request, handle};
 pub use server::{McpServer, Waker};

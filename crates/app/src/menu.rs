@@ -24,12 +24,16 @@ pub enum Cmd {
     ImportKicad,
     ImportKicadProject,
     Quit,
-    Layout { side_by_side: bool },
+    Layout {
+        side_by_side: bool,
+    },
     Theme(Theme),
     Drc,
     ToggleAgent,
     Copy(String),
     ShowShortcuts,
+    /// Panels back in their default places.
+    ResetPanels,
 }
 
 /// Standard macOS entries, carried out by the system (native menu only).
@@ -237,6 +241,7 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
             radio: false,
             hover: Some("Mark errors and warnings of the electrical rules check on the schematic"),
         },
+        item("Reset panel layout", Cmd::ResetPanels),
         Entry::Separator,
     ];
     for &t in Theme::ALL {
