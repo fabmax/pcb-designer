@@ -111,6 +111,65 @@ impl LibraryEditor {
         self.lib.is_builtin()
     }
 
+    /// This editor's tool settings to remember, by family (see `view::tool_memory`).
+    pub fn remembered(&self) -> [(&'static str, serde_json::Value); 3] {
+        use view::tool_memory::remember;
+        [
+            ("library", remember(&self.placer.settings)),
+            ("array_pads", remember(&self.array_pads)),
+            ("array_pins", remember(&self.array_pins)),
+        ]
+    }
+
+    /// [`Self::remembered`] of a new editor.
+    pub fn default_remembered() -> [(&'static str, serde_json::Value); 3] {
+        use view::tool_memory::remember;
+        [
+            ("library", remember(&view::tools::Settings::default())),
+            ("array_pads", remember(&ArrayForm::new(false))),
+            ("array_pins", remember(&ArrayForm::new(true))),
+        ]
+    }
+
+    /// Take the remembered tool settings that differ from this editor's (another editor
+    /// changed them, or they were loaded), keeping the rotation, the next name and text.
+    pub fn recall(&mut self, tools: &std::collections::BTreeMap<String, serde_json::Value>) {
+        use view::tool_memory::{recall, remember};
+        if let Some(v) = tools.get("library")
+            && *v != remember(&self.placer.settings)
+        {
+            let old = &self.placer.settings;
+            self.placer.settings = view::tools::Settings {
+                rotation: old.rotation,
+                name: old.name.clone(),
+                text: old.text.clone(),
+                ..recall(Some(v))
+            };
+        }
+        for (key, form, pins) in
+            [("array_pads", &mut self.array_pads, false), ("array_pins", &mut self.array_pins, true)]
+        {
+            if let Some(v) = tools.get(key)
+                && *v != remember(&*form)
+            {
+                *form = ArrayForm::recall(Some(v), pins);
+            }
+        }
+    }
+
+    /// Back to the default tool settings (the remembered ones were forgotten).
+    pub fn forget_tools(&mut self) {
+        let old = &self.placer.settings;
+        self.placer.settings = view::tools::Settings {
+            rotation: old.rotation,
+            name: old.name.clone(),
+            text: old.text.clone(),
+            ..Default::default()
+        };
+        self.array_pads = ArrayForm::new(false);
+        self.array_pins = ArrayForm::new(true);
+    }
+
     pub fn new(key: u64, lib: LibraryDoc) -> Self {
         let canvas = Canvas::new(view::style::background(1.27));
         LibraryEditor {
@@ -166,7 +225,7 @@ impl LibraryEditor {
         }
     }
 
-    fn exists(&self, open: Open) -> bool {
+    pub fn exists(&self, open: Open) -> bool {
         let lib = self.lib.library();
         match open {
             Open::None => true,

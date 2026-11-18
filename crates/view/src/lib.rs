@@ -27,6 +27,7 @@ pub mod project_libs;
 pub mod sch_tools;
 pub mod style;
 pub mod text_edit;
+pub mod tool_memory;
 pub mod tools;
 pub mod tree;
 pub mod view;

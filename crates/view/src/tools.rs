@@ -60,12 +60,16 @@ impl Tool {
     }
 }
 
-/// Properties of newly placed elements (editable in the tool's side panel).
-#[derive(Clone, Debug)]
+/// Properties of newly placed elements (editable in the tool's side panel). The style
+/// choices are remembered across sessions ([`crate::tool_memory`]); skipped fields are not.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Settings {
     /// Rotation of pins (direction toward the body), pads and texts.
+    #[serde(skip)]
     pub rotation: Angle,
     /// Name of the next pin or pad; auto-incremented after each placement.
+    #[serde(skip)]
     pub name: String,
     pub pin_length: Coord,
     pub pin_kind: PinKind,
@@ -77,6 +81,7 @@ pub struct Settings {
     pub symbol_width: Coord,
     pub footprint_width: Coord,
     pub fill: bool,
+    #[serde(skip)]
     pub text: String,
     pub text_size: Coord,
 }

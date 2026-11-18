@@ -465,8 +465,8 @@ the current design of each area with the gotchas a change needs to know, the pla
   `increment_name`; pins: Linear only. `apply` is one `update_item` (one undo step); the
   selected element stays first and keeps its id. Clashing names are allowed, the dialog
   lists them (`clashes`). In the app it's a mode, not a tool: `LibraryEditor::array`
-  (item, element) shows the form (`array_form.rs`, kept per editor for pads and pins for
-  the session) in the Tool settings panel, which the app opens and afterwards gives back to
+  (item, element) shows the form (`array_form.rs`, one for pads and one for pins,
+  remembered like the tool settings) in the Tool settings panel, which the app opens and afterwards gives back to
   the panel it replaced (`App::array_dock`). The copies are the canvas preview; Enter
   (unless a field had focus this or the last frame) creates, Esc, another tool, another
   item or a selection change cancel.
@@ -706,7 +706,34 @@ the current design of each area with the gotchas a change needs to know, the pla
   is the project pane and stays meaningful under any focus (paste target, sheet
   worked on). `follow_visible_tabs` (every frame) drops focus from hidden tabs. `works_while_typing` for window-level actions.
 - **Settings** (`settings.rs`, `PCB_DESIGNER_CONFIG` overrides the folder): theme, unit,
-  recent projects, changed key bindings, dock.
+  recent projects, changed key bindings, dock, window, MCP port and start-on-launch,
+  KiCad download folder, remembered tool settings, the Settings window's page and size.
+  One broken field makes the whole file fall back to defaults, which is why the tool
+  settings are kept as untyped JSON values (`tools`, by family).
+- **Settings window** (`settings_ui.rs`): a category list with a search field, the page
+  on the right; changes apply at once and come back to the app as `Changes`. Search:
+  each row is in `ENTRIES` (page, label, keywords; `Rows::row` looks its keywords up by
+  label, so a new row needs an entry), keymap rows match by action name and shortcut
+  text. `--show settings:PAGE` opens it (screenshots).
+- **Remembered tool settings** (`view::tool_memory`): `SchSettings`, `PcbSettings`,
+  `tools::Settings` and `ArrayForm` serialize their style fields; transient ones
+  (rotation, the next name, the routing layer, the zone net) are `#[serde(skip)]` and come
+  back from the struct's `Default` (container-level `#[serde(default)]`).
+  `sync_tool_memory` (every frame) stores what differs from the defaults, saves a second
+  after the last change and hands library editor changes to the other editors
+  (`LibraryEditor::recall`). A new settings field is remembered unless skipped.
+- **Window** size, position, maximized and fullscreen are tracked every frame
+  (`track_window`) and saved in `on_exit` (eframe persistence stays off). Scripted and
+  screenshot runs keep 1600×1000 and never write settings or workspaces. A position on a
+  screen that is gone is left to the OS (macOS keeps titled windows on screen).
+- **Workspace** (`workspace.rs`, `PROJECT/.pcb-designer/workspace.json`, the folder has
+  a `.gitignore` of `*`): the tab tree as `Node` (tab groups with the front tab, splits
+  with shares), tabs by `TabRef` (sheet id, board, library by file with its open item,
+  Gerber), each pane's camera and hidden layers (by layer name), the routing layer.
+  Saved on save, before another project replaces it and in `on_exit`; restored in
+  `replace_document` and at startup (not with `--side-by-side`). Tabs that no longer
+  resolve (deleted sheets, libraries not loaded) are dropped; a layout with nothing left
+  keeps the default tree.
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
   `theme::bold_label`) and, for non-modal resizable ones, `theme::window` (same frame
   and title bar, a × button, opens centred; Settings, KiCad import). Bus prompts are `name_prompt.rs`.
@@ -751,12 +778,9 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-**M18: Workspace and settings**
-- Save the window layout and pane sizes (eframe persistence is off).
-- UI scale; per-layer colour customisation.
-- MCP in settings: port, enable on startup.
-- Remember the drawing tools' settings (corner style, first leg, route options) across
-  sessions; they are per session today.
+**M18: Workspace and settings** (settings window, window, workspace, MCP and tool
+settings are done)
+- UI scale; per-layer colour customisation (per theme, global; a Layer colours page).
 - Tool window bars: drag buttons to reorder or move between bars, two panels stacked on
   one side.
 - A Nets panel; an MCP activity log panel listing agent edits.
@@ -834,7 +858,7 @@ defers.
 
 **Libraries and parts**
 - Footprint wizards.
-- Circular pad arrays; remembering the array settings across sessions.
+- Circular pad arrays.
 - Pad paste ratio (KiCad's `solder_paste_margin_ratio`, warned about on import) and
   footprint-level mask/paste margin defaults (the import copies them into the pads).
 - KiCad import: back-side footprint content, text boxes, De Morgan bodies, alternate pin

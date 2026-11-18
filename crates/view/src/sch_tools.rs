@@ -95,19 +95,25 @@ pub struct Placing {
     pub unit: u32,
 }
 
-/// Properties of newly placed objects (editable in the side panel).
-#[derive(Clone, Debug)]
+/// Properties of newly placed objects (editable in the side panel). The style choices are
+/// remembered across sessions ([`crate::tool_memory`]); skipped fields are not.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct SchSettings {
     /// Name of the next net label; auto-incremented after each placement.
+    #[serde(skip)]
     pub label: String,
     /// Local, global or hierarchical (the power tool places power ports).
     pub label_kind: LabelKind,
     /// Shape of global and hierarchical labels.
     pub shape: LabelShape,
+    #[serde(skip)]
     pub power: String,
     /// Glyph of new power ports; `None`: the one the name suggests.
     pub power_style: Option<PowerStyle>,
+    #[serde(skip)]
     pub rotation: Angle,
+    #[serde(skip)]
     pub mirror: bool,
     /// Corner style of wires and buses.
     pub corners: Corners,

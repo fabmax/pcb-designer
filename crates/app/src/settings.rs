@@ -26,6 +26,43 @@ pub struct Settings {
     pub keymap: BTreeMap<Action, Vec<Shortcut>>,
     /// Open panels and their sizes.
     pub dock: crate::dock::Dock,
+    /// The main window's size and position as last closed.
+    pub window: Option<WindowState>,
+    pub mcp: McpSettings,
+    /// The drawing tools' remembered style choices, by tool family (`schematic`,
+    /// `board`, `library`, `array_pads`, `array_pins`; see `view::tool_memory`).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub tools: BTreeMap<String, serde_json::Value>,
+    /// Where KiCad's libraries are downloaded to; `None`: `<config>/kicad`.
+    pub kicad_dir: Option<PathBuf>,
+    /// The settings window's page and size.
+    pub settings_window: crate::settings_ui::WindowMemory,
+}
+
+/// The main window as last closed (points).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WindowState {
+    pub pos: Option<[f32; 2]>,
+    pub size: [f32; 2],
+    #[serde(default)]
+    pub maximized: bool,
+    #[serde(default)]
+    pub fullscreen: bool,
+}
+
+/// The MCP server (agent access).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct McpSettings {
+    pub port: u16,
+    /// Start the server when the app starts.
+    pub start: bool,
+}
+
+impl Default for McpSettings {
+    fn default() -> Self {
+        McpSettings { port: crate::agent::DEFAULT_PORT, start: false }
+    }
 }
 
 pub fn config_dir() -> Option<PathBuf> {
@@ -43,8 +80,8 @@ pub fn config_dir() -> Option<PathBuf> {
     base.map(|b| b.join("pcb-designer"))
 }
 
-/// Where KiCad's libraries are downloaded to (`<config>/kicad/<version>/`).
-pub fn kicad_dir() -> Option<PathBuf> {
+/// Where KiCad's libraries are downloaded to by default (`<config>/kicad/<version>/`).
+pub fn default_kicad_dir() -> Option<PathBuf> {
     config_dir().map(|d| d.join("kicad"))
 }
 
@@ -87,6 +124,11 @@ impl Settings {
         self.recent.retain(|p| p != &path);
         self.recent.insert(0, path);
         self.recent.truncate(RECENT);
+    }
+
+    /// Where KiCad's libraries are downloaded to.
+    pub fn kicad_dir(&self) -> Option<PathBuf> {
+        self.kicad_dir.clone().or_else(default_kicad_dir)
     }
 
     /// The default key bindings with the saved changes.

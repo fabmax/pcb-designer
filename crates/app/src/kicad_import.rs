@@ -216,6 +216,15 @@ impl KicadImport {
         }
     }
 
+    /// Where libraries are downloaded to (the settings changed it).
+    pub fn set_root(&mut self, root: Option<PathBuf>) {
+        if root != self.root {
+            self.root = root;
+            self.catalog = None;
+            self.results_for = None;
+        }
+    }
+
     pub fn set_query(&mut self, query: &str, footprints: bool) {
         self.query = query.to_string();
         self.kind = if footprints { Kind::Footprints } else { Kind::Symbols };

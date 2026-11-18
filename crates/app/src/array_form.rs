@@ -6,7 +6,8 @@ use view::array::{Dir, Layout, Slot};
 use crate::fields::{Fields, hint};
 use crate::theme;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 enum Kind {
     Linear,
     DualRow,
@@ -25,8 +26,12 @@ impl Kind {
     }
 }
 
+/// Remembered across sessions (all but `pins` and the fields' typing state).
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct ArrayForm {
     /// Making pins: linear arrays only.
+    #[serde(skip)]
     pins: bool,
     kind: Kind,
     count: usize,
@@ -40,7 +45,14 @@ pub struct ArrayForm {
     span: Coord,
     end_span: Coord,
     dir: Dir,
+    #[serde(skip)]
     fields: Fields,
+}
+
+impl Default for ArrayForm {
+    fn default() -> Self {
+        ArrayForm::new(false)
+    }
 }
 
 impl ArrayForm {
@@ -60,6 +72,14 @@ impl ArrayForm {
             end_span: mm(5.0),
             dir: Dir::Down,
             fields: Fields::default(),
+        }
+    }
+
+    /// The remembered form of `value`, for pins or pads.
+    pub fn recall(value: Option<&serde_json::Value>, pins: bool) -> ArrayForm {
+        match value {
+            Some(v) => ArrayForm { pins, ..view::tool_memory::recall(Some(v)) },
+            None => ArrayForm::new(pins),
         }
     }
 

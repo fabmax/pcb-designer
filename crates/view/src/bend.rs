@@ -5,7 +5,8 @@
 use model::*;
 
 /// Corner style of drawn paths.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Corners {
     /// Horizontal and vertical legs.
     Deg90,
@@ -52,7 +53,8 @@ impl Corners {
 }
 
 /// Which leg comes first: chosen automatically, or fixed.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Bend {
     /// From the way the cursor leaves the start point ([`Posture`]).
     #[default]

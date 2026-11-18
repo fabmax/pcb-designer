@@ -82,9 +82,13 @@ impl PcbTool {
     }
 }
 
-#[derive(Clone, Debug)]
+/// Properties of new board objects (editable in the side panel). The style choices are
+/// remembered across sessions ([`crate::tool_memory`]); skipped fields are not.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct PcbSettings {
     /// Active copper layer for routing.
+    #[serde(skip)]
     pub layer: LayerId,
     /// Track width; `None`: the design rules' width.
     pub width: Option<Coord>,
@@ -102,6 +106,7 @@ pub struct PcbSettings {
     /// not on the board.
     pub via_span: [LayerId; 2],
     /// Net of new zones; empty: the net of the copper under the first corner.
+    #[serde(skip)]
     pub zone_net: String,
     /// New keepouts cover all copper layers (else the active one).
     pub keepout_all_layers: bool,
@@ -114,7 +119,9 @@ pub struct PcbSettings {
     pub text_bold: bool,
     pub text_align: HAlign,
     /// Rotation of board parts and texts being placed; the side of board parts.
+    #[serde(skip)]
     pub rotation: Angle,
+    #[serde(skip)]
     pub side: Side,
 }
 

@@ -59,12 +59,14 @@ mod properties;
 mod sch_ui;
 mod script;
 mod settings;
+mod settings_ui;
 mod sheet_picker;
 mod theme;
 #[cfg(target_os = "macos")]
 mod title_bar;
 mod toolbar;
 mod units;
+mod workspace;
 
 use app::{Options, Startup};
 
@@ -179,6 +181,17 @@ fn main() -> eframe::Result {
         Err(e) => log::warn!("app icon: {e}"),
     }
     // macOS: the content extends under a transparent title bar; `title_bar.rs` draws it.
+    // The window as last closed (scripted runs keep the fixed size).
+    if opts.screenshot.is_none()
+        && opts.script.is_none()
+        && let Some(w) = settings::Settings::load().window
+    {
+        viewport = viewport.with_inner_size([w.size[0].max(800.0), w.size[1].max(500.0)]);
+        if let Some(pos) = w.pos {
+            viewport = viewport.with_position(pos);
+        }
+        viewport = viewport.with_maximized(w.maximized).with_fullscreen(w.fullscreen);
+    }
     if cfg!(target_os = "macos") {
         viewport = viewport.with_fullsize_content_view(true).with_titlebar_shown(false).with_title_shown(false);
     }
@@ -249,7 +262,7 @@ fn run_stdio(startup: Startup, kicad_paths: Vec<std::path::PathBuf>) -> Result<(
     };
     log::info!("MCP on stdio: {}", doc.title());
     let mut host = mcp::headless::HeadlessHost::new(doc);
-    host.kicad_root = settings::kicad_dir();
+    host.kicad_root = settings::Settings::load().kicad_dir();
     host.kicad_paths = kicad_paths;
     mcp::stdio::serve_stdio(&mut host)
 }

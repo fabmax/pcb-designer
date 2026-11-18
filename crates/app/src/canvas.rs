@@ -55,6 +55,12 @@ impl Canvas {
         self.fit_requested = true;
     }
 
+    /// Show this part of the world (a restored camera): no fit to the content.
+    pub fn set_camera(&mut self, camera: Camera) {
+        self.camera = camera;
+        self.fit_requested = false;
+    }
+
     /// Canvas size in points.
     pub fn viewport(&self) -> [f64; 2] {
         self.viewport

@@ -134,12 +134,30 @@ pub fn window<R>(
     default_size: [f32; 2],
     add_contents: impl FnOnce(&mut egui::Ui) -> R,
 ) -> Option<R> {
+    window_sized(ctx, title, open, default_size, [0.0, 0.0], add_contents)
+}
+
+/// The id of a [`window`]'s area (for its size).
+pub fn window_id(title: &str) -> egui::Id {
+    egui::Id::unique(("theme_window", title))
+}
+
+/// A [`window`] with a minimum size.
+pub fn window_sized<R>(
+    ctx: &egui::Context,
+    title: &str,
+    open: &mut bool,
+    default_size: [f32; 2],
+    min_size: [f32; 2],
+    add_contents: impl FnOnce(&mut egui::Ui) -> R,
+) -> Option<R> {
     if !*open {
         return None;
     }
     let mut close = false;
     let r = egui::Window::new(title)
-        .id(egui::Id::unique(("theme_window", title)))
+        .id(window_id(title))
+        .min_size(min_size)
         .title_bar(false)
         .frame(floating_frame(ctx))
         .default_size(default_size)

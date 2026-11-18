@@ -13,8 +13,8 @@ use egui::{RichText, WidgetText};
 use egui_tiles::{Behavior, Container, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse};
 use model::*;
 use view::item::Item;
-use view::pcb_tools::{PcbPlacer, PcbTool};
-use view::sch_tools::{SchPlacer, SchTool};
+use view::pcb_tools::{PcbPlacer, PcbSettings, PcbTool};
+use view::sch_tools::{SchPlacer, SchSettings, SchTool};
 
 use crate::name_prompt::NamePrompt;
 use crate::sheet_picker::SheetPicker;
@@ -22,7 +22,7 @@ use view::project_libs::{self, MissingLibrary};
 use view::tools::Tool;
 use view::{Document, Interaction, KeyAction, LibraryDoc, ViewId, ViewKind};
 
-use crate::agent::{self, Agent, Job};
+use crate::agent::{Agent, Job};
 use crate::canvas::{self, Canvas, CanvasResources};
 use crate::clipboard;
 use crate::dock::{Dock, Panel, Side, Unseen};
@@ -40,11 +40,13 @@ use crate::properties::Properties;
 use crate::sch_ui;
 use crate::script::Script;
 use crate::settings::Settings;
+use crate::settings_ui::{AgentCmd, AgentStatus, Page as SettingsPage, SettingsWindow};
 use crate::theme;
 #[cfg(target_os = "macos")]
 use crate::title_bar;
 use crate::toolbar;
 use crate::units::{self, GridKind};
+use crate::workspace::{self, ItemRef, LibRef, TabRef, ViewState, Workspace};
 
 pub enum Startup {
     Open(PathBuf),
@@ -274,11 +276,15 @@ pub struct PcbApp {
     allow_close: bool,
     keymap: Keymap,
     settings: Settings,
-    show_settings: bool,
+    settings_win: SettingsWindow,
+    /// The port `--mcp` / `--mcp-port` gave (over the settings' one, for this run).
+    mcp_port: Option<u16>,
+    /// The tool settings changed (saved a second later).
+    tools_changed: Option<Instant>,
+    /// The main window as of the last frame (saved on quit).
+    window_state: Option<crate::settings::WindowState>,
     /// The report of the last KiCad project import, shown until dismissed.
     import_report: Option<ImportReport>,
-    /// Action whose new shortcut is being recorded in the settings window.
-    recording: Option<Action>,
     agent: Agent,
     kicad: KicadImport,
     /// Schematic creation tools.
@@ -367,6 +373,14 @@ impl PcbApp {
             }
         };
         let root = doc.root();
+        let opened = doc.path.is_some();
+        let mcp_port = opts.mcp.unwrap_or(settings.mcp.port);
+        let start_mcp = opts.mcp.is_some() || (settings.mcp.start && opts.screenshot.is_none());
+        let kicad_root = settings.kicad_dir();
+        let mut sch = SchPlacer::default();
+        sch.settings = view::tool_memory::recall(settings.tools.get("schematic"));
+        let mut pcb = PcbPlacer::default();
+        pcb.settings = view::tool_memory::recall(settings.tools.get("board"));
         let tree = if opts.side_by_side { side_by_side_tree(root) } else { default_tree(root) };
         let mut app = Self {
             tree,
@@ -395,12 +409,14 @@ impl PcbApp {
             allow_close: false,
             keymap,
             settings,
-            show_settings: false,
+            settings_win: SettingsWindow::default(),
+            mcp_port: opts.mcp,
+            tools_changed: None,
+            window_state: None,
             import_report,
-            recording: None,
-            agent: Agent::new(opts.mcp.unwrap_or(agent::DEFAULT_PORT)),
-            kicad: KicadImport::new(opts.kicad_paths.clone(), crate::settings::kicad_dir()),
-            sch: SchPlacer::default(),
+            agent: Agent::new(mcp_port),
+            kicad: KicadImport::new(opts.kicad_paths.clone(), kicad_root),
+            sch,
             name_prompt: None,
             sheet_picker: None,
             array_dock: None,
@@ -408,7 +424,7 @@ impl PcbApp {
             project_tree: ProjectPanel::default(),
             rename: None,
             unseen: Unseen::default(),
-            pcb: PcbPlacer::default(),
+            pcb,
             probe_key: None,
             script: None,
             menu_cmds: Vec::new(),
@@ -457,6 +473,9 @@ impl PcbApp {
             if name == "gerber" {
                 app.refresh_outputs();
                 app.open_gerber(None);
+            } else if let Some(page) = name.strip_prefix("settings") {
+                let page = page.strip_prefix(':').and_then(SettingsPage::parse);
+                app.settings_win.show(page, &mut app.settings);
             } else {
                 app.show_by_name(name);
             }
@@ -468,8 +487,12 @@ impl PcbApp {
             }
         }
         app.saved_dock = app.settings.dock.clone();
-        if opts.mcp.is_some() {
+        if start_mcp {
             app.agent.start(&cc.egui_ctx);
+        }
+        // The project's saved tabs and cameras (the command line's layout wins).
+        if opened && !opts.side_by_side {
+            app.restore_workspace();
         }
         // Development aid for screenshots: "all" or a reference designator.
         match opts.select.as_deref() {
@@ -625,6 +648,13 @@ impl PcbApp {
         self.libraries.iter_mut().map(|l| &mut l.lib.doc).find(|d| d.text_edit().is_some())
     }
 
+    fn lib_ref(&self, key: u64) -> Option<&LibraryEditor> {
+        if key == PROJECT_LIB {
+            return Some(&self.project);
+        }
+        self.libraries.by_key(key)
+    }
+
     fn lib(&mut self, key: u64) -> Option<&mut LibraryEditor> {
         if key == PROJECT_LIB {
             return Some(&mut self.project);
@@ -651,9 +681,156 @@ impl PcbApp {
     }
 
     // ------------------------------------------------------------------------------------
+    // Workspace (tabs, cameras, hidden layers; saved in the project folder)
+
+    /// A library tab's file reference and open item.
+    fn tab_ref(&self, tab: Tab) -> Option<TabRef> {
+        Some(match tab {
+            Tab::View(v) => workspace::view_ref(v),
+            Tab::Gerber => TabRef::Gerber,
+            Tab::Library(key) => {
+                let ed = self.lib_ref(key)?;
+                let lib = match &ed.lib.path {
+                    _ if key == PROJECT_LIB => LibRef::Project,
+                    Some(p) => LibRef::File(project_libs::absolute(p)),
+                    None if ed.lib.is_builtin() => LibRef::Builtin,
+                    None => return None,
+                };
+                let item = match ed.open {
+                    Open::None => None,
+                    Open::Item(Item::Symbol(id)) => Some(ItemRef::Symbol(id)),
+                    Open::Item(Item::Footprint(id)) => Some(ItemRef::Footprint(id)),
+                    Open::Part(id) => Some(ItemRef::Part(id)),
+                };
+                TabRef::Library { lib, item }
+            }
+        })
+    }
+
+    fn workspace(&self) -> Workspace {
+        let doc = self.doc();
+        let views = self
+            .panes
+            .iter()
+            .map(|p| ViewState {
+                view: workspace::view_ref(p.view),
+                center: p.canvas.camera.center,
+                zoom: p.canvas.camera.zoom,
+                hidden: doc.view(p.view).hidden_layers(),
+            })
+            .collect();
+        let active = match self.focus {
+            Focus::Project => Some(Tab::View(self.active)),
+            Focus::Library(key) => Some(Tab::Library(key)),
+            Focus::Gerber => Some(Tab::Gerber),
+        };
+        Workspace {
+            layout: workspace::layout_of(&self.tree, &|t| self.tab_ref(*t)),
+            active: active.and_then(|t| self.tab_ref(t)),
+            views,
+            layer: Some(self.pcb.settings.layer),
+        }
+    }
+
+    /// Save the workspace into the project folder (saved projects only; not in scripted
+    /// runs).
+    fn save_workspace(&mut self) {
+        let Some(dir) = self.doc().path.clone() else { return };
+        if self.screenshot.is_some() || self.script.is_some() {
+            return;
+        }
+        if let Err(e) = self.workspace().save(&dir) {
+            log::warn!("workspace not saved: {e}");
+        }
+    }
+
+    /// The tab a saved reference names, if it still exists (library tabs only of loaded
+    /// libraries; their item is shown).
+    fn open_tab_ref(&mut self, r: &TabRef) -> Option<Tab> {
+        match r {
+            TabRef::Sheet(s) => {
+                self.doc().project().schematic.sheets.contains(*s).then_some(Tab::View(ViewId::Sheet(*s)))
+            }
+            TabRef::Board => Some(Tab::View(ViewId::Board)),
+            TabRef::Gerber => self.outputs.dir.is_some().then_some(Tab::Gerber),
+            TabRef::Library { lib, item } => {
+                let key = match lib {
+                    LibRef::Project => PROJECT_LIB,
+                    LibRef::Builtin => self.libraries.iter().find(|l| l.lib.is_builtin())?.key,
+                    LibRef::File(path) => {
+                        self.libraries.iter().find(|l| l.lib.path.as_deref().is_some_and(|p| same_file(p, path)))?.key
+                    }
+                };
+                let open = match item {
+                    None => Open::None,
+                    Some(ItemRef::Symbol(id)) => Open::Item(Item::Symbol(*id)),
+                    Some(ItemRef::Footprint(id)) => Open::Item(Item::Footprint(*id)),
+                    Some(ItemRef::Part(id)) => Open::Part(*id),
+                };
+                if let Some(ed) = self.lib(key)
+                    && ed.exists(open)
+                {
+                    ed.show(open);
+                }
+                Some(Tab::Library(key))
+            }
+        }
+    }
+
+    /// Restore the saved workspace of the open project, if it has one.
+    fn restore_workspace(&mut self) {
+        let Some(dir) = self.doc().path.clone() else { return };
+        let Some(ws) = Workspace::load(&dir) else { return };
+        self.refresh_outputs();
+        if let Some(layout) = &ws.layout
+            && let Some(tree) = workspace::tree_of(layout, egui::Id::unique("main_tree"), &mut |r| self.open_tab_ref(r))
+        {
+            self.tree = tree;
+            self.view_groups.clear();
+            if self.tree.tiles.find_pane(&Tab::Gerber).is_some()
+                && let Some(d) = self.outputs.dir.clone()
+            {
+                self.gerber.load(&d, None);
+            }
+        }
+        for v in &ws.views {
+            let Some(view) = workspace::view_of(&v.view) else { continue };
+            if view.sheet().is_some_and(|s| !self.doc().project().schematic.sheets.contains(s)) {
+                continue;
+            }
+            if v.zoom.is_finite() && v.zoom > 0.0 {
+                let camera = render::Camera { center: v.center, zoom: v.zoom };
+                self.panes.get(view).canvas.set_camera(camera);
+            }
+            self.doc_mut().view_mut(view).set_hidden_layers(&v.hidden);
+        }
+        if let Some(layer) = ws.layer.filter(|l| self.doc().project().board.layers.iter().any(|x| x.id == *l)) {
+            self.pcb.settings.layer = layer;
+        }
+        let active = ws.active.as_ref().and_then(|r| self.open_tab_ref(r));
+        if let Some(tab) = active.filter(|t| self.tree.tiles.find_pane(t).is_some()) {
+            let tile = self.tree.tiles.find_pane(&tab);
+            self.tree.make_active(|id, _| Some(id) == tile);
+            match tab {
+                Tab::View(v) => {
+                    self.active = v;
+                    self.focus = Focus::Project;
+                    if let Some(s) = v.sheet() {
+                        self.last_sheet = Some(s);
+                    }
+                }
+                Tab::Library(key) => self.focus = Focus::Library(key),
+                Tab::Gerber => self.focus = Focus::Gerber,
+            }
+        }
+        self.follow_visible_tabs();
+    }
+
+    // ------------------------------------------------------------------------------------
     // Project files
 
     fn replace_document(&mut self, doc: Document) {
+        self.save_workspace();
         let old_root = self.doc().root();
         self.project = LibraryEditor::new(PROJECT_LIB, LibraryDoc { doc, path: None });
         self.sync_libraries();
@@ -676,7 +853,10 @@ impl PcbApp {
         self.close_missing_sheets();
         self.properties = Properties::default();
         self.sch.set_tool(SchTool::Select);
+        let settings = self.pcb.settings.clone();
         self.pcb = PcbPlacer::default();
+        self.pcb.settings = PcbSettings { layer: LayerId::TOP_COPPER, ..settings };
+        self.restore_workspace();
     }
 
     /// Close the tabs of sheets that no longer exist (deleted, undone, another project).
@@ -882,6 +1062,7 @@ impl PcbApp {
             Ok(()) => {
                 self.set_status(format!("Saved {}", path.display()));
                 self.remember_project(&path);
+                self.save_workspace();
                 true
             }
             Err(e) => {
@@ -1982,7 +2163,7 @@ impl PcbApp {
         let key_action = match action {
             Action::New => return self.new_document(),
             Action::Settings => {
-                self.show_settings = true;
+                self.settings_win.show(None, &mut self.settings);
                 return;
             }
             Action::Open => return self.open(),
@@ -2227,8 +2408,6 @@ impl PcbApp {
             Some(l) => l.lib.doc.editor().history(),
             None => self.doc().editor().history(),
         };
-        let exe = std::env::current_exe().map_or("pcb-designer".into(), |p| p.display().to_string());
-        let project = self.doc().path.as_ref().map_or(String::new(), |p| format!(" \"{}\"", p.display()));
         menu::menus(&MenuState {
             native,
             keymap: &self.keymap,
@@ -2242,7 +2421,7 @@ impl PcbApp {
             agent_error: self.agent.error.clone(),
             agent_url: self.agent.url(),
             agent_port: self.agent.port,
-            headless_command: format!("claude mcp add pcb-designer -- \"{exe}\" --mcp-stdio{project}"),
+            headless_command: self.headless_command(),
             move_to_sheet: !self.movable_to_sheet().is_empty(),
             erc_markers: self.doc().erc_markers(),
         })
@@ -2291,99 +2470,135 @@ impl PcbApp {
                 if self.agent.is_running() {
                     self.agent.stop();
                 } else {
+                    self.agent.port = self.mcp_port.unwrap_or(self.settings.mcp.port);
                     self.agent.start(ctx);
                 }
             }
             Cmd::Copy(text) => ctx.copy_text(text),
-            Cmd::ShowShortcuts => self.show_settings = true,
+            Cmd::ShowShortcuts => self.settings_win.show(Some(SettingsPage::Keymap), &mut self.settings),
         }
     }
 
-    /// Theme and key bindings (saved in the settings file).
+    fn headless_command(&self) -> String {
+        let exe = std::env::current_exe().map_or("pcb-designer".into(), |p| p.display().to_string());
+        let project = self.doc().path.as_ref().map_or(String::new(), |p| format!(" \"{}\"", p.display()));
+        format!("claude mcp add pcb-designer -- \"{exe}\" --mcp-stdio{project}")
+    }
+
+    /// The Settings window (saved in the settings file).
     fn settings_window(&mut self, ctx: &egui::Context) {
-        let mut open = self.show_settings;
-        let mut theme_choice = None;
-        let mut changed = false;
-        theme::window(ctx, "Settings", &mut open, [520.0, 560.0], |ui| {
-            ui.heading("Appearance");
-            ui.horizontal(|ui| {
-                ui.label("Theme");
-                let current = view::style::theme();
-                for &t in view::style::Theme::ALL {
-                    if ui.selectable_label(current == t, t.label()).clicked() && current != t {
-                        theme_choice = Some(t);
-                    }
-                }
-            });
-            ui.add_space(8.0);
-            ui.heading("Keyboard shortcuts");
-            let conflicts = self.keymap.conflicts();
-            if !conflicts.is_empty() {
-                let text: Vec<String> = conflicts
-                    .iter()
-                    .map(|(s, a)| {
-                        let names: Vec<&str> = a.iter().map(|a| a.label()).collect();
-                        format!("{} is bound to {}", ctx.format_shortcut(&s.to_egui()), names.join(" and "))
-                    })
-                    .collect();
-                ui.label(RichText::new(text.join("\n")).color(theme::warn()));
-            }
-            egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
-                egui::Grid::new("keymap").num_columns(2).striped(true).spacing([24.0, 4.0]).show(ui, |ui| {
-                    for &action in Action::ALL {
-                        ui.label(action.label());
-                        ui.horizontal(|ui| {
-                            let keys = self.keymap.shortcuts(action).to_vec();
-                            for (i, k) in keys.iter().enumerate() {
-                                let text = format!("{}  ×", ctx.format_shortcut(&k.to_egui()));
-                                if ui.small_button(text).on_hover_text("Remove").clicked() {
-                                    let mut keys = keys.clone();
-                                    keys.remove(i);
-                                    self.keymap.set(action, keys);
-                                    changed = true;
-                                }
-                            }
-                            if self.recording == Some(action) {
-                                ui.label(RichText::new("Press a key… (Esc cancels)").color(theme::accent()));
-                            } else if ui.small_button("+").on_hover_text("Add a shortcut").clicked() {
-                                self.recording = Some(action);
-                            }
-                        });
-                        ui.end_row();
-                    }
-                });
-            });
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                if ui.button("Reset to defaults").clicked() {
-                    self.keymap = Keymap::default();
-                    changed = true;
-                }
-                if ui.button("Copy as JSON").clicked() {
-                    ui.ctx().copy_text(self.keymap.to_json());
-                }
-            });
-            if let Some(path) = Settings::path() {
-                ui.label(RichText::new(format!("Saved in {}", path.display())).color(theme::text_dim()));
-            }
-        });
-        if !open {
-            self.recording = None;
+        if !self.settings_win.open {
+            return;
         }
-        self.show_settings = open;
-        if changed {
-            self.settings.set_keymap(&self.keymap);
+        let status = AgentStatus {
+            url: self.agent.url(),
+            error: self.agent.error.clone(),
+            headless_command: self.headless_command(),
+        };
+        let c = self.settings_win.ui(ctx, &mut self.settings, &self.keymap, &status);
+        if let Some(t) = c.theme {
+            self.set_theme(ctx, t);
+        }
+        if c.keymap {
+            self.keymap = self.settings.keymap();
+        }
+        match c.agent {
+            Some(AgentCmd::Start) => {
+                self.agent.port = self.settings.mcp.port;
+                self.agent.start(ctx);
+            }
+            Some(AgentCmd::Stop) => self.agent.stop(),
+            Some(AgentCmd::Restart) => {
+                self.agent.stop();
+                self.agent.port = self.settings.mcp.port;
+                self.agent.start(ctx);
+            }
+            None => {}
+        }
+        if c.forget_tools {
+            self.settings.tools.clear();
+            self.sch.settings = SchSettings::default();
+            self.pcb.settings = PcbSettings { layer: self.pcb.settings.layer, ..Default::default() };
+            self.project.forget_tools();
+            for l in self.libraries.iter_mut() {
+                l.forget_tools();
+            }
+        }
+        if c.kicad_dir {
+            self.kicad.set_root(self.settings.kicad_dir());
+        }
+        if c.save {
             self.save_settings();
         }
-        if let Some(t) = theme_choice {
-            self.set_theme(ctx, t);
+    }
+
+    /// The main window's size and position (kept while maximized or fullscreen).
+    fn track_window(&mut self, ctx: &egui::Context) {
+        let info = ctx.input(|i| i.viewport().clone());
+        let (Some(outer), Some(inner)) = (info.outer_rect, info.inner_rect) else { return };
+        let maximized = info.maximized.unwrap_or(false);
+        let fullscreen = info.fullscreen.unwrap_or(false);
+        let mut state = self.window_state.or(self.settings.window).unwrap_or(crate::settings::WindowState {
+            pos: None,
+            size: [inner.width(), inner.height()],
+            maximized: false,
+            fullscreen: false,
+        });
+        if !maximized && !fullscreen {
+            state.pos = Some([outer.min.x, outer.min.y]);
+            state.size = [inner.width(), inner.height()];
+        }
+        state.maximized = maximized;
+        state.fullscreen = fullscreen;
+        self.window_state = Some(state);
+    }
+
+    /// Remember the tools' style choices (saved a second after the last change), and hand
+    /// a library editor's changes to the other library editors.
+    fn sync_tool_memory(&mut self) {
+        use view::tool_memory::remember;
+        // (family, value, default)
+        let mut current = vec![
+            ("schematic", remember(&self.sch.settings), remember(&SchSettings::default())),
+            ("board", remember(&self.pcb.settings), remember(&PcbSettings::default())),
+        ];
+        if let Some(key) = self.focus.library()
+            && let Some(ed) = self.lib_ref(key)
+        {
+            let defaults = LibraryEditor::default_remembered();
+            current.extend(ed.remembered().into_iter().zip(defaults).map(|((k, v), (_, d))| (k, v, d)));
+        }
+        let tools = &mut self.settings.tools;
+        let mut changed = false;
+        for (key, v, default) in current {
+            let unchanged = match tools.get(key) {
+                Some(old) => *old == v,
+                None => v == default,
+            };
+            if !unchanged {
+                tools.insert(key.to_string(), v);
+                changed = true;
+            }
+        }
+        // Editors opened since, and the others after a change, take the remembered ones.
+        let tools = &self.settings.tools;
+        self.project.recall(tools);
+        for l in self.libraries.iter_mut() {
+            l.recall(tools);
+        }
+        if changed {
+            self.tools_changed = Some(Instant::now());
+        }
+        if self.tools_changed.is_some_and(|t| t.elapsed() > Duration::from_secs(1)) {
+            self.tools_changed = None;
+            self.save_settings();
         }
     }
 
     /// While a shortcut is being recorded, the next key press (with modifiers) becomes it.
     /// Returns true if input was consumed.
     fn record_shortcut(&mut self, ctx: &egui::Context) -> bool {
-        let Some(action) = self.recording else { return false };
+        let Some(action) = self.settings_win.recording else { return false };
         let pressed = ctx.input(|i| {
             i.events.iter().find_map(|e| match e {
                 egui::Event::Key { key, pressed: true, modifiers, .. } => Some((*key, *modifiers)),
@@ -2391,7 +2606,7 @@ impl PcbApp {
             })
         });
         let Some((key, m)) = pressed else { return true };
-        self.recording = None;
+        self.settings_win.recording = None;
         if key == egui::Key::Escape {
             return true;
         }
@@ -3827,8 +4042,21 @@ impl eframe::App for PcbApp {
         self.pointer_filter.filter(raw);
     }
 
+    fn on_exit(&mut self) {
+        if self.screenshot.is_some() || self.script.is_some() {
+            return;
+        }
+        self.save_workspace();
+        if let Some(w) = self.window_state {
+            self.settings.window = Some(w);
+        }
+        self.save_settings();
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.track_window(&ctx);
+        self.sync_tool_memory();
         self.sync_libraries();
         self.handle_close(&ctx);
         // The name dialog takes the keys while it is open.

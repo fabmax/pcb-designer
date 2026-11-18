@@ -381,11 +381,28 @@ saved with the settings.
 
 ## Settings
 
-Theme (dark or light), length units (mm, mil or inch), key bindings, the panel layout and recent projects
-are saved in `settings.json` in the configuration folder (macOS:
-`~/Library/Application Support/pcb-designer`). Edit them in **Edit → Settings…** (⌘,): click `+` next to an
-action and press the new shortcut. `PCB_DESIGNER_CONFIG=DIR` uses another folder;
-`--keymap FILE.json` loads key bindings for one session.
+**Edit → Settings…** (⌘,) lists the categories on the left; type in the search field
+(⌘F) to find a setting by name or keyword, or a shortcut by action or key. Changes
+apply at once; each page has a **Reset to defaults**.
+
+- **Appearance:** theme (dark or light), length units (mm, mil or inch).
+- **Keymap:** click `+` next to an action and press the new shortcut, × removes one.
+- **Tools:** the drawing tools' style choices (corner styles, widths, sizes, layers,
+  array layouts) are remembered across sessions; rotation, the next name and the
+  routing layer are not. Reset forgets them.
+- **Agent access:** start or stop the MCP server, its port, starting it on launch, and
+  the commands and config to connect a client.
+- **Libraries:** where KiCad's libraries are downloaded to.
+
+These, the panel layout, the window's size and position and the recent projects are
+saved in `settings.json` in the configuration folder (macOS:
+`~/Library/Application Support/pcb-designer`). `PCB_DESIGNER_CONFIG=DIR` uses another
+folder; `--keymap FILE.json` loads key bindings and `--mcp-port PORT` the port for one
+session.
+
+Each saved project remembers its workspace: open tabs and splits, the zoom and position
+of each sheet and the board, hidden layers and the routing layer. It's kept in the
+project folder in `.pcb-designer/`, which ignores itself for git.
 
 For development, `cargo run -p mcp --example mcp_call -- URL TOOL '{"json":"args"}'`
 calls a tool from the command line (`TOOL = list` lists them).

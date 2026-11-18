@@ -294,6 +294,19 @@ impl View {
         }
     }
 
+    /// Names of the hidden user-facing layers (saved with the workspace).
+    pub fn hidden_layers(&self) -> Vec<String> {
+        self.user_layers().map(|i| self.scene.layer(i)).filter(|l| !l.visible).map(|l| l.name.clone()).collect()
+    }
+
+    /// Show the user-facing layers except those named.
+    pub fn set_hidden_layers(&mut self, hidden: &[String]) {
+        for i in self.user_layers() {
+            let l = self.scene.layer_mut(i);
+            l.visible = !hidden.contains(&l.name);
+        }
+    }
+
     /// Number of render layers that are user facing (overlays excluded).
     pub fn user_layers(&self) -> std::ops::Range<u16> {
         0..self.hover_layer
