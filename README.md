@@ -5,9 +5,9 @@ board immediately; projects are folders of JSON files. See [PLAN.md](PLAN.md) fo
 architecture and roadmap.
 
 ```sh
-cargo run --release -p app                 # opens a demo project
+cargo run --release -p app                 # an empty project
 cargo run --release -p app -- my.pcbproj   # open a project folder
-cargo run --release -p app -- --new        # empty project
+cargo run --release -p app -- --demo       # the demo project
 cargo test --workspace
 ```
 

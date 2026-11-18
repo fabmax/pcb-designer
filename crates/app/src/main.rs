@@ -1,6 +1,6 @@
 //! PCB Designer desktop application.
 //!
-//! Usage: pcb-designer [PROJECT_DIR | PROJECT.kicad_pro | --demo | --new | --stress N] [--no-vsync]
+//! Usage: pcb-designer [PROJECT_DIR | PROJECT.kicad_pro | --demo | --stress N] [--no-vsync]
 //!                     [--keymap FILE.json] [--mcp] [--mcp-port PORT] [--side-by-side]
 //!                     [--library FILE.pcblib]... [--show [part:|symbol:|footprint:]NAME]...
 //!                     [--kicad DIR]... [--kicad-pick [footprint:]LIB:NAME]... [--kicad-import]
@@ -28,7 +28,7 @@
 //! `--kicad-pick` adds symbols/footprints to the KiCad import window, `--kicad-import`
 //! imports them right away into a new library.
 //!
-//! Without arguments the demo project is opened.
+//! Without a project or `--demo` an empty, unsaved project is opened.
 
 mod activity_ui;
 mod agent;
@@ -76,7 +76,7 @@ use app::{Options, Startup};
 fn main() -> eframe::Result {
     env_logger::init();
     let mut opts = Options {
-        startup: Startup::Demo,
+        startup: Startup::Empty,
         screenshot: None,
         screenshot_frames: 30,
         select: None,
@@ -94,7 +94,6 @@ fn main() -> eframe::Result {
     };
     let mut vsync = true;
     let mut stdio = false;
-    let mut startup_given = false;
     let mut args = std::env::args().skip(1);
     if std::env::args().nth(1).as_deref() == Some("export-gerber") {
         let Some(dir) = std::env::args().nth(2) else {
@@ -120,8 +119,7 @@ fn main() -> eframe::Result {
     }
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--demo" => (opts.startup, startup_given) = (Startup::Demo, true),
-            "--new" => (opts.startup, startup_given) = (Startup::Empty, true),
+            "--demo" => opts.startup = Startup::Demo,
             "--mcp-stdio" => stdio = true,
             "--stress" => opts.startup = Startup::Stress(args.next().and_then(|v| v.parse().ok()).unwrap_or(2_000)),
             "--no-vsync" => vsync = false,
@@ -154,17 +152,14 @@ fn main() -> eframe::Result {
                     Err(e) => eprintln!("keymap {path:?} not loaded: {e}"),
                 }
             }
-            other if other.ends_with(".kicad_pro") => {
-                (opts.startup, startup_given) = (Startup::ImportKicad(other.into()), true)
-            }
-            other if !other.starts_with("--") => (opts.startup, startup_given) = (Startup::Open(other.into()), true),
+            other if other.ends_with(".kicad_pro") => opts.startup = Startup::ImportKicad(other.into()),
+            other if !other.starts_with("--") => opts.startup = Startup::Open(other.into()),
             other => eprintln!("ignoring unknown argument {other:?}"),
         }
     }
 
     if stdio {
-        let startup = if startup_given { opts.startup } else { Startup::Empty };
-        if let Err(e) = run_stdio(startup, opts.kicad_paths.clone()) {
+        if let Err(e) = run_stdio(opts.startup, opts.kicad_paths.clone()) {
             eprintln!("pcb-designer: {e}");
             std::process::exit(1);
         }
