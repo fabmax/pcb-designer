@@ -202,5 +202,5 @@ pub fn name(ui: &mut Ui, text: impl Into<egui::WidgetText>) {
 
 /// Dim text in a row (library names, notes).
 pub fn dim(ui: &mut Ui, text: &str) {
-    ui.add(egui::Label::new(egui::RichText::new(text).color(theme::text_dim())).selectable(false));
+    ui.add(egui::Label::new(egui::RichText::new(text).color(theme::text_dim())).truncate().selectable(false));
 }

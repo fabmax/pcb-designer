@@ -806,7 +806,10 @@ the current design of each area with the gotchas a change needs to know, the pla
   `Row::Category` per category (natural order, indented), its parts nested, then the
   uncategorised parts. Rows go through `nav_list::show_with_menu`; the selection is a
   (library key, part id), keys skip the library and category rows, a click on one folds
-  it (`Fold`; not while searching, when everything with matches is open). Actions are the Project
+  it (`toggled`: a set of `Fold`s changed from the default, libraries open and
+  categories closed; not while searching, when everything with matches is open). Labels
+  in rows truncate: an overflowing row would widen the panel's ui, so the preview takes
+  the width from before the list. Actions are the Project
   panel's `Act`s (`Place` imports into the Project Library like the tree). Placing
   surrenders the field's and list's focus so the canvas gets R / X / Esc. P is
   `SchFindPart` / `PcbFindPart` (two actions, as an action has one context); power ports

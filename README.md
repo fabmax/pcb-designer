@@ -418,8 +418,8 @@ layout** puts them back.
 
 The **Parts** panel lists the parts of the Project Library, the loaded libraries and the
 Built-in Library, grouped by library and category: schematic parts while the schematic is the active
-editor, board parts (mounting holes, logos) while the board is. Click a library or category
-row to fold it. Search matches every word in the name, category, description and
+editor, board parts (mounting holes, logos) while the board is. Categories start closed;
+click a library or category row to open or close it. Search matches every word in the name, category, description and
 properties (an MPN, say), and shows every category with matches open. Click a part to preview its symbol
 or footprint; double-click it (or Enter) to place it, copying it into the Project Library
 first. **P** on the schematic or the board opens the panel with the search field focused:

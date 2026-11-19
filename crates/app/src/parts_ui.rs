@@ -64,7 +64,8 @@ impl Row {
     }
 }
 
-/// A collapsed library or category of the list.
+/// A library or category whose folding the user toggled: libraries start open,
+/// categories closed.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Fold {
     Library(u64),
@@ -126,9 +127,10 @@ pub fn matches(part: &Part, words: &[String]) -> bool {
 }
 
 /// The rows: a header per library with parts of `kind` (with a query: matching ones,
-/// all expanded), then its categories (in natural order) with their parts, then its
+/// all expanded), then its categories (in natural order, closed unless toggled) with
+/// their parts, then its
 /// uncategorised parts; parts in natural order. Libraries without such parts are left out.
-pub fn rows(sources: &[Source], kind: Kind, query: &str, folded: &HashSet<Fold>) -> Vec<Row> {
+pub fn rows(sources: &[Source], kind: Kind, query: &str, toggled: &HashSet<Fold>) -> Vec<Row> {
     let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
     let searching = !words.is_empty();
     let mut out = Vec::new();
@@ -145,7 +147,7 @@ pub fn rows(sources: &[Source], kind: Kind, query: &str, folded: &HashSet<Fold>)
                 .then_with(|| natural_cmp(&a.name, &b.name))
         });
         let key = s.key;
-        let closed = !searching && folded.contains(&Fold::Library(key));
+        let closed = !searching && toggled.contains(&Fold::Library(key));
         out.push(Row::Library { key, count: parts.len(), collapsed: closed });
         if closed {
             continue;
@@ -156,7 +158,7 @@ pub fn rows(sources: &[Source], kind: Kind, query: &str, folded: &HashSet<Fold>)
                 out.extend(chunk.iter().map(|p| Row::Part { key, part: p.id, nested: false }));
                 continue;
             }
-            let closed = !searching && folded.contains(&Fold::Category(key, name.clone()));
+            let closed = !searching && !toggled.contains(&Fold::Category(key, name.clone()));
             out.push(Row::Category { key, name: name.clone(), count: chunk.len(), collapsed: closed });
             if !closed {
                 out.extend(chunk.iter().map(|p| Row::Part { key, part: p.id, nested: true }));
@@ -194,7 +196,7 @@ fn list_id() -> Id {
 pub struct PartsPanel {
     query: String,
     selected: Option<(u64, PartId)>,
-    folded: HashSet<Fold>,
+    toggled: HashSet<Fold>,
     preview: Preview,
     /// The library the preview last showed (its view is redrawn when that changes).
     previewed: Option<u64>,
@@ -218,6 +220,8 @@ impl PartsPanel {
     }
 
     pub fn ui(&mut self, ui: &mut Ui, kind: Kind, sources: &[Source], kicad: KicadMatches) -> Option<PartsAct> {
+        // The list may overflow (and widen the ui); the preview keeps the panel's width.
+        let width = ui.available_width();
         let title = match kind {
             Kind::Schematic => "Schematic parts",
             Kind::Board => "Board parts",
@@ -249,7 +253,7 @@ impl PartsPanel {
         }
         ui.add_space(2.0);
 
-        let rows = rows(sources, kind, &self.query, &self.folded);
+        let rows = rows(sources, kind, &self.query, &self.toggled);
         let no_parts = rows.is_empty();
         let source = |key: u64| sources.iter().find(|s| s.key == key);
         let part_of = |key: u64, id: PartId| source(key).and_then(|s| s.doc.library().parts.get(id));
@@ -310,7 +314,7 @@ impl PartsPanel {
                     ui.add_space(INDENT);
                     let (r, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
                     crate::project_panel::chevron_paint(ui.painter(), r, !*collapsed, theme::text_dim());
-                    nav_list::name(ui, name);
+                    nav_list::name(ui, RichText::new(name).strong());
                     nav_list::dim(ui, &count.to_string());
                 }
                 Row::Part { key, part, nested } => {
@@ -360,9 +364,9 @@ impl PartsPanel {
         };
         if let Some(fold) = toggle
             && self.query.trim().is_empty()
-            && !self.folded.remove(&fold)
+            && !self.toggled.remove(&fold)
         {
-            self.folded.insert(fold);
+            self.toggled.insert(fold);
         }
         // Keys skip library and category rows (to the next part in the direction moved).
         let clicked = ui.input(|inp| inp.pointer.any_click());
@@ -392,7 +396,7 @@ impl PartsPanel {
         // The preview and a line about the selected part.
         ui.add_space(4.0);
         let shown = self.selected.and_then(|(k, id)| Some((k, source(k)?, part_of(k, id)?)));
-        let size = egui::vec2(ui.available_width(), preview_height);
+        let size = egui::vec2(width, preview_height);
         match shown {
             Some((key, s, part)) => {
                 if self.previewed != Some(key) {
@@ -518,19 +522,17 @@ mod tests {
                 })
                 .collect()
         };
+        // Categories start closed; a toggle opens one.
         let none = HashSet::new();
+        assert_eq!(names(&rows(&sources, Kind::Schematic, "", &none)), ["#4", "+Passives:2", "+Transistors:1", "X"]);
+        let opened = HashSet::from([Fold::Category(1, "Passives".into())]);
         assert_eq!(
-            names(&rows(&sources, Kind::Schematic, "", &none)),
-            ["#4", "-Passives:2", "  C", "  R", "-Transistors:1", "  Q", "X"]
-        );
-        let folded = HashSet::from([Fold::Category(1, "Passives".into())]);
-        assert_eq!(
-            names(&rows(&sources, Kind::Schematic, "", &folded)),
-            ["#4", "+Passives:2", "-Transistors:1", "  Q", "X"]
+            names(&rows(&sources, Kind::Schematic, "", &opened)),
+            ["#4", "-Passives:2", "  C", "  R", "+Transistors:1", "X"]
         );
         // The search matches categories (words ANDed) and shows them expanded.
-        assert_eq!(names(&rows(&sources, Kind::Schematic, "passives", &folded)), ["#2", "-Passives:2", "  C", "  R"]);
-        assert_eq!(names(&rows(&sources, Kind::Schematic, "pass r", &folded)), ["#1", "-Passives:1", "  R"]);
+        assert_eq!(names(&rows(&sources, Kind::Schematic, "passives", &none)), ["#2", "-Passives:2", "  C", "  R"]);
+        assert_eq!(names(&rows(&sources, Kind::Schematic, "pass r", &none)), ["#1", "-Passives:1", "  R"]);
     }
 
     #[test]
