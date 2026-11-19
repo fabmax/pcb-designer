@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use model::{BoardLayer, DesignRules, DrcSettings, ErcSettings, Object, ObjectId, Project};
+use model::{BoardLayer, DesignRules, DrcSettings, ErcSettings, Object, ObjectId, Project, Sheet};
 
 use crate::CommandError;
 
@@ -277,6 +277,7 @@ impl<'p> Transaction<'p> {
     }
 
     pub fn insert(&mut self, object: Object) -> Result<ObjectId, CommandError> {
+        let object = normalized(object);
         let id = object.id();
         if self.project.contains(id) {
             return Err(CommandError::Duplicate(id));
@@ -308,6 +309,7 @@ impl<'p> Transaction<'p> {
 
     /// Replace an existing object (matched by id), keeping its position.
     pub fn replace(&mut self, object: Object) -> Result<(), CommandError> {
+        let object = normalized(object);
         let id = object.id();
         let (index, old) = self.project.replace(object.clone()).ok_or(CommandError::NotFound(id))?;
         self.changes.push(Change { id, before: Some((index, old)), after: Some(object) });
@@ -346,6 +348,17 @@ impl<'p> Transaction<'p> {
         let libraries = self.libraries_before.map(|b| (b, self.project.libraries.clone()));
         ChangeSet::coalesce(self.changes, setup, libraries)
     }
+}
+
+/// `object` as stored: what every edit path must keep (a sheet symbol's size in whole pin
+/// pitches, see [`Sheet::snap_size`]).
+fn normalized(mut object: Object) -> Object {
+    if let Object::Sheet(sh) = &mut object
+        && !sh.is_root()
+    {
+        sh.size = Sheet::snap_size(sh.size);
+    }
+    object
 }
 
 #[cfg(test)]

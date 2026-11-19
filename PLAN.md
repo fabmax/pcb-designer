@@ -172,7 +172,10 @@ the current design of each area with the gotchas a change needs to know, the pla
 - **Sheet pins** are derived, never stored: one per hierarchical label name of the
   sub-sheet (`Schematic::hier_ports`, first label's shape), laid out by `Sheet::layout`
   (inputs left, the rest right, by name, 2.54 mm from the top; the drawn rectangle grows
-  downwards past the stored `size` to fit). On the parent they connect like component
+  downwards past the stored `size` to fit). A sheet symbol's size is whole pin pitches
+  (`Sheet::snap_size`, applied by `Transaction::insert` / `replace`, so every edit path
+  keeps it): with the corner on the grid, every pin is on it. Properties' Height keeps
+  the top edge (and so the pins) in place. On the parent they connect like component
   pins (`Net::sheet_pins`) and join the sub-sheet's labels of their name. ERC: unwired
   sheet pins, hierarchical labels on the root sheet, bus-named pins. The view redraws a
   sheet's symbol when a hierarchical label on it changes (`apply_objects`); pins are

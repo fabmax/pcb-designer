@@ -256,7 +256,11 @@ impl Properties {
                         }
                         ui.end_row();
                         label(ui, "Height");
+                        // The top edge stays (the pins hang from it): the symbol grows
+                        // downwards, in whole pin pitches.
                         if let Some(h) = self.length(ui, sh.size.h, 2.54) {
+                            let h = Sheet::snap_size(Size { w: sh.size.w, h }).h;
+                            sh.pos.y += sh.size.h - h;
                             sh.size.h = h;
                             self.update(cx, Object::Sheet(sh.clone()), true);
                         }

@@ -107,3 +107,25 @@ fn sheet_symbols_move_and_turn() {
     let ids = vec![ObjectId::Sheet(root)];
     assert!(ed.execute(Command::Move { ids, delta: Point::mm(1.0, 0.0), keep_connected: false }).is_err());
 }
+
+#[test]
+fn sheet_symbols_keep_their_pins_on_the_grid() {
+    let mut ed = Editor::new(Project::new("t"));
+    let s = add_sheet(&mut ed, None, "A", 0.0).unwrap();
+    let mut sh = sheet(&ed, s);
+    sh.size = Size { w: Point::mm(26.0, 0.0).x, h: Point::mm(13.0, 0.0).x };
+    ed.execute(Command::Update { objects: vec![Object::Sheet(sh.clone())] }).unwrap();
+    let got = sheet(&ed, s);
+    assert_eq!(got.size, Size { w: 10 * SHEET_PIN_PITCH, h: 5 * SHEET_PIN_PITCH }, "the nearest whole pitches");
+    let ports = [("IN", LabelShape::Input), ("OUT", LabelShape::Output)];
+    let (_, pins) = got.layout(&ports);
+    for pin in pins {
+        assert_eq!((pin.pos.x % SHEET_PIN_PITCH, pin.pos.y % SHEET_PIN_PITCH), (0, 0), "{} on the grid", pin.name);
+    }
+    // Shrunk to nothing it keeps one pitch; a zero size is refused.
+    sh.size = Size { w: 1_000_000, h: 1_000_000 };
+    ed.execute(Command::Update { objects: vec![Object::Sheet(sh.clone())] }).unwrap();
+    assert_eq!(sheet(&ed, s).size, Size { w: SHEET_PIN_PITCH, h: SHEET_PIN_PITCH });
+    sh.size = Size { w: 0, h: 5_000_000 };
+    assert!(ed.execute(Command::Update { objects: vec![Object::Sheet(sh)] }).is_err());
+}

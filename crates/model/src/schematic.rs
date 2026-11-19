@@ -177,6 +177,14 @@ impl Sheet {
         self.parent.is_none()
     }
 
+    /// `size` in whole [`SHEET_PIN_PITCH`]es (the nearest, at least one): the pins sit a
+    /// pitch apart from the top edge and on the side edges, so with the corner on the
+    /// grid they all land on it.
+    pub fn snap_size(size: Size) -> Size {
+        let snap = |v: Coord| ((v as f64 / SHEET_PIN_PITCH as f64).round() as Coord).max(1) * SHEET_PIN_PITCH;
+        Size { w: snap(size.w), h: snap(size.h) }
+    }
+
     /// The sheet symbol's rectangle on the parent sheet, as stored (see [`Sheet::layout`]
     /// for the one drawn).
     pub fn rect(&self) -> Rect {
