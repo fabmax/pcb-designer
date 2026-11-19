@@ -99,10 +99,12 @@ struct Rename {
     focused: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Naming {
     /// A library item, by library key.
     Item(u64, ObjectId),
+    /// A category of a library's group (parts, symbols or footprints), by library key.
+    Category(u64, project_panel::Group, String),
     Sheet(Id),
     /// A new sheet below this one.
     NewSheet(Id),
@@ -3215,6 +3217,10 @@ impl PcbApp {
                     self.rename = Some(Rename { what: Naming::Item(key, item), text: name, focused: false });
                 }
             }
+            Act::RenameCategory(key, group, name) => {
+                let text = name.clone();
+                self.rename = Some(Rename { what: Naming::Category(key, group, name), text, focused: false });
+            }
             Act::Delete(key, item) => {
                 let Some(l) = self.lib(key) else { return };
                 if let Err(e) = l.lib.delete(item) {
@@ -3299,6 +3305,7 @@ impl PcbApp {
             Naming::NewSheet(_) => ("New sheet", "Place"),
             Naming::Sheet(_) => ("Rename sheet", "Rename"),
             Naming::Item(..) => ("Rename", "Rename"),
+            Naming::Category(..) => ("Rename category", "Rename"),
         };
         // Sheet names are checked as they are typed.
         let schematic = &self.project.lib.doc.project().schematic;
@@ -3307,7 +3314,7 @@ impl PcbApp {
             Naming::Sheet(s) => {
                 schematic.sheet_name_issue(schematic.sheets.get(s).and_then(|s| s.parent), &r.text, Some(s))
             }
-            Naming::Item(..) => None,
+            Naming::Item(..) | Naming::Category(..) => None,
         };
         let mut done = None;
         let modal = theme::dialog(ctx, egui::Id::unique("rename_item"), title, 320.0, |ui| {
@@ -3345,6 +3352,17 @@ impl PcbApp {
             Naming::Item(key, item) => {
                 let Some(l) = self.lib(key) else { return };
                 if let Err(e) = l.lib.rename(item, &text) {
+                    self.set_status(e);
+                }
+            }
+            Naming::Category(key, group, from) => {
+                let Some(l) = self.lib(key) else { return };
+                let kind = match group {
+                    project_panel::Group::Parts => model::ObjectKind::LibPart,
+                    project_panel::Group::Symbols => model::ObjectKind::LibSymbol,
+                    project_panel::Group::Footprints => model::ObjectKind::LibFootprint,
+                };
+                if let Err(e) = l.lib.rename_category(kind, &from, &text) {
                     self.set_status(e);
                 }
             }

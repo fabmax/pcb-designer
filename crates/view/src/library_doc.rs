@@ -123,7 +123,8 @@ impl LibraryDoc {
         Ok(id)
     }
 
-    /// A new part. Without a symbol or footprint, blank ones with the part's name are created.
+    /// A new part, in its symbol's category. Without a symbol or footprint, blank ones with
+    /// the part's name are created.
     pub fn new_part(&mut self, name: &str, symbol: Option<Id>, footprint: Option<Id>) -> Result<Id, String> {
         let name = self.unique_name(ObjectKind::LibPart, name);
         let mut objects = Vec::new();
@@ -141,9 +142,12 @@ impl LibraryDoc {
         });
         let units = vec![PartUnit { name: "A".into(), symbol }];
         let fp_name = self.library().footprints.get(footprint).map(|f| f.name.clone());
+        // A part made from a symbol joins its category.
+        let category = self.library().symbols.get(symbol).map(|s| s.category.clone()).unwrap_or_default();
         let part = Part {
             id: Id::new(),
             name: name.clone(),
+            category,
             description: String::new(),
             prefix: "U".into(),
             default_value: name,
@@ -236,6 +240,41 @@ impl LibraryDoc {
         self.execute_all(vec![Command::Update { objects: vec![object] }])
     }
 
+    /// Rename category `from` to `to` on all items of `kind` (parts, symbols or
+    /// footprints), as one undo step. An empty `to` takes the items out of any category.
+    pub fn rename_category(&mut self, kind: ObjectKind, from: &str, to: &str) -> Result<(), String> {
+        let to = to.trim();
+        if from == to {
+            return Ok(());
+        }
+        let lib = self.library();
+        let objects: Vec<Object> = match kind {
+            ObjectKind::LibPart => lib
+                .parts
+                .iter()
+                .filter(|p| p.category == from)
+                .map(|p| Object::LibPart(Part { category: to.into(), ..p.clone() }))
+                .collect(),
+            ObjectKind::LibSymbol => lib
+                .symbols
+                .iter()
+                .filter(|s| s.category == from)
+                .map(|s| Object::LibSymbol(Symbol { category: to.into(), ..s.clone() }))
+                .collect(),
+            ObjectKind::LibFootprint => lib
+                .footprints
+                .iter()
+                .filter(|f| f.category == from)
+                .map(|f| Object::LibFootprint(Footprint { category: to.into(), ..f.clone() }))
+                .collect(),
+            _ => return Err("not a library kind".into()),
+        };
+        if objects.is_empty() {
+            return Ok(());
+        }
+        self.execute_all(vec![Command::Update { objects }])
+    }
+
     pub fn delete(&mut self, id: ObjectId) -> Result<(), String> {
         self.execute_all(vec![Command::Delete { ids: vec![id] }])
     }
@@ -317,6 +356,7 @@ pub fn blank_symbol(name: String) -> Symbol {
     Symbol {
         id: Id::new(),
         name,
+        category: String::new(),
         graphics: Vec::new(),
         texts: vec![
             Text::new("${REF}", Point::mm(0.0, 3.81), mm(1.27)).aligned(HAlign::Center, VAlign::Bottom),
@@ -331,6 +371,7 @@ pub fn blank_footprint(name: String) -> Footprint {
     Footprint {
         id: Id::new(),
         name,
+        category: String::new(),
         description: String::new(),
         pads: Default::default(),
         graphics: Vec::new(),

@@ -107,6 +107,7 @@ pub fn convert(lib: &str, root: &Node) -> KiFootprint {
     let mut fp = Footprint {
         id: kid(&["kicad-footprint", lib, &name]),
         name: name.clone(),
+        category: String::new(),
         description: root.child("descr").and_then(|d| d.arg(0)).unwrap_or("").to_string(),
         pads: Store::default(),
         graphics: Vec::new(),

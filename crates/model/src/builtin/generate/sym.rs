@@ -94,6 +94,8 @@ impl Sym {
         Symbol {
             id: gid(&format!("sym/{}", self.name)),
             name: self.name,
+            // The part's (`Builder::part`).
+            category: String::new(),
             graphics: self.graphics,
             texts: self.texts,
             pins: self.pins.into_iter().collect(),

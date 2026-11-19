@@ -213,6 +213,7 @@ fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report)
         parts.entry(format!("board:{def_id}")).or_insert_with(|| Part {
             id: part_id,
             name: def.name.clone(),
+            category: String::new(),
             description: String::new(),
             prefix: prefix.clone(),
             default_value: f.value.clone(),

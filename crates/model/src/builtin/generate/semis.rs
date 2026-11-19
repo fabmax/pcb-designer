@@ -73,6 +73,7 @@ fn diodes(b: &mut Builder) {
         variants.insert(0, v);
         b.part(PartSpec {
             name: name.into(),
+            category: "Diodes",
             description: format!("{description}: SOD, MiniMELF, SMA/SMB/SMC, DO-35/41/201AD"),
             prefix: "D",
             value: value.into(),
@@ -106,6 +107,7 @@ fn leds(b: &mut Builder) {
     }
     b.part(PartSpec {
         name: "LED".into(),
+        category: "Diodes",
         description: "Light emitting diode: chip 0402 to 1206, Ø3 and Ø5 mm through-hole".into(),
         prefix: "D",
         value: "red".into(),
@@ -210,6 +212,7 @@ fn transistors(b: &mut Builder) {
         b.symbol(symbol);
         b.part(PartSpec {
             name: name.clone(),
+            category: "Transistors",
             description: format!("{name} bipolar transistor ({value} in SOT-23; {others})"),
             prefix: "Q",
             value: value.into(),
@@ -231,6 +234,7 @@ fn transistors(b: &mut Builder) {
         let kind = if p { "P-channel" } else { "N-channel" };
         b.part(PartSpec {
             name: name.clone(),
+            category: "Transistors",
             description: format!("{kind} MOSFET ({value}; {others})"),
             prefix: "Q",
             value: value.into(),

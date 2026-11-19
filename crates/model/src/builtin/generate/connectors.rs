@@ -167,6 +167,7 @@ pub(super) fn add(b: &mut Builder) {
         let pins = if n == 1 { "1 pin".to_string() } else { format!("{n} pins") };
         b.part(PartSpec {
             name: name.clone(),
+            category: "Connectors",
             description: format!("Generic connector, 1 row, {pins}: pin header or socket, JST, screw terminal"),
             prefix: "J",
             value: name.clone(),
@@ -185,6 +186,7 @@ pub(super) fn add(b: &mut Builder) {
         ];
         b.part(PartSpec {
             name: name.clone(),
+            category: "Connectors",
             description: format!(
                 "Generic connector, 2 rows, {} pins (odd left, even right): pin header or socket",
                 2 * rows

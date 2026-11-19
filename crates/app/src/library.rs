@@ -1132,6 +1132,7 @@ impl ItemEditor<'_> {
     fn item_summary(&mut self, ui: &mut egui::Ui, item: Item) {
         let Some(content) = self.tab.view.content().cloned() else { return };
         let lib = self.lib.library();
+        let categories = fields::categories(lib, matches!(item, Item::Footprint(_)));
         let users: Vec<String> = lib
             .parts
             .iter()
@@ -1151,6 +1152,12 @@ impl ItemEditor<'_> {
                         self.commit(item, Content::Symbol(s.clone()), false);
                     }
                     ui.end_row();
+                    label(ui, "Category");
+                    if let Some(c) = self.tab.fields.category(ui, ("sym_category", s.id), &s.category, &categories) {
+                        s.category = c;
+                        self.commit(item, Content::Symbol(s.clone()), false);
+                    }
+                    ui.end_row();
                     fields::row(ui, "Pins", s.pins.len().to_string());
                     fields::row(ui, "Graphics", s.graphics.len().to_string());
                 });
@@ -1161,6 +1168,12 @@ impl ItemEditor<'_> {
                     label(ui, "Name");
                     if let Some(n) = self.tab.fields.text(ui, ("fp_name", f.id), &f.name) {
                         f.name = n;
+                        self.commit(item, Content::Footprint(f.clone()), false);
+                    }
+                    ui.end_row();
+                    label(ui, "Category");
+                    if let Some(c) = self.tab.fields.category(ui, ("fp_category", f.id), &f.category, &categories) {
+                        f.category = c;
                         self.commit(item, Content::Footprint(f.clone()), false);
                     }
                     ui.end_row();

@@ -49,6 +49,8 @@ pub enum NodeId {
     /// A listed library file that could not be loaded (by a hash of its path).
     Missing(u64),
     Group(Owner, Group),
+    /// A category folder in a group (by a hash of its name, [`text_hash`]).
+    Category(Owner, Group, u64),
     Item(Owner, ObjectId),
     Outputs,
     /// The Gerber export folder.
@@ -82,6 +84,8 @@ pub struct Info {
     /// Project Library: parts no component uses.
     pub unused: usize,
     pub path: Option<PathBuf>,
+    /// Category folders: the category.
+    pub category: String,
 }
 
 impl Info {
@@ -131,6 +135,8 @@ pub enum Act {
     PartFrom(u64, ObjectId),
     Duplicate(u64, ObjectId),
     Rename(u64, ObjectId),
+    /// Ask for a new name of a category, set it on all the group's items in it.
+    RenameCategory(u64, Group, String),
     Delete(u64, ObjectId),
     Place(Owner, Id),
     CopyToProject(u64, Id),
@@ -257,6 +263,13 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
             out.push(A(label, act(key(owner))));
         }
         NodeId::Group(..) => {}
+        NodeId::Category(owner, g, _) if info.editable => {
+            let (label, act) = group_items(g);
+            out.push(A(label, act(key(owner))));
+            out.push(Separator);
+            out.push(A("Rename category…", Act::RenameCategory(key(owner), g, info.category.clone())));
+        }
+        NodeId::Category(..) => {}
         NodeId::Outputs => out.push(A("Export Gerber files", Act::ExportGerber)),
         NodeId::Gerber => {
             if info.flag {
@@ -349,6 +362,13 @@ pub fn count(n: usize, noun: &str) -> String {
     if n == 1 { format!("1 {noun}") } else { format!("{n} {noun}s") }
 }
 
+pub fn text_hash(text: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    h.finish()
+}
+
 pub fn path_hash(path: &Path) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -376,15 +396,16 @@ pub fn library_children(
     editable: bool,
     part: impl Fn(Id) -> Option<PartDetail>,
 ) -> Vec<TreeNode> {
-    let item = |id: ObjectId, name: &str, icon: Icon, tip: &str| {
-        TreeNode::new(NodeId::Item(owner, id), name, Info { editable, tip: tip.to_string(), ..Info::icon(icon) })
+    let item = |id: ObjectId, name: &str, category: &str, icon: Icon, tip: &str| {
+        let info = Info { editable, tip: tip.to_string(), ..Info::icon(icon) };
+        (category.to_string(), TreeNode::new(NodeId::Item(owner, id), name, info).with_keywords(category))
     };
-    let mut parts: Vec<TreeNode> = lib
+    let parts: Vec<(String, TreeNode)> = lib
         .parts
         .iter()
         .map(|p| {
             let icon = if p.is_board_part() { Icon::BoardPart } else { Icon::Part };
-            let mut n = item(ObjectId::LibPart(p.id), &p.name, icon, &p.description);
+            let (c, mut n) = item(ObjectId::LibPart(p.id), &p.name, &p.category, icon, &p.description);
             if let Some(d) = part(p.id) {
                 n.data.detail = d.text;
                 n.data.warn = d.warn;
@@ -394,18 +415,28 @@ pub fn library_children(
                     n.data.tip = if n.data.tip.is_empty() { d.tip } else { format!("{}\n{}", n.data.tip, d.tip) };
                 }
             }
-            n
+            (c, n)
         })
         .collect();
-    let mut symbols: Vec<TreeNode> =
-        lib.symbols.iter().map(|s| item(ObjectId::LibSymbol(s.id), &s.name, Icon::Symbol, "")).collect();
-    let mut footprints: Vec<TreeNode> =
-        lib.footprints.iter().map(|f| item(ObjectId::LibFootprint(f.id), &f.name, Icon::Footprint, "")).collect();
-    for list in [&mut parts, &mut symbols, &mut footprints] {
-        list.sort_by(|a, b| model::natural_cmp(&a.label, &b.label));
-    }
-    let group = |g: Group, label: &str, children: Vec<TreeNode>| {
-        let info = Info { detail: children.len().to_string(), editable, ..Info::icon(Icon::Folder) };
+    let symbols =
+        lib.symbols.iter().map(|s| item(ObjectId::LibSymbol(s.id), &s.name, &s.category, Icon::Symbol, "")).collect();
+    let footprints = lib
+        .footprints
+        .iter()
+        .map(|f| item(ObjectId::LibFootprint(f.id), &f.name, &f.category, Icon::Footprint, ""))
+        .collect();
+    let group = |g: Group, label: &str, items: Vec<(String, TreeNode)>| {
+        let count = items.len();
+        let children = categorized(items, |name, children| {
+            let info = Info {
+                detail: children.len().to_string(),
+                editable,
+                category: name.to_string(),
+                ..Info::icon(Icon::Folder)
+            };
+            TreeNode::new(NodeId::Category(owner, g, text_hash(name)), name, info).with_children(children)
+        });
+        let info = Info { detail: count.to_string(), editable, ..Info::icon(Icon::Folder) };
         TreeNode::new(NodeId::Group(owner, g), label, info).with_children(children)
     };
     vec![
@@ -413,6 +444,37 @@ pub fn library_children(
         group(Group::Symbols, "Symbols", symbols),
         group(Group::Footprints, "Footprints", footprints),
     ]
+}
+
+/// Items by category: a folder per category (`folder(name, items)`) in natural order,
+/// then the uncategorised items. Items are sorted by label.
+pub fn categorized<T>(
+    mut items: Vec<(String, Node<NodeId, T>)>,
+    folder: impl Fn(&str, Vec<Node<NodeId, T>>) -> Node<NodeId, T>,
+) -> Vec<Node<NodeId, T>> {
+    items.sort_by(|(ca, a), (cb, b)| {
+        (ca.is_empty().cmp(&cb.is_empty()))
+            .then_with(|| model::natural_cmp(ca, cb))
+            .then_with(|| ca.cmp(cb))
+            .then_with(|| model::natural_cmp(&a.label, &b.label))
+    });
+    let mut out: Vec<Node<NodeId, T>> = Vec::new();
+    let mut open: Option<(String, Vec<Node<NodeId, T>>)> = None;
+    for (c, n) in items {
+        if open.as_ref().is_some_and(|(o, _)| *o != c) {
+            let (o, ch) = open.take().unwrap();
+            out.push(folder(&o, ch));
+        }
+        if c.is_empty() {
+            out.push(n);
+        } else {
+            open.get_or_insert_with(|| (c, Vec::new())).1.push(n);
+        }
+    }
+    if let Some((o, ch)) = open {
+        out.push(folder(&o, ch));
+    }
+    out
 }
 
 #[cfg(target_os = "macos")]
@@ -1000,6 +1062,40 @@ mod tests {
                 Entry::Separator => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn library_items_group_by_category() {
+        let lib = model::builtin::builtin_library();
+        let groups = library_children(Owner::Lib(7), &lib, false, |_| None);
+        let labels = |nodes: &[TreeNode]| nodes.iter().map(|n| n.label.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            labels(&groups[0].children),
+            ["Analog", "Connectors", "Diodes", "Logic", "Mechanical", "Passives", "Power", "Switches", "Transistors"]
+        );
+        assert_eq!(groups[0].data.detail, lib.parts.len().to_string(), "the group counts its items");
+        assert_eq!(labels(&groups[2].children), ["Mechanical", "SMD", "Through hole"]);
+        let passives = &groups[0].children[5];
+        assert_eq!(passives.id, NodeId::Category(Owner::Lib(7), Group::Parts, text_hash("Passives")));
+        assert!(labels(&passives.children).starts_with(&["Capacitor".to_string()]));
+        // Items keep their category as search keywords; the menu of a read-only folder is empty.
+        assert_eq!(passives.children[0].keywords, "Passives");
+        assert!(menu(passives.id, &passives.data).is_empty());
+        let editable = Info { editable: true, category: "Passives".into(), ..Default::default() };
+        assert!(acts(menu(passives.id, &editable)).contains(&Act::RenameCategory(7, Group::Parts, "Passives".into())));
+    }
+
+    #[test]
+    fn uncategorised_items_follow_the_folders() {
+        let item = |c: &str, name: &str| (c.to_string(), TreeNode::new(NodeId::Project, name, Info::default()));
+        let out = categorized(vec![item("", "a"), item("B", "z"), item("A", "y"), item("B", "x")], |name, ch| {
+            TreeNode::new(NodeId::Board, name, Info::default()).with_children(ch)
+        });
+        let flat: Vec<String> = out
+            .iter()
+            .map(|n| format!("{}{:?}", n.label, n.children.iter().map(|c| c.label.as_str()).collect::<Vec<_>>()))
+            .collect();
+        assert_eq!(flat, ["A[\"y\"]", "B[\"x\", \"z\"]", "a[]"]);
     }
 
     #[test]

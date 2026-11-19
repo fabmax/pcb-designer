@@ -2,8 +2,8 @@
 //! navigation and the search filter. The GUI builds the nodes each frame, asks for the
 //! visible [`Row`]s and paints them.
 //!
-//! **Search** filters: only nodes whose label contains the query (ignoring case) and their
-//! ancestors are shown. Ancestors are expanded while searching, and matches show as
+//! **Search** filters: only nodes whose label or keywords contain the query (ignoring case)
+//! and their ancestors are shown. Ancestors are expanded while searching, and matches show as
 //! leaves. ↑/↓ move between matches. Closing the search restores the expansion from before
 //! it, plus whatever is needed to keep the selection visible.
 
@@ -16,13 +16,20 @@ use std::ops::Range;
 pub struct Node<K, T> {
     pub id: K,
     pub label: String,
+    /// More text the search matches, unhighlighted (an item's category).
+    pub keywords: String,
     pub data: T,
     pub children: Vec<Node<K, T>>,
 }
 
 impl<K, T> Node<K, T> {
     pub fn new(id: K, label: impl Into<String>, data: T) -> Self {
-        Node { id, label: label.into(), data, children: Vec::new() }
+        Node { id, label: label.into(), keywords: String::new(), data, children: Vec::new() }
+    }
+
+    pub fn with_keywords(mut self, keywords: impl Into<String>) -> Self {
+        self.keywords = keywords.into();
+        self
     }
 
     pub fn with_children(mut self, children: Vec<Node<K, T>>) -> Self {
@@ -132,7 +139,7 @@ impl<K: Copy + Eq + Hash> TreeState<K> {
         for c in &n.children {
             below |= self.filtered(c, depth + 1, Some(n.id), q, out);
         }
-        let matched = find(&n.label, q);
+        let matched = find(&n.label, q).or_else(|| n.keywords.to_lowercase().contains(q).then_some(0..0));
         if !below && matched.is_none() {
             return false;
         }
@@ -343,6 +350,16 @@ mod tests {
             ),
             n(7, "External Libraries", vec![n(8, "Mine", vec![n(9, "Parts", vec![n(10, "Regulator", vec![])])])]),
         ]
+    }
+
+    #[test]
+    fn search_matches_keywords() {
+        let mut roots = tree();
+        roots[1].children[0].children[0].children[0].keywords = "Power".into();
+        let mut t = TreeState::default();
+        t.set_query(&roots, "power");
+        assert_eq!(ids(&t, &roots), [7, 8, 9, 10]);
+        assert_eq!(t.rows(&roots)[3].matched, Some(0..0), "matched, nothing highlighted");
     }
 
     fn ids(t: &TreeState<u32>, roots: &[N]) -> Vec<u32> {

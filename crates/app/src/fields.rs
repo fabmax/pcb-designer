@@ -64,6 +64,41 @@ impl Fields {
         (r.lost_focus() && buf != current).then(|| buf.clone())
     }
 
+    /// A category: a text field with a menu of `suggestions` (from [`categories`]).
+    /// Returns the new category if it changed.
+    pub fn category(
+        &mut self,
+        ui: &mut egui::Ui,
+        salt: impl std::hash::Hash + std::fmt::Debug,
+        current: &str,
+        suggestions: &[String],
+    ) -> Option<String> {
+        let mut out = None;
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            let width = (ui.available_width() - 34.0).min(240.0);
+            out = self.text_sized(ui, salt, current, width);
+            ui.add_enabled_ui(!suggestions.is_empty(), |ui| {
+                ui.menu_button("▼", |ui| {
+                    for s in suggestions {
+                        if ui.selectable_label(s == current, s).clicked() {
+                            out = Some(s.clone());
+                        }
+                    }
+                    if !current.is_empty() {
+                        ui.separator();
+                        if ui.button("None").clicked() {
+                            out = Some(String::new());
+                        }
+                    }
+                })
+                .response
+                .on_hover_text("Categories in use");
+            });
+        });
+        out.map(|c| c.trim().to_string()).filter(|c| c != current)
+    }
+
     /// Length in the display unit, edited by dragging or typing; at least `min` mm.
     /// Returns the new value in nm.
     pub fn length(&mut self, ui: &mut egui::Ui, value: Coord, min: f64) -> Option<Coord> {
@@ -252,4 +287,19 @@ pub fn corner_rows(
         });
         ui.end_row();
     }
+}
+
+/// Category suggestions: those of `lib` and of the Built-in library. Parts and symbols
+/// share theirs; footprints have their own.
+pub fn categories(lib: &Library, footprints: bool) -> Vec<String> {
+    static BUILTIN: std::sync::OnceLock<[Vec<String>; 2]> = std::sync::OnceLock::new();
+    let builtin = BUILTIN.get_or_init(|| {
+        let lib = builtin::builtin_library();
+        [lib.categories(false), lib.categories(true)]
+    });
+    let mut out = lib.categories(footprints);
+    out.extend(builtin[footprints as usize].iter().cloned());
+    out.sort_by(|a, b| natural_cmp(a, b).then_with(|| a.cmp(b)));
+    out.dedup();
+    out
 }

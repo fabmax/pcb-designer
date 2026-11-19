@@ -45,15 +45,30 @@ pub struct Source<'a> {
 pub enum Row {
     /// A library: its key, the number of parts listed (matching) and whether it's
     /// collapsed.
-    Library {
-        key: u64,
-        count: usize,
-        collapsed: bool,
-    },
-    Part {
-        key: u64,
-        part: PartId,
-    },
+    Library { key: u64, count: usize, collapsed: bool },
+    /// A category of a library: its name, the number of parts listed and whether it's
+    /// collapsed.
+    Category { key: u64, name: String, count: usize, collapsed: bool },
+    /// A part; `nested` in a category.
+    Part { key: u64, part: PartId, nested: bool },
+}
+
+impl Row {
+    /// What a click on the row folds.
+    fn fold(&self) -> Option<Fold> {
+        match self {
+            Row::Library { key, .. } => Some(Fold::Library(*key)),
+            Row::Category { key, name, .. } => Some(Fold::Category(*key, name.clone())),
+            Row::Part { .. } => None,
+        }
+    }
+}
+
+/// A collapsed library or category of the list.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Fold {
+    Library(u64),
+    Category(u64, String),
 }
 
 /// What the panel asks for.
@@ -93,13 +108,13 @@ fn kicad_link(ui: &mut Ui, kicad: KicadMatches) -> egui::Response {
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// Does `part` match every word of `query` (lower case), in its name, description,
-/// default value or properties?
+/// Does `part` match every word of `query` (lower case), in its name, category,
+/// description, default value or properties?
 pub fn matches(part: &Part, words: &[String]) -> bool {
     if words.is_empty() {
         return true;
     }
-    let mut hay = format!("{}\n{}\n{}", part.name, part.description, part.default_value);
+    let mut hay = format!("{}\n{}\n{}\n{}", part.name, part.category, part.description, part.default_value);
     for (k, v) in &part.properties {
         hay.push('\n');
         hay.push_str(k);
@@ -111,9 +126,11 @@ pub fn matches(part: &Part, words: &[String]) -> bool {
 }
 
 /// The rows: a header per library with parts of `kind` (with a query: matching ones,
-/// all expanded), its parts in natural order. Libraries without such parts are left out.
-pub fn rows(sources: &[Source], kind: Kind, query: &str, collapsed: &HashSet<u64>) -> Vec<Row> {
+/// all expanded), then its categories (in natural order) with their parts, then its
+/// uncategorised parts; parts in natural order. Libraries without such parts are left out.
+pub fn rows(sources: &[Source], kind: Kind, query: &str, folded: &HashSet<Fold>) -> Vec<Row> {
     let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    let searching = !words.is_empty();
     let mut out = Vec::new();
     for s in sources {
         let mut parts: Vec<&Part> =
@@ -121,11 +138,29 @@ pub fn rows(sources: &[Source], kind: Kind, query: &str, collapsed: &HashSet<u64
         if parts.is_empty() {
             continue;
         }
-        parts.sort_by(|a, b| natural_cmp(&a.name, &b.name));
-        let folded = words.is_empty() && collapsed.contains(&s.key);
-        out.push(Row::Library { key: s.key, count: parts.len(), collapsed: folded });
-        if !folded {
-            out.extend(parts.into_iter().map(|p| Row::Part { key: s.key, part: p.id }));
+        parts.sort_by(|a, b| {
+            (a.category.is_empty().cmp(&b.category.is_empty()))
+                .then_with(|| natural_cmp(&a.category, &b.category))
+                .then_with(|| a.category.cmp(&b.category))
+                .then_with(|| natural_cmp(&a.name, &b.name))
+        });
+        let key = s.key;
+        let closed = !searching && folded.contains(&Fold::Library(key));
+        out.push(Row::Library { key, count: parts.len(), collapsed: closed });
+        if closed {
+            continue;
+        }
+        for chunk in parts.chunk_by(|a, b| a.category == b.category) {
+            let name = &chunk[0].category;
+            if name.is_empty() {
+                out.extend(chunk.iter().map(|p| Row::Part { key, part: p.id, nested: false }));
+                continue;
+            }
+            let closed = !searching && folded.contains(&Fold::Category(key, name.clone()));
+            out.push(Row::Category { key, name: name.clone(), count: chunk.len(), collapsed: closed });
+            if !closed {
+                out.extend(chunk.iter().map(|p| Row::Part { key, part: p.id, nested: true }));
+            }
         }
     }
     out
@@ -144,6 +179,8 @@ fn owner(key: u64) -> Owner {
 }
 
 const PREVIEW_HEIGHT: f32 = 200.0;
+/// Indentation of a category and of its parts.
+const INDENT: f32 = 12.0;
 
 fn search_id() -> Id {
     Id::unique("parts_search")
@@ -157,7 +194,7 @@ fn list_id() -> Id {
 pub struct PartsPanel {
     query: String,
     selected: Option<(u64, PartId)>,
-    collapsed: HashSet<u64>,
+    folded: HashSet<Fold>,
     preview: Preview,
     /// The library the preview last showed (its view is redrawn when that changes).
     previewed: Option<u64>,
@@ -212,12 +249,12 @@ impl PartsPanel {
         }
         ui.add_space(2.0);
 
-        let rows = rows(sources, kind, &self.query, &self.collapsed);
+        let rows = rows(sources, kind, &self.query, &self.folded);
         let no_parts = rows.is_empty();
         let source = |key: u64| sources.iter().find(|s| s.key == key);
         let part_of = |key: u64, id: PartId| source(key).and_then(|s| s.doc.library().parts.get(id));
         let selected = rows.iter().position(|r| match (r, self.selected) {
-            (Row::Part { key, part }, Some((k, p))) => *key == k && *part == p,
+            (Row::Part { key, part, .. }, Some((k, p))) => *key == k && *part == p,
             _ => false,
         });
         let mut act: Option<Act> = None;
@@ -241,7 +278,7 @@ impl PartsPanel {
         let list_height = (list_height - if no_parts { 40.0 } else { 0.0 }).max(40.0);
         let out = {
             let mut menu = |ui: &mut Ui, i: usize| {
-                let Row::Part { key, part } = rows[i] else {
+                let Row::Part { key, part, .. } = rows[i] else {
                     ui.close();
                     return;
                 };
@@ -269,9 +306,20 @@ impl PartsPanel {
                         resp.on_hover_text(format!("Placing is refused until the library is fixed: {issue}"));
                     }
                 }
-                Row::Part { key, part } => {
-                    // Names line up with the library titles (after the chevron's room).
+                Row::Category { name, count, collapsed, .. } => {
+                    ui.add_space(INDENT);
+                    let (r, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                    crate::project_panel::chevron_paint(ui.painter(), r, !*collapsed, theme::text_dim());
+                    nav_list::name(ui, name);
+                    nav_list::dim(ui, &count.to_string());
+                }
+                Row::Part { key, part, nested } => {
+                    // Names line up with the library titles (after the chevron's room), or
+                    // the category names.
                     ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                    if *nested {
+                        ui.add_space(INDENT);
+                    }
                     if let Some(p) = part_of(*key, *part) {
                         nav_list::name(ui, &p.name);
                         if !p.description.is_empty() {
@@ -301,35 +349,35 @@ impl PartsPanel {
                     )
                 })
                 .inner;
-            // A click on a library's row folds it; Enter on it too.
+            // A click on a library's or category's row folds it; Enter on it too.
             if let Some(i) = out.select.or(out.activate)
-                && let Row::Library { key, .. } = rows[i]
+                && let Some(fold) = rows[i].fold()
                 && (out.activate.is_some() || ui.input(|inp| inp.pointer.any_click()))
             {
-                toggle = Some(key);
+                toggle = Some(fold);
             }
             out
         };
-        if let Some(key) = toggle
+        if let Some(fold) = toggle
             && self.query.trim().is_empty()
-            && !self.collapsed.remove(&key)
+            && !self.folded.remove(&fold)
         {
-            self.collapsed.insert(key);
+            self.folded.insert(fold);
         }
-        // Keys skip library rows (to the next part in the direction moved).
+        // Keys skip library and category rows (to the next part in the direction moved).
         let clicked = ui.input(|inp| inp.pointer.any_click());
         let landed = match out.select {
-            Some(i) if !clicked && matches!(rows[i], Row::Library { .. }) => {
+            Some(i) if !clicked && !matches!(rows[i], Row::Part { .. }) => {
                 let up = selected.is_some_and(|s| i < s);
                 let part = |j: &usize| matches!(rows[*j], Row::Part { .. });
                 if up { (0..i).rev().find(part) } else { (i..rows.len()).find(part) }.or(selected)
             }
             other => other,
         };
-        if let Some(Row::Part { key, part }) = landed.map(|i| &rows[i]) {
+        if let Some(Row::Part { key, part, .. }) = landed.map(|i| &rows[i]) {
             self.selected = Some((*key, *part));
         }
-        if let Some(Row::Part { key, part }) = out.activate.map(|i| &rows[i]) {
+        if let Some(Row::Part { key, part, .. }) = out.activate.map(|i| &rows[i]) {
             self.selected = Some((*key, *part));
             act = Some(Act::Place(owner(*key), *part));
         }
@@ -390,6 +438,7 @@ mod tests {
         let mut p = Part {
             id: PartId::new(),
             name: name.into(),
+            category: String::new(),
             description: String::new(),
             prefix: "R".into(),
             default_value: String::new(),
@@ -427,9 +476,13 @@ mod tests {
             rows.iter()
                 .map(|r| match r {
                     Row::Library { key, count, .. } => format!("#{key}:{count}"),
-                    Row::Part { key, part } => {
+                    Row::Category { name, count, collapsed, .. } => {
+                        format!("{}{name}:{count}", if *collapsed { "+" } else { "-" })
+                    }
+                    Row::Part { key, part, nested } => {
                         let s = sources.iter().find(|s| s.key == *key).unwrap();
-                        s.doc.library().parts.get(*part).unwrap().name.clone()
+                        let name = s.doc.library().parts.get(*part).unwrap().name.clone();
+                        if *nested { format!("  {name}") } else { name }
                     }
                 })
                 .collect()
@@ -441,9 +494,43 @@ mod tests {
         assert_eq!(names(&rows(&sources, Kind::Schematic, "r 0710k", &none)), ["#1:1", "R10"]);
         assert_eq!(names(&rows(&sources, Kind::Schematic, "nothing", &none)), Vec::<String>::new());
         // Folded libraries show their header only, unless searching.
-        let folded = HashSet::from([1]);
+        let folded = HashSet::from([Fold::Library(1)]);
         assert_eq!(names(&rows(&sources, Kind::Schematic, "", &folded)), ["#1:2", "#2:1", "LM358"]);
         assert_eq!(names(&rows(&sources, Kind::Schematic, "r2", &folded)), ["#1:1", "R2"]);
+    }
+
+    #[test]
+    fn categories_group_parts_under_their_library() {
+        let cat = |name: &str, category: &str| Part { category: category.into(), ..part(name, false) };
+        let a = lib(vec![cat("R", "Passives"), cat("Q", "Transistors"), part("X", false), cat("C", "Passives")]);
+        let sources = [Source { key: 1, title: "A".into(), doc: &a, issue: None }];
+        let names = |rows: &[Row]| -> Vec<String> {
+            rows.iter()
+                .map(|r| match r {
+                    Row::Library { count, .. } => format!("#{count}"),
+                    Row::Category { name, count, collapsed, .. } => {
+                        format!("{}{name}:{count}", if *collapsed { "+" } else { "-" })
+                    }
+                    Row::Part { part, nested, .. } => {
+                        let name = a.library().parts.get(*part).unwrap().name.clone();
+                        if *nested { format!("  {name}") } else { name }
+                    }
+                })
+                .collect()
+        };
+        let none = HashSet::new();
+        assert_eq!(
+            names(&rows(&sources, Kind::Schematic, "", &none)),
+            ["#4", "-Passives:2", "  C", "  R", "-Transistors:1", "  Q", "X"]
+        );
+        let folded = HashSet::from([Fold::Category(1, "Passives".into())]);
+        assert_eq!(
+            names(&rows(&sources, Kind::Schematic, "", &folded)),
+            ["#4", "+Passives:2", "-Transistors:1", "  Q", "X"]
+        );
+        // The search matches categories (words ANDed) and shows them expanded.
+        assert_eq!(names(&rows(&sources, Kind::Schematic, "passives", &folded)), ["#2", "-Passives:2", "  C", "  R"]);
+        assert_eq!(names(&rows(&sources, Kind::Schematic, "pass r", &folded)), ["#1", "-Passives:1", "  R"]);
     }
 
     #[test]

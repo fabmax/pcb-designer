@@ -370,3 +370,25 @@ fn board_parts() {
     ask(&mut host, Request::Execute { commands: vec![delete] }).unwrap();
     assert!(host.document().project().schematic.component_by_refdes("H1").is_none());
 }
+
+#[test]
+fn categories() {
+    let mut host = HeadlessHost::new(Document::new(model::Project::new("p")));
+    lib(&mut host, LibraryRequest::Create { name: "Driver".into(), path: None }).unwrap();
+    let mut items = driver();
+    items[0]["category"] = json!("Power ");
+    items[2]["category"] = json!("SMD");
+    edit(&mut host, items, &[]).unwrap();
+    // The listing shows them.
+    let list = lib(&mut host, LibraryRequest::List).unwrap();
+    let driver = list["libraries"].as_array().unwrap().iter().find(|l| l["name"] == "Driver").unwrap();
+    assert_eq!(driver["parts"][0]["category"], "Power", "{driver}");
+    assert!(driver["symbols"][0].get("category").is_none());
+    assert_eq!(get(&mut host, "part:DRV1")["category"], "Power");
+    assert_eq!(get(&mut host, "footprint:SOT-23")["category"], "SMD");
+    assert!(get(&mut host, "symbol:DRV").get("category").is_none(), "empty: not written");
+    // The Built-in library's parts have theirs.
+    let items =
+        lib(&mut host, LibraryRequest::Get { library: "Built-in".into(), items: vec!["part:LM358".into()] }).unwrap();
+    assert_eq!(items["items"][0]["category"], "Analog");
+}

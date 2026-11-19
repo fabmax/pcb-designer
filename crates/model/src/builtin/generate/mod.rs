@@ -70,6 +70,8 @@ pub(super) fn variant<'a>(name: impl Into<String>, footprint: impl Into<String>,
 
 pub(super) struct PartSpec<'a> {
     pub name: String,
+    /// The part's and its symbol's.
+    pub category: &'a str,
     pub description: String,
     pub prefix: &'a str,
     pub value: String,
@@ -159,9 +161,13 @@ impl Builder {
                 }
             })
             .collect();
+        if let Some(s) = symbol.as_ref().and_then(|s| self.lib.symbols.get_mut(s.id)) {
+            s.category = spec.category.into();
+        }
         self.lib.parts.insert(Part {
             id: gid(&format!("part/{}", spec.name)),
             name: spec.name.clone(),
+            category: spec.category.into(),
             description: spec.description,
             prefix: spec.prefix.into(),
             default_value: spec.value,

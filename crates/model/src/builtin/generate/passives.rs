@@ -89,6 +89,7 @@ fn resistors(b: &mut Builder) {
     let variants = v.into_iter().map(|(n, f)| variant(n, f, Map::ByNumber)).collect();
     b.part(PartSpec {
         name: "Resistor".into(),
+        category: "Passives",
         description: "Resistor: chip 0402 to 2512, axial through-hole".into(),
         prefix: "R",
         value: "10k".into(),
@@ -112,6 +113,7 @@ fn capacitors(b: &mut Builder) {
     let variants = v.into_iter().map(|(n, f)| variant(n, f, Map::ByNumber)).collect();
     b.part(PartSpec {
         name: "Capacitor".into(),
+        category: "Passives",
         description: "Ceramic capacitor: chip 0402 to 1210, through-hole disc".into(),
         prefix: "C",
         value: "100n".into(),
@@ -174,6 +176,7 @@ fn polarized(b: &mut Builder) {
     let variants = v.into_iter().map(|(n, f)| variant(n, f, Map::ByNumber)).collect();
     b.part(PartSpec {
         name: "Capacitor_Polarized".into(),
+        category: "Passives",
         description: "Polarised capacitor (tantalum, electrolytic); pin 1 is +".into(),
         prefix: "C",
         value: "10u".into(),
@@ -204,6 +207,7 @@ fn inductors(b: &mut Builder) {
     let variants = v.into_iter().map(|(n, f)| variant(n, f, Map::ByNumber)).collect();
     b.part(PartSpec {
         name: "Inductor".into(),
+        category: "Passives",
         description: "Inductor: chip 0603 to 1210, shielded SMD power inductors".into(),
         prefix: "L",
         value: "10u".into(),
@@ -217,6 +221,7 @@ fn beads_and_fuses(b: &mut Builder) {
     let v = chip_variants(b, "Chip_", &["0603", "0402", "0805"]);
     b.part(PartSpec {
         name: "FerriteBead".into(),
+        category: "Passives",
         description: "Ferrite bead, chip 0402 to 0805".into(),
         prefix: "FB",
         value: "600R@100MHz".into(),
@@ -227,6 +232,7 @@ fn beads_and_fuses(b: &mut Builder) {
     let v = chip_variants(b, "Chip_", &["1206", "0603", "1812"]);
     b.part(PartSpec {
         name: "Fuse".into(),
+        category: "Passives",
         description: "Fuse or resettable PTC fuse, chip 0603 to 1812".into(),
         prefix: "F",
         value: "500mA".into(),

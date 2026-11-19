@@ -130,6 +130,7 @@ pub fn make_part(sym: &KiSymbol, footprints: &[KiFootprint]) -> Part {
     Part {
         id: kid(&["kicad-part", &sym.lib, &sym.name]),
         name: sym.name.clone(),
+        category: String::new(),
         description: sym.description.clone(),
         prefix: if sym.reference.is_empty() { "U".into() } else { sym.reference.clone() },
         default_value: sym.value.clone(),

@@ -37,6 +37,12 @@ the current design of each area with the gotchas a change needs to know, the pla
   (`PartVariant::no_footprint`, "No footprint") has no connections; components using it
   are off the board (power flags, logos, KiCad's "exclude from board"). Off-board is a
   choice the part offers, never a free per-component switch.
+- Categories: `Part`, `Symbol` and `Footprint` each have a plain-text `category` (empty:
+  none; not written then). There is no list of categories: `Library::categories` derives
+  them (parts and symbols share one vocabulary, footprints have their own).
+  `Transaction::normalized` trims them, so they match exactly. A part's category is part
+  of its content, so "Update from library" takes it. KiCad imports leave all three
+  empty. A part made from a symbol (`LibraryDoc::new_part`) takes the symbol's category.
 - Schematic: design-wide `Component`s (refdes, value, part, variant), units placed as
   `SymbolInstance`s; every graphic carries its sheet id. A unit of a part with several
   units shows its reference as `U1-A` (`Part::unit_reference`: the unit's name, its
@@ -653,6 +659,10 @@ the current design of each area with the gotchas a change needs to know, the pla
   (headers, socket; odd pins left), `Crystal`, `Crystal_GND24`, `TestPoint`, `SW_Push`,
   board parts `MountingHole_M2`…`M4` (plated / plain) and `Fiducial`; hand-made `OpAmp`,
   `LM358`, `74HC00`, `AMS1117-3.3`, `AP2112K-3.3`, `LM7805`.
+  - Categories: `PartSpec::category`, also set on the part's symbol. Footprints are "SMD"
+    or, with any plated through-hole pad, "Through hole" (`Fp::pad_category`), unless
+    `Fp::category` overrides it (mounting holes and the fiducial are "Mechanical").
+    Hand-made parts carry theirs in the file. The `categories` test checks them all.
   - Most of it is **generated** (`builtin::generate`: `fp::Fp` builds footprints with
     silkscreen clipped clear of the pads and a courtyard around everything, `sym::Sym`
     symbols; IPC-7351B nominal lands for standard packages, vendor-specific ones say
@@ -792,9 +802,11 @@ the current design of each area with the gotchas a change needs to know, the pla
 - **Parts panel** (`parts_ui.rs`): `rows` lists, per library (Project Library first,
   Built-in last; libraries without such parts left out), the parts the last active
   editor places: `!is_board_part` for the schematic, board parts for the board. Search:
-  every word in name, description, default value or properties. Rows go through
-  `nav_list::show_with_menu`; the selection is a (library key, part id), keys skip the
-  library rows, a click on one folds it (not while searching). Actions are the Project
+  every word in name, category, description, default value or properties. Under each library: a
+  `Row::Category` per category (natural order, indented), its parts nested, then the
+  uncategorised parts. Rows go through `nav_list::show_with_menu`; the selection is a
+  (library key, part id), keys skip the library and category rows, a click on one folds
+  it (`Fold`; not while searching, when everything with matches is open). Actions are the Project
   panel's `Act`s (`Place` imports into the Project Library like the tree). Placing
   surrenders the field's and list's focus so the canvas gets R / X / Esc. P is
   `SchFindPart` / `PcbFindPart` (two actions, as an action has one context); power ports
@@ -830,7 +842,15 @@ the current design of each area with the gotchas a change needs to know, the pla
 - **Project tree** (`project_panel.rs`): project (the root sheet as "Schematic" with its
   sub-sheets nested by name, PCB, Project Library, Outputs › Gerber), Built-in Library (read-only),
   External Libraries; new sheets come from the + menu or a sheet's menu (name dialog,
-  then the symbol follows the cursor); menus and activation are pure functions returning `Act`s. Gotcha: egui
+  then the symbol follows the cursor); menus and activation are pure functions returning `Act`s.
+  Inside a library's Parts, Symbols and Footprints groups, `categorized` puts a folder
+  per category first (`NodeId::Category(owner, group, text_hash(name))`, natural
+  order), then the uncategorised items. Items carry their category as `Node::keywords`,
+  so the tree search finds a category's items (it shows them, not every folder child).
+  "Rename category…" on a folder is `LibraryDoc::rename_category`: one `Update` of all
+  the group's items in it. The Category fields (part form; symbol and footprint
+  summaries) are `Fields::category`, with suggestions from `fields::categories`: the
+  library's and the Built-in library's (cached). Gotcha: egui
   drops focus on Esc before widgets run unless the focused widget's event filter claims
   Esc.
 - **Main menu** (`menu.rs`): described once as data, drawn by egui (`bar_ui`) or, on
@@ -1034,6 +1054,10 @@ defers.
   or with a warning popup, mod key or something like that
 
 **Libraries and parts**
+- Categories: a category field in the KiCad import window, dragging items onto a
+  category folder, setting the category of several selected items at once, category
+  suggestions from all open libraries (only the item's own library and the Built-in
+  library today).
 - Built-in library: trimmer potentiometers (Bourns 3362P, TC33), SMD tactile switches
   (6×6, 3×4) and a slide switch, HC-49 SMD crystal, USB-C (USB 2.0) and Micro-B
   receptacles; 1.27 / 2.00 mm pin rows, RGB LEDs, dual diodes (BAV99), resistor arrays,

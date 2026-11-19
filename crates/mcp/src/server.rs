@@ -707,6 +707,7 @@ impl PcbTools {
         - Matched by id or name: a match is updated, otherwise added. Fields left out keep \
         their value (new items get defaults). Ids are optional everywhere: pins keep theirs \
         by number (or name), pads by name, variants by name.\n\
+        - All three take an optional category: plain text that groups items in library trees         (e.g. \"Passives\", \"Connectors\"; footprints \"SMD\" or \"Through hole\"). Parts and         symbols share categories; list_libraries shows the ones in use.\n\
         - lib_symbol: name, pins, graphics, texts. Pin: name, number (datasheet pin \
         number), pos (the outer end, where wires connect; put it on the 2.54 mm grid), \
         direction (degrees from pos toward the body: 0 for a pin on the left side, 180 \

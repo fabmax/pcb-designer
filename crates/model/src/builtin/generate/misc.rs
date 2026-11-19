@@ -58,6 +58,7 @@ fn crystals(b: &mut Builder) {
     }
     b.part(PartSpec {
         name: "Crystal".into(),
+        category: "Passives",
         description: "Quartz crystal, two pins (on 4-pad packages the case pads stay open)".into(),
         prefix: "Y",
         value: "16MHz".into(),
@@ -67,6 +68,7 @@ fn crystals(b: &mut Builder) {
     b.symbol(sym::crystal_gnd24());
     b.part(PartSpec {
         name: "Crystal_GND24".into(),
+        category: "Passives",
         description: "Quartz crystal, 4 pads: 1 and 3 the crystal, 2 and 4 the case (ground)".into(),
         prefix: "Y",
         value: "16MHz".into(),
@@ -89,6 +91,7 @@ fn test_points(b: &mut Builder) {
     b.symbol(sym::test_point());
     b.part(PartSpec {
         name: "TestPoint".into(),
+        category: "Connectors",
         description: "Test point: SMD pad or through-hole pad".into(),
         prefix: "TP",
         value: "TestPoint".into(),
@@ -111,6 +114,7 @@ fn switches(b: &mut Builder) {
     b.symbol(sym::push_button());
     b.part(PartSpec {
         name: "SW_Push".into(),
+        category: "Switches",
         description: "Push button, normally open".into(),
         prefix: "SW",
         value: "SW_Push".into(),
@@ -126,15 +130,18 @@ fn mounting_holes(b: &mut Builder) {
         let pad_name = format!("MountingHole_{drill}mm_{m}_Pad");
         let mut f = Fp::new(&pad_name, format!("Mounting hole for {m} screws, plated, Ø{head} mm pad"));
         f.tht_round("1", 0.0, 0.0, head, drill);
+        f.category("Mechanical");
         b.footprint(f.finish());
         let plain = format!("MountingHole_{drill}mm_{m}");
         let mut f = Fp::new(&plain, format!("Mounting hole for {m} screws, not plated"));
         f.npth(0.0, 0.0, drill);
         f.fab(Shape::Circle { center: Point::ZERO, radius: mm(r), width: mm(0.1), fill: false });
         f.keep([-r, -r, r, r]);
+        f.category("Mechanical");
         b.footprint(f.finish());
         b.part(PartSpec {
             name: format!("MountingHole_{m}"),
+            category: "Mechanical",
             description: format!("Mounting hole for {m} screws (board part: placed on the board only)"),
             prefix: "H",
             value: "MountingHole".into(),
@@ -149,9 +156,11 @@ fn mounting_holes(b: &mut Builder) {
     pad.paste = false;
     pad.mask_margin = Some(mm(0.5));
     f.keep([-1.0, -1.0, 1.0, 1.0]);
+    f.category("Mechanical");
     b.footprint(f.finish());
     b.part(PartSpec {
         name: "Fiducial".into(),
+        category: "Mechanical",
         description: "Fiducial mark for assembly (board part: placed on the board only)".into(),
         prefix: "FID",
         value: "Fiducial".into(),

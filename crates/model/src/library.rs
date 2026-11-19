@@ -84,6 +84,9 @@ impl Pin {
 pub struct Symbol {
     pub id: Id,
     pub name: String,
+    /// Plain-text group in library trees ("Passives", "SMD"); empty: none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub category: String,
     #[serde(default)]
     pub graphics: Vec<Shape>,
     #[serde(default)]
@@ -234,6 +237,9 @@ impl FootprintText {
 pub struct Footprint {
     pub id: Id,
     pub name: String,
+    /// Plain-text group in library trees ("Passives", "SMD"); empty: none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub category: String,
     #[serde(default)]
     pub description: String,
     pub pads: Store<Pad>,
@@ -295,6 +301,9 @@ pub struct PartSource {
 pub struct Part {
     pub id: Id,
     pub name: String,
+    /// Plain-text group in library trees ("Passives", "SMD"); empty: none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub category: String,
     #[serde(default)]
     pub description: String,
     /// Reference designator prefix ("R", "U", …).
@@ -410,6 +419,24 @@ pub struct Library {
 impl Library {
     pub fn new(name: impl Into<String>) -> Self {
         Library { id: Some(Id::new()), name: name.into(), ..Default::default() }
+    }
+
+    /// The categories of parts and symbols (one vocabulary), or of footprints, in
+    /// natural order without duplicates.
+    pub fn categories(&self, footprints: bool) -> Vec<String> {
+        let mut out: Vec<&str> = if footprints {
+            self.footprints.iter().map(|f| f.category.as_str()).collect()
+        } else {
+            self.parts
+                .iter()
+                .map(|p| p.category.as_str())
+                .chain(self.symbols.iter().map(|s| s.category.as_str()))
+                .collect()
+        };
+        out.retain(|c| !c.is_empty());
+        out.sort_by(|a, b| crate::natural_cmp(a, b).then_with(|| a.cmp(b)));
+        out.dedup();
+        out.into_iter().map(str::to_string).collect()
     }
 
     /// Footprint of a part variant (none for a "no footprint" variant).

@@ -290,6 +290,15 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
   set the value per component. It is read-only; "Save a copy as…" makes an editable
   library of your own from it.
 - **External Libraries:** the project's library files (`.pcblib`).
+- **Categories:** parts, symbols and footprints can have a category: plain text such as
+  "Passives" or "SMD", set in the part form or in a symbol's or footprint's Properties
+  (with nothing selected). The ▼ menu next to the field lists the categories already
+  in use. Each library's Parts, Symbols and Footprints show a folder per category,
+  followed by the items without one. Right-click a folder → "Rename category…" to
+  rename it on all of its items in one step (an empty name removes the category). The
+  tree search also finds the items of a category by its name. The Built-in Library's
+  parts are sorted into categories, and its footprints into "SMD", "Through hole" and
+  "Mechanical". KiCad imports have no category.
 
 **Sheets** work as in KiCad: the Schematic node is the root sheet, with its sub-sheets
 nested below it. "New sheet…" (+ button, or "New sub-sheet…" on a sheet) asks for a
@@ -408,9 +417,10 @@ layout** puts them back.
 | left, bottom panel | Agent activity: the agent's calls this session, their arguments and results | – |
 
 The **Parts** panel lists the parts of the Project Library, the loaded libraries and the
-Built-in Library, grouped by library: schematic parts while the schematic is the active
-editor, board parts (mounting holes, logos) while the board is. Search matches every word
-in the name, description and properties (an MPN, say). Click a part to preview its symbol
+Built-in Library, grouped by library and category: schematic parts while the schematic is the active
+editor, board parts (mounting holes, logos) while the board is. Click a library or category
+row to fold it. Search matches every word in the name, category, description and
+properties (an MPN, say), and shows every category with matches open. Click a part to preview its symbol
 or footprint; double-click it (or Enter) to place it, copying it into the Project Library
 first. **P** on the schematic or the board opens the panel with the search field focused:
 type, ↓, Enter, then click on the canvas. Esc clears the search, a second Esc goes back to

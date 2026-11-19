@@ -208,3 +208,27 @@ fn merging_keeps_hand_made_parts() {
     assert_eq!(merged.parts.get(part.id), Some(&part));
     assert_eq!(merged.parts.len(), builtin_library().parts.len() + 1);
 }
+
+#[test]
+fn categories() {
+    let lib = builtin_library();
+    for part in lib.parts.iter() {
+        assert!(!part.category.is_empty(), "{} has no category", part.name);
+        for u in &part.units {
+            assert_eq!(lib.symbols.get(u.symbol).unwrap().category, part.category, "{}'s symbol", part.name);
+        }
+    }
+    for f in lib.footprints.iter() {
+        let tht = f.pads.iter().any(|p| matches!(p.kind, PadKind::ThroughHole { .. }));
+        let expected = if f.name.starts_with("MountingHole") || f.name.starts_with("Fiducial") {
+            "Mechanical"
+        } else if tht {
+            "Through hole"
+        } else {
+            "SMD"
+        };
+        assert_eq!(f.category, expected, "{}", f.name);
+    }
+    assert_eq!(lib.parts.get(PART_RESISTOR).unwrap().category, "Passives");
+    assert_eq!(lib.parts.get(PART_74HC00).unwrap().category, "Logic");
+}

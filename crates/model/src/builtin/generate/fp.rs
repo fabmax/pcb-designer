@@ -23,6 +23,8 @@ pub(super) struct Fp {
     keep: Vec<[f64; 4]>,
     /// Extra courtyard margin for a through-hole part.
     tht: bool,
+    /// `None`: SMD or Through hole by the pads.
+    category: Option<&'static str>,
 }
 
 fn rect_points(r: [f64; 4]) -> (Point, Point) {
@@ -38,6 +40,7 @@ impl Fp {
             graphics: Vec::new(),
             keep: Vec::new(),
             tht: false,
+            category: None,
         }
     }
 
@@ -201,7 +204,18 @@ impl Fp {
         self.silk(Shape::line(Point::mm(x, y - h), Point::mm(x, y + h), mm(SILK)));
     }
 
+    /// A category other than SMD / Through hole ("Mechanical").
+    pub fn category(&mut self, category: &'static str) {
+        self.category = Some(category);
+    }
+
+    /// Through hole when any pad is a plated hole, else SMD.
+    fn pad_category(&self) -> &'static str {
+        if self.pads.iter().any(|p| matches!(p.kind, PadKind::ThroughHole { .. })) { "Through hole" } else { "SMD" }
+    }
+
     pub fn finish(self) -> Footprint {
+        let category = self.category.unwrap_or_else(|| self.pad_category()).to_string();
         let margin = if self.tht { 0.5 } else { 0.25 };
         let mut ext = [f64::MAX, f64::MAX, f64::MIN, f64::MIN];
         let pads = self.pads.iter().map(|p| {
@@ -230,6 +244,7 @@ impl Fp {
             pads: pads.collect(),
             name,
             description: self.description,
+            category,
             graphics,
             texts: vec![FootprintText {
                 layer: FootprintLayer::Silkscreen,

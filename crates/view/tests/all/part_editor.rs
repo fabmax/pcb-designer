@@ -257,3 +257,25 @@ fn rename_keeps_names_unique_and_the_builtin_library_is_read_only() {
     assert!(err.contains("read-only"), "{err}");
     assert!(!builtin.is_modified());
 }
+
+#[test]
+fn categories_rename_in_one_step_and_follow_the_symbol() {
+    let mut lib = LibraryDoc::new(Library::new("L"));
+    let s = lib.new_symbol("Op amp").unwrap();
+    let mut sym = symbol(&lib, s).clone();
+    sym.category = "  Analog ".into();
+    lib.doc.execute(Command::Update { objects: vec![Object::LibSymbol(sym)] }).unwrap();
+    assert_eq!(symbol(&lib, s).category, "Analog", "trimmed");
+    // A part made from the symbol joins its category.
+    let p = lib.new_part("LM358", Some(s), None).unwrap();
+    let q = lib.new_part("Other", None, None).unwrap();
+    let part = |lib: &LibraryDoc, id| lib.library().parts.get(id).unwrap().category.clone();
+    assert_eq!((part(&lib, p), part(&lib, q)), ("Analog".into(), String::new()));
+    // Renaming the parts' category leaves the symbols' alone.
+    lib.rename_category(ObjectKind::LibPart, "Analog", "Linear").unwrap();
+    assert_eq!(part(&lib, p), "Linear");
+    assert_eq!(symbol(&lib, s).category, "Analog");
+    assert_eq!(lib.library().categories(false), ["Analog", "Linear"]);
+    lib.doc.undo();
+    assert_eq!(part(&lib, p), "Analog");
+}

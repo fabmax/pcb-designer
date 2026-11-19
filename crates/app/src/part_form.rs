@@ -135,11 +135,17 @@ impl PartForm {
 
         fields::heading(ui, &part.name, "Part");
         ui.add_space(6.0);
+        let categories = fields::categories(lib.library(), false);
         egui::Grid::new(("part_fields", id)).num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
             let f = &mut self.fields;
             label(ui, "Name");
             if let Some(v) = f.text_sized(ui, ("p_name", id), &part.name, 300.0) {
                 part.name = v;
+            }
+            ui.end_row();
+            label(ui, "Category");
+            if let Some(v) = f.category(ui, ("p_category", id), &part.category, &categories) {
+                part.category = v;
             }
             ui.end_row();
             label(ui, "Reference prefix");

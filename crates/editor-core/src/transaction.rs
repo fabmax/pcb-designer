@@ -351,12 +351,19 @@ impl<'p> Transaction<'p> {
 }
 
 /// `object` as stored: what every edit path must keep (a sheet symbol's size in whole pin
-/// pitches, see [`Sheet::snap_size`]).
+/// pitches, see [`Sheet::snap_size`]; library categories trimmed).
 fn normalized(mut object: Object) -> Object {
-    if let Object::Sheet(sh) = &mut object
-        && !sh.is_root()
-    {
-        sh.size = Sheet::snap_size(sh.size);
+    let trim = |s: &mut String| {
+        if s.trim().len() != s.len() {
+            *s = s.trim().to_string();
+        }
+    };
+    match &mut object {
+        Object::Sheet(sh) if !sh.is_root() => sh.size = Sheet::snap_size(sh.size),
+        Object::LibPart(p) => trim(&mut p.category),
+        Object::LibSymbol(s) => trim(&mut s.category),
+        Object::LibFootprint(f) => trim(&mut f.category),
+        _ => {}
     }
     object
 }

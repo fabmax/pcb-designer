@@ -127,7 +127,14 @@ pub fn convert(lib: &str, node: &Node, parent: Option<&Node>) -> KiSymbol {
             .map_or(letter.clone(), str::to_string);
         let symbol_name = if unit_count > 1 { format!("{name} {letter}") } else { name.clone() };
         let id = kid(&["kicad-symbol", lib, &name, &u.to_string()]);
-        let mut sym = Symbol { id, name: symbol_name, graphics: Vec::new(), texts: Vec::new(), pins: Store::default() };
+        let mut sym = Symbol {
+            id,
+            name: symbol_name,
+            category: String::new(),
+            graphics: Vec::new(),
+            texts: Vec::new(),
+            pins: Store::default(),
+        };
         let mut seen: BTreeMap<(String, String), usize> = BTreeMap::new();
         for &(su, _, sub) in subs.iter().filter(|s| s.0 == 0 || s.0 == u) {
             for item in sub.lists() {

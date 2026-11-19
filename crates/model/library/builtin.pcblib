@@ -7,6 +7,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8f631552da92",
       "name": "Resistor",
+      "category": "Passives",
       "graphics": [
         {
           "type": "rect",
@@ -62,6 +63,7 @@
     {
       "id": "5ce10000-0000-4000-9000-81aceab07f5b",
       "name": "Capacitor",
+      "category": "Passives",
       "graphics": [
         {
           "type": "line",
@@ -122,6 +124,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c114db275bf2",
       "name": "Capacitor_Polarized",
+      "category": "Passives",
       "graphics": [
         {
           "type": "rect",
@@ -198,6 +201,7 @@
     {
       "id": "5ce10000-0000-4000-9000-86bfdd5e417f",
       "name": "Inductor",
+      "category": "Passives",
       "graphics": [
         {
           "type": "arc",
@@ -278,6 +282,7 @@
     {
       "id": "5ce10000-0000-4000-9000-05e1f202aef0",
       "name": "FerriteBead",
+      "category": "Passives",
       "graphics": [
         {
           "type": "line",
@@ -343,6 +348,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8068fb707824",
       "name": "Fuse",
+      "category": "Passives",
       "graphics": [
         {
           "type": "rect",
@@ -404,6 +410,7 @@
     {
       "id": "5ce10000-0000-4000-9000-df5f0dcd40b4",
       "name": "Diode",
+      "category": "Diodes",
       "graphics": [
         {
           "type": "polygon",
@@ -468,6 +475,7 @@
     {
       "id": "5ce10000-0000-4000-9000-12ebe6334292",
       "name": "Diode_Schottky",
+      "category": "Diodes",
       "graphics": [
         {
           "type": "polygon",
@@ -556,6 +564,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f79670511021",
       "name": "Diode_Zener",
+      "category": "Diodes",
       "graphics": [
         {
           "type": "polygon",
@@ -632,6 +641,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6f38fb98e008",
       "name": "TVS",
+      "category": "Diodes",
       "graphics": [
         {
           "type": "polygon",
@@ -708,6 +718,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2225e650e430",
       "name": "TVS_Bidirectional",
+      "category": "Diodes",
       "graphics": [
         {
           "type": "polygon",
@@ -794,6 +805,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2c3970174ae6",
       "name": "LED",
+      "category": "Diodes",
       "graphics": [
         {
           "type": "polygon",
@@ -890,6 +902,7 @@
     {
       "id": "5ce10000-0000-4000-9000-86397a23f4cb",
       "name": "NPN",
+      "category": "Transistors",
       "graphics": [
         {
           "type": "circle",
@@ -984,6 +997,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c638e6e2e195",
       "name": "PNP",
+      "category": "Transistors",
       "graphics": [
         {
           "type": "circle",
@@ -1078,6 +1092,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4ea9fe688c6a",
       "name": "NMOS",
+      "category": "Transistors",
       "graphics": [
         {
           "type": "line",
@@ -1207,6 +1222,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d1b058312f54",
       "name": "PMOS",
+      "category": "Transistors",
       "graphics": [
         {
           "type": "line",
@@ -1336,6 +1352,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a494becad812",
       "name": "Conn_01x01",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -1380,6 +1397,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a394becad65f",
       "name": "Conn_01x02",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -1435,6 +1453,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a294becad4ac",
       "name": "Conn_01x03",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -1501,6 +1520,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a194becad2f9",
       "name": "Conn_01x04",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -1578,6 +1598,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a094becad146",
       "name": "Conn_01x05",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -1666,6 +1687,7 @@
     {
       "id": "5ce10000-0000-4000-9000-9f94becacf93",
       "name": "Conn_01x06",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -1765,6 +1787,7 @@
     {
       "id": "5ce10000-0000-4000-9000-9e94becacde0",
       "name": "Conn_01x07",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -1875,6 +1898,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ad94becae75d",
       "name": "Conn_01x08",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -1996,6 +2020,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ac94becae5aa",
       "name": "Conn_01x09",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -2128,6 +2153,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1f94bec7c03c",
       "name": "Conn_01x10",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -2271,6 +2297,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2094bec7c1ef",
       "name": "Conn_01x11",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -2425,6 +2452,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2194bec7c3a2",
       "name": "Conn_01x12",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -2590,6 +2618,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2294bec7c555",
       "name": "Conn_01x13",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -2766,6 +2795,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1b94bec7b970",
       "name": "Conn_01x14",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -2953,6 +2983,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1c94bec7bb23",
       "name": "Conn_01x15",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -3151,6 +3182,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1d94bec7bcd6",
       "name": "Conn_01x16",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -3360,6 +3392,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1e94bec7be89",
       "name": "Conn_01x17",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -3580,6 +3613,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2794bec7cdd4",
       "name": "Conn_01x18",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -3811,6 +3845,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2894bec7cf87",
       "name": "Conn_01x19",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -4053,6 +4088,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3194bed03357",
       "name": "Conn_01x20",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -4306,6 +4342,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3094bed031a4",
       "name": "Conn_01x21",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -4570,6 +4607,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3394bed036bd",
       "name": "Conn_01x22",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -4845,6 +4883,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3294bed0350a",
       "name": "Conn_01x23",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -5131,6 +5170,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2d94bed02c8b",
       "name": "Conn_01x24",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -5428,6 +5468,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2c94bed02ad8",
       "name": "Conn_01x25",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -5736,6 +5777,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2f94bed02ff1",
       "name": "Conn_01x26",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -6055,6 +6097,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2e94bed02e3e",
       "name": "Conn_01x27",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -6385,6 +6428,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2994bed025bf",
       "name": "Conn_01x28",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -6726,6 +6770,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2894bed0240c",
       "name": "Conn_01x29",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -7078,6 +7123,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2b94becdf34e",
       "name": "Conn_01x30",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -7441,6 +7487,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2c94becdf501",
       "name": "Conn_01x31",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -7815,6 +7862,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2994becdefe8",
       "name": "Conn_01x32",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -8200,6 +8248,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2a94becdf19b",
       "name": "Conn_01x33",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -8596,6 +8645,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2f94becdfa1a",
       "name": "Conn_01x34",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -9003,6 +9053,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3094becdfbcd",
       "name": "Conn_01x35",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -9421,6 +9472,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2d94becdf6b4",
       "name": "Conn_01x36",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -9850,6 +9902,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2e94becdf867",
       "name": "Conn_01x37",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -10290,6 +10343,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2394becde5b6",
       "name": "Conn_01x38",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -10741,6 +10795,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2494becde769",
       "name": "Conn_01x39",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -11203,6 +11258,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2d94bebf8381",
       "name": "Conn_01x40",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -11676,6 +11732,7 @@
     {
       "id": "5ce10000-0000-4000-9000-029af039f779",
       "name": "Conn_02x01",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -11731,6 +11788,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ff9af039f260",
       "name": "Conn_02x02",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -11808,6 +11866,7 @@
     {
       "id": "5ce10000-0000-4000-9000-009af039f413",
       "name": "Conn_02x03",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -11907,6 +11966,7 @@
     {
       "id": "5ce10000-0000-4000-9000-059af039fc92",
       "name": "Conn_02x04",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -12028,6 +12088,7 @@
     {
       "id": "5ce10000-0000-4000-9000-069af039fe45",
       "name": "Conn_02x05",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -12171,6 +12232,7 @@
     {
       "id": "5ce10000-0000-4000-9000-039af039f92c",
       "name": "Conn_02x06",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -12336,6 +12398,7 @@
     {
       "id": "5ce10000-0000-4000-9000-049af039fadf",
       "name": "Conn_02x07",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -12523,6 +12586,7 @@
     {
       "id": "5ce10000-0000-4000-9000-099af03a035e",
       "name": "Conn_02x08",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -12732,6 +12796,7 @@
     {
       "id": "5ce10000-0000-4000-9000-0a9af03a0511",
       "name": "Conn_02x09",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -12963,6 +13028,7 @@
     {
       "id": "5ce10000-0000-4000-9000-879af03d0f4f",
       "name": "Conn_02x10",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -13216,6 +13282,7 @@
     {
       "id": "5ce10000-0000-4000-9000-869af03d0d9c",
       "name": "Conn_02x11",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -13491,6 +13558,7 @@
     {
       "id": "5ce10000-0000-4000-9000-899af03d12b5",
       "name": "Conn_02x12",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -13788,6 +13856,7 @@
     {
       "id": "5ce10000-0000-4000-9000-889af03d1102",
       "name": "Conn_02x13",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -14107,6 +14176,7 @@
     {
       "id": "5ce10000-0000-4000-9000-839af03d0883",
       "name": "Conn_02x14",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -14448,6 +14518,7 @@
     {
       "id": "5ce10000-0000-4000-9000-829af03d06d0",
       "name": "Conn_02x15",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -14811,6 +14882,7 @@
     {
       "id": "5ce10000-0000-4000-9000-859af03d0be9",
       "name": "Conn_02x16",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -15196,6 +15268,7 @@
     {
       "id": "5ce10000-0000-4000-9000-849af03d0a36",
       "name": "Conn_02x17",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -15603,6 +15676,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8f9af03d1ce7",
       "name": "Conn_02x18",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -16032,6 +16106,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8e9af03d1b34",
       "name": "Conn_02x19",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -16483,6 +16558,7 @@
     {
       "id": "5ce10000-0000-4000-9000-159af033f914",
       "name": "Conn_02x20",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "rect",
@@ -16956,6 +17032,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e4ad0fbffa8d",
       "name": "Crystal",
+      "category": "Passives",
       "graphics": [
         {
           "type": "rect",
@@ -17023,6 +17100,7 @@
     {
       "id": "5ce10000-0000-4000-9000-887343e9ab6f",
       "name": "Crystal_GND24",
+      "category": "Passives",
       "graphics": [
         {
           "type": "rect",
@@ -17124,6 +17202,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1bf490e6f5a5",
       "name": "TestPoint",
+      "category": "Connectors",
       "graphics": [
         {
           "type": "circle",
@@ -17168,6 +17247,7 @@
     {
       "id": "5ce10000-0000-4000-9000-aeb1ffbd29d0",
       "name": "SW_Push",
+      "category": "Switches",
       "graphics": [
         {
           "type": "circle",
@@ -17242,6 +17322,7 @@
     {
       "id": "e40412cc-4698-4466-97a6-9144dfcc99b6",
       "name": "OpAmp",
+      "category": "Analog",
       "graphics": [
         {
           "type": "polygon",
@@ -17344,6 +17425,7 @@
     {
       "id": "52635bb4-0ca1-4311-8f3e-df5486a77f2a",
       "name": "LM358 A",
+      "category": "Analog",
       "graphics": [
         {
           "type": "polygon",
@@ -17429,6 +17511,7 @@
     {
       "id": "5fe70f39-a767-477c-83a3-684dc7d733f5",
       "name": "LM358 B",
+      "category": "Analog",
       "graphics": [
         {
           "type": "polygon",
@@ -17514,6 +17597,7 @@
     {
       "id": "15673d29-67a9-478c-9348-adfa2633cf36",
       "name": "LM358 C",
+      "category": "Analog",
       "graphics": [
         {
           "type": "rect",
@@ -17569,6 +17653,7 @@
     {
       "id": "db460dfc-9c92-4665-aab7-e70ec99da084",
       "name": "74HC00 A",
+      "category": "Logic",
       "graphics": [
         {
           "type": "polygon",
@@ -17661,6 +17746,7 @@
     {
       "id": "ed132f98-f9d4-4578-8989-7f50f69f1fcb",
       "name": "74HC00 B",
+      "category": "Logic",
       "graphics": [
         {
           "type": "polygon",
@@ -17753,6 +17839,7 @@
     {
       "id": "584a8fc1-7969-4fc7-985f-371600eb6f0c",
       "name": "74HC00 C",
+      "category": "Logic",
       "graphics": [
         {
           "type": "polygon",
@@ -17845,6 +17932,7 @@
     {
       "id": "6cc61757-2b19-4f0b-89c8-50965ad2f6ae",
       "name": "74HC00 D",
+      "category": "Logic",
       "graphics": [
         {
           "type": "polygon",
@@ -17937,6 +18025,7 @@
     {
       "id": "c3ffd7d3-2211-44b4-a9f8-906577047d12",
       "name": "74HC00 E",
+      "category": "Logic",
       "graphics": [
         {
           "type": "rect",
@@ -17992,6 +18081,7 @@
     {
       "id": "1f165cad-86e7-481c-887a-bca8e03c0fd8",
       "name": "AMS1117",
+      "category": "Power",
       "graphics": [
         {
           "type": "rect",
@@ -18058,6 +18148,7 @@
     {
       "id": "b24efada-3aa4-446e-96a3-bd28cf04f83b",
       "name": "AP2112K",
+      "category": "Power",
       "graphics": [
         {
           "type": "rect",
@@ -18146,6 +18237,7 @@
     {
       "id": "94aefed5-dcab-472e-8d95-7fa8c021651a",
       "name": "LM7805",
+      "category": "Power",
       "graphics": [
         {
           "type": "rect",
@@ -18214,6 +18306,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e2e4cb0d746e",
       "name": "Chip_0603_1608Metric",
+      "category": "SMD",
       "description": "SMD chip, 0603 (1608 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -18303,6 +18396,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6835660428bc",
       "name": "Chip_0402_1005Metric",
+      "category": "SMD",
       "description": "SMD chip, 0402 (1005 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -18374,6 +18468,7 @@
     {
       "id": "5ce10000-0000-4000-9000-9794df35a178",
       "name": "Chip_0805_2012Metric",
+      "category": "SMD",
       "description": "SMD chip, 0805 (2012 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -18463,6 +18558,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4fe01ff4549d",
       "name": "Chip_1206_3216Metric",
+      "category": "SMD",
       "description": "SMD chip, 1206 (3216 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -18552,6 +18648,7 @@
     {
       "id": "5ce10000-0000-4000-9000-83d4296ea97c",
       "name": "Chip_2512_6332Metric",
+      "category": "SMD",
       "description": "SMD chip, 2512 (6332 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -18641,6 +18738,7 @@
     {
       "id": "5ce10000-0000-4000-9000-296c05ced8c3",
       "name": "R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+      "category": "Through hole",
       "description": "Resistor, axial DIN0207 (1/4 W), lying, 10.16 mm pitch",
       "pads": [
         {
@@ -18787,6 +18885,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ba32e6749ab0",
       "name": "R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "Resistor, axial DIN0207 (1/4 W), standing, 2.54 mm pitch",
       "pads": [
         {
@@ -18871,6 +18970,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5f8e935ab8ba",
       "name": "Chip_1210_3225Metric",
+      "category": "SMD",
       "description": "SMD chip, 1210 (3225 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -18960,6 +19060,7 @@
     {
       "id": "5ce10000-0000-4000-9000-57f5fd76f4d2",
       "name": "C_Disc_D5.0mm_W2.5mm_P2.54mm",
+      "category": "Through hole",
       "description": "Ceramic disc capacitor, 2.54 mm pitch",
       "pads": [
         {
@@ -19070,6 +19171,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c6fd4fee5d0f",
       "name": "C_Disc_D7.5mm_W2.5mm_P5.08mm",
+      "category": "Through hole",
       "description": "Ceramic disc capacitor, 5.08 mm pitch",
       "pads": [
         {
@@ -19180,6 +19282,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e30fa22e35c6",
       "name": "CP_Tantalum_Case-A_EIA-3216-18",
+      "category": "SMD",
       "description": "Tantalum capacitor, case A (EIA 3216-18), pad 1 is +",
       "pads": [
         {
@@ -19278,6 +19381,7 @@
     {
       "id": "5ce10000-0000-4000-9000-99d27183182f",
       "name": "CP_Tantalum_Case-B_EIA-3528-21",
+      "category": "SMD",
       "description": "Tantalum capacitor, case B (EIA 3528-21), pad 1 is +",
       "pads": [
         {
@@ -19376,6 +19480,7 @@
     {
       "id": "5ce10000-0000-4000-9000-19ceeb67a9a0",
       "name": "CP_Tantalum_Case-C_EIA-6032-28",
+      "category": "SMD",
       "description": "Tantalum capacitor, case C (EIA 6032-28), pad 1 is +",
       "pads": [
         {
@@ -19510,6 +19615,7 @@
     {
       "id": "5ce10000-0000-4000-9000-94176c021f93",
       "name": "CP_Tantalum_Case-D_EIA-7343-31",
+      "category": "SMD",
       "description": "Tantalum capacitor, case D (EIA 7343-31), pad 1 is +",
       "pads": [
         {
@@ -19644,6 +19750,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b7c661d7c8e7",
       "name": "CP_Elec_4x5.4",
+      "category": "SMD",
       "description": "SMD aluminium electrolytic capacitor, Ø4 × 5.4 mm, pad 1 is +; generic land pattern, check the capacitor's datasheet",
       "pads": [
         {
@@ -19787,6 +19894,7 @@
     {
       "id": "5ce10000-0000-4000-9000-39a28e82cb00",
       "name": "CP_Elec_5x5.4",
+      "category": "SMD",
       "description": "SMD aluminium electrolytic capacitor, Ø5 × 5.4 mm, pad 1 is +; generic land pattern, check the capacitor's datasheet",
       "pads": [
         {
@@ -19930,6 +20038,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5a6272830cde",
       "name": "CP_Elec_6.3x5.4",
+      "category": "SMD",
       "description": "SMD aluminium electrolytic capacitor, Ø6.3 × 5.4 mm, pad 1 is +; generic land pattern, check the capacitor's datasheet",
       "pads": [
         {
@@ -20073,6 +20182,7 @@
     {
       "id": "5ce10000-0000-4000-9000-63da878f302f",
       "name": "CP_Elec_8x10",
+      "category": "SMD",
       "description": "SMD aluminium electrolytic capacitor, Ø8 × 10 mm, pad 1 is +; generic land pattern, check the capacitor's datasheet",
       "pads": [
         {
@@ -20216,6 +20326,7 @@
     {
       "id": "5ce10000-0000-4000-9000-9c6cd4027914",
       "name": "CP_Elec_10x10",
+      "category": "SMD",
       "description": "SMD aluminium electrolytic capacitor, Ø10 × 10 mm, pad 1 is +; generic land pattern, check the capacitor's datasheet",
       "pads": [
         {
@@ -20359,6 +20470,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e542a6015a32",
       "name": "CP_Radial_D5.0mm_P2.00mm",
+      "category": "Through hole",
       "description": "Radial electrolytic capacitor, Ø5 mm, 2 mm pitch, pad 1 is +",
       "pads": [
         {
@@ -20461,6 +20573,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b008a8a90cb7",
       "name": "CP_Radial_D6.3mm_P2.50mm",
+      "category": "Through hole",
       "description": "Radial electrolytic capacitor, Ø6.3 mm, 2.5 mm pitch, pad 1 is +",
       "pads": [
         {
@@ -20563,6 +20676,7 @@
     {
       "id": "5ce10000-0000-4000-9000-27b372a5c5e1",
       "name": "CP_Radial_D8.0mm_P3.50mm",
+      "category": "Through hole",
       "description": "Radial electrolytic capacitor, Ø8 mm, 3.5 mm pitch, pad 1 is +",
       "pads": [
         {
@@ -20665,6 +20779,7 @@
     {
       "id": "5ce10000-0000-4000-9000-accb5bfe1c67",
       "name": "CP_Radial_D10.0mm_P5.00mm",
+      "category": "Through hole",
       "description": "Radial electrolytic capacitor, Ø10 mm, 5 mm pitch, pad 1 is +",
       "pads": [
         {
@@ -20767,6 +20882,7 @@
     {
       "id": "5ce10000-0000-4000-9000-359ef3398524",
       "name": "L_Shielded_3x3mm",
+      "category": "SMD",
       "description": "Shielded SMD power inductor, 3 × 3 mm body; generic land pattern, check the inductor's datasheet",
       "pads": [
         {
@@ -20856,6 +20972,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4e734dc91c3c",
       "name": "L_Shielded_4x4mm",
+      "category": "SMD",
       "description": "Shielded SMD power inductor, 4 × 4 mm body; generic land pattern, check the inductor's datasheet",
       "pads": [
         {
@@ -20945,6 +21062,7 @@
     {
       "id": "5ce10000-0000-4000-9000-837cd3c72234",
       "name": "L_Shielded_5x5mm",
+      "category": "SMD",
       "description": "Shielded SMD power inductor, 5 × 5 mm body; generic land pattern, check the inductor's datasheet",
       "pads": [
         {
@@ -21034,6 +21152,7 @@
     {
       "id": "5ce10000-0000-4000-9000-bc8cf82e07dc",
       "name": "L_Shielded_6x6mm",
+      "category": "SMD",
       "description": "Shielded SMD power inductor, 6 × 6 mm body; generic land pattern, check the inductor's datasheet",
       "pads": [
         {
@@ -21123,6 +21242,7 @@
     {
       "id": "5ce10000-0000-4000-9000-844b52bf3a86",
       "name": "L_Shielded_10x10mm",
+      "category": "SMD",
       "description": "Shielded SMD power inductor, 10 × 10 mm body; generic land pattern, check the inductor's datasheet",
       "pads": [
         {
@@ -21248,6 +21368,7 @@
     {
       "id": "5ce10000-0000-4000-9000-74d33cfb03ac",
       "name": "Chip_1812_4532Metric",
+      "category": "SMD",
       "description": "SMD chip, 1812 (4532 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -21337,6 +21458,7 @@
     {
       "id": "5ce10000-0000-4000-9000-20aa303949f4",
       "name": "D_SOD-123",
+      "category": "SMD",
       "description": "Diode, SOD-123, pad 1 is the cathode",
       "pads": [
         {
@@ -21435,6 +21557,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f2aa395ba3ba",
       "name": "D_SOD-323",
+      "category": "SMD",
       "description": "Diode, SOD-323, pad 1 is the cathode",
       "pads": [
         {
@@ -21569,6 +21692,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c03ce26a1bf6",
       "name": "D_MiniMELF",
+      "category": "SMD",
       "description": "Diode, MiniMELF, pad 1 is the cathode",
       "pads": [
         {
@@ -21667,6 +21791,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f3cff1a3dcb4",
       "name": "D_SMA",
+      "category": "SMD",
       "description": "Diode, SMA, pad 1 is the cathode",
       "pads": [
         {
@@ -21801,6 +21926,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f6cff1a3e1cd",
       "name": "D_SMB",
+      "category": "SMD",
       "description": "Diode, SMB, pad 1 is the cathode",
       "pads": [
         {
@@ -21935,6 +22061,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f5cff1a3e01a",
       "name": "D_SMC",
+      "category": "SMD",
       "description": "Diode, SMC, pad 1 is the cathode",
       "pads": [
         {
@@ -22069,6 +22196,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7718ce74e8fe",
       "name": "D_DO-35_SOD27_P7.62mm_Horizontal",
+      "category": "Through hole",
       "description": "Diode, DO-35, lying, 7.62 mm pitch, pad 1 is the cathode",
       "pads": [
         {
@@ -22233,6 +22361,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f3c774008aec",
       "name": "D_DO-41_SOD81_P10.16mm_Horizontal",
+      "category": "Through hole",
       "description": "Diode, DO-41, lying, 10.16 mm pitch, pad 1 is the cathode",
       "pads": [
         {
@@ -22397,6 +22526,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7c98ef36e553",
       "name": "D_DO-201AD_P15.24mm_Horizontal",
+      "category": "Through hole",
       "description": "Diode, DO-201AD, lying, 15.24 mm pitch, pad 1 is the cathode",
       "pads": [
         {
@@ -22561,6 +22691,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8f89102cfaa1",
       "name": "LED_0603_1608Metric",
+      "category": "SMD",
       "description": "SMD polarised chip (pad 1 marked), 0603 (1608 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -22659,6 +22790,7 @@
     {
       "id": "5ce10000-0000-4000-9000-779265675947",
       "name": "LED_0402_1005Metric",
+      "category": "SMD",
       "description": "SMD polarised chip (pad 1 marked), 0402 (1005 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -22739,6 +22871,7 @@
     {
       "id": "5ce10000-0000-4000-9000-15d3c406ce8f",
       "name": "LED_0805_2012Metric",
+      "category": "SMD",
       "description": "SMD polarised chip (pad 1 marked), 0805 (2012 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -22837,6 +22970,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8de84ff8f8de",
       "name": "LED_1206_3216Metric",
+      "category": "SMD",
       "description": "SMD polarised chip (pad 1 marked), 1206 (3216 metric), IPC-7351B nominal",
       "pads": [
         {
@@ -22935,6 +23069,7 @@
     {
       "id": "5ce10000-0000-4000-9000-666973d5ba47",
       "name": "LED_D3.0mm",
+      "category": "Through hole",
       "description": "LED, Ø3 mm through-hole, 2.54 mm pitch, pad 1 is the cathode",
       "pads": [
         {
@@ -23029,6 +23164,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1b5d356232bd",
       "name": "LED_D5.0mm",
+      "category": "Through hole",
       "description": "LED, Ø5 mm through-hole, 2.54 mm pitch, pad 1 is the cathode",
       "pads": [
         {
@@ -23123,6 +23259,7 @@
     {
       "id": "5ce10000-0000-4000-9000-80bf7693372e",
       "name": "SOT-23",
+      "category": "SMD",
       "description": "SOT-23, 3 pins",
       "pads": [
         {
@@ -23253,6 +23390,7 @@
     {
       "id": "5ce10000-0000-4000-9000-24d205358141",
       "name": "SOT-223-3_TabPin2",
+      "category": "SMD",
       "description": "SOT-223, 3 pins, the tab is pin 2",
       "pads": [
         {
@@ -23388,6 +23526,7 @@
     {
       "id": "5ce10000-0000-4000-9000-de3ea4839031",
       "name": "TO-92_Inline",
+      "category": "Through hole",
       "description": "TO-92, pins in line, 1.27 mm pitch",
       "pads": [
         {
@@ -23507,6 +23646,7 @@
     {
       "id": "5ce10000-0000-4000-9000-441027c71bd3",
       "name": "TO-220-3_Vertical",
+      "category": "Through hole",
       "description": "TO-220-3, standing, 2.54 mm pitch",
       "pads": [
         {
@@ -23641,6 +23781,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5fb53858a5ca",
       "name": "TO-252-2",
+      "category": "SMD",
       "description": "DPAK (TO-252-2), the tab is pin 2; generic land pattern",
       "pads": [
         {
@@ -23789,6 +23930,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b464fba1eda8",
       "name": "PinHeader_1x01_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×1 pin header, 2.54 mm pitch, 1 pins",
       "pads": [
         {
@@ -23893,6 +24035,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c33ee8a0d9ee",
       "name": "PinHeader_1x01_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×1 right-angle pin header, 2.54 mm pitch, 1 pins",
       "pads": [
         {
@@ -24006,6 +24149,7 @@
     {
       "id": "5ce10000-0000-4000-9000-236391b64048",
       "name": "PinSocket_1x01_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×1 pin socket, 2.54 mm pitch, 1 pins",
       "pads": [
         {
@@ -24110,6 +24254,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b16963518553",
       "name": "PinHeader_1x02_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×2 pin header, 2.54 mm pitch, 2 pins",
       "pads": [
         {
@@ -24229,6 +24374,7 @@
     {
       "id": "5ce10000-0000-4000-9000-69f10c1791b1",
       "name": "PinHeader_1x02_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×2 right-angle pin header, 2.54 mm pitch, 2 pins",
       "pads": [
         {
@@ -24366,6 +24512,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8005f7f9c9f3",
       "name": "PinSocket_1x02_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×2 pin socket, 2.54 mm pitch, 2 pins",
       "pads": [
         {
@@ -24485,6 +24632,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8c2e7454112a",
       "name": "PinHeader_1x02_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×2 SMD pin header, 2.54 mm pitch, 2 pins",
       "pads": [
         {
@@ -24619,6 +24767,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7819b4f1a21c",
       "name": "JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical",
+      "category": "Through hole",
       "description": "JST PH connector B2B-PH-K, 2 pins, 2 mm pitch, vertical",
       "pads": [
         {
@@ -24739,6 +24888,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1d84b56d1265",
       "name": "JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+      "category": "Through hole",
       "description": "JST XH connector B2B-XH-A, 2 pins, 2.5 mm pitch, vertical",
       "pads": [
         {
@@ -24859,6 +25009,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2ff2a7974777",
       "name": "JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal",
+      "category": "SMD",
       "description": "JST SH connector SM02B-SRSS-TB, 2 pins, 1.00 mm pitch, side entry",
       "pads": [
         {
@@ -25013,6 +25164,7 @@
     {
       "id": "5ce10000-0000-4000-9000-06f789d63783",
       "name": "TerminalBlock_1x02_P5.00mm",
+      "category": "Through hole",
       "description": "Screw terminal block, 2 positions, 5 mm pitch; generic, check the terminal's datasheet",
       "pads": [
         {
@@ -25123,6 +25275,7 @@
     {
       "id": "5ce10000-0000-4000-9000-cb668e8c6d40",
       "name": "TerminalBlock_1x02_P3.50mm",
+      "category": "Through hole",
       "description": "Screw terminal block, 2 positions, 3.5 mm pitch; generic, check the terminal's datasheet",
       "pads": [
         {
@@ -25233,6 +25386,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d2163737fb62",
       "name": "PinHeader_1x03_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×3 pin header, 2.54 mm pitch, 3 pins",
       "pads": [
         {
@@ -25367,6 +25521,7 @@
     {
       "id": "5ce10000-0000-4000-9000-01c0cdabd468",
       "name": "PinHeader_1x03_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×3 right-angle pin header, 2.54 mm pitch, 3 pins",
       "pads": [
         {
@@ -25528,6 +25683,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d0e8f45deb82",
       "name": "PinSocket_1x03_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×3 pin socket, 2.54 mm pitch, 3 pins",
       "pads": [
         {
@@ -25662,6 +25818,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ff655aec2fed",
       "name": "PinHeader_1x03_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×3 SMD pin header, 2.54 mm pitch, 3 pins",
       "pads": [
         {
@@ -25819,6 +25976,7 @@
     {
       "id": "5ce10000-0000-4000-9000-76f7a472d726",
       "name": "JST_PH_B3B-PH-K_1x03_P2.00mm_Vertical",
+      "category": "Through hole",
       "description": "JST PH connector B3B-PH-K, 3 pins, 2 mm pitch, vertical",
       "pads": [
         {
@@ -25954,6 +26112,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2153283ec42f",
       "name": "JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
+      "category": "Through hole",
       "description": "JST XH connector B3B-XH-A, 3 pins, 2.5 mm pitch, vertical",
       "pads": [
         {
@@ -26089,6 +26248,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d0bee0ca1c4f",
       "name": "JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal",
+      "category": "SMD",
       "description": "JST SH connector SM03B-SRSS-TB, 3 pins, 1.00 mm pitch, side entry",
       "pads": [
         {
@@ -26257,6 +26417,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f3aa9801a060",
       "name": "TerminalBlock_1x03_P5.00mm",
+      "category": "Through hole",
       "description": "Screw terminal block, 3 positions, 5 mm pitch; generic, check the terminal's datasheet",
       "pads": [
         {
@@ -26382,6 +26543,7 @@
     {
       "id": "5ce10000-0000-4000-9000-442ec1374fbb",
       "name": "TerminalBlock_1x03_P3.50mm",
+      "category": "Through hole",
       "description": "Screw terminal block, 3 positions, 3.5 mm pitch; generic, check the terminal's datasheet",
       "pads": [
         {
@@ -26507,6 +26669,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6ffeec5cedcd",
       "name": "PinHeader_1x04_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×4 pin header, 2.54 mm pitch, 4 pins",
       "pads": [
         {
@@ -26656,6 +26819,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6a44b6332e63",
       "name": "PinHeader_1x04_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×4 right-angle pin header, 2.54 mm pitch, 4 pins",
       "pads": [
         {
@@ -26841,6 +27005,7 @@
     {
       "id": "5ce10000-0000-4000-9000-621b034719ed",
       "name": "PinSocket_1x04_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×4 pin socket, 2.54 mm pitch, 4 pins",
       "pads": [
         {
@@ -26990,6 +27155,7 @@
     {
       "id": "5ce10000-0000-4000-9000-506d2746fd04",
       "name": "PinHeader_1x04_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×4 SMD pin header, 2.54 mm pitch, 4 pins",
       "pads": [
         {
@@ -27170,6 +27336,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6a9f1126be88",
       "name": "JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical",
+      "category": "Through hole",
       "description": "JST PH connector B4B-PH-K, 4 pins, 2 mm pitch, vertical",
       "pads": [
         {
@@ -27320,6 +27487,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a0b3ae4522d9",
       "name": "JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical",
+      "category": "Through hole",
       "description": "JST XH connector B4B-XH-A, 4 pins, 2.5 mm pitch, vertical",
       "pads": [
         {
@@ -27470,6 +27638,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f71baaeb8f17",
       "name": "JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal",
+      "category": "SMD",
       "description": "JST SH connector SM04B-SRSS-TB, 4 pins, 1.00 mm pitch, side entry",
       "pads": [
         {
@@ -27652,6 +27821,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5b11e4c33421",
       "name": "TerminalBlock_1x04_P5.00mm",
+      "category": "Through hole",
       "description": "Screw terminal block, 4 positions, 5 mm pitch; generic, check the terminal's datasheet",
       "pads": [
         {
@@ -27792,6 +27962,7 @@
     {
       "id": "5ce10000-0000-4000-9000-aebcafbd7702",
       "name": "TerminalBlock_1x04_P3.50mm",
+      "category": "Through hole",
       "description": "Screw terminal block, 4 positions, 3.5 mm pitch; generic, check the terminal's datasheet",
       "pads": [
         {
@@ -27932,6 +28103,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f35c337dcfb4",
       "name": "PinHeader_1x05_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×5 pin header, 2.54 mm pitch, 5 pins",
       "pads": [
         {
@@ -28096,6 +28268,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c977d4fcef32",
       "name": "PinHeader_1x05_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×5 right-angle pin header, 2.54 mm pitch, 5 pins",
       "pads": [
         {
@@ -28305,6 +28478,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f8a392f086d4",
       "name": "PinSocket_1x05_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×5 pin socket, 2.54 mm pitch, 5 pins",
       "pads": [
         {
@@ -28469,6 +28643,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3744b132f007",
       "name": "PinHeader_1x05_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×5 SMD pin header, 2.54 mm pitch, 5 pins",
       "pads": [
         {
@@ -28672,6 +28847,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a7a143a47016",
       "name": "JST_PH_B5B-PH-K_1x05_P2.00mm_Vertical",
+      "category": "Through hole",
       "description": "JST PH connector B5B-PH-K, 5 pins, 2 mm pitch, vertical",
       "pads": [
         {
@@ -28837,6 +29013,7 @@
     {
       "id": "5ce10000-0000-4000-9000-748a796b777f",
       "name": "JST_XH_B5B-XH-A_1x05_P2.50mm_Vertical",
+      "category": "Through hole",
       "description": "JST XH connector B5B-XH-A, 5 pins, 2.5 mm pitch, vertical",
       "pads": [
         {
@@ -29002,6 +29179,7 @@
     {
       "id": "5ce10000-0000-4000-9000-be6df05f43f7",
       "name": "JST_SH_SM05B-SRSS-TB_1x05-1MP_P1.00mm_Horizontal",
+      "category": "SMD",
       "description": "JST SH connector SM05B-SRSS-TB, 5 pins, 1.00 mm pitch, side entry",
       "pads": [
         {
@@ -29198,6 +29376,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6c62bb4f9abf",
       "name": "PinHeader_1x06_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×6 pin header, 2.54 mm pitch, 6 pins",
       "pads": [
         {
@@ -29377,6 +29556,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4c989dce66f5",
       "name": "PinHeader_1x06_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×6 right-angle pin header, 2.54 mm pitch, 6 pins",
       "pads": [
         {
@@ -29610,6 +29790,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3307bef1cb5f",
       "name": "PinSocket_1x06_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×6 pin socket, 2.54 mm pitch, 6 pins",
       "pads": [
         {
@@ -29789,6 +29970,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d2719d707236",
       "name": "PinHeader_1x06_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×6 SMD pin header, 2.54 mm pitch, 6 pins",
       "pads": [
         {
@@ -30015,6 +30197,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ce8ed3f0f65c",
       "name": "JST_PH_B6B-PH-K_1x06_P2.00mm_Vertical",
+      "category": "Through hole",
       "description": "JST PH connector B6B-PH-K, 6 pins, 2 mm pitch, vertical",
       "pads": [
         {
@@ -30195,6 +30378,7 @@
     {
       "id": "5ce10000-0000-4000-9000-acd947caeef5",
       "name": "JST_XH_B6B-XH-A_1x06_P2.50mm_Vertical",
+      "category": "Through hole",
       "description": "JST XH connector B6B-XH-A, 6 pins, 2.5 mm pitch, vertical",
       "pads": [
         {
@@ -30375,6 +30559,7 @@
     {
       "id": "5ce10000-0000-4000-9000-0fd5fcb4107f",
       "name": "JST_SH_SM06B-SRSS-TB_1x06-1MP_P1.00mm_Horizontal",
+      "category": "SMD",
       "description": "JST SH connector SM06B-SRSS-TB, 6 pins, 1.00 mm pitch, side entry",
       "pads": [
         {
@@ -30585,6 +30770,7 @@
     {
       "id": "5ce10000-0000-4000-9000-99e22269f23e",
       "name": "PinHeader_1x07_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×7 pin header, 2.54 mm pitch, 7 pins",
       "pads": [
         {
@@ -30779,6 +30965,7 @@
     {
       "id": "5ce10000-0000-4000-9000-20c3e578474c",
       "name": "PinHeader_1x07_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×7 right-angle pin header, 2.54 mm pitch, 7 pins",
       "pads": [
         {
@@ -31036,6 +31223,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7e3b9bb1c6de",
       "name": "PinSocket_1x07_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×7 pin socket, 2.54 mm pitch, 7 pins",
       "pads": [
         {
@@ -31230,6 +31418,7 @@
     {
       "id": "5ce10000-0000-4000-9000-15c91ba4a1c9",
       "name": "PinHeader_1x07_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×7 SMD pin header, 2.54 mm pitch, 7 pins",
       "pads": [
         {
@@ -31479,6 +31668,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b60a960411de",
       "name": "JST_PH_B7B-PH-K_1x07_P2.00mm_Vertical",
+      "category": "Through hole",
       "description": "JST PH connector B7B-PH-K, 7 pins, 2 mm pitch, vertical",
       "pads": [
         {
@@ -31674,6 +31864,7 @@
     {
       "id": "5ce10000-0000-4000-9000-950764b0a7cf",
       "name": "JST_XH_B7B-XH-A_1x07_P2.50mm_Vertical",
+      "category": "Through hole",
       "description": "JST XH connector B7B-XH-A, 7 pins, 2.5 mm pitch, vertical",
       "pads": [
         {
@@ -31869,6 +32060,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e627a2f4cfd9",
       "name": "PinHeader_1x08_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×8 pin header, 2.54 mm pitch, 8 pins",
       "pads": [
         {
@@ -32078,6 +32270,7 @@
     {
       "id": "5ce10000-0000-4000-9000-bee82bac0ed7",
       "name": "PinHeader_1x08_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×8 right-angle pin header, 2.54 mm pitch, 8 pins",
       "pads": [
         {
@@ -32359,6 +32552,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f9420dc72079",
       "name": "PinSocket_1x08_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×8 pin socket, 2.54 mm pitch, 8 pins",
       "pads": [
         {
@@ -32568,6 +32762,7 @@
     {
       "id": "5ce10000-0000-4000-9000-21be66a3de90",
       "name": "PinHeader_1x08_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×8 SMD pin header, 2.54 mm pitch, 8 pins",
       "pads": [
         {
@@ -32840,6 +33035,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e74216370260",
       "name": "JST_PH_B8B-PH-K_1x08_P2.00mm_Vertical",
+      "category": "Through hole",
       "description": "JST PH connector B8B-PH-K, 8 pins, 2 mm pitch, vertical",
       "pads": [
         {
@@ -33050,6 +33246,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c128062020b1",
       "name": "JST_XH_B8B-XH-A_1x08_P2.50mm_Vertical",
+      "category": "Through hole",
       "description": "JST XH connector B8B-XH-A, 8 pins, 2.5 mm pitch, vertical",
       "pads": [
         {
@@ -33260,6 +33457,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d172d28ad580",
       "name": "PinHeader_1x09_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×9 pin header, 2.54 mm pitch, 9 pins",
       "pads": [
         {
@@ -33484,6 +33682,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2e5df8b69136",
       "name": "PinHeader_1x09_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×9 right-angle pin header, 2.54 mm pitch, 9 pins",
       "pads": [
         {
@@ -33789,6 +33988,7 @@
     {
       "id": "5ce10000-0000-4000-9000-30b4ed89b420",
       "name": "PinSocket_1x09_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×9 pin socket, 2.54 mm pitch, 9 pins",
       "pads": [
         {
@@ -34013,6 +34213,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1129b0271853",
       "name": "PinHeader_1x09_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×9 SMD pin header, 2.54 mm pitch, 9 pins",
       "pads": [
         {
@@ -34308,6 +34509,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5fed3164d8ae",
       "name": "PinHeader_1x10_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×10 pin header, 2.54 mm pitch, 10 pins",
       "pads": [
         {
@@ -34547,6 +34749,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d63ce29b78bc",
       "name": "PinHeader_1x10_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×10 right-angle pin header, 2.54 mm pitch, 10 pins",
       "pads": [
         {
@@ -34876,6 +35079,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f11f2f2abf4e",
       "name": "PinSocket_1x10_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×10 pin socket, 2.54 mm pitch, 10 pins",
       "pads": [
         {
@@ -35115,6 +35319,7 @@
     {
       "id": "5ce10000-0000-4000-9000-95a29c3cf1d9",
       "name": "PinHeader_1x10_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×10 SMD pin header, 2.54 mm pitch, 10 pins",
       "pads": [
         {
@@ -35433,6 +35638,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d0b4b0903cef",
       "name": "PinHeader_1x11_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×11 pin header, 2.54 mm pitch, 11 pins",
       "pads": [
         {
@@ -35687,6 +35893,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ee53429898a5",
       "name": "PinHeader_1x11_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×11 right-angle pin header, 2.54 mm pitch, 11 pins",
       "pads": [
         {
@@ -36040,6 +36247,7 @@
     {
       "id": "5ce10000-0000-4000-9000-095962bee28f",
       "name": "PinSocket_1x11_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×11 pin socket, 2.54 mm pitch, 11 pins",
       "pads": [
         {
@@ -36294,6 +36502,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e9cfa5944b86",
       "name": "PinHeader_1x11_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×11 SMD pin header, 2.54 mm pitch, 11 pins",
       "pads": [
         {
@@ -36635,6 +36844,7 @@
     {
       "id": "5ce10000-0000-4000-9000-9825fd4448a4",
       "name": "PinHeader_1x12_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×12 pin header, 2.54 mm pitch, 12 pins",
       "pads": [
         {
@@ -36904,6 +37114,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d7612aefd0e2",
       "name": "PinHeader_1x12_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×12 right-angle pin header, 2.54 mm pitch, 12 pins",
       "pads": [
         {
@@ -37281,6 +37492,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e7cbb01072c4",
       "name": "PinSocket_1x12_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×12 pin socket, 2.54 mm pitch, 12 pins",
       "pads": [
         {
@@ -37550,6 +37762,7 @@
     {
       "id": "5ce10000-0000-4000-9000-be16492bf197",
       "name": "PinHeader_1x12_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×12 SMD pin header, 2.54 mm pitch, 12 pins",
       "pads": [
         {
@@ -37914,6 +38127,7 @@
     {
       "id": "5ce10000-0000-4000-9000-9172de6ffdfd",
       "name": "PinHeader_1x13_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×13 pin header, 2.54 mm pitch, 13 pins",
       "pads": [
         {
@@ -38198,6 +38412,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4a6b52bf6d13",
       "name": "PinHeader_1x13_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×13 right-angle pin header, 2.54 mm pitch, 13 pins",
       "pads": [
         {
@@ -38599,6 +38814,7 @@
     {
       "id": "5ce10000-0000-4000-9000-764cf8b54e1d",
       "name": "PinSocket_1x13_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×13 pin socket, 2.54 mm pitch, 13 pins",
       "pads": [
         {
@@ -38883,6 +39099,7 @@
     {
       "id": "5ce10000-0000-4000-9000-21b7a62b9a94",
       "name": "PinHeader_1x13_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×13 SMD pin header, 2.54 mm pitch, 13 pins",
       "pads": [
         {
@@ -39270,6 +39487,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7a5925adf712",
       "name": "PinHeader_1x14_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×14 pin header, 2.54 mm pitch, 14 pins",
       "pads": [
         {
@@ -39569,6 +39787,7 @@
     {
       "id": "5ce10000-0000-4000-9000-51b794983e98",
       "name": "PinHeader_1x14_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×14 right-angle pin header, 2.54 mm pitch, 14 pins",
       "pads": [
         {
@@ -39994,6 +40213,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3c1f33a71832",
       "name": "PinSocket_1x14_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×14 pin socket, 2.54 mm pitch, 14 pins",
       "pads": [
         {
@@ -40293,6 +40513,7 @@
     {
       "id": "5ce10000-0000-4000-9000-25cbe996e57d",
       "name": "PinHeader_1x14_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×14 SMD pin header, 2.54 mm pitch, 14 pins",
       "pads": [
         {
@@ -40703,6 +40924,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c27ef1382043",
       "name": "PinHeader_1x15_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×15 pin header, 2.54 mm pitch, 15 pins",
       "pads": [
         {
@@ -41017,6 +41239,7 @@
     {
       "id": "5ce10000-0000-4000-9000-87b85a7daaa1",
       "name": "PinHeader_1x15_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×15 right-angle pin header, 2.54 mm pitch, 15 pins",
       "pads": [
         {
@@ -41466,6 +41689,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b85644f10563",
       "name": "PinSocket_1x15_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×15 pin socket, 2.54 mm pitch, 15 pins",
       "pads": [
         {
@@ -41780,6 +42004,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e2adafabd7ba",
       "name": "PinHeader_1x15_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×15 SMD pin header, 2.54 mm pitch, 15 pins",
       "pads": [
         {
@@ -42213,6 +42438,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1bda8607e1d8",
       "name": "PinHeader_1x16_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×16 pin header, 2.54 mm pitch, 16 pins",
       "pads": [
         {
@@ -42542,6 +42768,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b3c8b6dcda1e",
       "name": "PinHeader_1x16_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×16 right-angle pin header, 2.54 mm pitch, 16 pins",
       "pads": [
         {
@@ -43015,6 +43242,7 @@
     {
       "id": "5ce10000-0000-4000-9000-bdd39c4e3078",
       "name": "PinSocket_1x16_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×16 pin socket, 2.54 mm pitch, 16 pins",
       "pads": [
         {
@@ -43344,6 +43572,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6c0823f9075b",
       "name": "PinHeader_1x16_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×16 SMD pin header, 2.54 mm pitch, 16 pins",
       "pads": [
         {
@@ -43800,6 +44029,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1b2631f6b4f1",
       "name": "PinHeader_1x17_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×17 pin header, 2.54 mm pitch, 17 pins",
       "pads": [
         {
@@ -44144,6 +44374,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6b9e5ab9b99f",
       "name": "PinHeader_1x17_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×17 right-angle pin header, 2.54 mm pitch, 17 pins",
       "pads": [
         {
@@ -44641,6 +44872,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f9f3d1125011",
       "name": "PinSocket_1x17_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×17 pin socket, 2.54 mm pitch, 17 pins",
       "pads": [
         {
@@ -44985,6 +45217,7 @@
     {
       "id": "5ce10000-0000-4000-9000-05a1a777c438",
       "name": "PinHeader_1x17_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×17 SMD pin header, 2.54 mm pitch, 17 pins",
       "pads": [
         {
@@ -45464,6 +45697,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c647720eeca6",
       "name": "PinHeader_1x18_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×18 pin header, 2.54 mm pitch, 18 pins",
       "pads": [
         {
@@ -45823,6 +46057,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d3e7a98ffb44",
       "name": "PinHeader_1x18_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×18 right-angle pin header, 2.54 mm pitch, 18 pins",
       "pads": [
         {
@@ -46344,6 +46579,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ffadba5826c6",
       "name": "PinSocket_1x18_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×18 pin socket, 2.54 mm pitch, 18 pins",
       "pads": [
         {
@@ -46703,6 +46939,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5828dae619e1",
       "name": "PinHeader_1x18_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×18 SMD pin header, 2.54 mm pitch, 18 pins",
       "pads": [
         {
@@ -47205,6 +47442,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f0bf93490cc7",
       "name": "PinHeader_1x19_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×19 pin header, 2.54 mm pitch, 19 pins",
       "pads": [
         {
@@ -47579,6 +47817,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ae194ffee00d",
       "name": "PinHeader_1x19_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×19 right-angle pin header, 2.54 mm pitch, 19 pins",
       "pads": [
         {
@@ -48124,6 +48363,7 @@
     {
       "id": "5ce10000-0000-4000-9000-068dd75957e7",
       "name": "PinSocket_1x19_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×19 pin socket, 2.54 mm pitch, 19 pins",
       "pads": [
         {
@@ -48498,6 +48738,7 @@
     {
       "id": "5ce10000-0000-4000-9000-65e9c6929eee",
       "name": "PinHeader_1x19_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×19 SMD pin header, 2.54 mm pitch, 19 pins",
       "pads": [
         {
@@ -49023,6 +49264,7 @@
     {
       "id": "5ce10000-0000-4000-9000-afefb966c427",
       "name": "PinHeader_1x20_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×20 pin header, 2.54 mm pitch, 20 pins",
       "pads": [
         {
@@ -49412,6 +49654,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5347d34d426d",
       "name": "PinHeader_1x20_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×20 right-angle pin header, 2.54 mm pitch, 20 pins",
       "pads": [
         {
@@ -49981,6 +50224,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4107831c29c7",
       "name": "PinSocket_1x20_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×20 pin socket, 2.54 mm pitch, 20 pins",
       "pads": [
         {
@@ -50370,6 +50614,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a852453a840e",
       "name": "PinHeader_1x20_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×20 SMD pin header, 2.54 mm pitch, 20 pins",
       "pads": [
         {
@@ -50918,6 +51163,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8cc235f6e106",
       "name": "PinHeader_1x21_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×21 pin header, 2.54 mm pitch, 21 pins",
       "pads": [
         {
@@ -51322,6 +51568,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a38305ea62a4",
       "name": "PinHeader_1x21_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×21 right-angle pin header, 2.54 mm pitch, 21 pins",
       "pads": [
         {
@@ -51915,6 +52162,7 @@
     {
       "id": "5ce10000-0000-4000-9000-168f61e209a6",
       "name": "PinSocket_1x21_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×21 pin socket, 2.54 mm pitch, 21 pins",
       "pads": [
         {
@@ -52319,6 +52567,7 @@
     {
       "id": "5ce10000-0000-4000-9000-678328764c01",
       "name": "PinHeader_1x21_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×21 SMD pin header, 2.54 mm pitch, 21 pins",
       "pads": [
         {
@@ -52890,6 +53139,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3b85472f2bf5",
       "name": "PinHeader_1x22_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×22 pin header, 2.54 mm pitch, 22 pins",
       "pads": [
         {
@@ -53309,6 +53559,7 @@
     {
       "id": "5ce10000-0000-4000-9000-fd6fba5c93db",
       "name": "PinHeader_1x22_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×22 right-angle pin header, 2.54 mm pitch, 22 pins",
       "pads": [
         {
@@ -53926,6 +54177,7 @@
     {
       "id": "5ce10000-0000-4000-9000-0461fc4fdc95",
       "name": "PinSocket_1x22_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×22 pin socket, 2.54 mm pitch, 22 pins",
       "pads": [
         {
@@ -54345,6 +54597,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4afa849940dc",
       "name": "PinHeader_1x22_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×22 SMD pin header, 2.54 mm pitch, 22 pins",
       "pads": [
         {
@@ -54939,6 +55192,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e3af27f73d5c",
       "name": "PinHeader_1x23_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×23 pin header, 2.54 mm pitch, 23 pins",
       "pads": [
         {
@@ -55373,6 +55627,7 @@
     {
       "id": "5ce10000-0000-4000-9000-77f0618b3f4a",
       "name": "PinHeader_1x23_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×23 right-angle pin header, 2.54 mm pitch, 23 pins",
       "pads": [
         {
@@ -56014,6 +56269,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f0c7f077b07c",
       "name": "PinSocket_1x23_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×23 pin socket, 2.54 mm pitch, 23 pins",
       "pads": [
         {
@@ -56448,6 +56704,7 @@
     {
       "id": "5ce10000-0000-4000-9000-0130b3039cbf",
       "name": "PinHeader_1x23_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×23 SMD pin header, 2.54 mm pitch, 23 pins",
       "pads": [
         {
@@ -57065,6 +57322,7 @@
     {
       "id": "5ce10000-0000-4000-9000-bd3c4c134b3b",
       "name": "PinHeader_1x24_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×24 pin header, 2.54 mm pitch, 24 pins",
       "pads": [
         {
@@ -57514,6 +57772,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e3fda3e20fc9",
       "name": "PinHeader_1x24_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×24 right-angle pin header, 2.54 mm pitch, 24 pins",
       "pads": [
         {
@@ -58179,6 +58438,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e0b6a3ef995b",
       "name": "PinSocket_1x24_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×24 pin socket, 2.54 mm pitch, 24 pins",
       "pads": [
         {
@@ -58628,6 +58888,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1209d0ec8f62",
       "name": "PinHeader_1x24_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×24 SMD pin header, 2.54 mm pitch, 24 pins",
       "pads": [
         {
@@ -59268,6 +59529,7 @@
     {
       "id": "5ce10000-0000-4000-9000-490c160af38a",
       "name": "PinHeader_1x25_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×25 pin header, 2.54 mm pitch, 25 pins",
       "pads": [
         {
@@ -59732,6 +59994,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1d662067f2a0",
       "name": "PinHeader_1x25_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×25 right-angle pin header, 2.54 mm pitch, 25 pins",
       "pads": [
         {
@@ -60421,6 +60684,7 @@
     {
       "id": "5ce10000-0000-4000-9000-465a6c230eaa",
       "name": "PinSocket_1x25_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×25 pin socket, 2.54 mm pitch, 25 pins",
       "pads": [
         {
@@ -60885,6 +61149,7 @@
     {
       "id": "5ce10000-0000-4000-9000-af86d14b3ae5",
       "name": "PinHeader_1x25_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×25 SMD pin header, 2.54 mm pitch, 25 pins",
       "pads": [
         {
@@ -61548,6 +61813,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3751e634b0a9",
       "name": "PinHeader_1x26_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×26 pin header, 2.54 mm pitch, 26 pins",
       "pads": [
         {
@@ -62027,6 +62293,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3d0e5e865267",
       "name": "PinHeader_1x26_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×26 right-angle pin header, 2.54 mm pitch, 26 pins",
       "pads": [
         {
@@ -62740,6 +63007,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5943febd0f49",
       "name": "PinSocket_1x26_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×26 pin socket, 2.54 mm pitch, 26 pins",
       "pads": [
         {
@@ -63219,6 +63487,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a54be710fa00",
       "name": "PinHeader_1x26_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×26 SMD pin header, 2.54 mm pitch, 26 pins",
       "pads": [
         {
@@ -63905,6 +64174,7 @@
     {
       "id": "5ce10000-0000-4000-9000-81b110125310",
       "name": "PinHeader_1x27_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×27 pin header, 2.54 mm pitch, 27 pins",
       "pads": [
         {
@@ -64399,6 +64669,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5ed95a592c86",
       "name": "PinHeader_1x27_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×27 right-angle pin header, 2.54 mm pitch, 27 pins",
       "pads": [
         {
@@ -65136,6 +65407,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e347ca3eab30",
       "name": "PinSocket_1x27_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×27 pin socket, 2.54 mm pitch, 27 pins",
       "pads": [
         {
@@ -65630,6 +65902,7 @@
     {
       "id": "5ce10000-0000-4000-9000-67216a67a1c3",
       "name": "PinHeader_1x27_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×27 SMD pin header, 2.54 mm pitch, 27 pins",
       "pads": [
         {
@@ -66339,6 +66612,7 @@
     {
       "id": "5ce10000-0000-4000-9000-aad7842e38cf",
       "name": "PinHeader_1x28_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×28 pin header, 2.54 mm pitch, 28 pins",
       "pads": [
         {
@@ -66848,6 +67122,7 @@
     {
       "id": "5ce10000-0000-4000-9000-914585212985",
       "name": "PinHeader_1x28_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×28 right-angle pin header, 2.54 mm pitch, 28 pins",
       "pads": [
         {
@@ -67609,6 +67884,7 @@
     {
       "id": "5ce10000-0000-4000-9000-20fca06359ef",
       "name": "PinSocket_1x28_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×28 pin socket, 2.54 mm pitch, 28 pins",
       "pads": [
         {
@@ -68118,6 +68394,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ab48c31c57a6",
       "name": "PinHeader_1x28_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×28 SMD pin header, 2.54 mm pitch, 28 pins",
       "pads": [
         {
@@ -68850,6 +69127,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2fae1fa4418e",
       "name": "PinHeader_1x29_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×29 pin header, 2.54 mm pitch, 29 pins",
       "pads": [
         {
@@ -69374,6 +69652,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c923d9f1069c",
       "name": "PinHeader_1x29_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×29 right-angle pin header, 2.54 mm pitch, 29 pins",
       "pads": [
         {
@@ -70159,6 +70438,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b0352137f5ae",
       "name": "PinSocket_1x29_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×29 pin socket, 2.54 mm pitch, 29 pins",
       "pads": [
         {
@@ -70683,6 +70963,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7ad68c74fa79",
       "name": "PinHeader_1x29_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×29 SMD pin header, 2.54 mm pitch, 29 pins",
       "pads": [
         {
@@ -71438,6 +71719,7 @@
     {
       "id": "5ce10000-0000-4000-9000-df59ec9b8fcc",
       "name": "PinHeader_1x30_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×30 pin header, 2.54 mm pitch, 30 pins",
       "pads": [
         {
@@ -71977,6 +72259,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b76d6e8a22ba",
       "name": "PinHeader_1x30_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×30 right-angle pin header, 2.54 mm pitch, 30 pins",
       "pads": [
         {
@@ -72786,6 +73069,7 @@
     {
       "id": "5ce10000-0000-4000-9000-311b27c8ba6c",
       "name": "PinSocket_1x30_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×30 pin socket, 2.54 mm pitch, 30 pins",
       "pads": [
         {
@@ -73325,6 +73609,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3b8aa939c30f",
       "name": "PinHeader_1x30_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×30 SMD pin header, 2.54 mm pitch, 30 pins",
       "pads": [
         {
@@ -74103,6 +74388,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4ec53ee2bf25",
       "name": "PinHeader_1x31_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×31 pin header, 2.54 mm pitch, 31 pins",
       "pads": [
         {
@@ -74657,6 +74943,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ffa0e2a350cb",
       "name": "PinHeader_1x31_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×31 right-angle pin header, 2.54 mm pitch, 31 pins",
       "pads": [
         {
@@ -75490,6 +75777,7 @@
     {
       "id": "5ce10000-0000-4000-9000-74eaca9d8845",
       "name": "PinSocket_1x31_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×31 pin socket, 2.54 mm pitch, 31 pins",
       "pads": [
         {
@@ -76044,6 +76332,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c17565eae3ec",
       "name": "PinHeader_1x31_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×31 SMD pin header, 2.54 mm pitch, 31 pins",
       "pads": [
         {
@@ -76845,6 +77134,7 @@
     {
       "id": "5ce10000-0000-4000-9000-0636a264e476",
       "name": "PinHeader_1x32_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×32 pin header, 2.54 mm pitch, 32 pins",
       "pads": [
         {
@@ -77414,6 +77704,7 @@
     {
       "id": "5ce10000-0000-4000-9000-77b1c715b2d4",
       "name": "PinHeader_1x32_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×32 right-angle pin header, 2.54 mm pitch, 32 pins",
       "pads": [
         {
@@ -78271,6 +78562,7 @@
     {
       "id": "5ce10000-0000-4000-9000-aec64474b496",
       "name": "PinSocket_1x32_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×32 pin socket, 2.54 mm pitch, 32 pins",
       "pads": [
         {
@@ -78840,6 +79132,7 @@
     {
       "id": "5ce10000-0000-4000-9000-559a46fdf891",
       "name": "PinHeader_1x32_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×32 SMD pin header, 2.54 mm pitch, 32 pins",
       "pads": [
         {
@@ -79664,6 +79957,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1309d1d07dd7",
       "name": "PinHeader_1x33_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×33 pin header, 2.54 mm pitch, 33 pins",
       "pads": [
         {
@@ -80248,6 +80542,7 @@
     {
       "id": "5ce10000-0000-4000-9000-55010dec08dd",
       "name": "PinHeader_1x33_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×33 right-angle pin header, 2.54 mm pitch, 33 pins",
       "pads": [
         {
@@ -81129,6 +81424,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6bc61dd1b7f7",
       "name": "PinSocket_1x33_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×33 pin socket, 2.54 mm pitch, 33 pins",
       "pads": [
         {
@@ -81713,6 +82009,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2ec2bfa9c21e",
       "name": "PinHeader_1x33_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×33 SMD pin header, 2.54 mm pitch, 33 pins",
       "pads": [
         {
@@ -82560,6 +82857,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d069eadfef40",
       "name": "PinHeader_1x34_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×34 pin header, 2.54 mm pitch, 34 pins",
       "pads": [
         {
@@ -83159,6 +83457,7 @@
     {
       "id": "5ce10000-0000-4000-9000-461eaef1b6f6",
       "name": "PinHeader_1x34_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×34 right-angle pin header, 2.54 mm pitch, 34 pins",
       "pads": [
         {
@@ -84064,6 +84363,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f80ac8e9c3e0",
       "name": "PinSocket_1x34_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×34 pin socket, 2.54 mm pitch, 34 pins",
       "pads": [
         {
@@ -84663,6 +84963,7 @@
     {
       "id": "5ce10000-0000-4000-9000-348db3eaab93",
       "name": "PinHeader_1x34_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×34 SMD pin header, 2.54 mm pitch, 34 pins",
       "pads": [
         {
@@ -85533,6 +85834,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b2176645e399",
       "name": "PinHeader_1x35_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×35 pin header, 2.54 mm pitch, 35 pins",
       "pads": [
         {
@@ -86147,6 +86449,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d4525afbcc97",
       "name": "PinHeader_1x35_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×35 right-angle pin header, 2.54 mm pitch, 35 pins",
       "pads": [
         {
@@ -87076,6 +87379,7 @@
     {
       "id": "5ce10000-0000-4000-9000-96483d8a8f39",
       "name": "PinSocket_1x35_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×35 pin socket, 2.54 mm pitch, 35 pins",
       "pads": [
         {
@@ -87690,6 +87994,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f8f803213bd0",
       "name": "PinHeader_1x35_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×35 SMD pin header, 2.54 mm pitch, 35 pins",
       "pads": [
         {
@@ -88583,6 +88888,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a8c245e10c7a",
       "name": "PinHeader_1x36_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×36 pin header, 2.54 mm pitch, 36 pins",
       "pads": [
         {
@@ -89212,6 +89518,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f35808617a50",
       "name": "PinHeader_1x36_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×36 right-angle pin header, 2.54 mm pitch, 36 pins",
       "pads": [
         {
@@ -90165,6 +90472,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b8447766099a",
       "name": "PinSocket_1x36_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×36 pin socket, 2.54 mm pitch, 36 pins",
       "pads": [
         {
@@ -90794,6 +91102,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7c711d8e84f5",
       "name": "PinHeader_1x36_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×36 SMD pin header, 2.54 mm pitch, 36 pins",
       "pads": [
         {
@@ -91710,6 +92019,7 @@
     {
       "id": "5ce10000-0000-4000-9000-58dbd625142b",
       "name": "PinHeader_1x37_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×37 pin header, 2.54 mm pitch, 37 pins",
       "pads": [
         {
@@ -92354,6 +92664,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4fdc2327fc39",
       "name": "PinHeader_1x37_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×37 right-angle pin header, 2.54 mm pitch, 37 pins",
       "pads": [
         {
@@ -93331,6 +93642,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6856595256cb",
       "name": "PinSocket_1x37_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×37 pin socket, 2.54 mm pitch, 37 pins",
       "pads": [
         {
@@ -93975,6 +94287,7 @@
     {
       "id": "5ce10000-0000-4000-9000-636ab1a70df2",
       "name": "PinHeader_1x37_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×37 SMD pin header, 2.54 mm pitch, 37 pins",
       "pads": [
         {
@@ -94914,6 +95227,7 @@
     {
       "id": "5ce10000-0000-4000-9000-70ad4e8a7274",
       "name": "PinHeader_1x38_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×38 pin header, 2.54 mm pitch, 38 pins",
       "pads": [
         {
@@ -95573,6 +95887,7 @@
     {
       "id": "5ce10000-0000-4000-9000-95f00020fbf2",
       "name": "PinHeader_1x38_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×38 right-angle pin header, 2.54 mm pitch, 38 pins",
       "pads": [
         {
@@ -96574,6 +96889,7 @@
     {
       "id": "5ce10000-0000-4000-9000-78ec9e575994",
       "name": "PinSocket_1x38_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×38 pin socket, 2.54 mm pitch, 38 pins",
       "pads": [
         {
@@ -97233,6 +97549,7 @@
     {
       "id": "5ce10000-0000-4000-9000-336e62e7b847",
       "name": "PinHeader_1x38_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×38 SMD pin header, 2.54 mm pitch, 38 pins",
       "pads": [
         {
@@ -98195,6 +98512,7 @@
     {
       "id": "5ce10000-0000-4000-9000-079e7b07ce8d",
       "name": "PinHeader_1x39_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×39 pin header, 2.54 mm pitch, 39 pins",
       "pads": [
         {
@@ -98869,6 +99187,7 @@
     {
       "id": "5ce10000-0000-4000-9000-dcc6b1787223",
       "name": "PinHeader_1x39_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×39 right-angle pin header, 2.54 mm pitch, 39 pins",
       "pads": [
         {
@@ -99894,6 +100213,7 @@
     {
       "id": "5ce10000-0000-4000-9000-07e8fcc976ad",
       "name": "PinSocket_1x39_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×39 pin socket, 2.54 mm pitch, 39 pins",
       "pads": [
         {
@@ -100568,6 +100888,7 @@
     {
       "id": "5ce10000-0000-4000-9000-32150514bc44",
       "name": "PinHeader_1x39_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×39 SMD pin header, 2.54 mm pitch, 39 pins",
       "pads": [
         {
@@ -101553,6 +101874,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6c5e0802017d",
       "name": "PinHeader_1x40_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×40 pin header, 2.54 mm pitch, 40 pins",
       "pads": [
         {
@@ -102242,6 +102564,7 @@
     {
       "id": "5ce10000-0000-4000-9000-33157b3c7c93",
       "name": "PinHeader_1x40_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "1×40 right-angle pin header, 2.54 mm pitch, 40 pins",
       "pads": [
         {
@@ -103291,6 +103614,7 @@
     {
       "id": "5ce10000-0000-4000-9000-51382247519d",
       "name": "PinSocket_1x40_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "1×40 pin socket, 2.54 mm pitch, 40 pins",
       "pads": [
         {
@@ -103980,6 +104304,7 @@
     {
       "id": "5ce10000-0000-4000-9000-46fbac8a4514",
       "name": "PinHeader_1x40_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
       "description": "1×40 SMD pin header, 2.54 mm pitch, 40 pins",
       "pads": [
         {
@@ -104988,6 +105313,7 @@
     {
       "id": "5ce10000-0000-4000-9000-956661153dcd",
       "name": "PinHeader_2x01_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×1 pin header, 2.54 mm pitch, 2 pins",
       "pads": [
         {
@@ -105107,6 +105433,7 @@
     {
       "id": "5ce10000-0000-4000-9000-0dc676a7fe63",
       "name": "PinHeader_2x01_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×1 right-angle pin header, 2.54 mm pitch, 2 pins",
       "pads": [
         {
@@ -105235,6 +105562,7 @@
     {
       "id": "5ce10000-0000-4000-9000-08b890a6b46d",
       "name": "PinSocket_2x01_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×1 pin socket, 2.54 mm pitch, 2 pins",
       "pads": [
         {
@@ -105354,6 +105682,7 @@
     {
       "id": "5ce10000-0000-4000-9000-31ee48a48036",
       "name": "PinHeader_2x01_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×1 SMD pin header, 2.54 mm pitch, 2 pins",
       "pads": [
         {
@@ -105488,6 +105817,7 @@
     {
       "id": "5ce10000-0000-4000-9000-bf499722423e",
       "name": "PinHeader_2x02_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×2 pin header, 2.54 mm pitch, 4 pins",
       "pads": [
         {
@@ -105637,6 +105967,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c445a5ed174c",
       "name": "PinHeader_2x02_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×2 right-angle pin header, 2.54 mm pitch, 4 pins",
       "pads": [
         {
@@ -105804,6 +106135,7 @@
     {
       "id": "5ce10000-0000-4000-9000-24d92911615e",
       "name": "PinSocket_2x02_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×2 pin socket, 2.54 mm pitch, 4 pins",
       "pads": [
         {
@@ -105953,6 +106285,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f81680e22349",
       "name": "PinHeader_2x02_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×2 SMD pin header, 2.54 mm pitch, 4 pins",
       "pads": [
         {
@@ -106133,6 +106466,7 @@
     {
       "id": "5ce10000-0000-4000-9000-91ca3007eabf",
       "name": "PinHeader_2x03_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×3 pin header, 2.54 mm pitch, 6 pins",
       "pads": [
         {
@@ -106312,6 +106646,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f01a5e4336f5",
       "name": "PinHeader_2x03_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×3 right-angle pin header, 2.54 mm pitch, 6 pins",
       "pads": [
         {
@@ -106518,6 +106853,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d9a54c5165df",
       "name": "PinSocket_2x03_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×3 pin socket, 2.54 mm pitch, 6 pins",
       "pads": [
         {
@@ -106697,6 +107033,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1f577bc94638",
       "name": "PinHeader_2x03_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×3 SMD pin header, 2.54 mm pitch, 6 pins",
       "pads": [
         {
@@ -106923,6 +107260,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d9cc705a3da8",
       "name": "PinHeader_2x04_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×4 pin header, 2.54 mm pitch, 8 pins",
       "pads": [
         {
@@ -107132,6 +107470,7 @@
     {
       "id": "5ce10000-0000-4000-9000-66c0a915a9ee",
       "name": "PinHeader_2x04_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×4 right-angle pin header, 2.54 mm pitch, 8 pins",
       "pads": [
         {
@@ -107377,6 +107716,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ca011f15dac8",
       "name": "PinSocket_2x04_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×4 pin socket, 2.54 mm pitch, 8 pins",
       "pads": [
         {
@@ -107586,6 +107926,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6b86a696606b",
       "name": "PinHeader_2x04_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×4 SMD pin header, 2.54 mm pitch, 8 pins",
       "pads": [
         {
@@ -107858,6 +108199,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c1d6ecf27a41",
       "name": "PinHeader_2x05_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×5 pin header, 2.54 mm pitch, 10 pins",
       "pads": [
         {
@@ -108097,6 +108439,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f2cb9292776f",
       "name": "PinHeader_2x05_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×5 right-angle pin header, 2.54 mm pitch, 10 pins",
       "pads": [
         {
@@ -108381,6 +108724,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f94d10e2b461",
       "name": "PinSocket_2x05_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×5 pin socket, 2.54 mm pitch, 10 pins",
       "pads": [
         {
@@ -108620,6 +108964,7 @@
     {
       "id": "5ce10000-0000-4000-9000-77e6167d9362",
       "name": "PinHeader_2x05_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×5 SMD pin header, 2.54 mm pitch, 10 pins",
       "pads": [
         {
@@ -108938,6 +109283,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f77dabf04b62",
       "name": "PinHeader_2x06_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×6 pin header, 2.54 mm pitch, 12 pins",
       "pads": [
         {
@@ -109207,6 +109553,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a5428e20a468",
       "name": "PinHeader_2x06_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×6 right-angle pin header, 2.54 mm pitch, 12 pins",
       "pads": [
         {
@@ -109530,6 +109877,7 @@
     {
       "id": "5ce10000-0000-4000-9000-778681bd8602",
       "name": "PinSocket_2x06_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×6 pin socket, 2.54 mm pitch, 12 pins",
       "pads": [
         {
@@ -109799,6 +110147,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8162665d7e05",
       "name": "PinHeader_2x06_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×6 SMD pin header, 2.54 mm pitch, 12 pins",
       "pads": [
         {
@@ -110163,6 +110512,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d6d0d809d553",
       "name": "PinHeader_2x07_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×7 pin header, 2.54 mm pitch, 14 pins",
       "pads": [
         {
@@ -110462,6 +110812,7 @@
     {
       "id": "5ce10000-0000-4000-9000-0d72cc8c61b1",
       "name": "PinHeader_2x07_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×7 right-angle pin header, 2.54 mm pitch, 14 pins",
       "pads": [
         {
@@ -110824,6 +111175,7 @@
     {
       "id": "5ce10000-0000-4000-9000-26a385596473",
       "name": "PinSocket_2x07_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×7 pin socket, 2.54 mm pitch, 14 pins",
       "pads": [
         {
@@ -111123,6 +111475,7 @@
     {
       "id": "5ce10000-0000-4000-9000-21ebdc0b0a84",
       "name": "PinHeader_2x07_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×7 SMD pin header, 2.54 mm pitch, 14 pins",
       "pads": [
         {
@@ -111533,6 +111886,7 @@
     {
       "id": "5ce10000-0000-4000-9000-db277e6c1f0c",
       "name": "PinHeader_2x08_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×8 pin header, 2.54 mm pitch, 16 pins",
       "pads": [
         {
@@ -111862,6 +112216,7 @@
     {
       "id": "5ce10000-0000-4000-9000-988fca2f8dfa",
       "name": "PinHeader_2x08_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×8 right-angle pin header, 2.54 mm pitch, 16 pins",
       "pads": [
         {
@@ -112263,6 +112618,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7c09730c462c",
       "name": "PinSocket_2x08_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×8 pin socket, 2.54 mm pitch, 16 pins",
       "pads": [
         {
@@ -112592,6 +112948,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2cb7ecfc5327",
       "name": "PinHeader_2x08_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×8 SMD pin header, 2.54 mm pitch, 16 pins",
       "pads": [
         {
@@ -113048,6 +113405,7 @@
     {
       "id": "5ce10000-0000-4000-9000-bce327e66e65",
       "name": "PinHeader_2x09_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×9 pin header, 2.54 mm pitch, 18 pins",
       "pads": [
         {
@@ -113407,6 +113765,7 @@
     {
       "id": "5ce10000-0000-4000-9000-84679464160b",
       "name": "PinHeader_2x09_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×9 right-angle pin header, 2.54 mm pitch, 18 pins",
       "pads": [
         {
@@ -113847,6 +114206,7 @@
     {
       "id": "5ce10000-0000-4000-9000-20049c25d105",
       "name": "PinSocket_2x09_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×9 pin socket, 2.54 mm pitch, 18 pins",
       "pads": [
         {
@@ -114206,6 +114566,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c684a4d2774e",
       "name": "PinHeader_2x09_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×9 SMD pin header, 2.54 mm pitch, 18 pins",
       "pads": [
         {
@@ -114708,6 +115069,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b9641136190f",
       "name": "PinHeader_2x10_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×10 pin header, 2.54 mm pitch, 20 pins",
       "pads": [
         {
@@ -115097,6 +115459,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b92da94599c5",
       "name": "PinHeader_2x10_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×10 right-angle pin header, 2.54 mm pitch, 20 pins",
       "pads": [
         {
@@ -115576,6 +115939,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f69104af62af",
       "name": "PinSocket_2x10_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×10 pin socket, 2.54 mm pitch, 20 pins",
       "pads": [
         {
@@ -115965,6 +116329,7 @@
     {
       "id": "5ce10000-0000-4000-9000-04841d3bcf48",
       "name": "PinHeader_2x10_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×10 SMD pin header, 2.54 mm pitch, 20 pins",
       "pads": [
         {
@@ -116513,6 +116878,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a129dda1f5ce",
       "name": "PinHeader_2x11_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×11 pin header, 2.54 mm pitch, 22 pins",
       "pads": [
         {
@@ -116932,6 +117298,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6e23fac0a0dc",
       "name": "PinHeader_2x11_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×11 right-angle pin header, 2.54 mm pitch, 22 pins",
       "pads": [
         {
@@ -117450,6 +117817,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f4a26cf1916e",
       "name": "PinSocket_2x11_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×11 pin socket, 2.54 mm pitch, 22 pins",
       "pads": [
         {
@@ -117869,6 +118237,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d4070cbe9059",
       "name": "PinHeader_2x11_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×11 SMD pin header, 2.54 mm pitch, 22 pins",
       "pads": [
         {
@@ -118463,6 +118832,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2657a72c849d",
       "name": "PinHeader_2x12_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×12 pin header, 2.54 mm pitch, 24 pins",
       "pads": [
         {
@@ -118912,6 +119282,7 @@
     {
       "id": "5ce10000-0000-4000-9000-573ea15630b3",
       "name": "PinHeader_2x12_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×12 right-angle pin header, 2.54 mm pitch, 24 pins",
       "pads": [
         {
@@ -119469,6 +119840,7 @@
     {
       "id": "5ce10000-0000-4000-9000-dc205fdcf2bd",
       "name": "PinSocket_2x12_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×12 pin socket, 2.54 mm pitch, 24 pins",
       "pads": [
         {
@@ -119918,6 +120290,7 @@
     {
       "id": "5ce10000-0000-4000-9000-284c8c9879c6",
       "name": "PinHeader_2x12_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×12 SMD pin header, 2.54 mm pitch, 24 pins",
       "pads": [
         {
@@ -120558,6 +120931,7 @@
     {
       "id": "5ce10000-0000-4000-9000-97d65e87a944",
       "name": "PinHeader_2x13_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×13 pin header, 2.54 mm pitch, 26 pins",
       "pads": [
         {
@@ -121037,6 +121411,7 @@
     {
       "id": "5ce10000-0000-4000-9000-362b63396682",
       "name": "PinHeader_2x13_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×13 right-angle pin header, 2.54 mm pitch, 26 pins",
       "pads": [
         {
@@ -121633,6 +122008,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5dd987c55464",
       "name": "PinSocket_2x13_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×13 pin socket, 2.54 mm pitch, 26 pins",
       "pads": [
         {
@@ -122112,6 +122488,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ac93585b1a7f",
       "name": "PinHeader_2x13_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×13 SMD pin header, 2.54 mm pitch, 26 pins",
       "pads": [
         {
@@ -122798,6 +123175,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6860f3683be3",
       "name": "PinHeader_2x14_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×14 pin header, 2.54 mm pitch, 28 pins",
       "pads": [
         {
@@ -123307,6 +123685,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4b6bdb7bb041",
       "name": "PinHeader_2x14_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×14 right-angle pin header, 2.54 mm pitch, 28 pins",
       "pads": [
         {
@@ -123942,6 +124321,7 @@
     {
       "id": "5ce10000-0000-4000-9000-347b46792603",
       "name": "PinSocket_2x14_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×14 pin socket, 2.54 mm pitch, 28 pins",
       "pads": [
         {
@@ -124451,6 +124831,7 @@
     {
       "id": "5ce10000-0000-4000-9000-df2e755c9ed4",
       "name": "PinHeader_2x14_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×14 SMD pin header, 2.54 mm pitch, 28 pins",
       "pads": [
         {
@@ -125183,6 +125564,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ec29e21e4eb2",
       "name": "PinHeader_2x15_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×15 pin header, 2.54 mm pitch, 30 pins",
       "pads": [
         {
@@ -125722,6 +126104,7 @@
     {
       "id": "5ce10000-0000-4000-9000-3e452b629e38",
       "name": "PinHeader_2x15_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×15 right-angle pin header, 2.54 mm pitch, 30 pins",
       "pads": [
         {
@@ -126396,6 +126779,7 @@
     {
       "id": "5ce10000-0000-4000-9000-131e38e1f3d2",
       "name": "PinSocket_2x15_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×15 pin socket, 2.54 mm pitch, 30 pins",
       "pads": [
         {
@@ -126935,6 +127319,7 @@
     {
       "id": "5ce10000-0000-4000-9000-38fa26216ad5",
       "name": "PinHeader_2x15_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×15 SMD pin header, 2.54 mm pitch, 30 pins",
       "pads": [
         {
@@ -127713,6 +128098,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a9fe7f898691",
       "name": "PinHeader_2x16_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×16 pin header, 2.54 mm pitch, 32 pins",
       "pads": [
         {
@@ -128282,6 +128668,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b43681a3a03f",
       "name": "PinHeader_2x16_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×16 right-angle pin header, 2.54 mm pitch, 32 pins",
       "pads": [
         {
@@ -128995,6 +129382,7 @@
     {
       "id": "5ce10000-0000-4000-9000-450578d26db1",
       "name": "PinSocket_2x16_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×16 pin socket, 2.54 mm pitch, 32 pins",
       "pads": [
         {
@@ -129564,6 +129952,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2302dccd0772",
       "name": "PinHeader_2x16_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×16 SMD pin header, 2.54 mm pitch, 32 pins",
       "pads": [
         {
@@ -130388,6 +130777,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6dde4ac566f8",
       "name": "PinHeader_2x17_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×17 pin header, 2.54 mm pitch, 34 pins",
       "pads": [
         {
@@ -130987,6 +131377,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ae70ba44ab3e",
       "name": "PinHeader_2x17_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×17 right-angle pin header, 2.54 mm pitch, 34 pins",
       "pads": [
         {
@@ -131739,6 +132130,7 @@
     {
       "id": "5ce10000-0000-4000-9000-eb4701935298",
       "name": "PinSocket_2x17_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×17 pin socket, 2.54 mm pitch, 34 pins",
       "pads": [
         {
@@ -132338,6 +132730,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8362c499527b",
       "name": "PinHeader_2x17_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×17 SMD pin header, 2.54 mm pitch, 34 pins",
       "pads": [
         {
@@ -133208,6 +133601,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b69885d08e67",
       "name": "PinHeader_2x18_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×18 pin header, 2.54 mm pitch, 36 pins",
       "pads": [
         {
@@ -133837,6 +134231,7 @@
     {
       "id": "5ce10000-0000-4000-9000-6c2d2a0362ad",
       "name": "PinHeader_2x18_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×18 right-angle pin header, 2.54 mm pitch, 36 pins",
       "pads": [
         {
@@ -134628,6 +135023,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1ed103198487",
       "name": "PinSocket_2x18_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×18 pin socket, 2.54 mm pitch, 36 pins",
       "pads": [
         {
@@ -135257,6 +135653,7 @@
     {
       "id": "5ce10000-0000-4000-9000-435ecd3a3220",
       "name": "PinHeader_2x18_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×18 SMD pin header, 2.54 mm pitch, 36 pins",
       "pads": [
         {
@@ -136173,6 +136570,7 @@
     {
       "id": "5ce10000-0000-4000-9000-afb868cf5d46",
       "name": "PinHeader_2x19_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×19 pin header, 2.54 mm pitch, 38 pins",
       "pads": [
         {
@@ -136832,6 +137230,7 @@
     {
       "id": "5ce10000-0000-4000-9000-491bf9dd3ce4",
       "name": "PinHeader_2x19_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×19 right-angle pin header, 2.54 mm pitch, 38 pins",
       "pads": [
         {
@@ -137662,6 +138061,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4c3426cc1866",
       "name": "PinSocket_2x19_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×19 pin socket, 2.54 mm pitch, 38 pins",
       "pads": [
         {
@@ -138321,6 +138721,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ae66ba0677f1",
       "name": "PinHeader_2x19_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×19 SMD pin header, 2.54 mm pitch, 38 pins",
       "pads": [
         {
@@ -139283,6 +139684,7 @@
     {
       "id": "5ce10000-0000-4000-9000-83e5c959e796",
       "name": "PinHeader_2x20_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×20 pin header, 2.54 mm pitch, 40 pins",
       "pads": [
         {
@@ -139972,6 +140374,7 @@
     {
       "id": "5ce10000-0000-4000-9000-0bb6ff1821f4",
       "name": "PinHeader_2x20_P2.54mm_Horizontal",
+      "category": "Through hole",
       "description": "2×20 right-angle pin header, 2.54 mm pitch, 40 pins",
       "pads": [
         {
@@ -140841,6 +141244,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1b75749381b6",
       "name": "PinSocket_2x20_P2.54mm_Vertical",
+      "category": "Through hole",
       "description": "2×20 pin socket, 2.54 mm pitch, 40 pins",
       "pads": [
         {
@@ -141530,6 +141934,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2bc90f390501",
       "name": "PinHeader_2x20_P2.54mm_Vertical_SMD",
+      "category": "SMD",
       "description": "2×20 SMD pin header, 2.54 mm pitch, 40 pins",
       "pads": [
         {
@@ -142538,6 +142943,7 @@
     {
       "id": "5ce10000-0000-4000-9000-9cceaf517702",
       "name": "Crystal_HC49-U_Vertical",
+      "category": "Through hole",
       "description": "Crystal, HC-49/US, 4.88 mm pitch",
       "pads": [
         {
@@ -142652,6 +143058,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1042c47c9625",
       "name": "Crystal_SMD_3225-4Pin_3.2x2.5mm",
+      "category": "SMD",
       "description": "Crystal, SMD 3.2 × 2.5 mm, 4 pads (2 and 4 are the case)",
       "pads": [
         {
@@ -142779,6 +143186,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5ba04e320e7f",
       "name": "Crystal_SMD_2016-4Pin_2.0x1.6mm",
+      "category": "SMD",
       "description": "Crystal, SMD 2.0 × 1.6 mm, 4 pads (2 and 4 are the case)",
       "pads": [
         {
@@ -142888,6 +143296,7 @@
     {
       "id": "5ce10000-0000-4000-9000-fa536f4ca33d",
       "name": "TestPoint_Pad_D1.5mm",
+      "category": "SMD",
       "description": "Test point, SMD pad Ø1.5 mm",
       "pads": [
         {
@@ -142935,6 +143344,7 @@
     {
       "id": "5ce10000-0000-4000-9000-daf03ef8e9ba",
       "name": "TestPoint_THTPad_D2.0mm_Drill1.0mm",
+      "category": "Through hole",
       "description": "Test point, through-hole pad Ø2.0 mm, 1.0 mm drill",
       "pads": [
         {
@@ -142983,6 +143393,7 @@
     {
       "id": "5ce10000-0000-4000-9000-87a568c32a58",
       "name": "SW_PUSH_6mm",
+      "category": "Through hole",
       "description": "Tactile switch, 6 × 6 mm, through-hole; pads 1 and 2 come in pairs",
       "pads": [
         {
@@ -143132,6 +143543,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f87688d2604a",
       "name": "MountingHole_2.2mm_M2_Pad",
+      "category": "Mechanical",
       "description": "Mounting hole for M2 screws, plated, Ø4 mm pad",
       "pads": [
         {
@@ -143180,6 +143592,7 @@
     {
       "id": "5ce10000-0000-4000-9000-751b4b4a00d8",
       "name": "MountingHole_2.2mm_M2",
+      "category": "Mechanical",
       "description": "Mounting hole for M2 screws, not plated",
       "pads": [
         {
@@ -143238,6 +143651,7 @@
     {
       "id": "5ce10000-0000-4000-9000-064bb7e93d8e",
       "name": "MountingHole_2.7mm_M2.5_Pad",
+      "category": "Mechanical",
       "description": "Mounting hole for M2.5 screws, plated, Ø5 mm pad",
       "pads": [
         {
@@ -143286,6 +143700,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ff88c4f1569c",
       "name": "MountingHole_2.7mm_M2.5",
+      "category": "Mechanical",
       "description": "Mounting hole for M2.5 screws, not plated",
       "pads": [
         {
@@ -143344,6 +143759,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f9cf92f356f0",
       "name": "MountingHole_3.2mm_M3_Pad",
+      "category": "Mechanical",
       "description": "Mounting hole for M3 screws, plated, Ø6 mm pad",
       "pads": [
         {
@@ -143392,6 +143808,7 @@
     {
       "id": "5ce10000-0000-4000-9000-31de1f54c81a",
       "name": "MountingHole_3.2mm_M3",
+      "category": "Mechanical",
       "description": "Mounting hole for M3 screws, not plated",
       "pads": [
         {
@@ -143450,6 +143867,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4bc4ae2c5e2b",
       "name": "MountingHole_4.3mm_M4_Pad",
+      "category": "Mechanical",
       "description": "Mounting hole for M4 screws, plated, Ø8 mm pad",
       "pads": [
         {
@@ -143498,6 +143916,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7ae492749381",
       "name": "MountingHole_4.3mm_M4",
+      "category": "Mechanical",
       "description": "Mounting hole for M4 screws, not plated",
       "pads": [
         {
@@ -143556,6 +143975,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8e6a9476743e",
       "name": "Fiducial_1mm_Mask2mm",
+      "category": "Mechanical",
       "description": "Fiducial, Ø1 mm copper in a Ø2 mm mask opening",
       "pads": [
         {
@@ -143604,6 +144024,7 @@
     {
       "id": "5ce10000-0000-4000-9000-96f4f56198c4",
       "name": "SOT-23-5",
+      "category": "SMD",
       "description": "SOT-23-5, 0.95 mm pitch",
       "pads": [
         {
@@ -143754,6 +144175,7 @@
     {
       "id": "5ce10000-0000-4000-9000-70c5348d280a",
       "name": "SOIC-8_3.9x4.9mm_P1.27mm",
+      "category": "SMD",
       "description": "SOIC-8, 3.9 mm body, 1.27 mm pitch",
       "pads": [
         {
@@ -143955,6 +144377,7 @@
     {
       "id": "5ce10000-0000-4000-9000-498d8e441fa3",
       "name": "SOIC-14_3.9x8.7mm_P1.27mm",
+      "category": "SMD",
       "description": "SOIC-14, 3.9 mm body, 1.27 mm pitch",
       "pads": [
         {
@@ -144294,6 +144717,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7d3187b990b1",
       "name": "DIP-8_W7.62mm",
+      "category": "Through hole",
       "description": "DIP-8, 7.62 mm row spacing, 2.54 mm pitch",
       "pads": [
         {
@@ -144505,6 +144929,7 @@
     {
       "id": "5ce10000-0000-4000-9000-af3fab8a5388",
       "name": "DIP-14_W7.62mm",
+      "category": "Through hole",
       "description": "DIP-14, 7.62 mm row spacing, 2.54 mm pitch",
       "pads": [
         {
@@ -144808,6 +145233,7 @@
     {
       "id": "5ce10000-0000-4000-9000-1596e0022042",
       "name": "Resistor",
+      "category": "Passives",
       "description": "Resistor: chip 0402 to 2512, axial through-hole",
       "prefix": "R",
       "default_value": "10k",
@@ -144942,6 +145368,7 @@
     {
       "id": "5ce10000-0000-4000-9000-f5f6c40b8a2b",
       "name": "Capacitor",
+      "category": "Passives",
       "description": "Ceramic capacitor: chip 0402 to 1210, through-hole disc",
       "prefix": "C",
       "default_value": "100n",
@@ -145076,6 +145503,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a47b041f5342",
       "name": "Capacitor_Polarized",
+      "category": "Passives",
       "description": "Polarised capacitor (tantalum, electrolytic); pin 1 is +",
       "prefix": "C",
       "default_value": "10u",
@@ -145312,6 +145740,7 @@
     {
       "id": "5ce10000-0000-4000-9000-9f25dc6a68af",
       "name": "Inductor",
+      "category": "Passives",
       "description": "Inductor: chip 0603 to 1210, shielded SMD power inductors",
       "prefix": "L",
       "default_value": "10u",
@@ -145463,6 +145892,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4603832dda80",
       "name": "FerriteBead",
+      "category": "Passives",
       "description": "Ferrite bead, chip 0402 to 0805",
       "prefix": "FB",
       "default_value": "600R@100MHz",
@@ -145529,6 +145959,7 @@
     {
       "id": "5ce10000-0000-4000-9000-07b8ecb32234",
       "name": "Fuse",
+      "category": "Passives",
       "description": "Fuse or resettable PTC fuse, chip 0603 to 1812",
       "prefix": "F",
       "default_value": "500mA",
@@ -145595,6 +146026,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7d4165cb34a4",
       "name": "Diode",
+      "category": "Diodes",
       "description": "General purpose rectifier or signal diode: SOD, MiniMELF, SMA/SMB/SMC, DO-35/41/201AD",
       "prefix": "D",
       "default_value": "1N4148W",
@@ -145763,6 +146195,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b68200a421c2",
       "name": "Diode_Schottky",
+      "category": "Diodes",
       "description": "Schottky diode: SOD, MiniMELF, SMA/SMB/SMC, DO-35/41/201AD",
       "prefix": "D",
       "default_value": "B5819W",
@@ -145931,6 +146364,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a5bf92c44e71",
       "name": "Diode_Zener",
+      "category": "Diodes",
       "description": "Zener diode: SOD, MiniMELF, SMA/SMB/SMC, DO-35/41/201AD",
       "prefix": "D",
       "default_value": "BZT52C3V3",
@@ -146099,6 +146533,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4dceaa89b998",
       "name": "TVS",
+      "category": "Diodes",
       "description": "Unidirectional TVS diode: SOD, MiniMELF, SMA/SMB/SMC, DO-35/41/201AD",
       "prefix": "D",
       "default_value": "SMAJ5.0A",
@@ -146267,6 +146702,7 @@
     {
       "id": "5ce10000-0000-4000-9000-7393f107fd60",
       "name": "TVS_Bidirectional",
+      "category": "Diodes",
       "description": "Bidirectional TVS diode: SOD, MiniMELF, SMA/SMB/SMC, DO-35/41/201AD",
       "prefix": "D",
       "default_value": "SMAJ5.0CA",
@@ -146435,6 +146871,7 @@
     {
       "id": "5ce10000-0000-4000-9000-0ace831f67d6",
       "name": "LED",
+      "category": "Diodes",
       "description": "Light emitting diode: chip 0402 to 1206, Ø3 and Ø5 mm through-hole",
       "prefix": "D",
       "default_value": "red",
@@ -146552,6 +146989,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a4ce8e41411b",
       "name": "NPN",
+      "category": "Transistors",
       "description": "NPN bipolar transistor (BC847 in SOT-23; BCP56 in SOT-223, 2N3904 in TO-92)",
       "prefix": "Q",
       "default_value": "BC847",
@@ -146638,6 +147076,7 @@
     {
       "id": "5ce10000-0000-4000-9000-e4ce985c3205",
       "name": "PNP",
+      "category": "Transistors",
       "description": "PNP bipolar transistor (BC857 in SOT-23; BCP53, 2N3906)",
       "prefix": "Q",
       "default_value": "BC857",
@@ -146724,6 +147163,7 @@
     {
       "id": "5ce10000-0000-4000-9000-15fbc64e1b1a",
       "name": "NMOS",
+      "category": "Transistors",
       "description": "N-channel MOSFET (2N7002; AO3400 in SOT-23, IRLZ44N in TO-220)",
       "prefix": "Q",
       "default_value": "2N7002",
@@ -146832,6 +147272,7 @@
     {
       "id": "5ce10000-0000-4000-9000-5a0ce83e9e64",
       "name": "PMOS",
+      "category": "Transistors",
       "description": "P-channel MOSFET (BSS84; AO3401 in SOT-23, IRF9540 in TO-220)",
       "prefix": "Q",
       "default_value": "BSS84",
@@ -146940,6 +147381,7 @@
     {
       "id": "5ce10000-0000-4000-9000-477040fc7722",
       "name": "Conn_01x01",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 1 pin: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x01",
@@ -146991,6 +147433,7 @@
     {
       "id": "5ce10000-0000-4000-9000-467040fc756f",
       "name": "Conn_01x02",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 2 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x02",
@@ -147159,6 +147602,7 @@
     {
       "id": "5ce10000-0000-4000-9000-457040fc73bc",
       "name": "Conn_01x03",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 3 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x03",
@@ -147372,6 +147816,7 @@
     {
       "id": "5ce10000-0000-4000-9000-447040fc7209",
       "name": "Conn_01x04",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 4 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x04",
@@ -147630,6 +148075,7 @@
     {
       "id": "5ce10000-0000-4000-9000-437040fc7056",
       "name": "Conn_01x05",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 5 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x05",
@@ -147869,6 +148315,7 @@
     {
       "id": "5ce10000-0000-4000-9000-427040fc6ea3",
       "name": "Conn_01x06",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 6 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x06",
@@ -148143,6 +148590,7 @@
     {
       "id": "5ce10000-0000-4000-9000-417040fc6cf0",
       "name": "Conn_01x07",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 7 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x07",
@@ -148410,6 +148858,7 @@
     {
       "id": "5ce10000-0000-4000-9000-507040fc866d",
       "name": "Conn_01x08",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 8 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x08",
@@ -148707,6 +149156,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4f7040fc84ba",
       "name": "Conn_01x09",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 9 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x09",
@@ -148930,6 +149380,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c27040f95f4c",
       "name": "Conn_01x10",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 10 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x10",
@@ -149173,6 +149624,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c37040f960ff",
       "name": "Conn_01x11",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 11 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x11",
@@ -149436,6 +149888,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c47040f962b2",
       "name": "Conn_01x12",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 12 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x12",
@@ -149719,6 +150172,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c57040f96465",
       "name": "Conn_01x13",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 13 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x13",
@@ -150022,6 +150476,7 @@
     {
       "id": "5ce10000-0000-4000-9000-be7040f95880",
       "name": "Conn_01x14",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 14 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x14",
@@ -150345,6 +150800,7 @@
     {
       "id": "5ce10000-0000-4000-9000-bf7040f95a33",
       "name": "Conn_01x15",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 15 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x15",
@@ -150688,6 +151144,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c07040f95be6",
       "name": "Conn_01x16",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 16 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x16",
@@ -151051,6 +151508,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c17040f95d99",
       "name": "Conn_01x17",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 17 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x17",
@@ -151434,6 +151892,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ca7040f96ce4",
       "name": "Conn_01x18",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 18 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x18",
@@ -151837,6 +152296,7 @@
     {
       "id": "5ce10000-0000-4000-9000-cb7040f96e97",
       "name": "Conn_01x19",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 19 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x19",
@@ -152260,6 +152720,7 @@
     {
       "id": "5ce10000-0000-4000-9000-54704102abe7",
       "name": "Conn_01x20",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 20 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x20",
@@ -152703,6 +153164,7 @@
     {
       "id": "5ce10000-0000-4000-9000-53704102aa34",
       "name": "Conn_01x21",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 21 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x21",
@@ -153166,6 +153628,7 @@
     {
       "id": "5ce10000-0000-4000-9000-56704102af4d",
       "name": "Conn_01x22",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 22 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x22",
@@ -153649,6 +154112,7 @@
     {
       "id": "5ce10000-0000-4000-9000-55704102ad9a",
       "name": "Conn_01x23",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 23 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x23",
@@ -154152,6 +154616,7 @@
     {
       "id": "5ce10000-0000-4000-9000-50704102a51b",
       "name": "Conn_01x24",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 24 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x24",
@@ -154675,6 +155140,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4f704102a368",
       "name": "Conn_01x25",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 25 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x25",
@@ -155218,6 +155684,7 @@
     {
       "id": "5ce10000-0000-4000-9000-52704102a881",
       "name": "Conn_01x26",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 26 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x26",
@@ -155781,6 +156248,7 @@
     {
       "id": "5ce10000-0000-4000-9000-51704102a6ce",
       "name": "Conn_01x27",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 27 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x27",
@@ -156364,6 +156832,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4c7041029e4f",
       "name": "Conn_01x28",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 28 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x28",
@@ -156967,6 +157436,7 @@
     {
       "id": "5ce10000-0000-4000-9000-4b7041029c9c",
       "name": "Conn_01x29",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 29 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x29",
@@ -157590,6 +158060,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ce7040ff925e",
       "name": "Conn_01x30",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 30 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x30",
@@ -158233,6 +158704,7 @@
     {
       "id": "5ce10000-0000-4000-9000-cf7040ff9411",
       "name": "Conn_01x31",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 31 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x31",
@@ -158896,6 +159368,7 @@
     {
       "id": "5ce10000-0000-4000-9000-cc7040ff8ef8",
       "name": "Conn_01x32",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 32 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x32",
@@ -159579,6 +160052,7 @@
     {
       "id": "5ce10000-0000-4000-9000-cd7040ff90ab",
       "name": "Conn_01x33",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 33 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x33",
@@ -160282,6 +160756,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d27040ff992a",
       "name": "Conn_01x34",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 34 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x34",
@@ -161005,6 +161480,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d37040ff9add",
       "name": "Conn_01x35",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 35 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x35",
@@ -161748,6 +162224,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d07040ff95c4",
       "name": "Conn_01x36",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 36 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x36",
@@ -162511,6 +162988,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d17040ff9777",
       "name": "Conn_01x37",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 37 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x37",
@@ -163294,6 +163772,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c67040ff84c6",
       "name": "Conn_01x38",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 38 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x38",
@@ -164097,6 +164576,7 @@
     {
       "id": "5ce10000-0000-4000-9000-c77040ff8679",
       "name": "Conn_01x39",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 39 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x39",
@@ -164920,6 +165400,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d07040f12291",
       "name": "Conn_01x40",
+      "category": "Connectors",
       "description": "Generic connector, 1 row, 40 pins: pin header or socket, JST, screw terminal",
       "prefix": "J",
       "default_value": "Conn_01x40",
@@ -165763,6 +166244,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a57670fa0209",
       "name": "Conn_02x01",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 2 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x01",
@@ -165846,6 +166328,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a27670f9fcf0",
       "name": "Conn_02x02",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 4 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x02",
@@ -165969,6 +166452,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a37670f9fea3",
       "name": "Conn_02x03",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 6 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x03",
@@ -166132,6 +166616,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a87670fa0722",
       "name": "Conn_02x04",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 8 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x04",
@@ -166335,6 +166820,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a97670fa08d5",
       "name": "Conn_02x05",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 10 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x05",
@@ -166578,6 +167064,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a67670fa03bc",
       "name": "Conn_02x06",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 12 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x06",
@@ -166861,6 +167348,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a77670fa056f",
       "name": "Conn_02x07",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 14 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x07",
@@ -167184,6 +167672,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ac7670fa0dee",
       "name": "Conn_02x08",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 16 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x08",
@@ -167547,6 +168036,7 @@
     {
       "id": "5ce10000-0000-4000-9000-ad7670fa0fa1",
       "name": "Conn_02x09",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 18 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x09",
@@ -167950,6 +168440,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2a7670fd19df",
       "name": "Conn_02x10",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 20 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x10",
@@ -168393,6 +168884,7 @@
     {
       "id": "5ce10000-0000-4000-9000-297670fd182c",
       "name": "Conn_02x11",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 22 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x11",
@@ -168876,6 +169368,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2c7670fd1d45",
       "name": "Conn_02x12",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 24 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x12",
@@ -169399,6 +169892,7 @@
     {
       "id": "5ce10000-0000-4000-9000-2b7670fd1b92",
       "name": "Conn_02x13",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 26 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x13",
@@ -169962,6 +170456,7 @@
     {
       "id": "5ce10000-0000-4000-9000-267670fd1313",
       "name": "Conn_02x14",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 28 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x14",
@@ -170565,6 +171060,7 @@
     {
       "id": "5ce10000-0000-4000-9000-257670fd1160",
       "name": "Conn_02x15",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 30 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x15",
@@ -171208,6 +171704,7 @@
     {
       "id": "5ce10000-0000-4000-9000-287670fd1679",
       "name": "Conn_02x16",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 32 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x16",
@@ -171891,6 +172388,7 @@
     {
       "id": "5ce10000-0000-4000-9000-277670fd14c6",
       "name": "Conn_02x17",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 34 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x17",
@@ -172614,6 +173112,7 @@
     {
       "id": "5ce10000-0000-4000-9000-327670fd2777",
       "name": "Conn_02x18",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 36 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x18",
@@ -173377,6 +173876,7 @@
     {
       "id": "5ce10000-0000-4000-9000-317670fd25c4",
       "name": "Conn_02x19",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 38 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x19",
@@ -174180,6 +174680,7 @@
     {
       "id": "5ce10000-0000-4000-9000-b87670f403a4",
       "name": "Conn_02x20",
+      "category": "Connectors",
       "description": "Generic connector, 2 rows, 40 pins (odd left, even right): pin header or socket",
       "prefix": "J",
       "default_value": "Conn_02x20",
@@ -175023,6 +175524,7 @@
     {
       "id": "5ce10000-0000-4000-9000-a53b5890407d",
       "name": "Crystal",
+      "category": "Passives",
       "description": "Quartz crystal, two pins (on 4-pad packages the case pads stay open)",
       "prefix": "Y",
       "default_value": "16MHz",
@@ -175089,6 +175591,7 @@
     {
       "id": "5ce10000-0000-4000-9000-be79fab6a73f",
       "name": "Crystal_GND24",
+      "category": "Passives",
       "description": "Quartz crystal, 4 pads: 1 and 3 the crystal, 2 and 4 the case (ground)",
       "prefix": "Y",
       "default_value": "16MHz",
@@ -175158,6 +175661,7 @@
     {
       "id": "5ce10000-0000-4000-9000-d4f008bbcc75",
       "name": "TestPoint",
+      "category": "Connectors",
       "description": "Test point: SMD pad or through-hole pad",
       "prefix": "TP",
       "default_value": "TestPoint",
@@ -175197,6 +175701,7 @@
     {
       "id": "5ce10000-0000-4000-9000-04f62c3e5780",
       "name": "SW_Push",
+      "category": "Switches",
       "description": "Push button, normally open",
       "prefix": "SW",
       "default_value": "SW_Push",
@@ -175239,6 +175744,7 @@
     {
       "id": "5ce10000-0000-4000-9000-8fe77b35a966",
       "name": "MountingHole_M2",
+      "category": "Mechanical",
       "description": "Mounting hole for M2 screws (board part: placed on the board only)",
       "prefix": "H",
       "default_value": "MountingHole",
@@ -175261,6 +175767,7 @@
     {
       "id": "5ce10000-0000-4000-9000-09bea3431837",
       "name": "MountingHole_M2.5",
+      "category": "Mechanical",
       "description": "Mounting hole for M2.5 screws (board part: placed on the board only)",
       "prefix": "H",
       "default_value": "MountingHole",
@@ -175283,6 +175790,7 @@
     {
       "id": "5ce10000-0000-4000-9000-90e77b35ab19",
       "name": "MountingHole_M3",
+      "category": "Mechanical",
       "description": "Mounting hole for M3 screws (board part: placed on the board only)",
       "prefix": "H",
       "default_value": "MountingHole",
@@ -175305,6 +175813,7 @@
     {
       "id": "5ce10000-0000-4000-9000-91e77b35accc",
       "name": "MountingHole_M4",
+      "category": "Mechanical",
       "description": "Mounting hole for M4 screws (board part: placed on the board only)",
       "prefix": "H",
       "default_value": "MountingHole",
@@ -175327,6 +175836,7 @@
     {
       "id": "5ce10000-0000-4000-9000-eaa4b753638a",
       "name": "Fiducial",
+      "category": "Mechanical",
       "description": "Fiducial mark for assembly (board part: placed on the board only)",
       "prefix": "FID",
       "default_value": "Fiducial",
@@ -175343,6 +175853,7 @@
     {
       "id": "5ce10000-0000-4000-8000-000000000700",
       "name": "OpAmp",
+      "category": "Analog",
       "description": "Single operational amplifier (OPA171; SOIC-8 and SOT-23-5 pinouts of the OPA171)",
       "prefix": "U",
       "default_value": "OPA171",
@@ -175422,6 +175933,7 @@
     {
       "id": "e31f5659-de7f-4cc5-806a-9af3a16e8439",
       "name": "LM358",
+      "category": "Analog",
       "description": "Dual operational amplifier: units A and B, power C",
       "prefix": "U",
       "default_value": "LM358",
@@ -175539,6 +176051,7 @@
     {
       "id": "5ce10000-0000-4000-8000-000000000900",
       "name": "74HC00",
+      "category": "Logic",
       "description": "Quad 2-input NAND gate: gates A to D, power E",
       "prefix": "U",
       "default_value": "74HC00",
@@ -175724,6 +176237,7 @@
     {
       "id": "a97546f4-6d9a-4997-b93d-44576ab9275a",
       "name": "AMS1117-3.3",
+      "category": "Power",
       "description": "1 A low-dropout linear regulator, fixed 3.3 V (other voltages: change the value)",
       "prefix": "U",
       "default_value": "AMS1117-3.3",
@@ -175766,6 +176280,7 @@
     {
       "id": "77c100d3-536a-4593-9baf-b12b88c5e8a1",
       "name": "AP2112K-3.3",
+      "category": "Power",
       "description": "600 mA low-dropout linear regulator with enable, fixed 3.3 V",
       "prefix": "U",
       "default_value": "AP2112K-3.3",
@@ -175813,6 +176328,7 @@
     {
       "id": "0419ce06-c19c-449b-aee7-f02fd5d13b6e",
       "name": "LM7805",
+      "category": "Power",
       "description": "1.5 A linear regulator, fixed 5 V",
       "prefix": "U",
       "default_value": "LM7805",

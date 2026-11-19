@@ -288,10 +288,23 @@ fn summary(doc: &LibraryDoc, listed: &[PathBuf]) -> Value {
 fn summary_of(lib: &Library, kind: &str, path: Option<&Path>, modified: bool) -> Value {
     let symbol_name = |id: Id| lib.symbols.get(id).map(|s| s.name.clone());
     let footprint_name = |id: Id| lib.footprints.get(id).map(|f| f.name.clone());
-    let symbols: Vec<Value> =
-        lib.symbols.iter().map(|s| json!({ "id": s.id, "name": s.name, "pins": s.pins.len() })).collect();
-    let footprints: Vec<Value> =
-        lib.footprints.iter().map(|f| json!({ "id": f.id, "name": f.name, "pads": f.pads.len() })).collect();
+    // The category, when there is one.
+    let categorized = |mut v: Value, category: &str| {
+        if !category.is_empty() {
+            v["category"] = json!(category);
+        }
+        v
+    };
+    let symbols: Vec<Value> = lib
+        .symbols
+        .iter()
+        .map(|s| categorized(json!({ "id": s.id, "name": s.name, "pins": s.pins.len() }), &s.category))
+        .collect();
+    let footprints: Vec<Value> = lib
+        .footprints
+        .iter()
+        .map(|f| categorized(json!({ "id": f.id, "name": f.name, "pads": f.pads.len() }), &f.category))
+        .collect();
     let parts: Vec<Value> = lib
         .parts
         .iter()
@@ -303,7 +316,9 @@ fn summary_of(lib: &Library, kind: &str, path: Option<&Path>, modified: bool) ->
                 .iter()
                 .map(|v| json!({ "name": v.name, "footprint": v.footprint.map(footprint_name) }))
                 .collect();
-            json!({ "id": p.id, "name": p.name, "description": p.description, "units": units, "variants": variants })
+            let part =
+                json!({ "id": p.id, "name": p.name, "description": p.description, "units": units, "variants": variants });
+            categorized(part, &p.category)
         })
         .collect();
     json!({
@@ -705,6 +720,7 @@ fn part(work: &Library, mut map: Map<String, Value>) -> Result<Part, String> {
         None => Part {
             id: Id::new(),
             name: String::new(),
+            category: String::new(),
             description: String::new(),
             prefix: "U".into(),
             default_value: String::new(),
