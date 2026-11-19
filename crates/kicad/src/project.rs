@@ -182,6 +182,7 @@ fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report)
             }
         };
         p.schematic.components.insert(Component {
+            sim: Default::default(),
             id: c.id,
             part: part.id,
             variant,
@@ -211,6 +212,7 @@ fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report)
         let prefix: String = f.refdes.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
         let prefix = if prefix.is_empty() { "H".to_string() } else { prefix };
         parts.entry(format!("board:{def_id}")).or_insert_with(|| Part {
+            sim: Default::default(),
             id: part_id,
             name: def.name.clone(),
             category: String::new(),
@@ -243,6 +245,7 @@ fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report)
         let id = kid(&["kicad-component", "board", &f.instance.id.to_string()]);
         comp_of_fp[i] = Some(id);
         p.schematic.components.insert(Component {
+            sim: Default::default(),
             id,
             part: part_id,
             variant: vid,

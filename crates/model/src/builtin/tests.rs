@@ -136,11 +136,33 @@ fn every_part_maps_its_pins() {
     let lib = generate::library();
     for part in lib.parts.iter().filter(|p| !p.is_board_part()) {
         let sym = lib.symbols.get(part.units[0].symbol).unwrap();
-        for v in &part.variants {
+        for v in part.variants.iter().filter(|v| v.footprint.is_some()) {
             let mapped: HashSet<Id> = v.connections.iter().map(|c| c.pin).collect();
             // Two-pin crystals leave the case pads open, connectors their mounting pads.
             assert_eq!(mapped.len(), sym.pins.len(), "{} {}: a pin without pad", part.name, v.name);
         }
+    }
+}
+
+/// Every part has a simulation model whose pins exist; sources are off the board.
+#[test]
+fn every_part_simulates() {
+    let lib = builtin_library();
+    for part in lib.parts.iter() {
+        let model = part.sim.as_ref().unwrap_or_else(|| panic!("{} has no simulation model", part.name));
+        for p in &model.pins {
+            let unit = part.units.get(p.unit as usize).unwrap_or_else(|| panic!("{}: no unit {}", part.name, p.unit));
+            assert!(
+                lib.symbols.get(unit.symbol).unwrap().pins.contains(p.pin),
+                "{}: a model pin is missing",
+                part.name
+            );
+        }
+    }
+    for id in [PART_VSOURCE, PART_ISOURCE] {
+        let part = lib.parts.get(id).unwrap();
+        assert_eq!(part.category, "Simulation");
+        assert!(part.variants.iter().all(|v| v.footprint.is_none()), "{} is off the board", part.name);
     }
 }
 

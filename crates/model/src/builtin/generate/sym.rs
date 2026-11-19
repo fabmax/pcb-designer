@@ -320,3 +320,30 @@ pub fn push_button() -> Symbol {
     s.ref_value(3.2, -1.0);
     s.finish()
 }
+
+/// An independent source: a circle between pin 1 (+, top) and pin 2 (−, bottom).
+fn source(name: &str) -> Sym {
+    let mut s = Sym::new(name);
+    s.pin("1", "+", 0.0, 2.0 * G, 270.0, G);
+    s.pin("2", "-", 0.0, -2.0 * G, 90.0, G);
+    s.circle(0.0, 0.0, G, false);
+    s.ref_value_right(G + 0.8, 0.0);
+    s
+}
+
+/// Voltage source: + and − inside the circle.
+pub fn vsource() -> Symbol {
+    let mut s = source("VSource");
+    s.line(&[(-0.5, 1.2), (0.5, 1.2)]);
+    s.line(&[(0.0, 0.7), (0.0, 1.7)]);
+    s.line(&[(-0.5, -1.2), (0.5, -1.2)]);
+    s.finish()
+}
+
+/// Current source: an arrow from + to − (the direction of the current through it).
+pub fn isource() -> Symbol {
+    let mut s = source("ISource");
+    s.line(&[(0.0, 1.5), (0.0, -0.7)]);
+    s.poly(&[(0.0, -1.6), (-0.5, -0.7), (0.5, -0.7)], true);
+    s.finish()
+}

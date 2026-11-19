@@ -3,7 +3,9 @@
 
 use std::path::PathBuf;
 
-use model::{BoardLayer, DesignRules, DrcSettings, ErcSettings, Object, ObjectId, Project, Sheet};
+use model::{
+    BoardLayer, DesignRules, DrcSettings, ErcSettings, Object, ObjectId, Project, Sheet, SimDevice, Simulation,
+};
 
 use crate::CommandError;
 
@@ -44,13 +46,15 @@ impl Change {
 }
 
 /// The project's settings that aren't objects: the board's layer stack and design rules,
-/// and the settings of the electrical and design rules checks. Changed as a whole.
+/// the settings of the electrical and design rules checks, and the simulation setup.
+/// Changed as a whole.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Setup {
     pub layers: Vec<BoardLayer>,
     pub rules: DesignRules,
     pub erc: ErcSettings,
     pub drc: DrcSettings,
+    pub simulation: Simulation,
 }
 
 impl Setup {
@@ -60,6 +64,7 @@ impl Setup {
             rules: project.board.rules.clone(),
             erc: project.schematic.erc.clone(),
             drc: project.board.drc.clone(),
+            simulation: project.schematic.simulation.clone(),
         }
     }
 
@@ -68,6 +73,7 @@ impl Setup {
         project.board.rules = self.rules.clone();
         project.schematic.erc = self.erc.clone();
         project.board.drc = self.drc.clone();
+        project.schematic.simulation = self.simulation.clone();
     }
 }
 
@@ -111,6 +117,11 @@ impl ChangeSet {
     /// The design rules check's settings changed.
     pub fn drc_changed(&self) -> bool {
         self.setup.as_ref().is_some_and(|(b, a)| b.drc != a.drc)
+    }
+
+    /// The simulation setup changed.
+    pub fn simulation_changed(&self) -> bool {
+        self.setup.as_ref().is_some_and(|(b, a)| b.simulation != a.simulation)
     }
 
     /// `self` followed by `next`, as one change set.
@@ -277,7 +288,7 @@ impl<'p> Transaction<'p> {
     }
 
     pub fn insert(&mut self, object: Object) -> Result<ObjectId, CommandError> {
-        let object = normalized(object);
+        let object = normalized(object, self.project);
         let id = object.id();
         if self.project.contains(id) {
             return Err(CommandError::Duplicate(id));
@@ -309,7 +320,7 @@ impl<'p> Transaction<'p> {
 
     /// Replace an existing object (matched by id), keeping its position.
     pub fn replace(&mut self, object: Object) -> Result<(), CommandError> {
-        let object = normalized(object);
+        let object = normalized(object, self.project);
         let id = object.id();
         let (index, old) = self.project.replace(object.clone()).ok_or(CommandError::NotFound(id))?;
         self.changes.push(Change { id, before: Some((index, old)), after: Some(object) });
@@ -352,7 +363,7 @@ impl<'p> Transaction<'p> {
 
 /// `object` as stored: what every edit path must keep (a sheet symbol's size in whole pin
 /// pitches, see [`Sheet::snap_size`]; library categories trimmed).
-fn normalized(mut object: Object) -> Object {
+fn normalized(mut object: Object, project: &Project) -> Object {
     let trim = |s: &mut String| {
         if s.trim().len() != s.len() {
             *s = s.trim().to_string();
@@ -363,6 +374,21 @@ fn normalized(mut object: Object) -> Object {
         Object::LibPart(p) => trim(&mut p.category),
         Object::LibSymbol(s) => trim(&mut s.category),
         Object::LibFootprint(f) => trim(&mut f.category),
+        // A source's value is its waveform, so the value field shows it.
+        Object::Component(c) => {
+            if let Some(source) = &c.sim.source {
+                let current = project
+                    .library
+                    .parts
+                    .get(c.part)
+                    .and_then(|p| p.sim.as_ref())
+                    .is_some_and(|m| m.device == SimDevice::CurrentSource);
+                let value = source.describe(if current { "A" } else { "V" });
+                if c.value != value {
+                    c.value = value;
+                }
+            }
+        }
         _ => {}
     }
     object

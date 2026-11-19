@@ -440,6 +440,7 @@ mod tests {
 
     fn part(name: &str, board: bool) -> Part {
         let mut p = Part {
+            sim: Default::default(),
             id: PartId::new(),
             name: name.into(),
             category: String::new(),

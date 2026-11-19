@@ -1,0 +1,9 @@
+rc test
+V1 in 0 DC 0 AC 1 PULSE(0 1 0 1n 1n 1m 2m)
+R1 in out 1k
+C1 out 0 1u
+D1 out 0 dmod
+.model dmod D(IS=1e-14)
+.options rshunt=1e12
+.tran 10u 1m
+.end

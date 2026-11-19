@@ -208,6 +208,27 @@ on the canvas (View → ERC markers turns the schematic's off).
   needs a power source. Put a power flag on its net (on a wire or a pin) to say the
   net is powered, like KiCad's PWR_FLAG.
 
+## Simulation
+
+Circuits simulate with [ngspice](https://ngspice.sourceforge.io/), which you install
+yourself (`brew install ngspice`, `apt install ngspice`, or the Windows download); it is
+found on `PATH` and the usual install places, or set `"ngspice": "/path/to/ngspice"` in
+`settings.json`. The schematic editor's simulation UI is still to come
+([simulation-plan.md](simulation-plan.md)); for now:
+
+- **Parts:** every Built-in part has a simulation model (resistors, capacitors and
+  inductors take their value: `10k`, `4k7`, `100n`, `1M` is mega). **VSource** and
+  **ISource** (category Simulation) are sources for simulation only and never reach the
+  board; their waveform (DC, sine, pulse, piecewise linear, exponential, plus an AC
+  magnitude) is set on the component, and their value shows it ("SIN 1 V 1 kHz").
+- **Ground** is the net of the GND power ports. **Supplies** in the simulation setup
+  power nets like `+5V` without drawing a source.
+- `pcb-designer simulate PROJECT_DIR [--analysis NAME] [--csv FILE] [--netlist]` runs an
+  analysis of the project's setup (operating point, DC sweep, AC, transient; the first,
+  or an operating point when there is none) and prints the values, or writes every point
+  as CSV; `--netlist` prints the SPICE netlist. Agents set the setup up with the
+  `SetSimulation` command.
+
 ## Letting an agent use the app (MCP)
 
 The app can run an [MCP](https://modelcontextprotocol.io) server so AI agents can inspect
@@ -453,6 +474,7 @@ apply at once; each page has a **Reset to defaults**.
   the commands and config to connect a client.
 - **Libraries:** the most library tabs open at once (1–50, 10 by default), and where
   KiCad's libraries are downloaded to.
+- **Simulation** (in `settings.json` only, for now): `ngspice`, the simulator's path.
 
 These, the panel layout, the window's size and position and the recent projects are
 saved in `settings.json` in the configuration folder (macOS:

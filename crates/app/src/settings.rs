@@ -45,6 +45,8 @@ pub struct Settings {
     pub layer_colors: BTreeMap<Theme, BTreeMap<LayerColor, String>>,
     /// The most library item tabs open at once; `None`: [`LIBRARY_TABS`].
     pub library_tabs: Option<usize>,
+    /// The ngspice executable; `None`: found on `PATH` and the usual places.
+    pub ngspice: Option<PathBuf>,
 }
 
 /// The default and the range of [`Settings::library_tabs`].
@@ -160,6 +162,11 @@ impl Settings {
     }
 
     /// Where KiCad's libraries are downloaded to.
+    /// The configured ngspice executable, if any (`sim::Ngspice::find` searches otherwise).
+    pub fn ngspice_path(&self) -> Option<PathBuf> {
+        self.ngspice.clone()
+    }
+
     pub fn kicad_dir(&self) -> Option<PathBuf> {
         self.kicad_dir.clone().or_else(default_kicad_dir)
     }

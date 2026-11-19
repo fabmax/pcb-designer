@@ -33,11 +33,10 @@ fn main() {
     let mut n = 0;
     for part in &parts {
         for v in &part.variants {
-            let fp = lib.footprints.get(v.footprint.unwrap()).unwrap();
+            // Off-board variants (simulation sources): the symbol only.
+            let fp = v.footprint.and_then(|f| lib.footprints.get(f));
             let court = fp
-                .graphics
-                .iter()
-                .find(|g| g.layer == FootprintLayer::Courtyard)
+                .and_then(|fp| fp.graphics.iter().find(|g| g.layer == FootprintLayer::Courtyard))
                 .map(|g| g.shape.bounds())
                 .unwrap_or_else(|| Rect::from_points(Point::ZERO, Point::ZERO));
             let (w, h) = (to_mm(court.width()) + 2.0, to_mm(court.height()) + 2.0);
@@ -73,7 +72,7 @@ fn main() {
             };
             let changes = doc.execute(command).unwrap();
             let f = changes.ids().find_map(|id| if let ObjectId::Footprint(f) = id { Some(f) } else { None });
-            let f = f.unwrap();
+            let Some(f) = f else { continue };
             let pos = doc.project().board.footprints.get(f).unwrap().pos;
             doc.execute(Command::Move { ids: vec![ObjectId::Footprint(f)], delta: at - pos, keep_connected: false })
                 .unwrap();

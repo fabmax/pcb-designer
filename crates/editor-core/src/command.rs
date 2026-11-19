@@ -219,6 +219,10 @@ pub enum Command {
     SetDrcSettings {
         drc: DrcSettings,
     },
+    /// Replace the simulation setup (analyses and their probes, ground, supplies).
+    SetSimulation {
+        simulation: Simulation,
+    },
     AddVia {
         pos: Point,
         #[serde(default)]
@@ -347,6 +351,7 @@ impl Command {
             Command::SetDesignRules { .. } => "Edit design rules".into(),
             Command::SetErcSettings { .. } => "Edit electrical rules check settings".into(),
             Command::SetDrcSettings { .. } => "Edit design rules check settings".into(),
+            Command::SetSimulation { .. } => "Edit simulation setup".into(),
             Command::SetTitleBlock { .. } => "Edit title block".into(),
             Command::Move { ids, .. } => format!("Move {} object(s)", ids.len()),
             Command::Rotate { ids, .. } => format!("Rotate {} object(s)", ids.len()),
@@ -608,6 +613,13 @@ impl Command {
             Command::SetDrcSettings { drc } => {
                 let mut setup = Setup::of(tx.project());
                 setup.drc = drc;
+                tx.set_setup(setup);
+                Ok(())
+            }
+            Command::SetSimulation { simulation } => {
+                check_simulation(tx.project(), &simulation).map_err(CommandError::Invalid)?;
+                let mut setup = Setup::of(tx.project());
+                setup.simulation = simulation;
                 tx.set_setup(setup);
                 Ok(())
             }
@@ -1364,6 +1376,7 @@ fn new_component(
         None => next_refdes(project, &part.prefix),
     };
     Ok(Component {
+        sim: Default::default(),
         id: Id::new(),
         part: part_id,
         variant,
@@ -1921,6 +1934,55 @@ fn check_kind_kept(project: &Project, c: &Component, part: &Part) -> Result<(), 
 
 /// Net classes need distinct names (not "Default"), positive sizes and vias larger than
 /// their drill (with the board's values filled in).
+/// Analyses have unique ids and names, sensible ranges, and DC sweeps name a component.
+fn check_simulation(project: &Project, sim: &Simulation) -> Result<(), String> {
+    let mut ids = std::collections::HashSet::new();
+    let mut names = std::collections::HashSet::new();
+    for a in &sim.analyses {
+        if !ids.insert(a.id) {
+            return Err(format!("analysis id {} is used twice", a.id));
+        }
+        let name = a.name.trim().to_lowercase();
+        if name.is_empty() {
+            return Err("an analysis needs a name".into());
+        }
+        if !names.insert(name) {
+            return Err(format!("analysis name {:?} is used twice", a.name));
+        }
+        let finite = |v: f64| v.is_finite();
+        match &a.kind {
+            AnalysisKind::Op => {}
+            AnalysisKind::Dc { source, start, stop, step } => {
+                if !project.schematic.components.contains(*source) {
+                    return Err(format!("{}: the swept source is not a component", a.name));
+                }
+                if !(finite(*start) && finite(*stop) && finite(*step)) || *step == 0.0 {
+                    return Err(format!("{}: start, stop and a non-zero step are needed", a.name));
+                }
+            }
+            AnalysisKind::Ac { start, stop, points_per_decade } => {
+                if !(*start > 0.0 && stop > start && finite(*stop)) || *points_per_decade == 0 {
+                    return Err(format!("{}: AC needs 0 < start < stop and points per decade", a.name));
+                }
+            }
+            AnalysisKind::Tran { stop, step, start, max_step } => {
+                let positive = |v: &Option<f64>| v.is_none_or(|v| v > 0.0 && v.is_finite());
+                if !(*stop > 0.0 && finite(*stop))
+                    || !positive(step)
+                    || !positive(max_step)
+                    || !(0.0..*stop).contains(start)
+                {
+                    return Err(format!("{}: transient needs stop > 0, 0 ≤ start < stop and positive steps", a.name));
+                }
+            }
+        }
+    }
+    if !(sim.temperature.is_finite() && sim.temperature > -273.15) {
+        return Err("temperature below absolute zero".into());
+    }
+    Ok(())
+}
+
 fn check_net_classes(rules: &DesignRules) -> Result<(), String> {
     let mut names = HashSet::new();
     for c in &rules.net_classes {

@@ -7,6 +7,7 @@
 //!   one board. It is saved as a folder of JSON files (see [`io`]).
 //! * [`Object`]/[`ObjectId`] give uniform access to every editable object, which the
 //!   command and undo layer (`editor-core`) builds on.
+//! * [`simulation`]: simulation models of parts, source waveforms and the simulation setup.
 
 pub mod board;
 pub mod builtin;
@@ -19,6 +20,8 @@ pub mod library;
 pub mod object;
 pub mod project;
 pub mod schematic;
+pub mod si;
+pub mod simulation;
 pub mod store;
 pub mod units;
 
@@ -31,5 +34,6 @@ pub use library::*;
 pub use object::{Object, ObjectId, ObjectKind};
 pub use project::*;
 pub use schematic::*;
+pub use simulation::*;
 pub use store::{HasId, Store};
 pub use units::*;

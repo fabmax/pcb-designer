@@ -17320,6 +17320,152 @@
       ]
     },
     {
+      "id": "5ce10000-0000-4000-9000-42abe4f268b8",
+      "name": "VSource",
+      "category": "Simulation",
+      "graphics": [
+        {
+          "type": "circle",
+          "center": [0, 0],
+          "radius": 2540000,
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "line",
+          "a": [-500000, 1200000],
+          "b": [500000, 1200000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [0, 700000],
+          "b": [0, 1700000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-500000, -1200000],
+          "b": [500000, -1200000],
+          "width": 254000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3340000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3340000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-22fe35998f60",
+          "name": "+",
+          "number": "1",
+          "pos": [0, 5080000],
+          "direction": 270.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-25fe35999479",
+          "name": "-",
+          "number": "2",
+          "pos": [0, -5080000],
+          "direction": 90.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-46f26a5b8e1d",
+      "name": "ISource",
+      "category": "Simulation",
+      "graphics": [
+        {
+          "type": "circle",
+          "center": [0, 0],
+          "radius": 2540000,
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "line",
+          "a": [0, 1500000],
+          "b": [0, -700000],
+          "width": 254000
+        },
+        {
+          "type": "polygon",
+          "points": [
+            [0, -1600000],
+            [-500000, -700000],
+            [500000, -700000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3340000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3340000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-ae95827fb4c5",
+          "name": "+",
+          "number": "1",
+          "pos": [0, 5080000],
+          "direction": 270.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-ab95827fafac",
+          "name": "-",
+          "number": "2",
+          "pos": [0, -5080000],
+          "direction": 90.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
       "id": "e40412cc-4698-4466-97a6-9144dfcc99b6",
       "name": "OpAmp",
       "category": "Analog",
@@ -145363,7 +145509,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "resistor"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-f5f6c40b8a2b",
@@ -145498,7 +145649,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "capacitor"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a47b041f5342",
@@ -145735,7 +145891,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "capacitor"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-9f25dc6a68af",
@@ -145887,7 +146048,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "inductor"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-4603832dda80",
@@ -145954,7 +146120,13 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "spice",
+          "template": "R${REF} ${N1} ${N2} 0.1"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-07b8ecb32234",
@@ -146021,7 +146193,13 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "spice",
+          "template": "R${REF} ${N1} ${N2} 0.1"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-7d4165cb34a4",
@@ -146190,7 +146368,14 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "diode",
+          "model": ".model D1N4148 D(IS=2.52n RS=0.568 N=1.752 CJO=4p M=0.4 TT=20n BV=100 IBV=100u)"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-b68200a421c2",
@@ -146359,7 +146544,14 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "diode",
+          "model": ".model DB5819 D(IS=31.7u RS=0.051 N=1.373 CJO=110p M=0.35 EG=0.69 XTI=2 BV=40 IBV=1m)"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a5bf92c44e71",
@@ -146528,7 +146720,17 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "diode",
+          "model": ".model DZENER D(IS=1n RS=2 N=1.2 CJO=100p BV=5.1 IBV=5m)"
+        },
+        "params": {
+          "BV": "${VALUE}"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-4dceaa89b998",
@@ -146697,7 +146899,14 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "diode",
+          "model": ".model DTVS D(IS=1n RS=0.05 N=1.2 CJO=1n BV=6.4 IBV=1m)"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-7393f107fd60",
@@ -146866,7 +147075,13 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Two TVS diodes back to back.\n.subckt TVS_BI 1 2\nD1 m 1 DTVS_BI\nD2 m 2 DTVS_BI\n.model DTVS_BI D(IS=1n RS=0.05 N=1.2 CJO=1n BV=6.4 IBV=1m)\n.ends TVS_BI"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-0ace831f67d6",
@@ -146984,7 +147199,14 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "diode",
+          "model": ".model DLED_RED D(IS=93.5p RS=2.2 N=3.7 CJO=10p BV=5 IBV=10u)"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a4ce8e41411b",
@@ -147071,7 +147293,28 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "npn",
+          "model": ".model Q2N3904 NPN(IS=6.734f XTI=3 EG=1.11 VAF=74.03 BF=416.4 NE=1.259 ISE=6.734f IKF=66.78m XTB=1.5 BR=0.7371 NC=2 ISC=0 IKR=0 RC=1 CJC=3.638p MJC=0.3085 VJC=0.75 FC=0.5 CJE=4.493p MJE=0.2593 VJE=0.75 TR=239.5n TF=301.2p ITF=0.4 VTF=4 XTF=2 RB=10)"
+        },
+        "pins": [
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-a27f065f3bdd"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-a17f065f3a2a"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-9c7f065f31ab"
+          }
+        ]
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-e4ce985c3205",
@@ -147158,7 +147401,28 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "pnp",
+          "model": ".model Q2N3906 PNP(IS=1.41f XTI=3 EG=1.11 VAF=18.7 BF=180.7 NE=1.5 ISE=0 IKF=80m XTB=1.5 BR=4.977 NC=2 ISC=0 IKR=0 RC=2.5 CJC=9.728p MJC=0.5776 VJC=0.75 FC=0.5 CJE=8.063p MJE=0.3677 VJE=0.75 TR=33.42n TF=179.3p ITF=0.4 VTF=4 XTF=6 RB=10)"
+        },
+        "pins": [
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-e29d7f843067"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-e19d7f842eb4"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-e09d7f842d01"
+          }
+        ]
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-15fbc64e1b1a",
@@ -147267,7 +147531,28 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "nmos",
+          "model": ".model M2N7002 VDMOS(Vto=2.1 Kp=0.5 Rd=1 Rs=0.5 Rg=10 Cgdmax=40p Cgdmin=4p Cgs=20p Cjo=15p Is=1e-14 Rb=0.5)"
+        },
+        "pins": [
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-11c86fd9956d"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-0ec86fd99054"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-fac86fd96e58"
+          }
+        ]
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-5a0ce83e9e64",
@@ -147376,7 +147661,28 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "pmos",
+          "model": ".model MBSS84 VDMOS(pchan Vto=-1.6 Kp=0.15 Rd=3 Rs=1 Rg=10 Cgdmax=20p Cgdmin=3p Cgs=20p Cjo=12p Is=1e-14 Rb=1)"
+        },
+        "pins": [
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-6bb554abf1cb"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-6cb554abf37e"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-80b554ac157a"
+          }
+        ]
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-477040fc7722",
@@ -147428,7 +147734,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-467040fc756f",
@@ -147597,7 +147908,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-457040fc73bc",
@@ -147811,7 +148127,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-447040fc7209",
@@ -148070,7 +148391,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-437040fc7056",
@@ -148310,7 +148636,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-427040fc6ea3",
@@ -148585,7 +148916,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-417040fc6cf0",
@@ -148853,7 +149189,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-507040fc866d",
@@ -149151,7 +149492,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-4f7040fc84ba",
@@ -149375,7 +149721,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-c27040f95f4c",
@@ -149619,7 +149970,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-c37040f960ff",
@@ -149883,7 +150239,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-c47040f962b2",
@@ -150167,7 +150528,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-c57040f96465",
@@ -150471,7 +150837,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-be7040f95880",
@@ -150795,7 +151166,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-bf7040f95a33",
@@ -151139,7 +151515,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-c07040f95be6",
@@ -151503,7 +151884,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-c17040f95d99",
@@ -151887,7 +152273,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-ca7040f96ce4",
@@ -152291,7 +152682,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-cb7040f96e97",
@@ -152715,7 +153111,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-54704102abe7",
@@ -153159,7 +153560,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-53704102aa34",
@@ -153623,7 +154029,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-56704102af4d",
@@ -154107,7 +154518,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-55704102ad9a",
@@ -154611,7 +155027,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-50704102a51b",
@@ -155135,7 +155556,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-4f704102a368",
@@ -155679,7 +156105,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-52704102a881",
@@ -156243,7 +156674,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-51704102a6ce",
@@ -156827,7 +157263,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-4c7041029e4f",
@@ -157431,7 +157872,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-4b7041029c9c",
@@ -158055,7 +158501,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-ce7040ff925e",
@@ -158699,7 +159150,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-cf7040ff9411",
@@ -159363,7 +159819,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-cc7040ff8ef8",
@@ -160047,7 +160508,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-cd7040ff90ab",
@@ -160751,7 +161217,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-d27040ff992a",
@@ -161475,7 +161946,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-d37040ff9add",
@@ -162219,7 +162695,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-d07040ff95c4",
@@ -162983,7 +163464,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-d17040ff9777",
@@ -163767,7 +164253,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-c67040ff84c6",
@@ -164571,7 +165062,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-c77040ff8679",
@@ -165395,7 +165891,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-d07040f12291",
@@ -166239,7 +166740,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a57670fa0209",
@@ -166323,7 +166829,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a27670f9fcf0",
@@ -166447,7 +166958,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a37670f9fea3",
@@ -166611,7 +167127,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a87670fa0722",
@@ -166815,7 +167336,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a97670fa08d5",
@@ -167059,7 +167585,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a67670fa03bc",
@@ -167343,7 +167874,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a77670fa056f",
@@ -167667,7 +168203,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-ac7670fa0dee",
@@ -168031,7 +168572,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-ad7670fa0fa1",
@@ -168435,7 +168981,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-2a7670fd19df",
@@ -168879,7 +169430,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-297670fd182c",
@@ -169363,7 +169919,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-2c7670fd1d45",
@@ -169887,7 +170448,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-2b7670fd1b92",
@@ -170451,7 +171017,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-267670fd1313",
@@ -171055,7 +171626,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-257670fd1160",
@@ -171699,7 +172275,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-287670fd1679",
@@ -172383,7 +172964,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-277670fd14c6",
@@ -173107,7 +173693,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-327670fd2777",
@@ -173871,7 +174462,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-317670fd25c4",
@@ -174675,7 +175271,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-b87670f403a4",
@@ -175519,7 +176120,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-a53b5890407d",
@@ -175586,7 +176192,16 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Quartz crystal: motional arm (Lm, Cm = 16 fF, Rm = 30 ohm) parallel to C0 = 5 pF.\n.subckt XTAL 1 2 params: f=16meg\nLm 1 a {1/((6.2831853*f)*(6.2831853*f)*16f)}\nCm a b 16f\nRm b 2 30\nC0 1 2 5p\n.ends XTAL"
+        },
+        "params": {
+          "f": "${VALUE}"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-be79fab6a73f",
@@ -175656,7 +176271,26 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Quartz crystal: motional arm (Lm, Cm = 16 fF, Rm = 30 ohm) parallel to C0 = 5 pF.\n.subckt XTAL 1 2 params: f=16meg\nLm 1 a {1/((6.2831853*f)*(6.2831853*f)*16f)}\nCm a b 16f\nRm b 2 30\nC0 1 2 5p\n.ends XTAL"
+        },
+        "pins": [
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-8efa918ed6e3"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-90fa918eda49"
+          }
+        ],
+        "params": {
+          "f": "${VALUE}"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-d4f008bbcc75",
@@ -175696,7 +176330,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-04f62c3e5780",
@@ -175739,7 +176378,12 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-8fe77b35a966",
@@ -175762,7 +176406,12 @@
           "footprint": "5ce10000-0000-4000-9000-751b4b4a00d8",
           "connections": []
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-09bea3431837",
@@ -175785,7 +176434,12 @@
           "footprint": "5ce10000-0000-4000-9000-ff88c4f1569c",
           "connections": []
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-90e77b35ab19",
@@ -175808,7 +176462,12 @@
           "footprint": "5ce10000-0000-4000-9000-31de1f54c81a",
           "connections": []
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-91e77b35accc",
@@ -175831,7 +176490,12 @@
           "footprint": "5ce10000-0000-4000-9000-7ae492749381",
           "connections": []
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-9000-eaa4b753638a",
@@ -175848,7 +176512,64 @@
           "footprint": "5ce10000-0000-4000-9000-8e6a9476743e",
           "connections": []
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-c2699b2b9768",
+      "name": "VSource",
+      "category": "Simulation",
+      "description": "Voltage source for simulation only (not on the board): DC, sine, pulse, piecewise linear or exponential, picked in its properties",
+      "prefix": "V",
+      "default_value": "DC 0 V",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-42abe4f268b8"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-b59e98b05d0d",
+          "name": "No footprint",
+          "connections": []
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "voltage_source"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-b33cc318536d",
+      "name": "ISource",
+      "category": "Simulation",
+      "description": "Current source for simulation only (not on the board): DC, sine, pulse, piecewise linear or exponential, picked in its properties",
+      "prefix": "I",
+      "default_value": "DC 0 A",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-46f26a5b8e1d"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-5fcdae1b2bea",
+          "name": "No footprint",
+          "connections": []
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "current_source"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-8000-000000000700",
@@ -175928,7 +176649,13 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Generic op amp: open-loop gain aol, one pole at gbw/aol, slew rate sr (V/s),\n* output within vhi of V+ and vlo of V-, quiescent current iq.\n.subckt OPAMP inp inn out vp vn params: aol=1e5 gbw=3meg sr=1.5meg vhi=0.1 vlo=0.1 iq=0.5m\nRin inp inn 10meg\n.param imax={sr*1m/(6.2831853*gbw)}\nBg 0 int I = imax * tanh(v(inp,inn) * 1m / imax)\nRp int 0 {aol/1m}\nCp int 0 {1m/(6.2831853*gbw)}\nDhi int vp DCLAMP\nDlo vn int DCLAMP\nBo o 0 V = min(max(v(int), v(vn)+vlo), v(vp)-vhi)\nRo o out 50\nIq vp vn {iq}\n.model DCLAMP D(IS=1e-12)\n.ends OPAMP"
+        }
+      }
     },
     {
       "id": "e31f5659-de7f-4cc5-806a-9af3a16e8439",
@@ -176046,7 +176773,13 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* LM358: two op amps, output swings to V- and to 1.5 V below V+.\n.subckt LM358 inp_a inn_a out_a inp_b inn_b out_b vp vn\nXA inp_a inn_a out_a vp vn LM358_AMP\nXB inp_b inn_b out_b vp vn LM358_AMP\n.ends LM358\n* Generic op amp: open-loop gain aol, one pole at gbw/aol, slew rate sr (V/s),\n* output within vhi of V+ and vlo of V-, quiescent current iq.\n.subckt LM358_AMP inp inn out vp vn params: aol=1e5 gbw=1meg sr=0.3meg vhi=1.5 vlo=0.02 iq=0.35m\nRin inp inn 10meg\n.param imax={sr*1m/(6.2831853*gbw)}\nBg 0 int I = imax * tanh(v(inp,inn) * 1m / imax)\nRp int 0 {aol/1m}\nCp int 0 {1m/(6.2831853*gbw)}\nDhi int vp DCLAMP\nDlo vn int DCLAMP\nBo o 0 V = min(max(v(int), v(vn)+vlo), v(vp)-vhi)\nRo o out 50\nIq vp vn {iq}\n.model DCLAMP D(IS=1e-12)\n.ends LM358_AMP"
+        }
+      }
     },
     {
       "id": "5ce10000-0000-4000-8000-000000000900",
@@ -176232,7 +176965,13 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Quad 2-input NAND, behavioural: inputs switch at VCC/2, outputs rail to rail.\n.subckt HC00 a1 b1 y1 a2 b2 y2 a3 b3 y3 a4 b4 y4 vcc gnd\nX1 a1 b1 y1 vcc gnd HC00_NAND\nX2 a2 b2 y2 vcc gnd HC00_NAND\nX3 a3 b3 y3 vcc gnd HC00_NAND\nX4 a4 b4 y4 vcc gnd HC00_NAND\nRq vcc gnd 1meg\n.ends HC00\n.subckt HC00_NAND a b y vcc gnd\nBo o gnd V = v(vcc,gnd) * (1 - (0.5+0.5*tanh(10*(v(a,gnd)-0.5*v(vcc,gnd)))) * (0.5+0.5*tanh(10*(v(b,gnd)-0.5*v(vcc,gnd)))))\nRd o d 1k\nCd d gnd 7p\nEo e gnd d gnd 1\nRo e y 50\nCa a gnd 3p\nCb b gnd 3p\n.ends HC00_NAND"
+        }
+      }
     },
     {
       "id": "a97546f4-6d9a-4997-b93d-44576ab9275a",
@@ -176275,7 +177014,13 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Generic linear regulator: OUT = min(vout, IN - drop) above GND, output current taken\n* from IN, quiescent current iq.\n.subckt AMS1117_33 in out gnd params: vout=3.3 drop=1.1 iq=5m\nBv o gnd V = max(min(vout, v(in,gnd) - drop), 0)\nRo o s 0.05\nVs s out 0\nF1 in gnd Vs 1\nIq in gnd {iq}\n.ends AMS1117_33"
+        }
+      }
     },
     {
       "id": "77c100d3-536a-4593-9baf-b12b88c5e8a1",
@@ -176323,7 +177068,31 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Generic linear regulator: OUT = min(vout, IN - drop) above GND, output current taken\n* from IN, quiescent current iq.\n.subckt AP2112K_33 in en out gnd params: vout=3.3 drop=0.25 iq=55u\nBv o gnd V = max(min(vout, v(in,gnd) - drop), 0) * u(v(en,gnd)-1)\nRo o s 0.05\nVs s out 0\nF1 in gnd Vs 1\nIq in gnd {iq}\n.ends AP2112K_33"
+        },
+        "pins": [
+          {
+            "unit": 0,
+            "pin": "16131ba3-395d-48bc-9730-c94bc0ca9088"
+          },
+          {
+            "unit": 0,
+            "pin": "90a406f7-c40f-4e4e-b45f-ef7a2635dbdb"
+          },
+          {
+            "unit": 0,
+            "pin": "70744b5f-6e75-4336-95b8-42cf48a5f35e"
+          },
+          {
+            "unit": 0,
+            "pin": "08f9463d-66db-45b0-9dbb-9ce407d35e88"
+          }
+        ]
+      }
     },
     {
       "id": "0419ce06-c19c-449b-aee7-f02fd5d13b6e",
@@ -176361,7 +177130,13 @@
             }
           ]
         }
-      ]
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Generic linear regulator: OUT = min(vout, IN - drop) above GND, output current taken\n* from IN, quiescent current iq.\n.subckt LM7805 in out gnd params: vout=5 drop=2 iq=5m\nBv o gnd V = max(min(vout, v(in,gnd) - drop), 0)\nRo o s 0.05\nVs s out 0\nF1 in gnd Vs 1\nIq in gnd {iq}\n.ends LM7805"
+        }
+      }
     }
   ]
 }

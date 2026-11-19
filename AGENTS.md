@@ -4,6 +4,7 @@ PCB Designer: a schematic, PCB and part editor in Rust (egui + wgpu). Projects a
 of JSON files, and an MCP server lets agents edit the open project.
 
 - Requirements: [pcb-designer.md](pcb-designer.md).
+- Simulation, planned milestones S2–S8: [simulation-plan.md](simulation-plan.md).
 - Decisions, the design of each area with its gotchas, and the Later list:
   [PLAN.md](PLAN.md). Read its section on the area you're touching before changing a
   design decision.
@@ -41,8 +42,8 @@ Breaking changes are fine: the project is far from production. Rename or remove 
 ## Crates
 
 Dependency direction: `model` → `editor-core` → `view` → `mcp` → `app`. `render` is
-standalone, `gerber` sits on `editor-core` and `render` (under `view`), and `kicad` sits on
-`model` and `view`.
+standalone, `gerber` sits on `editor-core` and `render` (under `view`), `sim` on
+`editor-core` (under `app`), and `kicad` sits on `model` and `view`.
 
 - `model`: pure data. Lengths are integer nanometres (`Coord`), every object has a UUID,
   and `Store` keeps insertion order so saved files diff well.
@@ -55,6 +56,8 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), and `kic
 - `mcp`: MCP tools (`server.rs`), and their execution against a `Host` (`host.rs`, with
   `describe` and `respond`). It also has the headless host and stdio mode.
 - `gerber`: Gerber X2 and Excellon export of the board (and the zip and manifest).
+- `sim`: circuit simulation: the schematic as a SPICE netlist, run by ngspice (a
+  process), results read back by net and pin. Plan: [simulation-plan.md](simulation-plan.md).
 - `kicad`: imports KiCad symbols and footprints.
 - `app`: the egui shell (binary `pcb-designer`). It holds tabs (egui_tiles), panels,
   menus, settings, keymap, chrome theme and floating tool bars.

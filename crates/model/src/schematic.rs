@@ -243,6 +243,9 @@ pub struct Component {
     pub value: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub properties: BTreeMap<String, String>,
+    /// Simulation settings: parameter overrides, exclusion, a source's waveform.
+    #[serde(default, skip_serializing_if = "crate::simulation::ComponentSim::is_default")]
+    pub sim: crate::simulation::ComponentSim,
 }
 
 /// Placement of one unit of a component on a sheet.
@@ -642,6 +645,9 @@ pub struct Schematic {
     /// Severities, pin conflict matrix and exclusions of the electrical rules check.
     #[serde(default, skip_serializing_if = "ErcSettings::is_default")]
     pub erc: ErcSettings,
+    /// Analyses, ground and supplies of the circuit simulation.
+    #[serde(default, skip_serializing_if = "crate::simulation::Simulation::is_default")]
+    pub simulation: crate::simulation::Simulation,
 }
 
 impl Schematic {

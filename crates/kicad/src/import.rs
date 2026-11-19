@@ -128,6 +128,7 @@ pub fn make_part(sym: &KiSymbol, footprints: &[KiFootprint]) -> Part {
         properties.insert("Keywords".to_string(), sym.keywords.clone());
     }
     Part {
+        sim: Default::default(),
         id: kid(&["kicad-part", &sym.lib, &sym.name]),
         name: sym.name.clone(),
         category: String::new(),

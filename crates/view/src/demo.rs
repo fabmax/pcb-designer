@@ -164,6 +164,15 @@ pub fn demo_project() -> Project {
         })],
     })
     .unwrap();
+    // Simulation: +5V comes from the connector, so a supply stands in for it.
+    ed.execute(Command::SetSimulation {
+        simulation: Simulation {
+            analyses: vec![Analysis::new("Operating point", AnalysisKind::Op)],
+            supplies: vec![Supply { net: "+5V".into(), voltage: 5.0 }],
+            ..Default::default()
+        },
+    })
+    .unwrap();
     // Onto the A4 pages (their lower left corner is the origin).
     for sheet in ed.project().schematic.page_order() {
         let ids = ed.project().schematic.objects_on(sheet);

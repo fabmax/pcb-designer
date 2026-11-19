@@ -145,6 +145,7 @@ impl LibraryDoc {
         // A part made from a symbol joins its category.
         let category = self.library().symbols.get(symbol).map(|s| s.category.clone()).unwrap_or_default();
         let part = Part {
+            sim: Default::default(),
             id: Id::new(),
             name: name.clone(),
             category,

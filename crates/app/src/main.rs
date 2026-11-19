@@ -10,6 +10,7 @@
 //!        pcb-designer --mcp-stdio [PROJECT_DIR | --demo]
 //!        pcb-designer export-gerber PROJECT_DIR
 //!        pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR
+//!        pcb-designer simulate PROJECT_DIR [--analysis NAME] [--csv FILE] [--netlist]
 //!
 //! `export-gerber` writes the Gerber, drill and job files into `PROJECT_DIR/output/gerber/`
 //! and the assembly files (BOM, positions) into `PROJECT_DIR/output/assembly/` without a
@@ -18,6 +19,10 @@
 //! `import-kicad` imports a KiCad project (schematic and board) and saves it as a project
 //! folder, printing the import report. A `.kicad_pro` given to the app opens its import
 //! as an unsaved project.
+//!
+//! `simulate` runs an analysis of the project's simulation setup (by name, default the
+//! first; an operating point when there is none) with ngspice and prints a summary, or
+//! writes every point to a CSV file; `--netlist` prints the SPICE netlist instead.
 //!
 //! `--mcp-stdio` runs without a window: an MCP server on stdin/stdout for agents. A
 //! project folder that doesn't exist yet becomes a new project saved there.
@@ -103,6 +108,13 @@ fn main() -> eframe::Result {
             std::process::exit(2);
         };
         if let Err(e) = export_gerber(dir.as_ref()) {
+            eprintln!("pcb-designer: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if std::env::args().nth(1).as_deref() == Some("simulate") {
+        if let Err(e) = simulate(std::env::args().skip(2).collect()) {
             eprintln!("pcb-designer: {e}");
             std::process::exit(1);
         }
@@ -236,6 +248,65 @@ fn import_kicad(pro: &std::path::Path, out: &std::path::Path) -> Result<(), Stri
     let mut doc = view::Document::new(import.project);
     doc.save_as(out).map_err(|e| format!("cannot save {}: {e}", out.display()))?;
     println!("{}", out.display());
+    Ok(())
+}
+
+/// `simulate`: an analysis of a project run by ngspice, without a window.
+fn simulate(args: Vec<String>) -> Result<(), String> {
+    const USAGE: &str = "usage: pcb-designer simulate PROJECT_DIR [--analysis NAME] [--csv FILE] [--netlist]";
+    let (mut dir, mut name, mut csv, mut netlist_only) = (None, None, None, false);
+    let mut args = args.into_iter();
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--analysis" => name = Some(args.next().ok_or(USAGE)?),
+            "--csv" => csv = Some(args.next().ok_or(USAGE)?),
+            "--netlist" => netlist_only = true,
+            _ if dir.is_none() && !a.starts_with("--") => dir = Some(a),
+            _ => return Err(USAGE.into()),
+        }
+    }
+    let dir = dir.ok_or(USAGE)?;
+    let project = model::io::load_project(&dir).map_err(|e| e.to_string())?;
+    let setup = &project.schematic.simulation;
+    let analysis = match &name {
+        Some(n) => setup.find(n).cloned().ok_or_else(|| {
+            let names: Vec<&str> = setup.analyses.iter().map(|a| a.name.as_str()).collect();
+            format!("no analysis {n:?} (the project has: {})", names.join(", "))
+        })?,
+        None => setup
+            .analyses
+            .first()
+            .cloned()
+            .unwrap_or_else(|| model::Analysis::new("Operating point", model::AnalysisKind::Op)),
+    };
+    let conn = editor_core::connectivity::Connectivity::build(&project);
+    let netlist = sim::netlist::build(&project, &conn, &analysis);
+    for p in &netlist.problems {
+        let level = match p.level {
+            sim::Level::Error => "error",
+            sim::Level::Warning => "warning",
+            sim::Level::Note => "note",
+        };
+        eprintln!("{level}: {}", p.message);
+    }
+    if netlist_only {
+        print!("{}", netlist.text);
+        return Ok(());
+    }
+    let ngspice =
+        sim::Ngspice::find(settings::Settings::load().ngspice_path().as_deref()).map_err(|e| e.to_string())?;
+    let result =
+        sim::simulate(&project, &conn, &analysis, &ngspice, &sim::Cancel::default()).map_err(|e| e.to_string())?;
+    for w in &result.warnings {
+        eprintln!("ngspice: {w}");
+    }
+    match csv {
+        Some(path) => {
+            std::fs::write(&path, sim::report::csv(&result)).map_err(|e| format!("cannot write {path}: {e}"))?;
+            println!("{path}");
+        }
+        None => print!("{}", sim::report::text(&result)),
+    }
     Ok(())
 }
 

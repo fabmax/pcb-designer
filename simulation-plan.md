@@ -1,7 +1,7 @@
 # PCB Designer – Simulation plan
 
-A proposal for circuit simulation in the schematic editor: what other tools do, the
-engine, the data model, the netlist, the UI and the milestones to a first useful version.
+The plan for circuit simulation in the schematic editor: what other tools do, what's
+built so far, the UI and the milestones to a first useful version.
 Once a milestone is built, its design moves into PLAN.md (a "Simulation (`sim`)" section)
 and this file keeps only what is still ahead.
 
@@ -40,30 +40,24 @@ What to avoid: SPICE syntax as the main interface (LTspice), simulations as sche
 objects (Qucs-S: clutters the drawing and the print), and a separate modal window (KiCad's
 simulator is its own frame; ours should be a tab that can sit beside the schematic).
 
-## Engine: ngspice
+## Built so far (S1)
 
-**Decision: ngspice**, behind a small `Backend` trait. It starts as a separate process
-in batch mode (simplest to get going); the shared library (libngspice) is the target for
-the app and comes as its own milestone (S8). The process backend stays for tests, the
-CLI and as a fallback when only the `ngspice` executable is installed.
+The engine and everything headless are built; their design and gotchas are in
+PLAN.md, "Simulation (`sim`)":
 
-- ngspice is the de-facto open SPICE: KiCad, Qucs-S and EasyEDA use it, so vendor
-  models and KiCad projects work with it. BSD licence (core), so it can be shipped
-  with the app later. Its device models (BSIM, VDMOS, diode, BJT Gummel–Poon, B-sources,
-  XSPICE) took decades; writing our own engine (modified nodal analysis plus Newton
-  iteration) would be quick for R/C/L but would never reach that.
-- Alternatives considered: Xyce (GPL, heavy to build, no shared library on all
-  platforms), writing our own (see above), a WASM ngspice (no gain for a desktop app).
-- **Process first, because:**
-  - `ngspice -b -r out.raw circuit.cir`: write the netlist, read the raw file back. The
-    raw format is simple (text header, then binary doubles, point-major; complex for AC).
-  - Crash isolation: a model that crashes ngspice (it happens) doesn't take the app and
-    the unsaved design with it. Stop = kill the process.
-  - No global state: libngspice is one instance per process (KiCad works around that), a
-    process each lets the tuner or a sweep run several at once.
-  - Headless and testable: tests, MCP and the CLI run it the same way.
-  - Cost: process start (~20–50 ms) and no live streaming of a transient while it runs.
-    Both matter only for the tuner and for long runs, which is what S8 is for.
+- ngspice as a process per run (`sim::Ngspice`, a `Backend`), found on `PATH`, the usual
+  install places or the `ngspice` setting; the raw reader; `sim::simulate`.
+- The model: `Part::sim` (`SimModel`: device, pins in SPICE order, parameters),
+  `Component::sim` (`ComponentSim`: parameter overrides, `exclude`, a source's
+  `Waveform`), `Schematic::simulation` (`Simulation`: analyses with their probes,
+  ground, supplies, temperature, extra lines) changed by `SetSimulation`.
+- The netlister (`sim::netlist`) with name maps and `SimProblem`s; SI values (`model::si`).
+- `VSource` / `ISource` and a model for every Built-in part.
+- `pcb-designer simulate PROJECT [--analysis NAME] [--csv FILE] [--netlist]`
+  (`sim::report`); the demo has a +5V supply and an operating point.
+
+Still to come in the areas S1 built:
+
 - **Shared library (S8):** `ngSpice_Init` with the `SendChar` / `SendStat` /
   `SendData` / `BGThreadRunning` callbacks, `ngSpice_Circ` to load the netlist,
   `bg_run` / `bg_halt`, vectors read through `ngGet_Vec_Info` (or streamed by
@@ -72,250 +66,13 @@ CLI and as a fallback when only the `ngspice` executable is installed.
   sweeps fall back to processes), a crash in a model takes the app down with unsaved
   work (a "Run in a separate process" setting stays available for that), and
   `ControlledExit` must be handled instead of letting ngspice end the app.
-- **Finding ngspice:** a path in Settings, else `NGSPICE` in the environment, else
-  `ngspice` on `PATH` and the usual install places (Homebrew `/opt/homebrew/bin`,
-  `/usr/local/bin`, `C:\Program Files\Spice64\bin`). Not found: the Simulation panel says
-  so and how to install it (`brew install ngspice`, `apt install ngspice`, the Windows
-  zip), with a "Choose…" button. Bundling ngspice in release builds is in **Later**.
-- **Tests:** netlist generation is pure and tested always. Tests that run ngspice are
-  skipped when it isn't found (like the KiCad corpus tests with `KICAD_CLI`), so
-  `cargo test --workspace` stays green on a fresh machine.
-
-## Data model (`model`)
-
-### Simulation models on parts
-
-A part says how it simulates. It's part content (copied into the project with the part,
-covered by `content_hash`, so "Update from library" brings model changes along).
-
-```rust
-pub struct Part {
-    …
-    /// How the part simulates; `None`: it has no model (left out with a warning).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sim: Option<SimModel>,
-}
-
-pub struct SimModel {
-    pub device: SimDevice,
-    /// SPICE node order → the part's pins (unit, pin). Empty: by pin number 1, 2, 3 …
-    pub pins: Vec<SimPin>,
-    /// Parameters, by name, as typed ("Is" = "2.52n"). Component `sim_params` override.
-    pub params: BTreeMap<String, String>,
-}
-
-pub enum SimDevice {
-    /// Not simulated, silently (connectors, test points, mounting holes, logos).
-    Ignore,
-    /// R, C, L: the value is the component's value ("10k", "100n").
-    Resistor, Capacitor, Inductor,
-    /// A primitive with a `.model` card (D, NPN, PNP, NJF, PJF, NMOS, PMOS, VDMOS): the
-    /// model text is stored here (`.model 1N4148 D(Is=2.52n N=1.752 …)`).
-    Primitive { kind: PrimitiveKind, model: String },
-    /// A subcircuit: the `.subckt` text, its ports mapped by `pins`.
-    Subckt { text: String },
-    /// Independent sources; the waveform is per component (`Component::source`).
-    VoltageSource, CurrentSource,
-    /// Escape hatch: one SPICE line with `${REF}`, `${VALUE}` and `${N1}`… for the nodes.
-    Spice { template: String },
-}
-```
-
-- Model text is **embedded**, not referenced by file: a project stays self-contained,
-  like parts are copied into it. `.include` of external model files is in **Later**
-  (KiCad's `Sim.Library`); the import below embeds what it can read.
-- Multi-unit parts (LM358: two op amps and a power unit) get one model for the whole
-  component, its pins listed by `(unit, pin)`. Unplaced units' pins are open (see
-  "Floating nodes" below).
-- `Library::issues` gains checks: a pin listed twice, a pin that doesn't exist, a
-  subcircuit whose port count differs from `pins`, model text that doesn't parse as a
-  `.model` / `.subckt` card.
-
-### Per component
-
-```rust
-pub struct Component {
-    …
-    /// Parameter overrides of the part's model ("BF" = "200").
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub sim_params: BTreeMap<String, String>,
-    /// Left out of the simulation (KiCad's "Exclude from simulation").
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub sim_exclude: bool,
-    /// Waveform of a source part (`SimDevice::VoltageSource` / `CurrentSource`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<Source>,
-}
-
-pub struct Source {
-    pub waveform: Waveform,
-    /// Small-signal AC magnitude and phase (degrees) for AC analysis; 0: not an AC input.
-    pub ac: f64,
-    pub ac_phase: f64,
-}
-
-pub enum Waveform {
-    Dc { value: f64 },
-    Sine { offset: f64, amplitude: f64, frequency: f64, delay: f64, damping: f64, phase: f64 },
-    Pulse { low: f64, high: f64, delay: f64, rise: f64, fall: f64, width: f64, period: f64 },
-    Pwl { points: Vec<(f64, f64)>, repeat: bool },
-    Exp { v1: f64, v2: f64, delay1: f64, tau1: f64, delay2: f64, tau2: f64 },
-}
-```
-
-- Waveform numbers are plain SI `f64` (volts, amperes, seconds, hertz), not strings: the
-  forms parse "1k", "10us" and show them back in engineering notation. R/C/L values stay
-  the component's `value` string, which is already what users type and what the BOM
-  shows.
-- A source's displayed value is generated from its waveform ("SIN 1 V 1 kHz", "DC 5 V",
-  "PULSE 0–3.3 V 1 kHz"), written into `value` by the command that changes the waveform,
-  so the existing `${VALUE}` field shows it without special drawing.
-- All of these change through `Update` of the component, so undo, MCP and the
-  Properties panel need nothing new.
-
-### Simulation setup
-
-A new project file `simulation.json` (`Project::simulation: Simulation`), changed by a
-`SetSimulation { simulation }` command that replaces it whole (like `SetErcSettings`; it
-rides in the change set's `Setup`, views ignore it). Everything in it is undoable and
-visible to agents. Zoom, cursors and plot scroll positions are workspace state, not
-project content.
-
-```rust
-pub struct Simulation {
-    /// The analyses, in tab order; the active one is workspace state.
-    pub analyses: Vec<Analysis>,
-    /// Net that is SPICE node 0; `None`: automatic (see Netlist).
-    pub ground: Option<String>,
-    /// Supplies for power nets without a source: "+5V" → 5 V DC (see Netlist).
-    pub supplies: Vec<Supply>,
-    pub temperature: f64,
-    /// Extra SPICE lines (`.param`, `.options`, `.include` later), as typed.
-    pub extra: String,
-}
-
-pub struct Analysis {
-    pub id: Id,
-    pub name: String,               // "Transient", "Bode of filter"
-    pub kind: AnalysisKind,
-    /// What its plot shows.
-    pub probes: Vec<Probe>,
-}
-
-pub enum AnalysisKind {
-    Op,
-    Dc { source: Id /* component */, start: f64, stop: f64, step: f64 },
-    Ac { start: f64, stop: f64, points_per_decade: u32 },
-    Tran { stop: f64, step: Option<f64>, start: f64, max_step: Option<f64> },
-}
-
-pub enum Probe {
-    /// Voltage of the net of this wire, label or pin (to ground), or between two.
-    Voltage { at: ProbePoint, reference: Option<ProbePoint>, net: String },
-    /// Current into a pin of a component.
-    Current { symbol: Id, pin: Id },
-    /// Free expression in ngspice syntax ("v(/OUT)*i(V1)"); later.
-    Expr { expr: String },
-}
-```
-
-- A voltage probe keeps the object it was placed on *and* the net name at that time:
-  it resolves by object first (survives net renames), then by name (survives wire
-  merges, where `rubber_band` may drop the clicked wire's id). Neither found: the trace
-  is listed as missing, never removed silently. Same idea as zones binding to net names,
-  but with the object as the primary key.
-
-### Simulation-only parts
-
-New Built-in parts in a **Simulation** category, each with only a "No footprint"
-variant, so they are off the board by the existing rule (no sync changes, no BOM entry,
-no board warnings):
-
-- `VSource` and `ISource`: one part per kind, a source circle with `+`/`−` (voltage) or
-  an arrow (current). The waveform (DC, sine, pulse, PWL, exponential) and its numbers
-  are chosen in the component's Properties; a new one is DC (0 V / 0 A, AC magnitude 0).
-  The symbol doesn't show the waveform (a glyph that follows it is in **Later**); the
-  value text does ("SIN 1 V 1 kHz").
-- No ground part: ground is a GND power port as usual (see Netlist).
-
-Pins are `Passive`, so the ERC matrix needs no changes: a source on a net with power
-ports or an input is fine, and the power-input rule is already satisfied by the power
-port or power flag the real design has there.
-
-For a design meant for a real board, a **test bench sheet** keeps stimuli out of the way:
-a sub-sheet "Testbench" with the sources, connected by global labels. That works with
-today's hierarchy: nothing new to build, README documents it and the demo shows it.
-
-### Built-in library models
-
-Every generated and hand-made Built-in part gets a `sim`:
-
-| Part | Model |
-|---|---|
-| Resistor, Capacitor, Capacitor_Polarized, Inductor | `Resistor` / `Capacitor` / `Inductor`, value from the component |
-| FerriteBead, Fuse | `Resistor` with a small default value (0.1 Ω) — documented as a simplification |
-| Diode | `.model` of a 1N4148; Schottky: BAT54; Zener: breakdown from the value ("5V1" → `BV=5.1`) |
-| LED | a generic red LED model (≈1.8 V at 10 mA); value colour names pick a few presets later |
-| NPN / PNP | 2N3904 / 2N3906 Gummel–Poon cards |
-| NMOS / PMOS | 2N7002 / BSS84 (VDMOS level) |
-| OpAmp, LM358 | a generic behavioural op amp subcircuit (open-loop gain, GBW, slew rate, output clamped to the rails by a B-source); LM358-like numbers for the LM358 |
-| LM7805, AMS1117-3.3, AP2112K-3.3 | behavioural regulator subcircuits (output = min(set voltage, Vin − dropout), quiescent current) |
-| 74HC00 | behavioural analog NAND (B-sources with `tanh` edges) until digital simulation exists |
-| Conn_*, TestPoint, SW_Push, MountingHole_*, Fiducial | `Ignore` (a switch model is in **Later**) |
-| Crystal | `Subckt` with the Butterworth–Van Dyke equivalent (generic values) |
-
-Vendor macromodels are not bundled: their licences usually forbid redistribution.
-Users paste them into the part's model text (Part editor, below).
-
-## Netlist (`sim` crate)
-
-A new crate `sim` (`model` → `editor-core` → **`sim`** → `view`), GUI-independent:
-value parsing, the netlister, the backend, raw-file reading and the plot maths, all
-unit-tested headless.
-
-`sim::netlist::build(project, &Connectivity, &Simulation, analysis) -> Netlist`, with
-`Netlist { text, nodes: net name ↔ SPICE node, devices: component ↔ SPICE name,
-problems: Vec<Problem> }`. Problems use the existing `Problem` shape (objects, position),
-so Messages can zoom to them.
-
-- **Nodes:** one per net with pins, from `Connectivity::netlist()`. Ground net → `0`.
-  Others get sanitised, readable names (`/OUT` → `_OUT`, `Net-(R1-1)` → `NET_R1_1`,
-  unique), kept in the map so results go back to nets and objects.
-- **Ground:** the net in `Simulation::ground`, else the net of power ports drawn as
-  ground (`PowerStyle` Ground / SignalGround, also by name: `GND`, `AGND`, `0`). Several
-  ground-styled nets (GND, AGND, PGND) are joined to `0` with a note. None at all is an
-  error ("No ground: place a GND power port").
-- **Devices:** per component (not per symbol: units are merged), skipping `sim_exclude`
-  and `Ignore`. The SPICE name is the device letter, then the refdes unless it already
-  starts with that letter (`R1`, `D1`, `Q1`, `XU1`; a resistor named `FB1` → `RFB1`).
-  The source parts use the prefixes `V` and `I`, so theirs stay `V1`, `I1`.
-  Parts without `sim` are left out with a warning listing them once ("Not simulated, no
-  model: J1, Y1"), never a hard error, so a real design can simulate its analog corner.
-- **Values:** `sim::units::parse` reads `10k`, `4k7`, `2R2`, `100n`, `10µ`/`10u`,
-  `1M` (mega, as users mean it), `1m`, `10 kΩ`, `100nF 50V` (first number wins, units
-  and extras ignored). The netlist always writes plain exponents (`1e7`), never SPICE
-  suffixes. **Gotcha:** SPICE reads `M` as milli and ignores unknown letters (`1F` is
-  1 femto); writing exponents avoids both traps. A value that doesn't parse is an error
-  on that component.
-- **Floating nodes:** pins left open (unplaced units, unwired pins, flagged no-connect
-  pins) each get a node of their own, and `.options rshunt=1e12` ties every node to
-  ground through 1 TΩ so ngspice doesn't stop on a singular matrix. A net without any DC
-  path to ground otherwise (a capacitor-only node) works the same way.
-- **Supplies:** power nets (named by a power port) with no source on them and a
-  `Supply` entry get a `V` source to ground. The Simulation panel suggests entries from
-  the names it can parse (`+5V`, `+3V3`, `3.3V`, `-12V`, `VCC` → asks), so a real board
-  design simulates without drawing supply sources. A power net with neither is a warning
-  ("+5V has no supply").
-- **Currents:** ngspice saves only voltage-source branch currents by default. Current
-  probes on primitives use `@R1[i]`-style vectors (`.save` lists only what the probes
-  need, plus all node voltages); a current into a subcircuit pin gets a 0 V sense source
-  in series (`VSENSE_U1_3`). Saving everything (`.options savecurrents`) is slower on big
-  circuits and is not the default.
-- **Analysis line** from `AnalysisKind` (`.op`, `.dc V1 0 5 0.01`, `.ac dec 100 1 10meg`,
-  `.tran 1u 10m 0 1u`), plus `.temp`, then `Simulation::extra` as typed. Transient
-  defaults: stop time 5 periods of the slowest periodic source, step stop / 1000.
-- The netlist is shown read-only in the Simulation panel ("Show SPICE netlist") and given
-  to agents; it's the first thing to look at when a simulation misbehaves.
+- `Library::issues` for models (S5): a pin listed twice or missing, a subcircuit whose
+  port count differs from its pins, model text without a `.model` / `.subckt` line
+  (today the netlister reports these per component).
+- Differential voltage probes (`Probe::Voltage` gets a reference, S6).
+- The demo gets a "Testbench" sub-sheet with a sine source on its signal (S3, when the
+  plot can show it); README documents the test bench sheet pattern then.
+- Supplies suggested from power port names (S6).
 
 ## Running (`sim`)
 
@@ -452,7 +209,7 @@ and warnings. Its badge counts like the others; it is empty until the first run.
   overrides) — no special tools. Part models through `edit_library` like other part
   content.
 - `screenshot` gains `simulation` to render the plot (offscreen, same widget logic).
-- CLI: `pcb-designer simulate PROJECT [--analysis NAME] [--csv OUT]` for scripts and CI.
+- The CLI's `simulate` exists (S1); agents get the same summary from `sim::report`.
 
 ## KiCad import
 
@@ -463,7 +220,7 @@ Datasheet). Mapping them:
 - `Sim.Device` (`R`, `C`, `L`, `D`, `NPN`, `PNP`, `NMOS`, …, `V`, `I`, `SUBCKT`, `SPICE`),
   `Sim.Type` (`SIN`, `PULSE`, `PWL`, `DC`, …), `Sim.Params` (`dc=5 ampl=1 f=1k`),
   `Sim.Pins` (`1=+ 2=-` or `1=A 2=K`) → the part's `SimModel` and the component's
-  `source` / `sim_params`; `Sim.Enable=0` / `exclude_from_sim` → `sim_exclude`.
+  `sim.source` / `sim.params`; `Sim.Enable=0` / `exclude_from_sim` → `sim.exclude`.
 - `Sim.Library` + `Sim.Name`: the file is read relative to the KiCad project and the
   model or subcircuit embedded; missing files are reported.
 - Legacy (KiCad 5) `Spice_Primitive`, `Spice_Model`, `Spice_Node_Sequence` likewise.
@@ -478,31 +235,15 @@ Datasheet). Mapping them:
 
 ## Milestones
 
-Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. The first four give
-a usable simulator; S5–S8 make it comfortable, compatible and fast.
-
-### S1: Engine and netlist (headless)
-
-- `model`: `SimModel`, `Component::{sim_params, sim_exclude, source}`, `Simulation`
-  (`simulation.json`, `Project::simulation`), `SetSimulation`.
-- `sim` crate: `units` (parse and format SI values), `netlist::build` (ground, nodes,
-  R/C/L/D/Q/M/X/V/I, supplies, rshunt, `.save`), `ngspice` backend (find, spawn, kill,
-  log), `raw` reader (binary and ASCII, real and complex, several plots per file),
-  `Results`.
-- Built-in library: the Simulation parts and `sim` for every part in the table above
-  (`gen_builtin` for generated ones, `edit`/`take` for the hand-made ones).
-- CLI `simulate`.
-- Tests: value parsing (incl. `M`/`meg`, `4k7`, units), golden netlists of small
-  circuits, the raw reader against fixtures checked in (so it's tested without
-  ngspice), and with ngspice: RC low-pass (−3 dB at 1/(2πRC) in AC, 63 % at τ in
-  transient), a diode's forward drop, an op amp non-inverting amplifier's gain, a
-  regulator's output. The demo project gets a small analog corner that simulates.
+Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1 is done; S2–S4
+give a usable simulator, S5–S8 make it comfortable, compatible and fast.
 
 ### S2: Running from the app
 
 - `sim::Session` in the app and headless host: worker thread, stale tracking, stop.
-- Simulation panel: status and install hint, analysis tabs and forms, Run/Stop, the
-  netlist view and log. Settings: ngspice path.
+- Simulation panel: status and install hint, analysis tabs and forms (transient
+  length from `netlist::suggested_stop`), Run/Stop, the netlist view and log. Settings
+  page: the ngspice path (`Settings::ngspice`, in `settings.json` today).
 - Messages "Simulation" category.
 - Keymap actions and the Simulation menu.
 - Screenshots: the panel in both themes, not-found state.
@@ -554,7 +295,7 @@ a usable simulator; S5–S8 make it comfortable, compatible and fast.
 
 ### S8: Shared-library backend
 
-- `Backend` for libngspice (see "Engine"), found like the executable (a path in
+- `Backend` for libngspice (see "Built so far"), found like the executable (a path in
   Settings, Homebrew's `libngspice`, `libngspice.so.0`, `ngspice.dll`), the app's
   default when found.
 - Live transient: traces grow while it runs (`SendData`), progress from `SendStat`,
@@ -590,3 +331,5 @@ a usable simulator; S5–S8 make it comfortable, compatible and fast.
   symbol doesn't follow the waveform yet (Later).
 - Sources stay ordinary components; a test bench sub-sheet keeps them out of a real
   design's main sheets.
+- The setup lives in `schematic.json` (`Schematic::simulation`, like the ERC settings),
+  not a file of its own: it rides in the change set's `Setup` with no new plumbing.

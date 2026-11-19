@@ -12,6 +12,7 @@ mod fp;
 mod misc;
 mod passives;
 mod semis;
+pub mod sims;
 mod sym;
 
 use std::collections::HashMap;
@@ -28,6 +29,7 @@ pub fn library() -> Library {
     semis::add(&mut b);
     connectors::add(&mut b);
     misc::add(&mut b);
+    sims::add(&mut b);
     b.lib
 }
 
@@ -165,6 +167,7 @@ impl Builder {
             s.category = spec.category.into();
         }
         self.lib.parts.insert(Part {
+            sim: Default::default(),
             id: gid(&format!("part/{}", spec.name)),
             name: spec.name.clone(),
             category: spec.category.into(),

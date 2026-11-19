@@ -16,6 +16,7 @@ the current design of each area with the gotchas a change needs to know, the pla
 | Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported later: buses, label scopes (local / global / hierarchical / power), net names and hierarchical sheets with sheet pins as KiCad does. Multi-unit parts work |
 | Files | JSON, pretty, stable order, integer nm. A project is a folder (`<name>.pcbproj/`: `project.json`, `library.json`, `schematic.json`, `board.json`); a library is one `*.pcblib`. No migrations until production use (`model::io::MIGRATIONS` stays empty) |
 | MCP | In the app (Streamable HTTP on 127.0.0.1, opt-in) and headless over stdio. Every tool goes through editor-core commands |
+| Simulation | ngspice, a process per run for now (shared library later); see [simulation-plan.md](simulation-plan.md) |
 | Platforms | macOS first. macOS-only chrome (native menu, title strip) is `cfg`'d; Windows/Linux keep the egui menu bar and system title bar |
 
 ## Model and files (`model`)
@@ -384,6 +385,78 @@ the current design of each area with the gotchas a change needs to know, the pla
   when the project folder changes, after an export and when the window regains focus
   (no file watching). "Outdated" compares the manifest's hash with `design_hash`,
   recomputed once per document revision and never while an interaction is running.
+
+## Simulation (`sim`)
+
+What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
+[simulation-plan.md](simulation-plan.md).
+
+- **Model** (`model::simulation`; named so, as `model::sim` would clash with the `sim`
+  crate under `use model::*`): `Part::sim: Option<SimModel>` is part content (in the
+  content hash, so "Update from library" brings it). `SimModel { device, pins, params }`:
+  `pins` are `(unit, pin)` in SPICE node order, empty = every unit's pins in symbol
+  order; `params` override a primitive's `.model` card or go to a subcircuit instance,
+  `${VALUE}` takes the component's value. `SimDevice::Ignore` leaves a part out
+  silently (connectors), `sim: None` with one warning listing them. `Component::sim:
+  ComponentSim` holds overrides, `exclude` and a source's `Source { waveform, ac,
+  ac_phase }`. Waveform and analysis numbers are SI `f64`; values and parameters stay
+  strings.
+- A source's value is its waveform text ("SIN 1 V 1 kHz AC 1 V"), set by
+  `Transaction::normalized` on every insert/replace of a component with `sim.source`
+  (it takes the project, to say V or A from the part's device), so `${VALUE}` fields
+  show it and no edit path can forget it.
+- **Setup:** `Schematic::simulation` (in `schematic.json`, written only when not
+  default), changed whole by `SetSimulation` through `Setup` (`simulation_changed`).
+  `check_simulation` refuses duplicate ids or names, empty names, bad ranges and DC
+  sweeps of non-components. `Probe::Voltage { net, at }` binds to an object first, the
+  net name second (resolution comes with the probe tool); `Probe::Current` to a pin.
+- **SI values** (`model::si`): `parse` takes `10k`, `4k7`, `2R2`, `5V1`, `µ`/`u`, `meg`,
+  units and trailing words; `M` is mega (SPICE says milli). It refuses `1N4148` (a unit
+  word must follow the number). `format` is engineering notation; `spice` writes 12
+  significant digits, plain from 0.001 to 10⁶ else an exponent, never a suffix
+  (`100e-9` is otherwise `1.0000000000000001e-7`).
+- **Netlist** (`sim::netlist::build(project, conn, analysis)` → `Netlist { text, nodes,
+  devices, sense, problems }`): nets with pins become nodes; ground is the nets of
+  ground-styled power ports (or named `GND` / `0`, or the setup's `ground`), several
+  join as `0` with a note, none is an error. Node names are `node_name(net)`: lower
+  case (ngspice lowercases vector names), unique case-insensitively, `+5V` → `p5v`.
+  Devices go per component in refdes order, named letter + refdes unless the refdes
+  starts with the letter (a MOSFET `Q2` is `MQ2`). An unconnected pin is still a net of
+  its own (`Net-(R1-1)`); pins of unplaced units get `nc_…` nodes; `.options rshunt=1e12`
+  keeps floating nodes solvable (it shows in the ninth digit). Model cards are parsed and
+  rewritten (`ModelCard`), shared by name; component overrides make `NAME_DEVICE`;
+  different texts under one name are renamed `_2`. VDMOS cards get three nodes, other
+  MOSFETs a bulk tied to the source. `value_number` finds the number of a value or a
+  voltage inside a part number (`BZT52C3V3` → 3.3) for `${VALUE}` parameters. Current
+  probes insert a 0 V `VSENSE_…` in series with the pin. Supplies are `VSUPPLY_…` to
+  ground. Problems carry the component's symbols for zooming.
+- **ngspice** (`sim::Ngspice`, a `Backend`): `-b -r out.raw circuit.cir` in a temp dir,
+  both pipes drained on threads, a `Cancel` polled every 5 ms kills it. Found from the
+  `ngspice` setting, `NGSPICE`, `PATH`, then the usual install places. Exit status 1 with
+  the reasons on stderr on netlist errors (`SimError::Failed`, log kept). Gotchas:
+  ngspice writes plots last analysis first (reversed on read); an operating point has
+  no scale vector; vector names are `v(node)` and `i(vsource)` (older versions
+  `v1#branch`); `No. Points` can exceed the data of a stopped run (the reader takes
+  whole points); B-source lines must use subcircuit parameters by bare name or through
+  a `.param` in the subcircuit — `{…}` expressions of parameters inside a B-source
+  evaluate wrongly in ngspice 47 without an error.
+- `SimResult` reads by net (`voltage`, ground as zeros) and pin (`current`), `Vector`
+  has `db`, `phase`, `magnitude` and `at` (interpolated). `sim::report` gives the text
+  summary and CSV of the `simulate` command.
+- **Built-in models** (`builtin::generate::sims`): a table by part name sets the
+  generated parts' models (1N4148, B5819, zener with `BV=${VALUE}`, 2N3904/2N3906,
+  2N7002/BSS84 as VDMOS, a Butterworth–Van Dyke crystal with `f=${VALUE}`, ferrite and
+  fuse as 0.1 Ω) and adds `VSource` / `ISource` (Simulation category, a "No footprint"
+  variant only, so off the board by the existing rule). The hand-made parts' texts
+  (behavioural op amp, LM358, regulators, quad NAND) are `pub` there and stored in the
+  file; changing one means setting it again on the part (a one-off program or the app),
+  then `gen_builtin`. `every_part_simulates` checks every part has a model with real
+  pins.
+- **Tests:** netlists and the raw reader (ngspice 47 fixtures in `tests/fixtures`) run
+  everywhere; the circuits in `tests/all/ngspice.rs` (RC in AC and transient, diode, op
+  amps, regulators, transistors, NAND, zener, crystal, DC sweep, errors, cancel, the
+  demo) skip with a note when ngspice isn't found. `tests/all/bench.rs` builds circuits
+  by labelling pin ends.
 
 ## Rendering (`render`)
 

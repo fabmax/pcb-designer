@@ -1071,7 +1071,18 @@ mod tests {
         let labels = |nodes: &[TreeNode]| nodes.iter().map(|n| n.label.clone()).collect::<Vec<_>>();
         assert_eq!(
             labels(&groups[0].children),
-            ["Analog", "Connectors", "Diodes", "Logic", "Mechanical", "Passives", "Power", "Switches", "Transistors"]
+            [
+                "Analog",
+                "Connectors",
+                "Diodes",
+                "Logic",
+                "Mechanical",
+                "Passives",
+                "Power",
+                "Simulation",
+                "Switches",
+                "Transistors"
+            ]
         );
         assert_eq!(groups[0].data.detail, lib.parts.len().to_string(), "the group counts its items");
         assert_eq!(labels(&groups[2].children), ["Mechanical", "SMD", "Through hole"]);

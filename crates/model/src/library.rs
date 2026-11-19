@@ -314,6 +314,9 @@ pub struct Part {
     pub variants: Vec<PartVariant>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub properties: BTreeMap<String, String>,
+    /// How the part simulates; `None`: no model (left out of simulations with a warning).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sim: Option<crate::simulation::SimModel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<PartSource>,
 }

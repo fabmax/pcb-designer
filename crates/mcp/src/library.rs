@@ -718,6 +718,7 @@ fn part(work: &Library, mut map: Map<String, Value>) -> Result<Part, String> {
     let base = match old {
         Some(p) => p.clone(),
         None => Part {
+            sim: Default::default(),
             id: Id::new(),
             name: String::new(),
             category: String::new(),
