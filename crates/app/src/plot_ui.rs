@@ -75,6 +75,26 @@ impl PlotState {
     pub fn clear_cursors(&mut self) {
         self.cursors = [None, None];
     }
+
+    /// The x and y scales, filling in what a fit cleared: x over the whole run, y to the
+    /// visible part of the traces (always, while the user hasn't zoomed y).
+    fn scales(&mut self, data: &PlotData, log_x: bool) -> (Scale, [Scale; 2]) {
+        let (x0, x1) = (data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0));
+        let x = *self.x.get_or_insert_with(|| Scale::new(x0, x1, log_x));
+        let mut ys = [Scale::new(-1.0, 1.0, false); 2];
+        for (i, axis) in [Axis::Left, Axis::Right].into_iter().enumerate() {
+            let y = match self.y[i] {
+                Some(y) if self.y_manual => y,
+                _ => {
+                    let (lo, hi) = plot::fit_y(data, axis, x.lo, x.hi, &self.hidden).unwrap_or((-1.0, 1.0));
+                    Scale::new(lo, hi, false)
+                }
+            };
+            self.y[i] = Some(y);
+            ys[i] = y;
+        }
+        (x, ys)
+    }
 }
 
 /// Space for the axes' labels.
@@ -194,7 +214,9 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
         act = Some(PlotAct::Focus);
     }
     plot_view(ui, state, &data, rect, &response, log_x);
-    draw(ui, state, &data, rect, outer, &response, dim);
+    // After the pointer: a double-click may just have cleared the view for a fit.
+    let scales = state.scales(&data, log_x);
+    draw(ui, state, &data, scales, rect, outer, &response, dim);
 
     ui.add_space(4.0);
     egui::ScrollArea::vertical().id_salt(("plot_table", analysis.id)).auto_shrink([false, false]).show(ui, |ui| {
@@ -211,14 +233,7 @@ fn centered_hint(ui: &mut Ui, text: &str) {
 
 /// Fits the view where needed, and applies the pointer to it.
 fn plot_view(ui: &Ui, state: &mut PlotState, data: &PlotData, rect: Rect, response: &egui::Response, log_x: bool) {
-    let (x0, x1) = (data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0));
-    let x = *state.x.get_or_insert_with(|| Scale::new(x0, x1, log_x));
-    for (i, axis) in [Axis::Left, Axis::Right].into_iter().enumerate() {
-        if state.y[i].is_none() || !state.y_manual {
-            let (lo, hi) = plot::fit_y(data, axis, x.lo, x.hi, &state.hidden).unwrap_or((-1.0, 1.0));
-            state.y[i] = Some(Scale::new(lo, hi, false));
-        }
-    }
+    let (x, _) = state.scales(data, log_x);
     let to_frac = |p: Pos2| ((p.x - rect.left()) / rect.width(), (rect.bottom() - p.y) / rect.height());
     let input = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.modifiers, i.pointer.interact_pos()));
     let (scroll, zoom, mods, pointer) = input;
@@ -247,7 +262,7 @@ fn plot_view(ui: &Ui, state: &mut PlotState, data: &PlotData, rect: Rect, respon
         }
     }
     // Drags.
-    let cursor_px = |c: Option<f64>| c.map(|v| rect.left() + state.x.unwrap().frac(v) as f32 * rect.width());
+    let cursor_px = |c: Option<f64>| c.map(|v| rect.left() + state.x.unwrap_or(x).frac(v) as f32 * rect.width());
     if response.drag_started() {
         // Where the button went down (the drag is only detected some pixels later).
         let at = ui.input(|i| i.pointer.press_origin()).or(response.interact_pointer_pos()).unwrap_or_default();
@@ -274,7 +289,7 @@ fn plot_view(ui: &Ui, state: &mut PlotState, data: &PlotData, rect: Rect, respon
             }
             Some(Drag::Cursor(k)) => {
                 if let Some(p) = response.interact_pointer_pos() {
-                    let v = state.x.unwrap().value(to_frac(p).0 as f64);
+                    let v = state.x.unwrap_or(x).value(to_frac(p).0 as f64);
                     state.cursors[k] = plot::nearest(&data.x, v).map(|i| data.x[i]);
                 }
             }
@@ -285,7 +300,7 @@ fn plot_view(ui: &Ui, state: &mut PlotState, data: &PlotData, rect: Rect, respon
         if let (Some(Drag::Box(start)), Some(end)) = (state.drag, response.interact_pointer_pos()) {
             let b = Rect::from_two_pos(start, end).intersect(rect);
             if b.width() > 4.0 {
-                let x = state.x.unwrap();
+                let x = state.x.unwrap_or(x);
                 let (a, c) = (to_frac(b.left_top()).0 as f64, to_frac(b.right_top()).0 as f64);
                 state.x = Some(Scale::new(x.value(a), x.value(c), x.log));
             }
@@ -299,10 +314,12 @@ fn plot_view(ui: &Ui, state: &mut PlotState, data: &PlotData, rect: Rect, respon
         }
         state.drag = None;
     }
+    // The second click of a double-click counts as a click too: it places no cursor.
     if response.clicked()
+        && !response.double_clicked()
         && let Some(p) = response.interact_pointer_pos()
     {
-        let v = state.x.unwrap().value(to_frac(p).0 as f64);
+        let v = state.x.unwrap_or(x).value(to_frac(p).0 as f64);
         let snapped = plot::nearest(&data.x, v).map(|i| data.x[i]);
         let k = usize::from(mods.shift);
         state.before_click = Some(state.cursors[0]);
@@ -321,14 +338,14 @@ fn draw(
     ui: &Ui,
     state: &mut PlotState,
     data: &PlotData,
+    scales: (Scale, [Scale; 2]),
     rect: Rect,
     outer: Rect,
     response: &egui::Response,
     dim: bool,
 ) {
     let painter = ui.painter_at(outer);
-    let x = state.x.expect("fitted");
-    let ys = [state.y[0].expect("fitted"), state.y[1].expect("fitted")];
+    let (x, ys) = scales;
     painter.rect_filled(rect, 4.0, chart_bg());
     let grid = theme::border();
     let text = theme::text_dim();
@@ -375,8 +392,7 @@ fn draw(
 
     // Traces, decimated per pixel column (cached until the view, size or data change).
     let columns = rect.width().ceil() as usize;
-    let key =
-        (x.lo.to_bits(), x.hi.to_bits(), Arc::as_ptr(&state.data.as_ref().unwrap().1) as u64, columns, x.log, dim);
+    let key = (x.lo.to_bits(), x.hi.to_bits(), std::ptr::from_ref(data) as u64, columns, x.log, dim);
     if state.decimated.as_ref().is_none_or(|d| d.0 != key) {
         let col = |v: f64| (x.frac(v) * columns as f64).floor() as i64;
         let pts = data.traces.iter().map(|t| plot::decimate(&data.x, &t.y, x.lo, x.hi, columns, col)).collect();
@@ -631,5 +647,71 @@ fn export_csv(data: &PlotData, hidden: &HashSet<String>, name: &str) {
     };
     if let Err(e) = std::fs::write(&path, plot::csv(data, hidden)) {
         log::warn!("can't write {}: {e}", path.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sim::plot::Trace;
+
+    fn data() -> PlotData {
+        let x: Vec<f64> = (0..=100).map(|i| i as f64 * 1e-5).collect();
+        let y = x.iter().map(|t| (t * 6283.0).sin()).collect();
+        let trace = Trace { label: "V(OUT)".into(), unit: "V", axis: Axis::Left, dashed: false, signal: 0, y };
+        PlotData { x_label: "Time".into(), x_unit: "s", log_x: false, x, traces: vec![trace], missing: Vec::new() }
+    }
+
+    /// One frame of the plot (pointer handling, then drawing) with `events`.
+    fn frame(ctx: &egui::Context, state: &mut PlotState, data: &PlotData, events: Vec<egui::Event>) {
+        let input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0))),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| {
+            let (outer, response) = ui.allocate_exact_size(vec2(780.0, 560.0), Sense::click_and_drag());
+            let rect = outer.shrink(40.0);
+            plot_view(ui, state, data, rect, &response, false);
+            let scales = state.scales(data, false);
+            draw(ui, state, data, scales, rect, outer, &response, false);
+        });
+        // No renderer takes the font textures.
+        out.textures_delta.clear();
+    }
+
+    #[test]
+    fn double_click_fits_without_losing_the_scales() {
+        let ctx = egui::Context::default();
+        let mut state = PlotState::default();
+        let data = data();
+        let at = pos2(400.0, 300.0);
+        frame(&ctx, &mut state, &data, vec![egui::Event::PointerMoved(at)]);
+        // Zoom in, then double-click: the frame of the double-click still draws.
+        state.x = Some(Scale::new(2e-4, 4e-4, false));
+        state.y_manual = true;
+        let click = |pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(&ctx, &mut state, &data, vec![click(true), click(false)]);
+        frame(&ctx, &mut state, &data, vec![click(true), click(false)]);
+        let x = state.x.expect("fitted again");
+        assert_eq!((x.lo, x.hi), (0.0, 1e-3), "the whole run");
+        assert!(!state.y_manual);
+        // The double-click's first click doesn't leave a cursor behind.
+        assert_eq!(state.cursors, [None, None]);
+    }
+
+    #[test]
+    fn scales_fill_in_after_a_fit() {
+        let mut state = PlotState::default();
+        let data = data();
+        state.fit();
+        let (x, [left, _]) = state.scales(&data, false);
+        assert_eq!((x.lo, x.hi), (0.0, 1e-3));
+        assert!(left.lo < -0.9 && left.hi > 0.9, "{left:?}");
     }
 }
