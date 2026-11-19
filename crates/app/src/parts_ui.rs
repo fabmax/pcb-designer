@@ -54,8 +54,6 @@ pub enum Row {
         key: u64,
         part: PartId,
     },
-    /// The last row: the KiCad libraries' matches (opens the import window).
-    Kicad,
 }
 
 /// What the panel asks for.
@@ -66,7 +64,7 @@ pub enum PartsAct {
     Kicad,
 }
 
-/// The KiCad row's text.
+/// The KiCad link's text.
 fn kicad_label(m: KicadMatches) -> String {
     match m {
         KicadMatches::Scanning => "Searching the KiCad libraries…".into(),
@@ -76,6 +74,23 @@ fn kicad_label(m: KicadMatches) -> String {
         KicadMatches::Found(n) if n >= MATCH_LIMIT => format!("{MATCH_LIMIT}+ matches in the KiCad libraries"),
         KicadMatches::Found(n) => format!("{n} matches in the KiCad libraries"),
     }
+}
+
+/// The KiCad link under the search field: a full-width row with the matches in the
+/// KiCad libraries (a click opens the import window with the query).
+fn kicad_link(ui: &mut Ui, kicad: KicadMatches) -> egui::Response {
+    let height = nav_list::row_height(ui);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::click());
+    let color = if kicad == KicadMatches::Scanning { theme::text_dim() } else { theme::accent() };
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 4.0, ui.visuals().widgets.hovered.weak_bg_fill);
+    }
+    let icon = egui::Rect::from_center_size(egui::pos2(rect.left() + 10.0, rect.center().y), egui::vec2(12.0, 12.0));
+    icons::paint(ui.painter(), icon, Icon::Search, color);
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let text = ui.painter().layout_no_wrap(kicad_label(kicad), font, color);
+    ui.painter().galley(egui::pos2(icon.right() + 6.0, rect.center().y - text.size().y / 2.0), text, color);
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// Does `part` match every word of `query` (lower case), in its name, description,
@@ -192,11 +207,13 @@ impl PartsPanel {
                 state.store(ui.ctx(), search_id());
             }
         }
-        ui.add_space(4.0);
+        if kicad_link(ui, kicad).clicked() {
+            return Some(PartsAct::Kicad);
+        }
+        ui.add_space(2.0);
 
-        let mut rows = rows(sources, kind, &self.query, &self.collapsed);
+        let rows = rows(sources, kind, &self.query, &self.collapsed);
         let no_parts = rows.is_empty();
-        rows.push(Row::Kicad);
         let source = |key: u64| sources.iter().find(|s| s.key == key);
         let part_of = |key: u64, id: PartId| source(key).and_then(|s| s.doc.library().parts.get(id));
         let selected = rows.iter().position(|r| match (r, self.selected) {
@@ -204,7 +221,6 @@ impl PartsPanel {
             _ => false,
         });
         let mut act: Option<Act> = None;
-        let mut kicad_clicked = false;
         let info_height = 2.0 * nav_list::row_height(ui);
         // The preview gives way to the list in a short panel.
         let preview_height = (ui.available_height() * 0.4).min(PREVIEW_HEIGHT);
@@ -263,12 +279,6 @@ impl PartsPanel {
                         }
                     }
                 }
-                Row::Kicad => {
-                    let (r, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
-                    let color = if kicad == KicadMatches::Scanning { theme::text_dim() } else { theme::accent() };
-                    icons::paint(ui.painter(), r, Icon::Search, color);
-                    nav_list::name(ui, RichText::new(kicad_label(kicad)).color(color));
-                }
             };
             let fill = |i: usize| matches!(rows[i], Row::Library { .. }).then(theme::panel);
             let out = egui::Frame::NONE
@@ -298,13 +308,6 @@ impl PartsPanel {
             {
                 toggle = Some(key);
             }
-            // The KiCad row is a button: a click opens the import window.
-            if let Some(i) = out.select.or(out.activate)
-                && rows[i] == Row::Kicad
-                && (out.activate.is_some() || ui.input(|inp| inp.pointer.any_click()))
-            {
-                kicad_clicked = true;
-            }
             out
         };
         if let Some(key) = toggle
@@ -318,16 +321,13 @@ impl PartsPanel {
         let landed = match out.select {
             Some(i) if !clicked && matches!(rows[i], Row::Library { .. }) => {
                 let up = selected.is_some_and(|s| i < s);
-                let part = |j: &usize| !matches!(rows[*j], Row::Library { .. });
+                let part = |j: &usize| matches!(rows[*j], Row::Part { .. });
                 if up { (0..i).rev().find(part) } else { (i..rows.len()).find(part) }.or(selected)
             }
             other => other,
         };
         if let Some(Row::Part { key, part }) = landed.map(|i| &rows[i]) {
             self.selected = Some((*key, *part));
-        }
-        if kicad_clicked {
-            return Some(PartsAct::Kicad);
         }
         if let Some(Row::Part { key, part }) = out.activate.map(|i| &rows[i]) {
             self.selected = Some((*key, *part));
@@ -427,7 +427,6 @@ mod tests {
             rows.iter()
                 .map(|r| match r {
                     Row::Library { key, count, .. } => format!("#{key}:{count}"),
-                    Row::Kicad => "kicad".into(),
                     Row::Part { key, part } => {
                         let s = sources.iter().find(|s| s.key == *key).unwrap();
                         s.doc.library().parts.get(*part).unwrap().name.clone()
@@ -448,7 +447,7 @@ mod tests {
     }
 
     #[test]
-    fn kicad_row_says_what_a_click_finds() {
+    fn kicad_link_says_what_a_click_finds() {
         assert_eq!(kicad_label(KicadMatches::Available), "Import KiCad libraries");
         assert_eq!(kicad_label(KicadMatches::NoLibraries), "Import KiCad libraries");
         assert_eq!(kicad_label(KicadMatches::Found(1)), "1 match in the KiCad libraries");

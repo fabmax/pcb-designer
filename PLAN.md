@@ -762,7 +762,8 @@ the current design of each area with the gotchas a change needs to know, the pla
   surrenders the field's and list's focus so the canvas gets R / X / Esc. P is
   `SchFindPart` / `PcbFindPart` (two actions, as an action has one context); power ports
   moved to ⌘P. The preview is `preview::Preview`, invalidated when the library changes.
-  The last row (`Row::Kicad`) counts the KiCad libraries' matches of the query
+  A link between the search field and the list (`kicad_link`, always visible) counts
+  the KiCad libraries' matches of the query
   (symbols, or footprints on the board; `KicadImport::match_count`, cached per query,
   at most `MATCH_LIMIT`) and opens the import window with the query. The catalog is
   scanned on a background thread the first time (reading every `.kicad_sym` takes
