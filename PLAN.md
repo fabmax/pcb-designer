@@ -740,7 +740,7 @@ the current design of each area with the gotchas a change needs to know, the pla
   group of the bar under the pointer). View → Reset panel layout keeps the sizes. Saved
   in settings when no pointer button is down; scripted runs never save settings.
   Panels: Project (⌘1), Messages (⌘3, unseen-problems badge), Properties, Tool settings,
-  Board setup, Overview, Schematic setup, Nets (⌘9), Agent activity (unbound). Panel content is drawn through `dock::fixed_size`, which clips
+  Board setup, Overview, Schematic setup, Nets (⌘9), Parts (⌘0), Agent activity (unbound). Panel content is drawn through `dock::fixed_size`, which clips
   overflow: egui grows a resizable panel to fit wider content and keeps that size, and
   grids overflow for a frame when they reuse the column widths of the previous
   selection.
@@ -752,6 +752,16 @@ the current design of each area with the gotchas a change needs to know, the pla
   flagged copper one warning, library issues warnings); the badge is a check, else the
   count in the colour of the worst. Opening the panel on a fine tab switches to one with
   problems (`tab_to_open`). The tab is session only.
+- **Parts panel** (`parts_ui.rs`): `rows` lists, per library (Project Library first,
+  Built-in last; libraries without such parts left out), the parts the last active
+  editor places: `!is_board_part` for the schematic, board parts for the board. Search:
+  every word in name, description, default value or properties. Rows go through
+  `nav_list::show_with_menu`; the selection is a (library key, part id), keys skip the
+  library rows, a click on one folds it (not while searching). Actions are the Project
+  panel's `Act`s (`Place` imports into the Project Library like the tree). Placing
+  surrenders the field's and list's focus so the canvas gets R / X / Esc. P is
+  `SchFindPart` / `PcbFindPart` (two actions, as an action has one context); power ports
+  moved to ⌘P. The preview is `preview::Preview`, invalidated when the library changes.
 - **Nets panel** (`nets_ui.rs`): rows from the schematic netlist (pins, sheets) and the
   board's ratsnest by net index (routed, n unrouted, no pads), cached per document
   revision and drawn with `show_rows`. A click is `PcbApp::select_net`: the net's
@@ -946,8 +956,7 @@ defers.
   the mask area from the outline's contour (bounding box today), true clear polarity,
   G74 arcs, LM, thermal primitives, slots in drill files.
 - Clipboard: carrying a paste between the schematic and the board.
-- A side-bar panel to browse and place board parts from the project and loaded
-  libraries (needs design; P on the board stays unassigned until then).
+- Parts panel: dragging a part from the list onto the canvas.
 - Cutouts that split a zone into two pieces (refused today; would need a second zone).
 - Push-and-shove routing.
 - Net classes: diff pairs and their gap, class colours on the board and ratsnest,

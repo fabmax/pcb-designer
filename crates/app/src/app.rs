@@ -302,6 +302,7 @@ pub struct PcbApp {
     mcp_port: Option<u16>,
     /// The Nets panel's state.
     nets: NetsPanel,
+    parts: crate::parts_ui::PartsPanel,
     /// A panel button being dragged to another place in the bars.
     dock_drag: Option<Panel>,
     /// Where the bars' groups were drawn this frame (drop targets).
@@ -454,6 +455,7 @@ impl PcbApp {
             mcp_port: opts.mcp,
             tools_changed: None,
             nets: NetsPanel::default(),
+            parts: Default::default(),
             dock_drag: None,
             drop_zones: Vec::new(),
             window_state: None,
@@ -1149,6 +1151,7 @@ impl PcbApp {
             t.view.restyle();
         }
         self.gerber.restyle();
+        self.parts.restyle();
         self.probe_key = None;
     }
 
@@ -2421,6 +2424,10 @@ impl PcbApp {
         if let Some(panel) = Panel::of_action(action) {
             return self.settings.dock.toggle(panel);
         }
+        if matches!(action, Action::SchFindPart | Action::PcbFindPart) {
+            self.settings.dock.show(Panel::Parts);
+            return self.parts.focus_search();
+        }
         if matches!(action, Action::Cut | Action::Copy | Action::Paste | Action::Duplicate) {
             return self.clipboard_action(action);
         }
@@ -2530,6 +2537,9 @@ impl PcbApp {
             | Action::PanelSchematicSetup
             | Action::PanelOverview
             | Action::PanelNets
+            | Action::PanelParts
+            | Action::SchFindPart
+            | Action::PcbFindPart
             | Action::PanelActivity => return,
         };
         let view = self.active;
@@ -2667,6 +2677,9 @@ impl PcbApp {
             | Action::PanelSchematicSetup
             | Action::PanelOverview
             | Action::PanelNets
+            | Action::PanelParts
+            | Action::SchFindPart
+            | Action::PcbFindPart
             | Action::PanelActivity => None,
         };
         if let Some(m) = msg {
@@ -3586,6 +3599,37 @@ impl PcbApp {
         hide
     }
 
+    /// The Parts panel, over the project's library, the loaded libraries (Built-in last)
+    /// and for the editor last active.
+    fn parts_ui(&mut self, ui: &mut egui::Ui) -> Option<project_panel::Act> {
+        let kind = match self.active.kind() {
+            ViewKind::Schematic => crate::parts_ui::Kind::Schematic,
+            ViewKind::Board => crate::parts_ui::Kind::Board,
+        };
+        let issues: Vec<Option<String>> =
+            self.all_libs_mut().map(|l| l.issues().first().map(|(_, m)| m.clone())).collect();
+        // The fields, not `all_libs`: the panel is borrowed mutably alongside.
+        let mut sources: Vec<crate::parts_ui::Source> = std::iter::once(&self.project)
+            .chain(self.libraries.iter())
+            .zip(issues)
+            .map(|(l, issue)| crate::parts_ui::Source {
+                key: l.key,
+                title: if l.is_project() {
+                    "Project Library".into()
+                } else if l.is_builtin() {
+                    "Built-in Library".into()
+                } else {
+                    l.lib.name().to_string()
+                },
+                doc: &l.lib,
+                issue,
+            })
+            .collect();
+        // Project Library first, Built-in last.
+        sources.sort_by_key(|s| (s.key != PROJECT_LIB, s.doc.is_builtin()));
+        self.parts.ui(ui, kind, &sources)
+    }
+
     fn panel_ui(&mut self, ui: &mut egui::Ui, panel: Panel) {
         let mut message = None;
         match panel {
@@ -3639,6 +3683,11 @@ impl PcbApp {
                 let tab = self.message_tab;
                 if let Some(show) = messages::ui(ui, tab, &mut self.project.lib.doc, &mut self.libraries) {
                     self.show_message(show);
+                }
+            }
+            Panel::Parts => {
+                if let Some(act) = self.parts_ui(ui) {
+                    self.tree_act(act);
                 }
             }
             Panel::Nets => match self.nets.ui(ui, &self.project.lib.doc) {

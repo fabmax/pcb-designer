@@ -51,6 +51,7 @@ pub enum Action {
     SchJunction,
     SchNoConnect,
     SchPowerFlag,
+    SchFindPart,
     ToggleErcMarkers,
     Posture,
     NextCorners,
@@ -67,6 +68,7 @@ pub enum Action {
     MeasureClearance,
     PcbText,
     PcbNextLayer,
+    PcbFindPart,
     Settings,
     PanelProject,
     PanelMessages,
@@ -75,6 +77,7 @@ pub enum Action {
     PanelBoardSetup,
     PanelSchematicSetup,
     PanelNets,
+    PanelParts,
     PanelActivity,
     PanelOverview,
 }
@@ -125,6 +128,7 @@ impl Action {
         Action::SchJunction,
         Action::SchNoConnect,
         Action::SchPowerFlag,
+        Action::SchFindPart,
         Action::ToggleErcMarkers,
         Action::Posture,
         Action::NextCorners,
@@ -141,6 +145,7 @@ impl Action {
         Action::MeasureClearance,
         Action::PcbText,
         Action::PcbNextLayer,
+        Action::PcbFindPart,
         Action::Settings,
         Action::PanelProject,
         Action::PanelMessages,
@@ -149,6 +154,7 @@ impl Action {
         Action::PanelBoardSetup,
         Action::PanelSchematicSetup,
         Action::PanelNets,
+        Action::PanelParts,
         Action::PanelActivity,
         Action::PanelOverview,
     ];
@@ -191,6 +197,7 @@ impl Action {
             Action::SchJunction => "Junction tool (schematic)",
             Action::SchNoConnect => "No-connect flag tool (schematic)",
             Action::SchPowerFlag => "Power flag tool (schematic)",
+            Action::SchFindPart => "Find a part to place (schematic)",
             Action::ToggleErcMarkers => "Show/hide ERC markers (schematic)",
             Action::Posture => "Corner direction (wires, tracks)",
             Action::NextCorners => "Next corner style (wires, tracks)",
@@ -207,6 +214,7 @@ impl Action {
             Action::MeasureClearance => "Measure clearances or points (PCB)",
             Action::PcbText => "Text tool (PCB)",
             Action::PcbNextLayer => "Next copper layer; adds a via while routing (PCB)",
+            Action::PcbFindPart => "Find a board part to place (PCB)",
             Action::Settings => "Settings",
             Action::PanelProject => "Show/hide Project panel",
             Action::PanelMessages => "Show/hide Messages panel",
@@ -215,6 +223,7 @@ impl Action {
             Action::PanelBoardSetup => "Show/hide Board setup panel",
             Action::PanelSchematicSetup => "Show/hide Schematic setup panel",
             Action::PanelNets => "Show/hide Nets panel",
+            Action::PanelParts => "Show/hide Parts panel",
             Action::PanelActivity => "Show/hide Agent activity panel",
             Action::PanelOverview => "Show/hide Overview panel",
         }
@@ -239,6 +248,7 @@ impl Action {
             | Action::SchJunction
             | Action::SchNoConnect
             | Action::SchPowerFlag
+            | Action::SchFindPart
             | Action::MoveToSheet => Some(Context::Schematic),
             Action::PcbRoute
             | Action::PcbVia
@@ -249,6 +259,7 @@ impl Action {
             | Action::MeasureClearance
             | Action::PcbText
             | Action::PcbNextLayer
+            | Action::PcbFindPart
             | Action::RoundCorners => Some(Context::Board),
             _ => None,
         }
@@ -433,7 +444,8 @@ impl Default for Keymap {
             (Action::SchBusEntry, vec![S::key(Key::E)]),
             (Action::SchLabel, vec![S::key(Key::L)]),
             (Action::SchText, vec![S::key(Key::T)]),
-            (Action::SchPower, vec![S::key(Key::P)]),
+            (Action::SchPower, vec![S::cmd(Key::P)]),
+            (Action::SchFindPart, vec![S::key(Key::P)]),
             (Action::SchJunction, vec![S::key(Key::J)]),
             (Action::SchNoConnect, vec![S::key(Key::Q)]),
             (Action::SchPowerFlag, vec![S::shift(Key::P)]),
@@ -447,6 +459,7 @@ impl Default for Keymap {
             (Action::MeasureClearance, vec![S::key(Key::E)]),
             (Action::PcbText, vec![S::shift(Key::T)]),
             (Action::PcbNextLayer, vec![S::key(Key::L)]),
+            (Action::PcbFindPart, vec![S::key(Key::P)]),
             (Action::Settings, vec![S::cmd(Key::Comma)]),
             (Action::PanelProject, vec![S::cmd(Key::Num1)]),
             (Action::PanelMessages, vec![S::cmd(Key::Num3)]),
@@ -456,6 +469,7 @@ impl Default for Keymap {
             (Action::PanelOverview, vec![S::cmd(Key::Num7)]),
             (Action::PanelSchematicSetup, vec![S::cmd(Key::Num8)]),
             (Action::PanelNets, vec![S::cmd(Key::Num9)]),
+            (Action::PanelParts, vec![S::cmd(Key::Num0)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
     }
@@ -575,6 +589,10 @@ mod tests {
         assert_eq!(map.lookup(Key::L, Modifiers::NONE, Context::Library), Some(Action::ToolLine));
         assert_eq!(map.lookup(Key::L, Modifiers::NONE, Context::Schematic), Some(Action::SchLabel));
         assert_eq!(map.lookup(Key::L, Modifiers::NONE, Context::Board), Some(Action::PcbNextLayer));
+        assert_eq!(map.lookup(Key::P, Modifiers::NONE, Context::Schematic), Some(Action::SchFindPart));
+        assert_eq!(map.lookup(Key::P, Modifiers::NONE, Context::Board), Some(Action::PcbFindPart));
+        assert_eq!(map.lookup(Key::P, Modifiers::NONE, Context::Library), Some(Action::ToolPin));
+        assert_eq!(map.lookup(Key::P, Modifiers::COMMAND, Context::Schematic), Some(Action::SchPower));
         // Same context: a conflict.
         let map = Keymap::from_json(r#"{"sch_wire": ["L"]}"#).unwrap();
         assert_eq!(map.conflicts().len(), 1);

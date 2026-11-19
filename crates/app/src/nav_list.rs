@@ -93,7 +93,26 @@ pub fn show(
     max_height: f32,
     space_activates: bool,
     extra: Keys,
+    row: impl FnMut(&mut Ui, usize),
+) -> Output {
+    show_with_menu(ui, id, len, selected, max_height, space_activates, extra, row, None)
+}
+
+/// Fills the context menu of row `i`.
+pub type RowMenu<'a> = dyn FnMut(&mut Ui, usize) + 'a;
+
+/// [`show`] with a context menu on the rows (`menu` fills it for row `i`).
+#[allow(clippy::too_many_arguments)]
+pub fn show_with_menu(
+    ui: &mut Ui,
+    id: Id,
+    len: usize,
+    selected: Option<usize>,
+    max_height: f32,
+    space_activates: bool,
+    extra: Keys,
     mut row: impl FnMut(&mut Ui, usize),
+    mut menu: Option<&mut RowMenu>,
 ) -> Output {
     let mut out = Output::default();
     let focused = ui.memory(|m| m.has_focus(id));
@@ -153,6 +172,12 @@ pub fn show(
             }
             if r.double_clicked() {
                 out.activate = Some(i);
+            }
+            if let Some(menu) = menu.as_mut() {
+                if r.secondary_clicked() {
+                    out.select = Some(i);
+                }
+                r.context_menu(|ui| menu(ui, i));
             }
             let inner = rect.shrink2(vec2(4.0, 0.0));
             let layout = egui::Layout::left_to_right(egui::Align::Center);

@@ -55,6 +55,7 @@ mod nav_list;
 mod nets_ui;
 mod outputs;
 mod part_form;
+mod parts_ui;
 mod pcb_ui;
 mod pointer_filter;
 mod preview;

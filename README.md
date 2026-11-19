@@ -296,7 +296,7 @@ for no frame; landscape or portrait) and the project's title block (title, date,
 revision, company and a comment), which every sheet's frame shows with its page number.
 The comment field wraps in the panel; only its line breaks start new lines in the frame.
 Local labels connect on their sheet only (nets are named `/Sheet/NAME`), global and power
-labels everywhere. Power ports (Power tool, P) are drawn like KiCad's power symbols: pick
+labels everywhere. Power ports (Power tool, ⌘P) are drawn like KiCad's power symbols: pick
 the glyph (bar, arrow, circle, ground, signal ground, chassis, protective earth) in the
 tool settings or Properties, or leave it on Auto, which goes by the name (GND, AGND, … get
 ground). Pins connect only through wires; there are no hidden pins. Messages lists pins
@@ -397,7 +397,18 @@ layout** puts them back.
 | right | Overview (project or library statistics) | ⌘7 |
 | right | Schematic setup: ERC severities and the pin conflict matrix | ⌘8 |
 | right, lower | Nets: every net with its pins, sheets and routing state; click selects it, double-click zooms to it | ⌘9 |
+| right, lower | Parts: the parts of all libraries the active editor places (see below) | ⌘0 |
 | left, bottom panel | Agent activity: the agent's calls this session, their arguments and results | – |
+
+The **Parts** panel lists the parts of the Project Library, the loaded libraries and the
+Built-in Library, grouped by library: schematic parts while the schematic is the active
+editor, board parts (mounting holes, logos) while the board is. Search matches every word
+in the name, description and properties (an MPN, say). Click a part to preview its symbol
+or footprint; double-click it (or Enter) to place it, copying it into the Project Library
+first. **P** on the schematic or the board opens the panel with the search field focused:
+type, ↓, Enter, then click on the canvas. Esc clears the search, a second Esc goes back to
+the canvas. Its context menu also opens a part in its library or copies it to the Project
+Library.
 
 Properties, Tool settings and Overview follow the editor tab you used last. Messages
 has a tab for the schematic, the board and the libraries in its title bar; each tab's

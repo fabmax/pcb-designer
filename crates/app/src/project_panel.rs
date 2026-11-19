@@ -961,7 +961,7 @@ pub fn header_button(ui: &mut Ui, icon: Icon, tip: &str, active: bool) -> egui::
     r.on_hover_text(tip)
 }
 
-fn chevron_paint(painter: &egui::Painter, rect: egui::Rect, open: bool, color: Color32) {
+pub fn chevron_paint(painter: &egui::Painter, rect: egui::Rect, open: bool, color: Color32) {
     let c = rect.center();
     let s = rect.width() * 0.22;
     let pts = if open {

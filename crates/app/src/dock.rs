@@ -26,6 +26,7 @@ pub enum Panel {
     SchematicSetup,
     Overview,
     Nets,
+    Parts,
     Activity,
 }
 
@@ -62,7 +63,7 @@ impl Group {
 }
 
 impl Panel {
-    pub const ALL: [Panel; 9] = [
+    pub const ALL: [Panel; 10] = [
         Panel::Project,
         Panel::Messages,
         Panel::Properties,
@@ -71,6 +72,7 @@ impl Panel {
         Panel::SchematicSetup,
         Panel::Overview,
         Panel::Nets,
+        Panel::Parts,
         Panel::Activity,
     ];
 
@@ -82,7 +84,7 @@ impl Panel {
             Panel::Properties | Panel::ToolSettings | Panel::BoardSetup | Panel::SchematicSetup | Panel::Overview => {
                 Group::RightTop
             }
-            Panel::Nets => Group::RightBottom,
+            Panel::Nets | Panel::Parts => Group::RightBottom,
         }
     }
 
@@ -96,6 +98,7 @@ impl Panel {
             Panel::SchematicSetup => "Schematic setup",
             Panel::Overview => "Overview",
             Panel::Nets => "Nets",
+            Panel::Parts => "Parts",
             Panel::Activity => "Agent activity",
         }
     }
@@ -110,6 +113,7 @@ impl Panel {
             Panel::SchematicSetup => Icon::SchematicSetup,
             Panel::Overview => Icon::Info,
             Panel::Nets => Icon::Nets,
+            Panel::Parts => Icon::Part,
             Panel::Activity => Icon::Activity,
         }
     }
@@ -125,6 +129,7 @@ impl Panel {
             Panel::SchematicSetup => Action::PanelSchematicSetup,
             Panel::Overview => Action::PanelOverview,
             Panel::Nets => Action::PanelNets,
+            Panel::Parts => Action::PanelParts,
             Panel::Activity => Action::PanelActivity,
         }
     }
