@@ -95,13 +95,13 @@ pub fn show(
     extra: Keys,
     row: impl FnMut(&mut Ui, usize),
 ) -> Output {
-    show_with_menu(ui, id, len, selected, max_height, space_activates, extra, row, None)
+    show_with_menu(ui, id, len, selected, max_height, space_activates, extra, row, None, &|_| None)
 }
 
 /// Fills the context menu of row `i`.
 pub type RowMenu<'a> = dyn FnMut(&mut Ui, usize) + 'a;
 
-/// [`show`] with a context menu on the rows (`menu` fills it for row `i`).
+/// [`show`] with a context menu on the rows and a background colour per row (`fill`) (`menu` fills it for row `i`).
 #[allow(clippy::too_many_arguments)]
 pub fn show_with_menu(
     ui: &mut Ui,
@@ -113,6 +113,7 @@ pub fn show_with_menu(
     extra: Keys,
     mut row: impl FnMut(&mut Ui, usize),
     mut menu: Option<&mut RowMenu>,
+    fill: &dyn Fn(usize) -> Option<egui::Color32>,
 ) -> Output {
     let mut out = Output::default();
     let focused = ui.memory(|m| m.has_focus(id));
@@ -159,6 +160,9 @@ pub fn show_with_menu(
                 continue;
             }
             let r = ui.interact(rect, id.with(i), Sense::click());
+            if let Some(c) = fill(i) {
+                ui.painter().rect_filled(rect, 4.0, c);
+            }
             if is_selected {
                 let fill = visuals.selection.bg_fill;
                 let fill = if shown_focused { fill } else { fill.gamma_multiply(0.5) };

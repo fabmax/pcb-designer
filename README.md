@@ -408,7 +408,9 @@ or footprint; double-click it (or Enter) to place it, copying it into the Projec
 first. **P** on the schematic or the board opens the panel with the search field focused:
 type, ↓, Enter, then click on the canvas. Esc clears the search, a second Esc goes back to
 the canvas. Its context menu also opens a part in its library or copies it to the Project
-Library.
+Library. The last row counts the matches in the KiCad libraries ("79 matches in the KiCad
+libraries", or "Import KiCad libraries" without a search); clicking it opens the KiCad
+import with the same search.
 
 Properties, Tool settings and Overview follow the editor tab you used last. Messages
 has a tab for the schematic, the board and the libraries in its title bar; each tab's

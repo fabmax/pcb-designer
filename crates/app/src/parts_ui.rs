@@ -11,6 +11,7 @@ use view::LibraryDoc;
 use view::item::Item;
 
 use crate::icons::{self, Icon};
+use crate::kicad_import::{KicadMatches, MATCH_LIMIT};
 use crate::library::{Open, PROJECT_LIB};
 use crate::nav_list;
 use crate::preview::{Empty, Preview};
@@ -53,6 +54,28 @@ pub enum Row {
         key: u64,
         part: PartId,
     },
+    /// The last row: the KiCad libraries' matches (opens the import window).
+    Kicad,
+}
+
+/// What the panel asks for.
+pub enum PartsAct {
+    /// A Project panel action (place, open, copy).
+    Tree(Act),
+    /// Open the KiCad import window with the panel's query.
+    Kicad,
+}
+
+/// The KiCad row's text.
+fn kicad_label(m: KicadMatches) -> String {
+    match m {
+        KicadMatches::Scanning => "Searching the KiCad libraries…".into(),
+        KicadMatches::NoLibraries | KicadMatches::Available => "Import KiCad libraries".into(),
+        KicadMatches::Found(0) => "No matches in the KiCad libraries".into(),
+        KicadMatches::Found(1) => "1 match in the KiCad libraries".into(),
+        KicadMatches::Found(n) if n >= MATCH_LIMIT => format!("{MATCH_LIMIT}+ matches in the KiCad libraries"),
+        KicadMatches::Found(n) => format!("{n} matches in the KiCad libraries"),
+    }
 }
 
 /// Does `part` match every word of `query` (lower case), in its name, description,
@@ -128,6 +151,10 @@ pub struct PartsPanel {
 }
 
 impl PartsPanel {
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+
     /// P: focus the search field with its text selected.
     pub fn focus_search(&mut self) {
         self.focus_search = true;
@@ -138,7 +165,7 @@ impl PartsPanel {
         self.preview.invalidate();
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, kind: Kind, sources: &[Source]) -> Option<Act> {
+    pub fn ui(&mut self, ui: &mut Ui, kind: Kind, sources: &[Source], kicad: KicadMatches) -> Option<PartsAct> {
         let title = match kind {
             Kind::Schematic => "Schematic parts",
             Kind::Board => "Board parts",
@@ -167,20 +194,23 @@ impl PartsPanel {
         }
         ui.add_space(4.0);
 
-        let rows = rows(sources, kind, &self.query, &self.collapsed);
+        let mut rows = rows(sources, kind, &self.query, &self.collapsed);
+        let no_parts = rows.is_empty();
+        rows.push(Row::Kicad);
         let source = |key: u64| sources.iter().find(|s| s.key == key);
         let part_of = |key: u64, id: PartId| source(key).and_then(|s| s.doc.library().parts.get(id));
         let selected = rows.iter().position(|r| match (r, self.selected) {
             (Row::Part { key, part }, Some((k, p))) => *key == k && *part == p,
             _ => false,
         });
-        let mut act = None;
+        let mut act: Option<Act> = None;
+        let mut kicad_clicked = false;
         let info_height = 2.0 * nav_list::row_height(ui);
         // The preview gives way to the list in a short panel.
         let preview_height = (ui.available_height() * 0.4).min(PREVIEW_HEIGHT);
         let list_height = (ui.available_height() - preview_height - info_height - 8.0).max(60.0);
         let mut toggle = None;
-        let out = if rows.is_empty() {
+        if no_parts {
             let text = match kind {
                 _ if !self.query.trim().is_empty() => "No parts match.",
                 Kind::Schematic => "No schematic parts in the libraries.",
@@ -189,12 +219,11 @@ impl PartsPanel {
                      holes, logos, fiducials); create one in a library."
                 }
             };
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), list_height), egui::Sense::hover());
-            ui.scope_builder(egui::UiBuilder::new().max_rect(rect.shrink(4.0)), |ui| {
-                ui.label(RichText::new(text).color(theme::text_dim()));
-            });
-            nav_list::Output::default()
-        } else {
+            ui.label(RichText::new(text).color(theme::text_dim()));
+            ui.add_space(4.0);
+        }
+        let list_height = (list_height - if no_parts { 40.0 } else { 0.0 }).max(40.0);
+        let out = {
             let mut menu = |ui: &mut Ui, i: usize| {
                 let Row::Part { key, part } = rows[i] else {
                     ui.close();
@@ -225,7 +254,8 @@ impl PartsPanel {
                     }
                 }
                 Row::Part { key, part } => {
-                    ui.add_space(16.0);
+                    // Names line up with the library titles (after the chevron's room).
+                    ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
                     if let Some(p) = part_of(*key, *part) {
                         nav_list::name(ui, &p.name);
                         if !p.description.is_empty() {
@@ -233,7 +263,14 @@ impl PartsPanel {
                         }
                     }
                 }
+                Row::Kicad => {
+                    let (r, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                    let color = if kicad == KicadMatches::Scanning { theme::text_dim() } else { theme::accent() };
+                    icons::paint(ui.painter(), r, Icon::Search, color);
+                    nav_list::name(ui, RichText::new(kicad_label(kicad)).color(color));
+                }
             };
+            let fill = |i: usize| matches!(rows[i], Row::Library { .. }).then(theme::panel);
             let out = egui::Frame::NONE
                 .fill(theme::panel_dark())
                 .corner_radius(4)
@@ -250,6 +287,7 @@ impl PartsPanel {
                         field_keys,
                         row_ui,
                         Some(&mut menu),
+                        &fill,
                     )
                 })
                 .inner;
@@ -259,6 +297,13 @@ impl PartsPanel {
                 && (out.activate.is_some() || ui.input(|inp| inp.pointer.any_click()))
             {
                 toggle = Some(key);
+            }
+            // The KiCad row is a button: a click opens the import window.
+            if let Some(i) = out.select.or(out.activate)
+                && rows[i] == Row::Kicad
+                && (out.activate.is_some() || ui.input(|inp| inp.pointer.any_click()))
+            {
+                kicad_clicked = true;
             }
             out
         };
@@ -273,13 +318,16 @@ impl PartsPanel {
         let landed = match out.select {
             Some(i) if !clicked && matches!(rows[i], Row::Library { .. }) => {
                 let up = selected.is_some_and(|s| i < s);
-                let part = |j: &usize| matches!(rows[*j], Row::Part { .. });
+                let part = |j: &usize| !matches!(rows[*j], Row::Library { .. });
                 if up { (0..i).rev().find(part) } else { (i..rows.len()).find(part) }.or(selected)
             }
             other => other,
         };
         if let Some(Row::Part { key, part }) = landed.map(|i| &rows[i]) {
             self.selected = Some((*key, *part));
+        }
+        if kicad_clicked {
+            return Some(PartsAct::Kicad);
         }
         if let Some(Row::Part { key, part }) = out.activate.map(|i| &rows[i]) {
             self.selected = Some((*key, *part));
@@ -329,7 +377,7 @@ impl PartsPanel {
                 }
             }
         }
-        act
+        act.map(PartsAct::Tree)
     }
 }
 
@@ -379,6 +427,7 @@ mod tests {
             rows.iter()
                 .map(|r| match r {
                     Row::Library { key, count, .. } => format!("#{key}:{count}"),
+                    Row::Kicad => "kicad".into(),
                     Row::Part { key, part } => {
                         let s = sources.iter().find(|s| s.key == *key).unwrap();
                         s.doc.library().parts.get(*part).unwrap().name.clone()
@@ -396,5 +445,14 @@ mod tests {
         let folded = HashSet::from([1]);
         assert_eq!(names(&rows(&sources, Kind::Schematic, "", &folded)), ["#1:2", "#2:1", "LM358"]);
         assert_eq!(names(&rows(&sources, Kind::Schematic, "r2", &folded)), ["#1:1", "R2"]);
+    }
+
+    #[test]
+    fn kicad_row_says_what_a_click_finds() {
+        assert_eq!(kicad_label(KicadMatches::Available), "Import KiCad libraries");
+        assert_eq!(kicad_label(KicadMatches::NoLibraries), "Import KiCad libraries");
+        assert_eq!(kicad_label(KicadMatches::Found(1)), "1 match in the KiCad libraries");
+        assert_eq!(kicad_label(KicadMatches::Found(17)), "17 matches in the KiCad libraries");
+        assert_eq!(kicad_label(KicadMatches::Found(MATCH_LIMIT)), "1000+ matches in the KiCad libraries");
     }
 }

@@ -26,6 +26,21 @@ use crate::preview::{Empty, Preview};
 use crate::theme;
 
 const RESULT_LIMIT: usize = 400;
+/// Matches counted for the Parts panel (more show as "1000+").
+pub const MATCH_LIMIT: usize = 1000;
+
+/// What the KiCad libraries have for a Parts panel search.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KicadMatches {
+    /// The libraries are being scanned.
+    Scanning,
+    /// None installed or downloaded.
+    NoLibraries,
+    /// No query: the libraries are there.
+    Available,
+    /// Matches of the query (at most [`MATCH_LIMIT`]).
+    Found(usize),
+}
 /// Height of the preview boxes under the selection.
 const PREVIEW_HEIGHT: f32 = 180.0;
 /// Height of the names over the preview boxes.
@@ -162,6 +177,11 @@ pub struct KicadImport {
     download: Option<DownloadJob>,
     remote: Remote,
     catalog: Option<Catalog>,
+    /// A catalog being scanned in the background (for the Parts panel's match count),
+    /// with the folders it scans.
+    scanning: Option<(Vec<PathBuf>, std::thread::JoinHandle<Catalog>)>,
+    /// The Parts panel's last count: query, footprints, matches.
+    counted: Option<(String, bool, KicadMatches)>,
     query: String,
     kind: Kind,
     results: Vec<String>,
@@ -201,6 +221,8 @@ impl KicadImport {
             download: None,
             remote: Remote::Idle,
             catalog: None,
+            scanning: None,
+            counted: None,
             query: String::new(),
             kind: Kind::Symbols,
             results: Vec::new(),
@@ -221,6 +243,7 @@ impl KicadImport {
         if root != self.root {
             self.root = root;
             self.catalog = None;
+            self.counted = None;
             self.results_for = None;
         }
     }
@@ -246,7 +269,73 @@ impl KicadImport {
 
     fn catalog(&mut self) -> &mut Catalog {
         let paths = self.paths();
+        // A background scan of the same folders is waited for rather than repeated.
+        if self.catalog.is_none()
+            && let Some((scanned, job)) = self.scanning.take()
+            && let Ok(c) = job.join()
+            && scanned == paths
+        {
+            self.catalog = Some(c);
+        }
         self.catalog.get_or_insert_with(|| Catalog::scan(&paths))
+    }
+
+    /// How many KiCad symbols (`footprints`: footprints) match `query`, without blocking:
+    /// the first call scans the libraries in the background.
+    pub fn match_count(&mut self, ctx: &egui::Context, query: &str, footprints: bool) -> KicadMatches {
+        if self.catalog.is_none() {
+            let paths = self.paths();
+            match self.scanning.take() {
+                Some((scanned, job)) if job.is_finished() => {
+                    if let Ok(c) = job.join()
+                        && scanned == paths
+                    {
+                        self.catalog = Some(c);
+                    }
+                }
+                Some(running) => {
+                    self.scanning = Some(running);
+                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                    return KicadMatches::Scanning;
+                }
+                None => {
+                    let scan = paths.clone();
+                    self.scanning = Some((paths, std::thread::spawn(move || Catalog::scan(&scan))));
+                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                    return KicadMatches::Scanning;
+                }
+            }
+            if self.catalog.is_none() {
+                // Scanned other folders (the settings changed meanwhile): again.
+                return self.match_count(ctx, query, footprints);
+            }
+        }
+        let query = query.trim();
+        if let Some((q, f, m)) = &self.counted
+            && q == query
+            && *f == footprints
+        {
+            return *m;
+        }
+        let c = self.catalog.as_ref().expect("scanned");
+        let total = if footprints { c.footprint_count() } else { c.symbol_count() };
+        let m = if total == 0 {
+            KicadMatches::NoLibraries
+        } else if query.is_empty() {
+            KicadMatches::Available
+        } else {
+            let found =
+                if footprints { c.search_footprints(query, MATCH_LIMIT) } else { c.search_symbols(query, MATCH_LIMIT) };
+            KicadMatches::Found(found.len())
+        };
+        self.counted = Some((query.to_string(), footprints, m));
+        m
+    }
+
+    /// Open the window searching `query` (symbols, or `footprints`).
+    pub fn open_with(&mut self, query: &str, footprints: bool) {
+        self.set_query(query.trim(), footprints);
+        self.open = true;
     }
 
     fn installed(&self) -> Option<Installed> {
@@ -330,6 +419,7 @@ impl KicadImport {
 
     fn rescan(&mut self) {
         self.catalog = None;
+        self.counted = None;
         self.results_for = None;
         self.forget_previews();
     }

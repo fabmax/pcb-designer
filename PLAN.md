@@ -762,6 +762,12 @@ the current design of each area with the gotchas a change needs to know, the pla
   surrenders the field's and list's focus so the canvas gets R / X / Esc. P is
   `SchFindPart` / `PcbFindPart` (two actions, as an action has one context); power ports
   moved to ⌘P. The preview is `preview::Preview`, invalidated when the library changes.
+  The last row (`Row::Kicad`) counts the KiCad libraries' matches of the query
+  (symbols, or footprints on the board; `KicadImport::match_count`, cached per query,
+  at most `MATCH_LIMIT`) and opens the import window with the query. The catalog is
+  scanned on a background thread the first time (reading every `.kicad_sym` takes
+  seconds); `catalog()` joins that scan instead of starting another. Library rows get
+  their own background through `nav_list::show_with_menu`'s `fill`.
 - **Nets panel** (`nets_ui.rs`): rows from the schematic netlist (pins, sheets) and the
   board's ratsnest by net index (routed, n unrouted, no pads), cached per document
   revision and drawn with `show_rows`. A click is `PcbApp::select_net`: the net's

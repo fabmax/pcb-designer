@@ -3601,11 +3601,14 @@ impl PcbApp {
 
     /// The Parts panel, over the project's library, the loaded libraries (Built-in last)
     /// and for the editor last active.
-    fn parts_ui(&mut self, ui: &mut egui::Ui) -> Option<project_panel::Act> {
+    fn parts_ui(&mut self, ui: &mut egui::Ui) -> Option<crate::parts_ui::PartsAct> {
         let kind = match self.active.kind() {
             ViewKind::Schematic => crate::parts_ui::Kind::Schematic,
             ViewKind::Board => crate::parts_ui::Kind::Board,
         };
+        // Board parts are made from footprints, schematic parts from symbols.
+        let board = kind == crate::parts_ui::Kind::Board;
+        let kicad = self.kicad.match_count(ui.ctx(), self.parts.query(), board);
         let issues: Vec<Option<String>> =
             self.all_libs_mut().map(|l| l.issues().first().map(|(_, m)| m.clone())).collect();
         // The fields, not `all_libs`: the panel is borrowed mutably alongside.
@@ -3627,7 +3630,7 @@ impl PcbApp {
             .collect();
         // Project Library first, Built-in last.
         sources.sort_by_key(|s| (s.key != PROJECT_LIB, s.doc.is_builtin()));
-        self.parts.ui(ui, kind, &sources)
+        self.parts.ui(ui, kind, &sources, kicad)
     }
 
     fn panel_ui(&mut self, ui: &mut egui::Ui, panel: Panel) {
@@ -3685,11 +3688,15 @@ impl PcbApp {
                     self.show_message(show);
                 }
             }
-            Panel::Parts => {
-                if let Some(act) = self.parts_ui(ui) {
-                    self.tree_act(act);
+            Panel::Parts => match self.parts_ui(ui) {
+                Some(crate::parts_ui::PartsAct::Tree(act)) => self.tree_act(act),
+                Some(crate::parts_ui::PartsAct::Kicad) => {
+                    let board = self.active.kind() == ViewKind::Board;
+                    let query = self.parts.query().to_string();
+                    self.kicad.open_with(&query, board);
                 }
-            }
+                None => {}
+            },
             Panel::Nets => match self.nets.ui(ui, &self.project.lib.doc) {
                 Some(NetsAct::Select(net)) => self.select_net(&net, false),
                 Some(NetsAct::Zoom(net)) => self.select_net(&net, true),
