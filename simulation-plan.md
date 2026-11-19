@@ -42,8 +42,10 @@ simulator is its own frame; ours should be a tab that can sit beside the schemat
 
 ## Engine: ngspice
 
-**Decision: ngspice**, run as a separate process in batch mode, behind a small
-`Backend` trait so the shared library can be added later.
+**Decision: ngspice**, behind a small `Backend` trait. It starts as a separate process
+in batch mode (simplest to get going); the shared library (libngspice) is the target for
+the app and comes as its own milestone (S8). The process backend stays for tests, the
+CLI and as a fallback when only the `ngspice` executable is installed.
 
 - ngspice is the de-facto open SPICE: KiCad, Qucs-S and EasyEDA use it, so vendor
   models and KiCad projects work with it. BSD licence (core), so it can be shipped
@@ -52,7 +54,7 @@ simulator is its own frame; ours should be a tab that can sit beside the schemat
   iteration) would be quick for R/C/L but would never reach that.
 - Alternatives considered: Xyce (GPL, heavy to build, no shared library on all
   platforms), writing our own (see above), a WASM ngspice (no gain for a desktop app).
-- **Process, not shared library, first:**
+- **Process first, because:**
   - `ngspice -b -r out.raw circuit.cir`: write the netlist, read the raw file back. The
     raw format is simple (text header, then binary doubles, point-major; complex for AC).
   - Crash isolation: a model that crashes ngspice (it happens) doesn't take the app and
@@ -61,9 +63,15 @@ simulator is its own frame; ours should be a tab that can sit beside the schemat
     process each lets the tuner or a sweep run several at once.
   - Headless and testable: tests, MCP and the CLI run it the same way.
   - Cost: process start (~20–50 ms) and no live streaming of a transient while it runs.
-    Both matter only for the tuner and for long runs; the shared library
-    (`ngSpice_Init`, `SendData` callbacks, `bg_run`, `bg_halt`, loaded with `libloading`
-    so the app still builds and runs without it) is a later backend behind the same trait.
+    Both matter only for the tuner and for long runs, which is what S8 is for.
+- **Shared library (S8):** `ngSpice_Init` with the `SendChar` / `SendStat` /
+  `SendData` / `BGThreadRunning` callbacks, `ngSpice_Circ` to load the netlist,
+  `bg_run` / `bg_halt`, vectors read through `ngGet_Vec_Info` (or streamed by
+  `SendData`). Loaded at runtime with `libloading`, so the app builds and runs without
+  it. Gotchas to design for: one instance per process (runs are serialised; parallel
+  sweeps fall back to processes), a crash in a model takes the app down with unsaved
+  work (a "Run in a separate process" setting stays available for that), and
+  `ControlledExit` must be handled instead of letting ngspice end the app.
 - **Finding ngspice:** a path in Settings, else `NGSPICE` in the environment, else
   `ngspice` on `PATH` and the usual install places (Homebrew `/opt/homebrew/bin`,
   `/usr/local/bin`, `C:\Program Files\Spice64\bin`). Not found: the Simulation panel says
@@ -223,10 +231,11 @@ New Built-in parts in a **Simulation** category, each with only a "No footprint"
 variant, so they are off the board by the existing rule (no sync changes, no BOM entry,
 no board warnings):
 
-- `V_DC`, `V_Sine`, `V_Pulse`, `V_PWL` and `I_DC`, `I_Sine`, `I_Pulse`: a source circle
-  with `+`/arrow and a glyph for the waveform (bar, sine, square, ramp). They differ only
-  in the default `Source`; the Properties panel can switch the waveform (the glyph then
-  stays the part's — acceptable, and the value text shows the truth).
+- `VSource` and `ISource`: one part per kind, a source circle with `+`/`−` (voltage) or
+  an arrow (current). The waveform (DC, sine, pulse, PWL, exponential) and its numbers
+  are chosen in the component's Properties; a new one is DC (0 V / 0 A, AC magnitude 0).
+  The symbol doesn't show the waveform (a glyph that follows it is in **Later**); the
+  value text does ("SIN 1 V 1 kHz").
 - No ground part: ground is a GND power port as usual (see Netlist).
 
 Pins are `Passive`, so the ERC matrix needs no changes: a source on a net with power
@@ -235,8 +244,7 @@ port or power flag the real design has there.
 
 For a design meant for a real board, a **test bench sheet** keeps stimuli out of the way:
 a sub-sheet "Testbench" with the sources, connected by global labels. That works with
-today's hierarchy; the plan only documents it (and the demo shows it). An "exclude this
-sheet from printing" flag can come with printing.
+today's hierarchy: nothing new to build, README documents it and the demo shows it.
 
 ### Built-in library models
 
@@ -460,7 +468,8 @@ Datasheet). Mapping them:
   model or subcircuit embedded; missing files are reported.
 - Legacy (KiCad 5) `Spice_Primitive`, `Spice_Model`, `Spice_Node_Sequence` likewise.
 - R/C/L without fields are inferred from the reference prefix, as KiCad does.
-- KiCad's `Simulation_SPICE` symbols map to our source parts by `lib_id`.
+- KiCad's `Simulation_SPICE` symbols (VDC, VSIN, VPULSE, …) map to `VSource` /
+  `ISource` by `lib_id`, the waveform from `Sim.Type` / `Sim.Params`.
 - The `.kicad_sch` text items with SPICE directives (`.tran …`) become analyses and
   `extra` lines.
 - Verified like the netlist import: with `KICAD_CLI` set, KiCad's simulation demo
@@ -470,7 +479,7 @@ Datasheet). Mapping them:
 ## Milestones
 
 Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. The first four give
-a usable simulator; S5–S7 make it comfortable and compatible.
+a usable simulator; S5–S8 make it comfortable, compatible and fast.
 
 ### S1: Engine and netlist (headless)
 
@@ -543,11 +552,22 @@ a usable simulator; S5–S7 make it comfortable and compatible.
 - The mapping in "KiCad import" above, the `Simulation_SPICE` parts, directives, and the
   `kicad-cli` comparison test.
 
+### S8: Shared-library backend
+
+- `Backend` for libngspice (see "Engine"), found like the executable (a path in
+  Settings, Homebrew's `libngspice`, `libngspice.so.0`, `ngspice.dll`), the app's
+  default when found.
+- Live transient: traces grow while it runs (`SendData`), progress from `SendStat`,
+  Stop through `bg_halt`.
+- The tuner re-runs in-process (no process start), parallel sweeps still use processes.
+- The same tests as the process backend, run against both when both are found.
+
 ## Later
 
-- ngspice shared-library backend (live transient streaming, faster tuner), loaded at
-  runtime; bundling ngspice with release builds (macOS dylib signing, Windows DLL,
-  Linux: the distribution's package).
+- Bundling ngspice with release builds (macOS dylib signing, Windows DLL, Linux: the
+  distribution's package).
+- Source symbols that show the selected waveform (sine, square, ramp glyph), which needs
+  symbols drawn from component data.
 - `.include` / `.lib` of external model files (relative to the project), a project
   model library browser, vendor model import (pasting a whole `.lib` with many
   `.subckt`s and picking one).
@@ -563,15 +583,10 @@ a usable simulator; S5–S7 make it comfortable and compatible.
 - Board-aware simulation (track resistance, parasitic capacitance from the layout).
 - KiCad export of simulation fields (with the KiCad project export).
 
-## Open questions
+## Decisions taken
 
-- **Process vs. shared library first.** The plan starts with the process for robustness
-  and testability; if live streaming of long transients matters early, the shared
-  library could come with S3 instead.
-- **One source part with a waveform picker vs. one part per waveform.** The plan has
-  separate parts (clear in the Parts panel, a matching glyph) with a switchable
-  waveform. A single `V_Source` whose glyph follows the waveform would need symbols that
-  change with component data, which nothing does today.
-- **Sources in the drawing.** Sources are ordinary components on the sheet (KiCad,
-  LTspice). If they should stay out of a real design's printed schematic, the test bench
-  sub-sheet covers it; a per-sheet "simulation only" flag would make it explicit.
+- Process backend first to get started; the shared library is the eventual target (S8).
+- One source part per kind (`VSource`, `ISource`), waveform picked in Properties; the
+  symbol doesn't follow the waveform yet (Later).
+- Sources stay ordinary components; a test bench sub-sheet keeps them out of a real
+  design's main sheets.
