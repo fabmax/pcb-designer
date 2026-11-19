@@ -29,11 +29,19 @@ pub enum Page {
     Tools,
     Agent,
     Libraries,
+    Simulation,
 }
 
 impl Page {
-    pub const ALL: [Page; 6] =
-        [Page::Appearance, Page::LayerColors, Page::Keymap, Page::Tools, Page::Agent, Page::Libraries];
+    pub const ALL: [Page; 7] = [
+        Page::Appearance,
+        Page::LayerColors,
+        Page::Keymap,
+        Page::Tools,
+        Page::Agent,
+        Page::Libraries,
+        Page::Simulation,
+    ];
 
     /// By its saved name (`agent`), for `--show settings:agent`.
     pub fn parse(name: &str) -> Option<Page> {
@@ -48,6 +56,7 @@ impl Page {
             Page::Tools => "Tools",
             Page::Agent => "Agent access",
             Page::Libraries => "Libraries",
+            Page::Simulation => "Simulation",
         }
     }
 }
@@ -88,6 +97,7 @@ const ENTRIES: &[Entry] = &[
     entry(Page::Libraries, "Most library tabs", "tabs preview limit maximum open items parts symbols footprints"),
     entry(Page::Libraries, "KiCad library folder", "download path directory kicad"),
     entry(Page::Libraries, "Settings file", "config configuration path json location folder"),
+    entry(Page::Simulation, "ngspice", "spice simulator path executable install program version"),
 ];
 
 /// The search words (lower case; every one has to match).
@@ -184,6 +194,8 @@ pub struct Changes {
     pub kicad_dir: bool,
     /// The most library item tabs changed.
     pub library_tabs: bool,
+    /// The ngspice path changed: look for it again.
+    pub ngspice: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -213,6 +225,10 @@ pub struct SettingsWindow {
     port_text: Option<String>,
     /// The KiCad folder being typed.
     kicad_text: Option<String>,
+    /// The ngspice path being typed.
+    ngspice_text: Option<String>,
+    /// What was found for the configured ngspice path (the path it was for, the text).
+    ngspice_found: Option<(Option<std::path::PathBuf>, Result<String, String>)>,
 }
 
 fn search_id() -> egui::Id {
@@ -307,6 +323,7 @@ impl SettingsWindow {
                             Page::Tools => tools(ui, &mut rows, settings, &mut changes),
                             Page::Agent => self.agent(ui, &mut rows, settings, agent, &mut changes),
                             Page::Libraries => self.libraries(ui, &mut rows, settings, &mut changes),
+                            Page::Simulation => self.simulation(ui, &mut rows, settings, &mut changes),
                         }
                     });
                 });
@@ -608,6 +625,62 @@ impl SettingsWindow {
             settings.library_tabs = None;
             changes.kicad_dir = true;
             changes.library_tabs = true;
+            changes.save = true;
+        });
+    }
+}
+
+impl SettingsWindow {
+    fn simulation(&mut self, ui: &mut Ui, rows: &mut Rows, settings: &mut Settings, changes: &mut Changes) {
+        let help = "Empty: found on PATH and in the usual install folders (Homebrew, /usr/bin, Program Files).";
+        let shown = settings.ngspice.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+        rows.row(ui, "ngspice", Some(help), |ui| {
+            let text = self.ngspice_text.get_or_insert_with(|| shown.clone());
+            let r = ui.add(egui::TextEdit::singleline(text).hint_text("automatic").desired_width(320.0));
+            if r.lost_focus() && *text != shown {
+                settings.ngspice = (!text.trim().is_empty()).then(|| text.trim().into());
+                changes.ngspice = true;
+                changes.save = true;
+            }
+            if !r.has_focus() {
+                self.ngspice_text = None;
+            }
+            if ui.button("Choose…").clicked()
+                && let Some(file) = rfd::FileDialog::new().set_title("ngspice executable").pick_file()
+            {
+                settings.ngspice = Some(file);
+                self.ngspice_text = None;
+                changes.ngspice = true;
+                changes.save = true;
+            }
+        });
+        if self.ngspice_found.as_ref().is_none_or(|(p, _)| *p != settings.ngspice) {
+            let found = match sim::Ngspice::find(settings.ngspice.as_deref()) {
+                Ok(n) => {
+                    Ok(format!("{} · {}", n.path.display(), n.version().unwrap_or_else(|| "version unknown".into())))
+                }
+                Err(e) => Err(format!(
+                    "{e}. Install it (macOS: brew install ngspice; Linux: your package manager; Windows: \
+                     ngspice.sourceforge.io) or choose where it is."
+                )),
+            };
+            self.ngspice_found = Some((settings.ngspice.clone(), found));
+        }
+        if let Some((_, found)) = &self.ngspice_found
+            && rows.filter.entry(Page::Simulation, "ngspice")
+        {
+            ui.horizontal(|ui| {
+                ui.add_space(LABEL_WIDTH);
+                match found {
+                    Ok(t) => ui.label(RichText::new(format!("Found: {t}")).color(theme::success())),
+                    Err(e) => ui.label(RichText::new(e).color(theme::warn())),
+                };
+            });
+        }
+        reset(ui, rows, || {
+            settings.ngspice = None;
+            self.ngspice_text = None;
+            changes.ngspice = true;
             changes.save = true;
         });
     }

@@ -4,4 +4,5 @@ mod bench;
 mod netlist;
 mod ngspice;
 mod raw;
+mod session;
 mod setup;

@@ -64,6 +64,18 @@ impl Ngspice {
     }
 }
 
+impl Ngspice {
+    /// "ngspice-47" (from `ngspice -v`), if it runs.
+    pub fn version(&self) -> Option<String> {
+        let out = Command::new(&self.path).arg("-v").stdin(Stdio::null()).output().ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        text.lines().find_map(|l| {
+            let l = l.trim_start_matches('*').trim();
+            l.starts_with("ngspice").then(|| l.split(':').next().unwrap_or(l).trim().to_string())
+        })
+    }
+}
+
 /// A stop button for a running simulation.
 #[derive(Clone, Debug, Default)]
 pub struct Cancel(Arc<AtomicBool>);

@@ -71,6 +71,7 @@ mod script;
 mod settings;
 mod settings_ui;
 mod sheet_picker;
+mod sim_ui;
 mod theme;
 #[cfg(target_os = "macos")]
 mod title_bar;

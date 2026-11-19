@@ -14,6 +14,7 @@ pub mod ngspice;
 pub mod raw;
 pub mod report;
 pub mod results;
+pub mod session;
 
 use editor_core::connectivity::Connectivity;
 use model::{Analysis, Project};
@@ -22,6 +23,7 @@ pub use netlist::{Level, Netlist, SimProblem};
 pub use ngspice::{Cancel, Ngspice};
 pub use raw::{Plot, Vector};
 pub use results::SimResult;
+pub use session::{Attempt, Finished, Outcome, Session, SharedBackend};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SimError {

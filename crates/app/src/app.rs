@@ -43,6 +43,7 @@ use crate::sch_ui;
 use crate::script::Script;
 use crate::settings::Settings;
 use crate::settings_ui::{AgentCmd, AgentStatus, Page as SettingsPage, SettingsWindow};
+use crate::sim_ui::{SimAct, SimPanel};
 use crate::theme;
 #[cfg(target_os = "macos")]
 use crate::title_bar;
@@ -304,6 +305,7 @@ pub struct PcbApp {
     mcp_port: Option<u16>,
     /// The Nets panel's state.
     nets: NetsPanel,
+    sim: SimPanel,
     parts: crate::parts_ui::PartsPanel,
     /// A panel button being dragged to another place in the bars.
     dock_drag: Option<Panel>,
@@ -457,6 +459,7 @@ impl PcbApp {
             mcp_port: opts.mcp,
             tools_changed: None,
             nets: NetsPanel::default(),
+            sim: SimPanel::default(),
             parts: Default::default(),
             dock_drag: None,
             drop_zones: Vec::new(),
@@ -953,6 +956,7 @@ impl PcbApp {
         }
         self.close_missing_sheets();
         self.properties = Properties::default();
+        self.sim.clear();
         self.sch.set_tool(SchTool::Select);
         let settings = self.pcb.settings.clone();
         self.pcb = PcbPlacer::default();
@@ -2426,6 +2430,12 @@ impl PcbApp {
         if let Some(panel) = Panel::of_action(action) {
             return self.settings.dock.toggle(panel);
         }
+        match action {
+            Action::RunSimulation => return self.run_simulation(None),
+            Action::StopSimulation => return self.sim.session.stop(),
+            Action::ShowSimNetlist => return self.sim.show_window(false),
+            _ => {}
+        }
         if matches!(action, Action::SchFindPart | Action::PcbFindPart) {
             self.settings.dock.show(Panel::Parts);
             return self.parts.focus_search();
@@ -2542,7 +2552,11 @@ impl PcbApp {
             | Action::PanelParts
             | Action::SchFindPart
             | Action::PcbFindPart
-            | Action::PanelActivity => return,
+            | Action::PanelActivity
+            | Action::PanelSimulation
+            | Action::RunSimulation
+            | Action::StopSimulation
+            | Action::ShowSimNetlist => return,
         };
         let view = self.active;
         if key_action == KeyAction::Delete && !self.confirm_sheet_delete(&self.panes.selection(view)) {
@@ -2682,7 +2696,11 @@ impl PcbApp {
             | Action::PanelParts
             | Action::SchFindPart
             | Action::PcbFindPart
-            | Action::PanelActivity => None,
+            | Action::PanelActivity
+            | Action::PanelSimulation
+            | Action::RunSimulation
+            | Action::StopSimulation
+            | Action::ShowSimNetlist => None,
         };
         if let Some(m) = msg {
             self.set_status(m);
@@ -2750,6 +2768,7 @@ impl PcbApp {
             headless_command: self.headless_command(),
             move_to_sheet: !self.movable_to_sheet().is_empty(),
             erc_markers: self.doc().erc_markers(),
+            sim_running: self.sim.session.running().is_some(),
         })
     }
 
@@ -2868,6 +2887,9 @@ impl PcbApp {
         }
         if c.kicad_dir {
             self.kicad.set_root(self.settings.kicad_dir());
+        }
+        if c.ngspice {
+            self.sim.forget_ngspice();
         }
         if c.save {
             self.save_settings();
@@ -3575,7 +3597,7 @@ impl PcbApp {
         let mut header_act = None;
         // The Messages tabs sit in the title bar, or below it in a narrow panel.
         let message_tabs = (panel == Panel::Messages)
-            .then(|| messages::status(&self.project.lib.doc, &mut self.libraries))
+            .then(|| messages::status(&self.project.lib.doc, &mut self.libraries, self.sim.session.attempt()))
             .map(|status| (status, ui.available_width() >= messages::TABS_WIDTH + 120.0));
         ui.horizontal(|ui| {
             ui.label(RichText::new(panel.title()).strong());
@@ -3702,7 +3724,8 @@ impl PcbApp {
             },
             Panel::Messages => {
                 let tab = self.message_tab;
-                if let Some(show) = messages::ui(ui, tab, &mut self.project.lib.doc, &mut self.libraries) {
+                let attempt = self.sim.session.attempt();
+                if let Some(show) = messages::ui(ui, tab, &mut self.project.lib.doc, &mut self.libraries, attempt) {
                     self.show_message(show);
                 }
             }
@@ -3727,6 +3750,27 @@ impl PcbApp {
                 }
                 None => {}
             },
+            Panel::Simulation => {
+                let configured = self.settings.ngspice_path();
+                // Look for ngspice once the panel shows (its hint shows when missing).
+                _ = self.sim.ngspice(configured);
+                match self.sim.ui(ui, &mut self.project.lib.doc, &mut message) {
+                    Some(SimAct::Run(id)) => self.run_simulation(Some(id)),
+                    Some(SimAct::Stop) => self.sim.session.stop(),
+                    Some(SimAct::ShowNetlist) => self.sim.show_window(false),
+                    Some(SimAct::ShowLog) => self.sim.show_window(true),
+                    Some(SimAct::OpenSettings) => {
+                        self.settings_win.show(Some(SettingsPage::Simulation), &mut self.settings)
+                    }
+                    Some(SimAct::ShowMessages) => {
+                        self.message_tab = messages::Category::Simulation;
+                        self.messages_open = true;
+                        self.settings.dock.show(Panel::Messages);
+                    }
+                    Some(SimAct::SelectNet(net)) => self.select_net(&net, false),
+                    None => {}
+                }
+            }
             Panel::Activity => {
                 if crate::activity_ui::ui(ui, &self.agent.activity, self.agent.is_running()) {
                     self.agent.activity.clear();
@@ -3736,6 +3780,31 @@ impl PcbApp {
         }
         if let Some(m) = message {
             self.status = Some((m, Instant::now()));
+        }
+    }
+
+    /// Runs an analysis (`None`: the one the Simulation panel shows; an operating point
+    /// is added when there is none) and shows the panel.
+    fn run_simulation(&mut self, analysis: Option<Id>) {
+        self.commit_text_edit();
+        self.settings.dock.show(Panel::Simulation);
+        let setup = &self.doc().project().schematic.simulation;
+        let id = match analysis.or(self.sim.current(setup).map(|a| a.id)) {
+            Some(id) => id,
+            None => {
+                let mut setup = setup.clone();
+                let a = Analysis::new("Operating point", AnalysisKind::Op);
+                let id = a.id;
+                setup.analyses.push(a);
+                if let Err(e) = self.doc_mut().execute(Command::SetSimulation { simulation: setup }) {
+                    return self.set_status(e.to_string());
+                }
+                id
+            }
+        };
+        let configured = self.settings.ngspice_path();
+        if let Err(e) = self.sim.run(&mut self.project.lib.doc, id, configured) {
+            self.set_status(e);
         }
     }
 
@@ -3849,11 +3918,11 @@ impl PcbApp {
         // Opening the Messages panel on a fine category shows the first one with problems.
         let open = self.settings.dock.is_open(Panel::Messages);
         if open && !self.messages_open {
-            let status = messages::status(&self.project.lib.doc, &mut self.libraries);
+            let status = messages::status(&self.project.lib.doc, &mut self.libraries, self.sim.session.attempt());
             self.message_tab = messages::tab_to_open(self.message_tab, &status);
         }
         self.messages_open = open;
-        let keys = messages::keys(&self.project.lib.doc, &mut self.libraries);
+        let keys = messages::keys(&self.project.lib.doc, &mut self.libraries, self.sim.session.attempt());
         self.unseen.update(keys, self.settings.dock.is_open(Panel::Messages));
         // Save once a resize is done.
         if self.settings.dock != self.saved_dock && !ctx.input(|i| i.pointer.any_down()) {
@@ -3926,6 +3995,16 @@ impl PcbApp {
                 ui.label(RichText::new(m).color(theme::warn()));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if let Some(text) = self.sim.running_text() {
+                    let r = ui
+                        .add(egui::Label::new(RichText::new(text).color(theme::accent())).sense(egui::Sense::click()))
+                        .on_hover_text("Show the Simulation panel (⌘. stops it)");
+                    ui.spinner();
+                    if r.clicked() {
+                        self.settings.dock.show(Panel::Simulation);
+                    }
+                    ui.separator();
+                }
                 if let Some(url) = self.agent.url() {
                     let recent = self.agent.last.as_ref().filter(|(_, t)| t.elapsed() < Duration::from_secs(4));
                     let text = match recent {
@@ -4896,6 +4975,13 @@ impl eframe::App for PcbApp {
                 pane.it.refresh(&mut self.project.lib.doc.target(pane.view));
             }
         }
+        if let Some(m) = self.sim.poll(&self.project.lib.doc) {
+            self.set_status(m);
+        }
+        if self.sim.session.running().is_some() {
+            ctx.request_repaint_after(Duration::from_millis(100));
+        }
+        self.sim.window_ui(&ctx, &self.project.lib.doc);
         self.update_dock(&ctx);
         self.name_prompt_ui(&ctx);
         self.sheet_picker_ui(&ctx);

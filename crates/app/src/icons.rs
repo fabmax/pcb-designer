@@ -72,6 +72,10 @@ icons! {
     SchematicSetup => "schematic-setup",
     Nets => "nets",
     Activity => "tabler/activity",
+    Simulation => "tabler/wave-sine",
+    /// Run and stop a simulation.
+    Play => "tabler/player-play",
+    Stop => "tabler/player-stop",
     /// Hide a panel.
     Minus => "tabler/minus",
     /// Panel header buttons.

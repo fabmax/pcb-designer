@@ -116,6 +116,8 @@ pub struct MenuState<'a> {
     pub move_to_sheet: bool,
     /// ERC markers are shown on the schematic.
     pub erc_markers: bool,
+    /// A simulation is running.
+    pub sim_running: bool,
 }
 
 pub const APP_NAME: &str = "PCB Designer";
@@ -257,6 +259,17 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
         view.extend([Entry::Separator, Entry::System(System::Fullscreen)]);
     }
     out.push(menu("View", view));
+
+    out.push(menu(
+        "Simulation",
+        vec![
+            action("Run simulation", Action::RunSimulation, true),
+            action("Stop simulation", Action::StopSimulation, s.sim_running),
+            Entry::Separator,
+            action("Show Simulation panel", Action::PanelSimulation, true),
+            action("Show SPICE netlist and log", Action::ShowSimNetlist, true),
+        ],
+    ));
 
     let mut tools = vec![
         item("Run design rule check", Cmd::Drc),
@@ -439,6 +452,7 @@ mod tests {
             headless_command: "claude mcp add …".into(),
             move_to_sheet: false,
             erc_markers: true,
+            sim_running: false,
         }
     }
 
@@ -458,9 +472,9 @@ mod tests {
         let keymap = Keymap::default();
         let titles = |m: &[Menu]| m.iter().map(|m| m.title.clone()).collect::<Vec<_>>();
         let window = menus(&state(false, &keymap));
-        assert_eq!(titles(&window), ["File", "Edit", "View", "Tools", "Help"]);
+        assert_eq!(titles(&window), ["File", "Edit", "View", "Simulation", "Tools", "Help"]);
         let native = menus(&state(true, &keymap));
-        assert_eq!(titles(&native), [APP_NAME, "File", "Edit", "View", "Tools", "Window", "Help"]);
+        assert_eq!(titles(&native), [APP_NAME, "File", "Edit", "View", "Simulation", "Tools", "Window", "Help"]);
         // Settings and Quit live in the application menu, once.
         let settings = Cmd::Action(Action::Settings);
         assert!(find(&native[..1], &settings).is_some() && find(&native[1..], &settings).is_none());

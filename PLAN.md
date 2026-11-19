@@ -452,11 +452,32 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   file; changing one means setting it again on the part (a one-off program or the app),
   then `gen_builtin`. `every_part_simulates` checks every part has a model with real
   pins.
+- **Session** (`sim::Session`, the app's `SimPanel` holds one): one run at a time. The
+  netlist is built on the UI thread (it needs the project), only `Backend::run` goes to
+  the worker (`SharedBackend = Arc<dyn Backend + Send + Sync>`); `poll` each frame
+  collects it (`JoinHandle::is_finished`). `start` stops a running run first (Run while
+  running restarts); a stopped worker ends on its own, its result is dropped. Results
+  are kept per analysis id with the summary rows (`report::rows`, computed once), and
+  dropped by `retain` when the analysis is deleted. **Stale** = the netlist the analysis
+  would get now differs in text from the one it ran (so edits that don't reach the
+  netlist, like moving a symbol, don't count), rebuilt once per document revision. The
+  last `Attempt` (started or refused) keeps the netlist problems plus ngspice's errors
+  and warnings (without objects) and the log; Messages' Simulation tab shows it.
+- **Panel** (`app/src/sim_ui.rs`): analysis tabs (right-click: rename, duplicate,
+  delete; no reordering), the form of the shown one, Run/Stop with the last attempt's
+  error count linking to Messages, the result table (named and probed nets, "Show all
+  nets", a filter; a click selects the net), and "Circuit" (ground, supplies,
+  temperature, extra lines, netlist and log window). Every edit is one `SetSimulation`;
+  value fields keep their own text buffer while focused and keep text that doesn't
+  parse (red, not committed). ⌘R with no analysis adds an operating point. ngspice is
+  looked for once (when the panel shows or on Run) and again when the setting changes;
+  the Settings page caches its own lookup (with `ngspice -v`) per configured path.
 - **Tests:** netlists and the raw reader (ngspice 47 fixtures in `tests/fixtures`) run
   everywhere; the circuits in `tests/all/ngspice.rs` (RC in AC and transient, diode, op
   amps, regulators, transistors, NAND, zener, crystal, DC sweep, errors, cancel, the
   demo) skip with a note when ngspice isn't found. `tests/all/bench.rs` builds circuits
-  by labelling pin ends.
+  by labelling pin ends. `tests/all/session.rs` drives the session with a fake backend
+  that waits for a gate (start, refuse, fail, stop, restart, stale).
 
 ## Rendering (`render`)
 

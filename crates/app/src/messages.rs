@@ -1,5 +1,5 @@
 //! The Messages panel: schematic problems (ERC), board problems with the design rule
-//! check results, and library issues, one tab each (the tabs sit in the panel's title
+//! check results, library issues, and the last simulation attempt's problems, one tab each (the tabs sit in the panel's title
 //! bar, with a badge of how each category is doing). Clicking a message shows its
 //! objects.
 
@@ -34,16 +34,18 @@ pub enum Category {
     Schematic,
     Board,
     Libraries,
+    Simulation,
 }
 
 impl Category {
-    pub const ALL: [Category; 3] = [Category::Schematic, Category::Board, Category::Libraries];
+    pub const ALL: [Category; 4] = [Category::Schematic, Category::Board, Category::Libraries, Category::Simulation];
 
     pub fn label(self) -> &'static str {
         match self {
             Category::Schematic => "Schematic",
             Category::Board => "Board",
             Category::Libraries => "Libraries",
+            Category::Simulation => "Simulation",
         }
     }
 }
@@ -71,8 +73,8 @@ impl Status {
 
 /// The status of each category, in [`Category::ALL`] order. Board: live shorts (in the
 /// short rule's severity), flagged copper (one warning) and the last DRC's findings;
-/// libraries: their issues, as warnings.
-pub fn status(doc: &Document, libraries: &mut [LibraryEditor]) -> [Status; 3] {
+/// libraries: their issues, as warnings; simulation: the last attempt's errors and warnings.
+pub fn status(doc: &Document, libraries: &mut [LibraryEditor], sim: Option<&sim::Attempt>) -> [Status; 4] {
     let mut sch = Status::default();
     for p in doc.connectivity().problems.iter().filter(|p| !p.excluded) {
         sch.add(p.severity);
@@ -91,12 +93,20 @@ pub fn status(doc: &Document, libraries: &mut [LibraryEditor]) -> [Status; 3] {
         }
     }
     let warnings = libraries.iter_mut().map(|l| l.issues().len()).sum();
-    [sch, board, Status { errors: 0, warnings }]
+    let mut simulation = Status::default();
+    for p in sim.iter().flat_map(|a| &a.problems) {
+        match p.level {
+            sim::Level::Error => simulation.errors += 1,
+            sim::Level::Warning => simulation.warnings += 1,
+            sim::Level::Note => {}
+        }
+    }
+    [sch, board, Status { errors: 0, warnings }, simulation]
 }
 
 /// The tab to show when the panel opens: `current`, unless it's fine and another
 /// category has problems (errors first).
-pub fn tab_to_open(current: Category, status: &[Status; 3]) -> Category {
+pub fn tab_to_open(current: Category, status: &[Status; 4]) -> Category {
     let of = |c: Category| status[c as usize];
     if !of(current).is_ok() {
         return current;
@@ -106,10 +116,10 @@ pub fn tab_to_open(current: Category, status: &[Status; 3]) -> Category {
 }
 
 /// About the width of the tab headers.
-pub const TABS_WIDTH: f32 = 290.0;
+pub const TABS_WIDTH: f32 = 390.0;
 
 /// The tab headers (in the title bar): each with its badge. Clicking one shows it.
-pub fn tabs_ui(ui: &mut egui::Ui, current: &mut Category, status: &[Status; 3]) {
+pub fn tabs_ui(ui: &mut egui::Ui, current: &mut Category, status: &[Status; 4]) {
     ui.spacing_mut().item_spacing.x = 2.0;
     for (c, s) in Category::ALL.into_iter().zip(status) {
         if tab(ui, c.label(), *s, *current == c).clicked() {
@@ -173,7 +183,7 @@ fn tab(ui: &mut egui::Ui, label: &str, status: Status, active: bool) -> egui::Re
 
 /// Keys of all current messages (for the unseen-messages badge). Excluded findings don't
 /// count.
-pub fn keys(doc: &Document, libraries: &mut [LibraryEditor]) -> Vec<u64> {
+pub fn keys(doc: &Document, libraries: &mut [LibraryEditor], sim: Option<&sim::Attempt>) -> Vec<u64> {
     let mut keys: Vec<u64> =
         doc.connectivity().problems.iter().filter(|p| !p.excluded).map(|p| problem_key("sch", &p.key)).collect();
     keys.extend(live_shorts(doc).map(|(nets, at)| problem_key("short", &format!("{nets:?}{at:?}"))));
@@ -185,6 +195,8 @@ pub fn keys(doc: &Document, libraries: &mut [LibraryEditor]) -> Vec<u64> {
         let name = l.lib.name().to_string();
         keys.extend(l.issues().iter().map(|(_, m)| problem_key(&name, m)));
     }
+    let sim_problems = sim.iter().flat_map(|a| &a.problems).filter(|p| p.level != sim::Level::Note);
+    keys.extend(sim_problems.map(|p| problem_key("sim", &p.message)));
     keys
 }
 
@@ -196,13 +208,20 @@ fn live_shorts(doc: &Document) -> impl Iterator<Item = &(Vec<String>, Point)> {
 }
 
 /// The panel's tab `category`. Returns a clicked message's target.
-pub fn ui(ui: &mut egui::Ui, category: Category, doc: &mut Document, libraries: &mut [LibraryEditor]) -> Option<Show> {
+pub fn ui(
+    ui: &mut egui::Ui,
+    category: Category,
+    doc: &mut Document,
+    libraries: &mut [LibraryEditor],
+    sim: Option<&sim::Attempt>,
+) -> Option<Show> {
     let scroll = egui::ScrollArea::vertical().id_salt(("messages", category as u8)).auto_shrink([false, false]);
     scroll
         .show(ui, |ui| match category {
             Category::Schematic => schematic(ui, doc),
             Category::Board => board(ui, doc),
             Category::Libraries => library_issues(ui, libraries),
+            Category::Simulation => simulation(ui, doc, sim),
         })
         .inner
 }
@@ -535,6 +554,49 @@ fn library_issues(ui: &mut egui::Ui, libraries: &mut [LibraryEditor]) -> Option<
     show
 }
 
+/// The last simulation attempt's problems: the netlist's (clickable when they name
+/// objects), then ngspice's errors and warnings.
+fn simulation(ui: &mut egui::Ui, doc: &Document, attempt: Option<&sim::Attempt>) -> Option<Show> {
+    let Some(a) = attempt else {
+        hint(ui, "Problems of the last simulation run show here (Simulation panel, ⌘R).");
+        return None;
+    };
+    let mut show = None;
+    let outcome = match &a.outcome {
+        sim::Outcome::Running => "running",
+        sim::Outcome::Done => "done",
+        sim::Outcome::NetlistErrors => "not started: the netlist has errors",
+        sim::Outcome::Failed(_) => "ngspice failed",
+        sim::Outcome::Cancelled => "stopped",
+    };
+    ui.label(RichText::new(format!("Run of {}: {outcome}", a.name)).color(theme::text_dim()));
+    if a.problems.is_empty() {
+        hint(ui, "No problems.");
+    }
+    for p in a.problems.iter().take(SHOWN) {
+        let severity = match p.level {
+            sim::Level::Error => Severity::Error,
+            sim::Level::Warning => Severity::Warning,
+            sim::Level::Note => Severity::Ignore,
+        };
+        let clicked = ui
+            .horizontal(|ui| {
+                checks_ui::icon(ui, severity, p.level == sim::Level::Note);
+                item(ui, &p.message)
+            })
+            .inner;
+        if clicked && !p.objects.is_empty() {
+            let s = &doc.project().schematic;
+            let sheet = p.objects.iter().find_map(|&o| s.sheet_of(o)).or(s.root_sheet());
+            let view = sheet.map_or(doc.root(), ViewId::Sheet);
+            let objects = p.objects.iter().copied().filter(|&o| s.sheet_of(o) == sheet).collect();
+            show = Some(Show::Objects(view, objects, None));
+        }
+    }
+    more(ui, a.problems.len());
+    show
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -543,17 +605,17 @@ mod tests {
     fn status_counts_findings_by_category() {
         let mut doc = Document::new(view::demo::demo_project());
         let mut libs = [];
-        assert_eq!(status(&doc, &mut libs), [Status::default(); 3], "the demo is clean");
+        assert_eq!(status(&doc, &mut libs, None), [Status::default(); 4], "the demo is clean");
         doc.run_drc();
         let unrouted = doc.drc().unwrap().violations.len();
-        assert_eq!(status(&doc, &mut libs)[1], Status { errors: unrouted, warnings: 0 }, "the DRC's findings");
+        assert_eq!(status(&doc, &mut libs, None)[1], Status { errors: unrouted, warnings: 0 }, "the DRC's findings");
         doc.clear_drc();
 
         // Without wires: unwired pins, and the tracks now join different nets.
         let ids = doc.project().schematic.wires.iter().map(|w| ObjectId::Wire(w.id)).collect();
         doc.execute(Command::Delete { ids }).unwrap();
         doc.update_connectivity(false);
-        let [sch, board, lib] = status(&doc, &mut libs);
+        let [sch, board, lib, _] = status(&doc, &mut libs, None);
         assert!(!sch.is_ok() && !board.is_ok() && lib.is_ok());
     }
 
@@ -562,9 +624,10 @@ mod tests {
         let ok = Status::default();
         let warn = Status { errors: 0, warnings: 2 };
         let err = Status { errors: 1, warnings: 0 };
-        assert_eq!(tab_to_open(Category::Schematic, &[ok, warn, err]), Category::Libraries, "errors first");
-        assert_eq!(tab_to_open(Category::Schematic, &[ok, warn, ok]), Category::Board);
-        assert_eq!(tab_to_open(Category::Board, &[err, warn, ok]), Category::Board, "it has problems itself");
-        assert_eq!(tab_to_open(Category::Board, &[ok, ok, ok]), Category::Board);
+        assert_eq!(tab_to_open(Category::Schematic, &[ok, warn, err, ok]), Category::Libraries, "errors first");
+        assert_eq!(tab_to_open(Category::Schematic, &[ok, warn, ok, ok]), Category::Board);
+        assert_eq!(tab_to_open(Category::Board, &[err, warn, ok, ok]), Category::Board, "it has problems itself");
+        assert_eq!(tab_to_open(Category::Board, &[ok, ok, ok, err]), Category::Simulation);
+        assert_eq!(tab_to_open(Category::Board, &[ok, ok, ok, ok]), Category::Board);
     }
 }

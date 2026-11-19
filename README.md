@@ -212,10 +212,22 @@ on the canvas (View → ERC markers turns the schematic's off).
 
 Circuits simulate with [ngspice](https://ngspice.sourceforge.io/), which you install
 yourself (`brew install ngspice`, `apt install ngspice`, or the Windows download); it is
-found on `PATH` and the usual install places, or set `"ngspice": "/path/to/ngspice"` in
-`settings.json`. The schematic editor's simulation UI is still to come
-([simulation-plan.md](simulation-plan.md)); for now:
+found on `PATH` and the usual install places, or set its path in **Settings →
+Simulation**. Plotting waveforms and probing on the schematic are still to come
+([simulation-plan.md](simulation-plan.md)).
 
+- **Simulation panel** (⌘2, or the **Simulation** menu): one tab per analysis
+  (operating point, transient, AC, DC sweep; **+** adds one, right-click renames,
+  duplicates or deletes it) with its settings. Values take SI prefixes (`10m`, `1.5k`,
+  `1meg`); text that isn't a value turns red and isn't applied. **Run** (⌘R) runs the
+  analysis shown (with none, it adds an operating point), **Stop** (⌘.) stops it; the
+  status bar shows a running simulation. The result table lists the named nets (all of
+  them with **Show all nets**); click one to select it. When the schematic changes in a
+  way that changes the netlist, the results dim with "Changed since the run".
+  **Circuit** holds the ground net, supplies, temperature and extra SPICE lines, and
+  shows the SPICE netlist and ngspice's log. Every change undoes like any other edit.
+- Problems (no ground, values that aren't numbers, parts without model, ngspice's
+  errors) show in Messages' **Simulation** tab; click one to see its parts.
 - **Parts:** every Built-in part has a simulation model (resistors, capacitors and
   inductors take their value: `10k`, `4k7`, `100n`, `1M` is mega). **VSource** and
   **ISource** (category Simulation) are sources for simulation only and never reach the
@@ -427,7 +439,7 @@ layout** puts them back.
 | Bar | Panel | Shortcut |
 | --- | --- | --- |
 | left | Project: the project tree and its libraries (see below) | ⌘1 |
-| left, bottom panel | Messages: schematic problems, board problems with the DRC, library issues, one tab each | ⌘3 |
+| left, bottom panel | Messages: schematic problems, board problems with the DRC, library issues, the last simulation's problems, one tab each | ⌘3 |
 | right | Properties | ⌘4 |
 | right | Tool settings | ⌘5 |
 | right | Board setup (with DRC severities) | ⌘6 |
@@ -435,6 +447,7 @@ layout** puts them back.
 | right | Schematic setup: ERC severities and the pin conflict matrix | ⌘8 |
 | right, lower | Nets: every net with its pins, sheets and routing state; click selects it, double-click zooms to it | ⌘9 |
 | right, lower | Parts: the parts of all libraries the active editor places (see below) | ⌘0 |
+| right, lower | Simulation: analyses, Run/Stop, results (see Simulation) | ⌘2 |
 | left, bottom panel | Agent activity: the agent's calls this session, their arguments and results | – |
 
 The **Parts** panel lists the parts of the Project Library, the loaded libraries and the
@@ -451,7 +464,7 @@ libraries", or "Import KiCad libraries" without a search); clicking it opens the
 import with the same search.
 
 Properties, Tool settings and Overview follow the editor tab you used last. Messages
-has a tab for the schematic, the board and the libraries in its title bar; each tab's
+has a tab for the schematic, the board, the libraries and the simulation in its title bar; each tab's
 badge shows a check when all is fine, else the number of problems (red with errors,
 amber with only warnings). Clicking a message shows its objects. While Messages is hidden, its icon counts new problems (a dot
 means only problems you have already seen). Which panels are open, and their sizes, are
@@ -474,7 +487,8 @@ apply at once; each page has a **Reset to defaults**.
   the commands and config to connect a client.
 - **Libraries:** the most library tabs open at once (1–50, 10 by default), and where
   KiCad's libraries are downloaded to.
-- **Simulation** (in `settings.json` only, for now): `ngspice`, the simulator's path.
+- **Simulation:** where ngspice is (empty: found automatically); shows the one found and
+  its version, or how to install it.
 
 These, the panel layout, the window's size and position and the recent projects are
 saved in `settings.json` in the configuration folder (macOS:

@@ -40,7 +40,7 @@ What to avoid: SPICE syntax as the main interface (LTspice), simulations as sche
 objects (Qucs-S: clutters the drawing and the print), and a separate modal window (KiCad's
 simulator is its own frame; ours should be a tab that can sit beside the schematic).
 
-## Built so far (S1)
+## Built so far (S1, S2)
 
 The engine and everything headless are built; their design and gotchas are in
 PLAN.md, "Simulation (`sim`)":
@@ -55,6 +55,11 @@ PLAN.md, "Simulation (`sim`)":
 - `VSource` / `ISource` and a model for every Built-in part.
 - `pcb-designer simulate PROJECT [--analysis NAME] [--csv FILE] [--netlist]`
   (`sim::report`); the demo has a +5V supply and an operating point.
+- S2: `sim::Session` (worker thread, results per analysis, stale by netlist text, the
+  last attempt's problems and log); the Simulation panel (⌘2) with analysis tabs and
+  forms, Run (⌘R) / Stop (⌘.), a result table, ground, supplies, temperature, extra
+  lines, the netlist and log window; Messages' Simulation tab; the Simulation menu;
+  the Settings page with the ngspice path; the running time in the status bar.
 
 Still to come in the areas S1 built:
 
@@ -72,7 +77,10 @@ Still to come in the areas S1 built:
 - Differential voltage probes (`Probe::Voltage` gets a reference, S6).
 - The demo gets a "Testbench" sub-sheet with a sine source on its signal (S3, when the
   plot can show it); README documents the test bench sheet pattern then.
-- Supplies suggested from power port names (S6).
+- Supplies suggested from power port names (S6). (S2's "Add supply" picks the first
+  power port net without one, its voltage from the name.)
+- `sim::Session` in the headless host, for MCP's `simulate` (S5).
+- Analysis tabs can't be reordered yet (S6).
 
 ## Running (`sim`)
 
@@ -235,18 +243,8 @@ Datasheet). Mapping them:
 
 ## Milestones
 
-Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1 is done; S2–S4
+Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1 and S2 are done; S3–S4
 give a usable simulator, S5–S8 make it comfortable, compatible and fast.
-
-### S2: Running from the app
-
-- `sim::Session` in the app and headless host: worker thread, stale tracking, stop.
-- Simulation panel: status and install hint, analysis tabs and forms (transient
-  length from `netlist::suggested_stop`), Run/Stop, the netlist view and log. Settings
-  page: the ngspice path (`Settings::ngspice`, in `settings.json` today).
-- Messages "Simulation" category.
-- Keymap actions and the Simulation menu.
-- Screenshots: the panel in both themes, not-found state.
 
 ### S3: Waveform viewer
 

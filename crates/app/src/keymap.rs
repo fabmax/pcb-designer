@@ -80,6 +80,10 @@ pub enum Action {
     PanelParts,
     PanelActivity,
     PanelOverview,
+    PanelSimulation,
+    RunSimulation,
+    StopSimulation,
+    ShowSimNetlist,
 }
 
 /// Where an action's shortcut applies. Actions of different contexts may share a key.
@@ -157,6 +161,10 @@ impl Action {
         Action::PanelParts,
         Action::PanelActivity,
         Action::PanelOverview,
+        Action::PanelSimulation,
+        Action::RunSimulation,
+        Action::StopSimulation,
+        Action::ShowSimNetlist,
     ];
 
     pub fn label(self) -> &'static str {
@@ -226,6 +234,10 @@ impl Action {
             Action::PanelParts => "Show/hide Parts panel",
             Action::PanelActivity => "Show/hide Agent activity panel",
             Action::PanelOverview => "Show/hide Overview panel",
+            Action::PanelSimulation => "Show/hide Simulation panel",
+            Action::RunSimulation => "Run simulation",
+            Action::StopSimulation => "Stop simulation",
+            Action::ShowSimNetlist => "Show SPICE netlist and log",
         }
     }
 
@@ -279,8 +291,10 @@ impl Action {
 
     /// Still triggers while a text field has keyboard focus.
     fn works_while_typing(self) -> bool {
-        matches!(self, Action::New | Action::Open | Action::Save | Action::SaveAs)
-            || crate::dock::Panel::of_action(self).is_some()
+        matches!(
+            self,
+            Action::New | Action::Open | Action::Save | Action::SaveAs | Action::RunSimulation | Action::StopSimulation
+        ) || crate::dock::Panel::of_action(self).is_some()
     }
 
     /// Fires repeatedly while the key is held.
@@ -470,6 +484,9 @@ impl Default for Keymap {
             (Action::PanelSchematicSetup, vec![S::cmd(Key::Num8)]),
             (Action::PanelNets, vec![S::cmd(Key::Num9)]),
             (Action::PanelParts, vec![S::cmd(Key::Num0)]),
+            (Action::PanelSimulation, vec![S::cmd(Key::Num2)]),
+            (Action::RunSimulation, vec![S::cmd(Key::R)]),
+            (Action::StopSimulation, vec![S::cmd(Key::Period)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
     }
@@ -567,6 +584,7 @@ mod tests {
             Action::ConvertToPolygon,
             Action::ToggleErcMarkers,
             Action::PanelActivity,
+            Action::ShowSimNetlist,
         ];
         for a in Action::ALL.iter().filter(|a| !unbound.contains(a)) {
             assert!(!map.shortcuts(*a).is_empty(), "{a:?} has no default shortcut");
@@ -580,7 +598,8 @@ mod tests {
         assert_eq!(map.lookup(Key::Z, Modifiers::COMMAND, sch), Some(Action::Undo));
         assert_eq!(map.lookup(Key::Z, Modifiers::COMMAND | Modifiers::SHIFT, sch), Some(Action::Redo));
         assert_eq!(map.lookup(Key::R, Modifiers::NONE, sch), Some(Action::Rotate));
-        assert_eq!(map.lookup(Key::R, Modifiers::COMMAND, sch), None);
+        assert_eq!(map.lookup(Key::R, Modifiers::COMMAND, sch), Some(Action::RunSimulation));
+        assert_eq!(map.lookup(Key::R, Modifiers::COMMAND | Modifiers::SHIFT, sch), None);
     }
 
     #[test]

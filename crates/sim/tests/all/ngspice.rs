@@ -316,3 +316,10 @@ fn demo_project_simulates() {
     assert!((1.6..2.0).contains(&led), "LED at {led} V");
     assert_eq!(r.op_voltage("+5V"), Some(5.0));
 }
+
+#[test]
+fn version() {
+    let Some(ng) = ngspice() else { return };
+    let v = ng.version().unwrap();
+    assert!(v.starts_with("ngspice-"), "{v}");
+}

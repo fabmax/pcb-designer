@@ -28,6 +28,7 @@ pub enum Panel {
     Nets,
     Parts,
     Activity,
+    Simulation,
 }
 
 /// A group of panel buttons and the place its panel shows in.
@@ -63,7 +64,7 @@ impl Group {
 }
 
 impl Panel {
-    pub const ALL: [Panel; 10] = [
+    pub const ALL: [Panel; 11] = [
         Panel::Project,
         Panel::Messages,
         Panel::Properties,
@@ -74,6 +75,7 @@ impl Panel {
         Panel::Nets,
         Panel::Parts,
         Panel::Activity,
+        Panel::Simulation,
     ];
 
     /// Where the panel is by default (and after Reset layout).
@@ -84,7 +86,7 @@ impl Panel {
             Panel::Properties | Panel::ToolSettings | Panel::BoardSetup | Panel::SchematicSetup | Panel::Overview => {
                 Group::RightTop
             }
-            Panel::Nets | Panel::Parts => Group::RightBottom,
+            Panel::Nets | Panel::Parts | Panel::Simulation => Group::RightBottom,
         }
     }
 
@@ -100,6 +102,7 @@ impl Panel {
             Panel::Nets => "Nets",
             Panel::Parts => "Parts",
             Panel::Activity => "Agent activity",
+            Panel::Simulation => "Simulation",
         }
     }
 
@@ -115,6 +118,7 @@ impl Panel {
             Panel::Nets => Icon::Nets,
             Panel::Parts => Icon::Part,
             Panel::Activity => Icon::Activity,
+            Panel::Simulation => Icon::Simulation,
         }
     }
 
@@ -131,6 +135,7 @@ impl Panel {
             Panel::Nets => Action::PanelNets,
             Panel::Parts => Action::PanelParts,
             Panel::Activity => Action::PanelActivity,
+            Panel::Simulation => Action::PanelSimulation,
         }
     }
 
