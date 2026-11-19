@@ -86,6 +86,11 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), and `kic
   `https://raw.githubusercontent.com/tabler/tabler-icons/main/icons/outline/NAME.svg`
   into `icons/tabler/`. Draw our own in Tabler's style (24×24, stroke 2, round caps and
   joins), in `currentColor` only, faint parts with an opacity; `paint` tints it.
+- **Built-in library part:** generated families live in `model/src/builtin/generate/`;
+  run `cargo run -p model --example gen_builtin` after a change. Hand-made parts: `…
+  -- edit FILE`, draw them in the app or through MCP, then `… -- take FILE` (PLAN.md,
+  "Built-in library"). Look at them with `cargo run -p mcp --example render_builtin --
+  OUT PREFIX…`.
 - **Colours:** canvas palettes live in `view/src/style.rs` (`DARK`, `LIGHT`) and chrome
   in `app/src/theme.rs`. Scenes bake colours when drawn, so a theme switch calls
   `Document::restyle`. Read colours from these files, never as literals in UI code.
@@ -121,7 +126,7 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
 - More flags:
   - `--side-by-side`
   - `--select R1`
-  - `--show footprint:SOIC-8` (opens an item by name, searching the libraries from the
+  - `--show footprint:SOT-23` (opens an item by name, searching the libraries from the
     last loaded one: with `--demo` the demo parts, then the built-in library, e.g.
     `--show part:74HC00`; `--show gerber` opens the Gerber tab of a saved project with an
     export)

@@ -317,10 +317,31 @@ pub fn demo_library() -> Library {
         }
         lib.parts.insert(part.clone());
     }
-    // Move every built-in id (parts, symbols, pins, pads, …) into the demo namespace.
+    // Move every id (parts, symbols, pins, pads, …) into the demo namespace: the first
+    // 8 hex digits of each.
     use model::io::{FileKind, MIGRATIONS, from_file_str, to_file_string};
-    let text = to_file_string(FileKind::Library, &lib).unwrap().replace("\"5ce10000-", "\"de110001-");
-    let mut lib: Library = from_file_str(&text, FileKind::Library, MIGRATIONS, std::path::Path::new("demo")).unwrap();
+    let text = to_file_string(FileKind::Library, &lib).unwrap();
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text.as_str();
+    while let Some(i) = rest.find('"') {
+        out.push_str(&rest[..=i]);
+        rest = &rest[i + 1..];
+        let is_id = rest.len() > 36
+            && rest.as_bytes()[36] == b'"'
+            && rest[..36]
+                .char_indices()
+                .all(|(j, c)| if [8, 13, 18, 23].contains(&j) { c == '-' } else { c.is_ascii_hexdigit() });
+        if is_id {
+            out.push_str("de110001");
+            out.push_str(&rest[8..37]);
+            rest = &rest[37..];
+        } else if let Some(end) = rest.find('"') {
+            out.push_str(&rest[..=end]);
+            rest = &rest[end + 1..];
+        }
+    }
+    out.push_str(rest);
+    let mut lib: Library = from_file_str(&out, FileKind::Library, MIGRATIONS, std::path::Path::new("demo")).unwrap();
     lib.id = Some(DEMO_LIBRARY_ID);
     lib
 }

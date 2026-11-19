@@ -850,9 +850,9 @@ mod tests {
         let opamp = lookup(&lib, "OpAmp");
         assert_eq!(opamp.len(), 2, "part and symbol share the name");
         assert!(matches!(lookup(&lib, "part:OpAmp")[..], [ObjectId::LibPart(_)]));
-        assert!(matches!(lookup(&lib, "footprint:SOIC-8")[..], [ObjectId::LibFootprint(_)]));
+        assert!(matches!(lookup(&lib, "footprint:SOT-23")[..], [ObjectId::LibFootprint(_)]));
         let id = builtin::PART_OPAMP.to_string();
         assert_eq!(lookup(&lib, &id), vec![ObjectId::LibPart(builtin::PART_OPAMP)]);
-        assert!(lookup(&lib, "symbol:SOIC-8").is_empty());
+        assert!(lookup(&lib, "symbol:SOT-23").is_empty());
     }
 }

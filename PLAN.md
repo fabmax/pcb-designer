@@ -640,6 +640,40 @@ the current design of each area with the gotchas a change needs to know, the pla
     `kicad-cli`: schematic nets (`sch export netlist`) and pad positions (`pcb export
     ipcd356`, after removing its constant origin offset).
 
+- **Built-in library** (`model::builtin`): a standard library of generic parts, the file
+  `crates/model/library/builtin.pcblib` (4.7 MB of JSON), embedded and parsed once
+  (`OnceLock`, callers get a clone). Each part is one symbol with its packages as
+  variants, the common one first (placing takes the first): `Resistor`, `Capacitor`
+  (chip, disc), `Capacitor_Polarized` (tantalum, SMD electrolytic, radial), `Inductor`
+  (chip, shielded power), `FerriteBead`, `Fuse`, `Diode`, `Diode_Schottky`,
+  `Diode_Zener`, `TVS`, `TVS_Bidirectional` (SOD, MiniMELF, SMA/B/C, DO-35/41/201AD),
+  `LED` (chip, 3/5 mm), `NPN`/`PNP` (SOT-23, SOT-223, TO-92), `NMOS`/`PMOS` (SOT-23,
+  SOT-223, DPAK, TO-220), `Conn_01x01`…`Conn_01x40` (pin header straight / right angle /
+  SMD, socket; JST PH/XH 2–8, SH 2–6, screw terminals 2–4) and `Conn_02x01`…`Conn_02x20`
+  (headers, socket; odd pins left), `Crystal`, `Crystal_GND24`, `TestPoint`, `SW_Push`,
+  board parts `MountingHole_M2`…`M4` (plated / plain) and `Fiducial`; hand-made `OpAmp`,
+  `LM358`, `74HC00`, `AMS1117-3.3`, `AP2112K-3.3`, `LM7805`.
+  - Most of it is **generated** (`builtin::generate`: `fp::Fp` builds footprints with
+    silkscreen clipped clear of the pads and a courtyard around everything, `sym::Sym`
+    symbols; IPC-7351B nominal lands for standard packages, vendor-specific ones say
+    "generic land pattern, check the datasheet"). Generated ids are FNV hashes of names
+    (`gid("part/Resistor")`, `fp/NAME/pad/I`, `sym/NAME/pin/N`) in their own range
+    (`is_generated`), so renaming gives new ids. Pins have numbers; `Map::ByNumber`
+    connects pads to the pin of their name, `Map::Pairs` for package-specific pinouts
+    (a pad name may repeat: SOT-223's tab is pad "2" too).
+  - `cargo run -p model --example gen_builtin` rewrites the generated items and keeps the
+    others; `bundled_library_is_up_to_date` fails until it's run. Tests also check pad
+    spacing, courtyards, silkscreen off copper and symbol pins on the 2.54 mm grid.
+  - **Hand-made** parts: `gen_builtin edit FILE` writes a copy with `EDIT_LIBRARY_ID`
+    (the bundled id is refused next to the Built-in library), edit it in the app or
+    through MCP (`edit_library`), save, `gen_builtin take FILE` merges it back (edits to
+    generated items are reported and dropped). They use generated package footprints
+    (`SOIC-8_3.9x4.9mm_P1.27mm`, `DIP-8_W7.62mm`, `SOT-23-5`, `SOT-223-3_TabPin2`,
+    `TO-220-3_Vertical`) by name.
+  - `cargo run -p mcp --example render_builtin -- OUT PREFIX…` renders contact sheets
+    (board and schematic) of the parts whose names start with a prefix, one component
+    per variant.
+
 ## MCP (`mcp`)
 
 - rmcp Streamable HTTP on its own tokio thread, loopback only, browser Origins refused.
@@ -919,62 +953,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-### M22: standard built-in library (proposal, to be refined)
-
-Grow the Built-in library into a small standard library of generic parts. Each part is one
-symbol with its common packages as variants (SMD and THT). A variant's pin → pad mapping
-covers pinouts that differ between packages (SOT-23 vs TO-92). The value is set per
-component, and `default_value` names a typical part. Footprints follow IPC-7351B nominal
-density from the package datasheets. Families come from generators (chip, SOD/SMA,
-SOT, TO, axial/radial, pin rows), not hand-written per part. Ids stay deterministic.
-
-**Passives**
-- Resistor: 0402, 0603, 0805, 1206, 2512; THT axial (DIN0207, 10.16 mm), standing
-  (2.54 mm).
-- Capacitor: 0402, 0603, 0805, 1206, 1210; THT disc 2.54 / 5.08 mm.
-- Polarised capacitor: tantalum A/B/C/D (3216/3528/6032/7343); SMD electrolytic Ø4,
-  5, 6.3, 8, 10 mm; THT radial Ø5/2.0, Ø6.3/2.5, Ø8/3.5, Ø10/5.0 mm.
-- Inductor: 0603, 0805, 1210; shielded SMD power 3×3, 4×4, 5×5, 6×6, 10×10 mm.
-- Ferrite bead: 0402, 0603, 0805.
-- Fuse / PTC: 0603, 1206, 1812.
-- Crystal: 2-pin HC-49/US (THT) and HC-49 SMD; 4-pad 3225 and 2016 (2 pins + GND).
-- Trimmer potentiometer: Bourns 3362P (THT), TC33 (SMD).
-
-**Diodes**
-- Diode: SOD-123, SOD-323, MiniMELF, SMA, SMB, SMC; THT DO-35, DO-41, DO-201AD.
-- Schottky, Zener, TVS (uni- and bidirectional): own symbols, the same package set.
-- LED: 0402, 0603, 0805, 1206; THT 3 mm and 5 mm.
-
-**Transistors**
-- NPN / PNP: SOT-23 (BC847 / BC857), SOT-223, TO-92 (2N3904 / 2N3906; EBC).
-- N- / P-MOSFET: SOT-23 (2N7002 / BSS84, AO3400 / AO3401), SOT-223, DPAK, TO-220
-  (IRLZ44N).
-
-**Connectors**
-- Pin rows, 2.54 mm: `Conn_01x01` to `Conn_01x40` and `Conn_02x01` to `Conn_02x20`
-  (2 to 40 pins). 100 parts, so generated. Variants:
-  - pin header, vertical and right-angle (THT);
-  - pin socket, vertical (THT);
-  - pin header, vertical SMD.
-- The same generic connector parts also carry these variants, where the pin count
-  exists:
-  - JST PH (2.0 mm) and XH (2.5 mm), 2–8 pins;
-  - JST SH (1.0 mm, SMD, Qwiic / STEMMA QT), 2–6 pins;
-  - screw terminals at 5.0 and 3.5 mm, 2–4 pins.
-- USB-C receptacle, USB 2.0 only (16 pins); USB Micro-B.
-- Test point: SMD pad and THT loop.
-
-**Other common parts**
-- Tactile switch: 6×6 THT, 6×6 SMD, 3×4 SMD. Slide switch SPDT.
-- LDO regulator: AMS1117 (SOT-223), AP2112K (SOT-23-5), LM7805 (TO-220).
-- Op amp: single (SOIC-8, SOT-23-5) and dual LM358 (SOIC-8, DIP-8); the 74HC00
-  stays.
-
-**Board parts**: mounting holes M2, M2.5, M3, M4 (plain and plated); fiducial 1 mm.
-
-**Later**: 1.27 / 2.00 mm pin rows, RGB LEDs, dual diodes (BAV99), resistor arrays,
-crystal oscillators, barrel jacks, more logic and regulators, 3D models.
-
 
 ## Later
 
@@ -1056,6 +1034,12 @@ defers.
   or with a warning popup, mod key or something like that
 
 **Libraries and parts**
+- Built-in library: trimmer potentiometers (Bourns 3362P, TC33), SMD tactile switches
+  (6×6, 3×4) and a slide switch, HC-49 SMD crystal, USB-C (USB 2.0) and Micro-B
+  receptacles; 1.27 / 2.00 mm pin rows, RGB LEDs, dual diodes (BAV99), resistor arrays,
+  crystal oscillators, barrel jacks, more logic and regulators. Check the generic land
+  patterns (power inductors, SMD electrolytics, DPAK, JST, screw terminals) against
+  datasheets.
 - Footprint wizards.
 - Circular pad arrays.
 - Pad paste ratio (KiCad's `solder_paste_margin_ratio`, warned about on import) and

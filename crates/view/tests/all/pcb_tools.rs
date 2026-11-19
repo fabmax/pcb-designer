@@ -8,12 +8,17 @@ use view::Document;
 use view::pcb_tools::{PcbGhost, PcbPlacer, PcbTool};
 
 fn place(doc: &mut Document, part: Id, x: f64, at: Point) -> (Id, Id) {
+    place_at(doc, part, Point::mm(x, 0.0), at)
+}
+
+/// Places `part`'s symbol at `sch` and its footprint at `at`.
+fn place_at(doc: &mut Document, part: Id, sch: Point, at: Point) -> (Id, Id) {
     let c = doc
         .execute(Command::PlacePart {
             part,
             variant: None,
             sheet: None,
-            pos: Point::mm(x, 0.0),
+            pos: sch,
             rotation: Angle::ZERO,
             mirror: false,
             refdes: None,
@@ -49,7 +54,7 @@ fn route_two_nets_with_a_layer_change() {
     let parts = vec![PART_RESISTOR, PART_HEADER_1X4];
     doc.execute(Command::import_parts(&builtin::builtin_library(), &parts).unwrap()).unwrap();
     let (sj, fj) = place(&mut doc, PART_HEADER_1X4, 0.0, Point::mm(0.0, 0.0));
-    let (sr, fr) = place(&mut doc, PART_RESISTOR, 20.32, Point::mm(10.0, 0.0));
+    let (sr, fr) = place_at(&mut doc, PART_RESISTOR, Point::mm(20.32, -7.62), Point::mm(10.0, 0.0));
     for (a, b) in [((sj, "1"), (sr, "1")), ((sj, "2"), (sr, "2"))] {
         let (pa, pb) = (pin(&doc, a.0, a.1), pin(&doc, b.0, b.1));
         let pts = if pa.x == pb.x || pa.y == pb.y { vec![pa, pb] } else { vec![pa, Point::new(pb.x, pa.y), pb] };
@@ -136,7 +141,7 @@ fn draw_a_zone_that_connects_its_net() {
     let parts = vec![PART_RESISTOR, PART_HEADER_1X4];
     doc.execute(Command::import_parts(&builtin::builtin_library(), &parts).unwrap()).unwrap();
     let (sj, fj) = place(&mut doc, PART_HEADER_1X4, 0.0, Point::mm(0.0, 0.0));
-    let (sr, _) = place(&mut doc, PART_RESISTOR, 20.32, Point::mm(10.0, 0.0));
+    let (sr, _) = place_at(&mut doc, PART_RESISTOR, Point::mm(20.32, -7.62), Point::mm(10.0, 0.0));
     for (a, b) in [((sj, "1"), (sr, "1")), ((sj, "2"), (sr, "2"))] {
         let (pa, pb) = (pin(&doc, a.0, a.1), pin(&doc, b.0, b.1));
         let pts = if pa.x == pb.x || pa.y == pb.y { vec![pa, pb] } else { vec![pa, Point::new(pb.x, pa.y), pb] };
@@ -262,7 +267,7 @@ fn routing_keeps_clearance_to_other_nets() {
     let parts = vec![PART_RESISTOR, PART_HEADER_1X4];
     doc.execute(Command::import_parts(&builtin::builtin_library(), &parts).unwrap()).unwrap();
     let (sj, fj) = place(&mut doc, PART_HEADER_1X4, 0.0, Point::mm(0.0, 0.0));
-    let (sr, _) = place(&mut doc, PART_RESISTOR, 20.32, Point::mm(10.0, 0.0));
+    let (sr, _) = place_at(&mut doc, PART_RESISTOR, Point::mm(20.32, -7.62), Point::mm(10.0, 0.0));
     for (a, b) in [((sj, "1"), (sr, "1")), ((sj, "2"), (sr, "2"))] {
         let (pa, pb) = (pin(&doc, a.0, a.1), pin(&doc, b.0, b.1));
         let pts = if pa.x == pb.x || pa.y == pb.y { vec![pa, pb] } else { vec![pa, Point::new(pb.x, pa.y), pb] };
@@ -307,7 +312,7 @@ fn routes_and_vias_take_their_net_class_sizes() {
     let parts = vec![PART_RESISTOR, PART_HEADER_1X4];
     doc.execute(Command::import_parts(&builtin::builtin_library(), &parts).unwrap()).unwrap();
     let (sj, fj) = place(&mut doc, PART_HEADER_1X4, 0.0, Point::mm(0.0, 0.0));
-    let (sr, fr) = place(&mut doc, PART_RESISTOR, 20.32, Point::mm(10.0, 0.0));
+    let (sr, fr) = place_at(&mut doc, PART_RESISTOR, Point::mm(20.32, -7.62), Point::mm(10.0, 0.0));
     let (pa, pb) = (pin(&doc, sj, "1"), pin(&doc, sr, "1"));
     let pts = if pa.x == pb.x || pa.y == pb.y { vec![pa, pb] } else { vec![pa, Point::new(pb.x, pa.y), pb] };
     doc.execute(Command::AddWire { sheet: None, points: pts }).unwrap();

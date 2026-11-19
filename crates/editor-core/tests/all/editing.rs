@@ -194,11 +194,12 @@ fn changing_the_variant_keeps_the_placement() {
     let mut ed = editor_with_parts();
     let c = place(&mut ed, PART_RESISTOR, 0.0, 0.0);
     let fp_before = ed.project().board.footprint_of(c).unwrap().clone();
-    let v0805 = ed.project().library.parts.get(PART_RESISTOR).unwrap().variants[1].id;
+    let variants = &ed.project().library.parts.get(PART_RESISTOR).unwrap().variants;
+    let v0805 = variants.iter().find(|v| v.name == "0805").unwrap().id;
     ed.execute(Command::SetComponent { id: c, refdes: None, value: Some("4k7".into()), variant: Some(v0805) }).unwrap();
     assert_eq!(ed.project().board.footprint_of(c).unwrap(), &fp_before);
     let fp = editor_core::query::footprint_of_instance(ed.project(), &fp_before).unwrap();
-    assert_eq!(fp.name, "0805");
+    assert_eq!(fp.name, "Chip_0805_2012Metric");
     // Variants of other parts are rejected.
     let led_variant = ed.project().library.parts.get(PART_LED).unwrap().variants[0].id;
     assert!(

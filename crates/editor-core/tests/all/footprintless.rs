@@ -183,8 +183,8 @@ fn files_omit_a_missing_footprint() {
     let none = add_no_footprint_variant(&mut ed);
     set_variant(&mut ed, r1, none);
     let lib = to_file_string(FileKind::Library, &ed.project().library).unwrap();
-    // Resistor 0603 and 0805, LED 0603; the "no footprint" variant has no field.
-    assert_eq!(lib.matches("\"footprint\"").count(), 3);
+    // Resistor (7 variants) and LED (6); the "no footprint" variant has no field.
+    assert_eq!(lib.matches("\"footprint\"").count(), 13);
     assert!(!lib.contains("\"footprint\": null"));
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("t.pcbproj");

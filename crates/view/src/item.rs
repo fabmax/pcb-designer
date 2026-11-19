@@ -324,18 +324,13 @@ pub fn copy_elems(content: &Content, elems: &[Elem], anchor: Point) -> Option<Cl
     elems.dedup();
     let clip = match content {
         Content::Symbol(s) => ClipContent::Symbol {
-            pins: elems
-                .iter()
-                .filter_map(|&e| if let Elem::Pin(id) = e { s.pins.get(id).cloned() } else { None })
-                .collect(),
+            // In the symbol's order, so pasted pins are numbered in it.
+            pins: s.pins.iter().filter(|p| elems.binary_search(&Elem::Pin(p.id)).is_ok()).cloned().collect(),
             graphics: elems.iter().filter_map(|&e| graphic_index(e).and_then(|i| s.graphics.get(i).cloned())).collect(),
             texts: elems.iter().filter_map(|&e| text_index(e).and_then(|i| s.texts.get(i).cloned())).collect(),
         },
         Content::Footprint(f) => ClipContent::Footprint {
-            pads: elems
-                .iter()
-                .filter_map(|&e| if let Elem::Pad(id) = e { f.pads.get(id).cloned() } else { None })
-                .collect(),
+            pads: f.pads.iter().filter(|p| elems.binary_search(&Elem::Pad(p.id)).is_ok()).cloned().collect(),
             graphics: elems.iter().filter_map(|&e| graphic_index(e).and_then(|i| f.graphics.get(i).cloned())).collect(),
             texts: elems.iter().filter_map(|&e| text_index(e).and_then(|i| f.texts.get(i).cloned())).collect(),
         },

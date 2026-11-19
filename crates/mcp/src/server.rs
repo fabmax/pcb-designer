@@ -350,7 +350,7 @@ pub struct LibraryItemsParams {
     /// Name of an open library (see list_libraries).
     pub library: String,
     /// Items as `[part:|symbol:|footprint:]NAME` or ids, e.g. "OpAmp" (part and symbol),
-    /// "footprint:SOIC-8".
+    /// "footprint:SOT-23".
     pub items: Vec<String>,
 }
 
@@ -692,7 +692,7 @@ impl PcbTools {
 
     #[tool(description = "Symbols, footprints and parts of an open library in full JSON: the \
         format edit_library takes. The Built-in library's parts (e.g. \"OpAmp\", \"NPN\", \
-        \"footprint:SOIC-8\") are good examples.")]
+        \"footprint:SOT-23\") are good examples.")]
     async fn get_library_items(
         &self,
         Parameters(p): Parameters<LibraryItemsParams>,

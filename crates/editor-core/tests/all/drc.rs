@@ -72,8 +72,8 @@ fn finds_seeded_errors() {
     let (p12, p21, p11) = (pad(&ed, f1, "2"), pad(&ed, f2, "1"), pad(&ed, f1, "1"));
     let top = LayerId::TOP_COPPER;
     ed.execute(Command::AddTrack { layer: top, points: vec![p12, p21], width: None, mids: Vec::new() }).unwrap();
-    // 1. A stub of R1.2's net passing 0.1 mm above R1.1 (pad top edge at y + 0.5 mm).
-    let y = p11.y + mm(0.5) + mm(0.125) + mm(0.1);
+    // 1. A stub of R1.2's net passing 0.1 mm above R1.1 (pad top edge at y + 0.475 mm).
+    let y = p11.y + mm(0.475) + mm(0.125) + mm(0.1);
     ed.execute(Command::AddTrack {
         layer: top,
         points: vec![p12, Point::new(p12.x, y), Point::new(p11.x, y)],

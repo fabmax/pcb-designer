@@ -270,7 +270,7 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
   the PCB, where R rotates and F flips the side; Delete removes them there. Their pads
   have no net, so copper of a net touching one is a short. Copy, paste and ⌘D work on
   them on the board, and Properties edits their reference and value (as for every
-  footprint). The Built-in Library has an M3 mounting hole. Remove a part's last unit in the part form to make one.
+  footprint). The Built-in Library has mounting holes (M2 to M4) and a fiducial. Remove a part's last unit in the part form to make one.
 - **Footprint variants** can be switched in Properties both for a symbol in the schematic
   and for a footprint on the board (the board lists only variants with a footprint).
 - **Reference and value texts** belong to each symbol in the schematic and each footprint
@@ -280,8 +280,15 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
   offset and rotation (and on the board the layer), hides it, and "Reset to library
   position" puts it back (the owner's Properties have a visibility checkbox per text).
   Library changes don't move placed texts.
-- **Built-in Library:** a few basic parts that ship with the app. It is read-only; "Save a
-  copy as…" makes an editable library of your own from it.
+- **Built-in Library:** a standard library of generic parts that ships with the app:
+  resistors, capacitors (also polarised), inductors, ferrite beads, fuses, diodes
+  (Schottky, Zener, TVS), LEDs, NPN/PNP transistors, N/P MOSFETs, crystals, test points, a
+  push button, connectors `Conn_01x01`…`Conn_01x40` and `Conn_02x01`…`Conn_02x20` (pin
+  headers and sockets; single rows also JST PH/XH/SH and screw terminals), a few ICs
+  (op amps, 74HC00, regulators) and board parts (mounting holes M2 to M4, a fiducial).
+  Each part offers its common packages, SMD and through-hole, as footprint variants;
+  set the value per component. It is read-only; "Save a copy as…" makes an editable
+  library of your own from it.
 - **External Libraries:** the project's library files (`.pcblib`).
 
 **Sheets** work as in KiCad: the Schematic node is the root sheet, with its sub-sheets

@@ -46,8 +46,8 @@ fn board(gap: Coord) -> (Editor, String, Point) {
     let (p12, p21, p11) = (pad(&ed, placed[0].1, "2"), pad(&ed, placed[1].1, "1"), pad(&ed, placed[0].1, "1"));
     let top = LayerId::TOP_COPPER;
     ed.execute(Command::AddTrack { layer: top, points: vec![p12, p21], width: None, mids: Vec::new() }).unwrap();
-    // The pad's top edge is 0.5 mm above its centre, the track 0.25 mm wide.
-    let y = p11.y + mm(0.5) + mm(0.125) + gap;
+    // The pad's top edge is 0.475 mm above its centre (0603), the track 0.25 mm wide.
+    let y = p11.y + mm(0.475) + mm(0.125) + gap;
     let points = vec![p12, Point::new(p12.x, y), Point::new(p11.x, y)];
     ed.execute(Command::AddTrack { layer: top, points, width: None, mids: Vec::new() }).unwrap();
     let copper = copper(&ed);
