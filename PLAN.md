@@ -1099,5 +1099,5 @@ defers.
   - Move large explaining text blocks behind some Info button (i in a circle)?
 
 **Other**
-- Simulation.
+- Simulation: see [simulation-plan.md](simulation-plan.md).
 - Documentation / manual. E.g. some github pages template (just-the-docs or something similar)
