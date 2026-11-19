@@ -472,11 +472,34 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   parse (red, not committed). ⌘R with no analysis adds an operating point. ngspice is
   looked for once (when the panel shows or on Run) and again when the setting changes;
   the Settings page caches its own lookup (with `ngspice -v`) per configured path.
+- **Plot** (`sim::plot`, headless; drawn by `app/src/plot_ui.rs` in `Tab::Simulation`):
+  `signals` = the analysis' probes, or without any the named nets (at most 8, not
+  saved). `data` makes the traces: AC is dB left and unwrapped phase right (dashed,
+  "V(X) phase"); else volts left, amperes right (left when only currents). `Scale`
+  (linear or log) does fractions, zoom around a point, pan and a minimum width (flat
+  traces still get an axis). `linear_ticks` divides rather than multiplies for negative
+  exponents (3 · 0.2 ≠ 0.6) and keeps ticks at the range ends (0.7 / 0.1 = 6.999…).
+  `decimate` keeps each pixel column's first, min, max and last sample in order, plus
+  one sample beyond each edge; the widget caches it per x range, width and run (a
+  million points draw as a few thousand). The view (`PlotState`, per analysis, in
+  memory) fits y to the visible part while the user hasn't zoomed y; a rerun keeps the
+  zoom when the x range is the same. Cursors snap to samples, the hover readout
+  interpolates. Box zoom starts at `press_origin` (egui reports drags some pixels
+  late). The tab follows the panel's analysis; the first finished sweep opens it (right
+  of the schematic when that tab is alone in its group, else in its group), unless the
+  user closed it (`plot_closed`). Ticking a row in the panel's result table adds or
+  removes a `Probe` (one `SetSimulation`). Trace colours: `style::trace_color`, an
+  8-colour categorical palette per theme checked for colour-vision deficiency; past 8
+  colours repeat dashed.
+- **Demo:** a "Testbench" sheet with `V1` (5 V + 0.5 V 1 kHz sine, AC 1 V) on +5V
+  replaces the supply; analyses Operating point, Transient (3 ms) and AC, the last two
+  probing +5V and the LED's anode.
 - **Tests:** netlists and the raw reader (ngspice 47 fixtures in `tests/fixtures`) run
   everywhere; the circuits in `tests/all/ngspice.rs` (RC in AC and transient, diode, op
   amps, regulators, transistors, NAND, zener, crystal, DC sweep, errors, cancel, the
   demo) skip with a note when ngspice isn't found. `tests/all/bench.rs` builds circuits
-  by labelling pin ends. `tests/all/session.rs` drives the session with a fake backend
+  by labelling pin ends. `tests/all/plot.rs` covers scales, ticks, decimation and AC
+  traces on a made-up result. `tests/all/session.rs` drives the session with a fake backend
   that waits for a gate (start, refuse, fail, stop, restart, stale).
 
 ## Rendering (`render`)

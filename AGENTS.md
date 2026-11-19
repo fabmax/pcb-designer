@@ -132,12 +132,13 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
   - `--show footprint:SOT-23` (opens an item by name, searching the libraries from the
     last loaded one: with `--demo` the demo parts, then the built-in library, e.g.
     `--show part:74HC00`; `--show gerber` opens the Gerber tab of a saved project with an
-    export)
+    export; `--show simulation` the Simulation tab)
   - `--panel messages` (repeatable; shows a panel for this run only, see `dock.rs`)
   - `--script "board; ui-click X,Y; ui-move X,Y; key W; click X,Y; wait N"`, plus
     `press X,Y` / `move X,Y` / `release X,Y` (a drag), `double-click X,Y`,
     `ui-double-click X,Y`, `ui-right-click X,Y`, `ui-press X,Y` / `ui-release X,Y` (a drag
-    in screen points, with `ui-move` between) and `type TEXT`. Hover the canvas
+    in screen points, with `ui-move` between), `type TEXT` and `run [ANALYSIS]` (runs
+    a simulation; later steps wait for it). Hover the canvas
     (`move X,Y`) before keys meant for it. Keys take modifiers
     (`key Cmd+D`); `key Cmd+C` / `Cmd+V` use the real system clipboard. Put a `wait 30` before a
     double-click: egui counts clicks less than 0.3 s apart as one triple-click.

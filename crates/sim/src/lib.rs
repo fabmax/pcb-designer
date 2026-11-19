@@ -11,6 +11,7 @@
 
 pub mod netlist;
 pub mod ngspice;
+pub mod plot;
 pub mod raw;
 pub mod report;
 pub mod results;

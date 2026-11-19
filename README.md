@@ -213,7 +213,7 @@ on the canvas (View → ERC markers turns the schematic's off).
 Circuits simulate with [ngspice](https://ngspice.sourceforge.io/), which you install
 yourself (`brew install ngspice`, `apt install ngspice`, or the Windows download); it is
 found on `PATH` and the usual install places, or set its path in **Settings →
-Simulation**. Plotting waveforms and probing on the schematic are still to come
+Simulation**. Probing on the schematic is still to come
 ([simulation-plan.md](simulation-plan.md)).
 
 - **Simulation panel** (⌘2, or the **Simulation** menu): one tab per analysis
@@ -226,6 +226,19 @@ Simulation**. Plotting waveforms and probing on the schematic are still to come
   way that changes the netlist, the results dim with "Changed since the run".
   **Circuit** holds the ground net, supplies, temperature and extra SPICE lines, and
   shows the SPICE netlist and ngspice's log. Every change undoes like any other edit.
+- **Simulation tab:** the first transient, AC or DC sweep that finishes opens a plot
+  of the analysis the panel shows (also **Plot** in the panel, or **Simulation → Show
+  simulation plot**; once you close it, runs don't reopen it). It plots the signals
+  ticked in the panel's result table, or the named nets while none are ticked. AC
+  shows the magnitude in dB and, dashed on the right axis, the phase. Wheel zooms x
+  around the pointer (Shift+wheel: y), middle or right drag pans, left drag zooms into
+  a box, double-click or **V** fits. Click places cursor A, Shift+click cursor B
+  (drag them to move, Esc removes them); the table under the plot shows each trace's
+  value at A and B and the difference, and a click on a row hides or shows its trace.
+  **Export CSV…** saves the traces shown. An operating point shows a sortable table.
+- **Test bench:** keep sources on a sheet of their own ("Testbench" in the demo): a
+  source stands in for a connector's supply or signal, and has no footprint, so the
+  board doesn't change.
 - Problems (no ground, values that aren't numbers, parts without model, ngspice's
   errors) show in Messages' **Simulation** tab; click one to see its parts.
 - **Parts:** every Built-in part has a simulation model (resistors, capacitors and

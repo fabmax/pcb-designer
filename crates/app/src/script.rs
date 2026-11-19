@@ -3,8 +3,8 @@
 //! world millimetres (`board` switches to the board tab and coordinates, `schematic` back;
 //! `press x,y`, `move x,y`, `release x,y` drag, `double-click x,y`; `ui-click
 //! x,y` clicks at a screen position in points, `ui-double-click x,y` / `ui-right-click x,y`
-//! likewise, `ui-move x,y` hovers there, `type TEXT` types text); each step runs a few
-//! frames after the previous one.
+//! likewise, `ui-move x,y` hovers there, `type TEXT` types text, `run [ANALYSIS]` runs a
+//! simulation and waits for it); each step runs a few frames after the previous one.
 
 use std::collections::VecDeque;
 use view::ViewKind;
@@ -37,6 +37,8 @@ enum Step {
     Wait(u32),
     /// Following coordinates are in the board (true) or schematic (false) view.
     Board(bool),
+    /// Run a simulation (the analysis named, or the panel's); later steps wait for it.
+    Run(String),
 }
 
 #[derive(Debug, Default)]
@@ -47,6 +49,8 @@ pub struct Script {
     /// The view changed (or the script just started): its tab is to be brought to the
     /// front, once, so clicks may still switch tabs afterwards.
     switched: bool,
+    /// A `run` step asked for a simulation (the app takes it).
+    run: Option<String>,
 }
 
 /// Frames between steps (lets the camera fit and the UI settle).
@@ -107,13 +111,19 @@ impl Script {
                     let [x, y] = point()?;
                     steps.push_back(Step::Screen(Step2::Move(Pos2::new(x as f32, y as f32))));
                 }
+                "run" => steps.push_back(Step::Run(arg.trim().to_string())),
                 "board" => steps.push_back(Step::Board(true)),
                 "schematic" => steps.push_back(Step::Board(false)),
                 "wait" => steps.push_back(Step::Wait(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
                 _ => return Err(format!("unknown script step {cmd:?}")),
             }
         }
-        Ok(Script { steps, wait: 0, board: false, switched: true })
+        Ok(Script { steps, wait: 0, board: false, switched: true, run: None })
+    }
+
+    /// The simulation a `run` step asked for: an analysis name, empty for the panel's.
+    pub fn take_run(&mut self) -> Option<String> {
+        self.run.take()
     }
 
     /// Leave the tab in front as it is at the start (`--show` opened one).
@@ -185,6 +195,10 @@ impl Script {
             }],
             Step::Wait(n) => {
                 self.wait = n;
+                Vec::new()
+            }
+            Step::Run(name) => {
+                self.run = Some(name);
                 Vec::new()
             }
             Step::Board(b) => {

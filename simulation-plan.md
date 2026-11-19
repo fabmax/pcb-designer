@@ -40,7 +40,7 @@ What to avoid: SPICE syntax as the main interface (LTspice), simulations as sche
 objects (Qucs-S: clutters the drawing and the print), and a separate modal window (KiCad's
 simulator is its own frame; ours should be a tab that can sit beside the schematic).
 
-## Built so far (S1, S2)
+## Built so far (S1–S3)
 
 The engine and everything headless are built; their design and gotchas are in
 PLAN.md, "Simulation (`sim`)":
@@ -60,6 +60,13 @@ PLAN.md, "Simulation (`sim`)":
   forms, Run (⌘R) / Stop (⌘.), a result table, ground, supplies, temperature, extra
   lines, the netlist and log window; Messages' Simulation tab; the Simulation menu;
   the Settings page with the ngspice path; the running time in the status bar.
+- S3: the Simulation tab (`Tab::Simulation`): the plot of the panel's analysis with
+  log/linear x, dB and phase for AC, volts and amperes on two axes, wheel/box zoom,
+  pan, fit, cursors A and B with a readout table under the plot (which is the legend:
+  click a row to hide a trace), hover values, sample dots when zoomed in, stale
+  dimming, CSV export; an operating point shows a sortable table. Check boxes in the
+  panel's result table choose the plotted signals. The demo has a test bench sheet.
+  `--show simulation` and a `run [ANALYSIS]` script step.
 
 Still to come in the areas S1 built:
 
@@ -75,8 +82,9 @@ Still to come in the areas S1 built:
   port count differs from its pins, model text without a `.model` / `.subckt` line
   (today the netlister reports these per component).
 - Differential voltage probes (`Probe::Voltage` gets a reference, S6).
-- The demo gets a "Testbench" sub-sheet with a sine source on its signal (S3, when the
-  plot can show it); README documents the test bench sheet pattern then.
+- Plot: measurements between the cursors (min, max, average, RMS, frequency),
+  overlays of earlier runs, PNG export (with MCP's screenshot, S5), the zoom saved in
+  the workspace, device currents and power in the operating point table.
 - Supplies suggested from power port names (S6). (S2's "Add supply" picks the first
   power port net without one, its voltage from the name.)
 - `sim::Session` in the headless host, for MCP's `simulate` (S5).
@@ -243,19 +251,8 @@ Datasheet). Mapping them:
 
 ## Milestones
 
-Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1 and S2 are done; S3–S4
-give a usable simulator, S5–S8 make it comfortable, compatible and fast.
-
-### S3: Waveform viewer
-
-- `Tab::Simulation` and `Focus::Simulation`; opening it on run (side by side when
-  possible).
-- `sim::plot`: ticks (linear, log, SI labels), decimation, cursor interpolation,
-  transforms (dB, phase unwrap). Tested headless.
-- The plot widget: axes, two y axes, traces, legend, hover readout, zoom/pan/fit,
-  cursors A/B, stale dimming; OP table. Trace palettes in `style.rs`.
-- Signals list in the panel. CSV export.
-- `--show simulation` for screenshots; a `--script` step to run a simulation.
+Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1–S3 are done; S4
+gives a usable simulator, S5–S8 make it comfortable, compatible and fast.
 
 ### S4: Probing and results on the schematic
 

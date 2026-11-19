@@ -84,7 +84,7 @@ async fn agent_session() {
     // Inspect.
     let project = ok_json(call("get_project", Value::Null).await);
     assert_eq!(project["name"], "Demo");
-    assert_eq!(project["counts"]["component"], 5);
+    assert_eq!(project["counts"]["component"], 6, "five parts and the test bench source");
     // J1's pin 3 is open on purpose.
     let j1 = ok_json(call("get_component", json!({ "refdes": "J1" })).await);
     let flagged: Vec<&Value> =
@@ -240,7 +240,7 @@ async fn agent_session() {
     assert_eq!(r.is_error, Some(true));
     assert!(text(&r).contains("command 2 of 2 failed"), "{}", text(&r));
     let project = ok_json(call("get_project", Value::Null).await);
-    assert_eq!(project["counts"]["wire"], 11, "first command was rolled back");
+    assert_eq!(project["counts"]["wire"], 13, "first command was rolled back");
 
     // Select, screenshot, undo.
     let sym = info["symbols"][0]["symbol"]["id"].clone();
@@ -296,7 +296,7 @@ async fn agent_session() {
     drop(server);
     let final_project: Project = app.join().unwrap();
     assert!(final_project.schematic.component_by_refdes(&refdes).is_none(), "undo removed the part");
-    assert_eq!(final_project.schematic.components.len(), 5);
+    assert_eq!(final_project.schematic.components.len(), 6);
 }
 
 /// Status line of a raw MCP `initialize` POST with the given `Host` and optional `Origin`.

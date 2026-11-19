@@ -3,6 +3,7 @@
 mod bench;
 mod netlist;
 mod ngspice;
+mod plot;
 mod raw;
 mod session;
 mod setup;

@@ -267,6 +267,7 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
             action("Stop simulation", Action::StopSimulation, s.sim_running),
             Entry::Separator,
             action("Show Simulation panel", Action::PanelSimulation, true),
+            action("Show simulation plot", Action::ShowSimPlot, true),
             action("Show SPICE netlist and log", Action::ShowSimNetlist, true),
         ],
     ));

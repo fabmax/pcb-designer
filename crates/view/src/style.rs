@@ -242,6 +242,42 @@ pub fn pal() -> &'static Palette {
     }
 }
 
+/// Waveform trace colours, a categorical palette in a fixed order (blue, orange, aqua,
+/// yellow, magenta, green, violet, red), stepped per theme for the canvas background.
+/// Validated for colour-vision deficiencies between neighbours (worst ΔE 9.1 light, 8.4
+/// dark). On the light background four sit below 3:1 contrast, so traces are always
+/// named next to their colour (the plot's readout table).
+pub const TRACES_DARK: [Color; 8] = [
+    Color::rgb(0x39, 0x87, 0xe5),
+    Color::rgb(0xd9, 0x59, 0x26),
+    Color::rgb(0x19, 0x9e, 0x70),
+    Color::rgb(0xc9, 0x85, 0x00),
+    Color::rgb(0xd5, 0x51, 0x81),
+    Color::rgb(0x0c, 0xa3, 0x0c),
+    Color::rgb(0x90, 0x85, 0xe9),
+    Color::rgb(0xe6, 0x67, 0x67),
+];
+pub const TRACES_LIGHT: [Color; 8] = [
+    Color::rgb(0x2a, 0x78, 0xd6),
+    Color::rgb(0xeb, 0x68, 0x34),
+    Color::rgb(0x1b, 0xaf, 0x7a),
+    Color::rgb(0xed, 0xa1, 0x00),
+    Color::rgb(0xe8, 0x7b, 0xa4),
+    Color::rgb(0x00, 0x83, 0x00),
+    Color::rgb(0x62, 0x50, 0xd6),
+    Color::rgb(0xe3, 0x49, 0x48),
+];
+
+/// The colour of signal `i` of a plot (past eight they repeat; the plot dashes the
+/// second round).
+pub fn trace_color(i: usize) -> Color {
+    let traces = match theme() {
+        Theme::Dark => &TRACES_DARK,
+        Theme::Light => &TRACES_LIGHT,
+    };
+    traces[i % traces.len()]
+}
+
 /// Canvas background with the given grid spacing (world units), in the active palette.
 pub fn background(grid: f32) -> Background {
     let p = pal();

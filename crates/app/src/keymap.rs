@@ -84,6 +84,7 @@ pub enum Action {
     RunSimulation,
     StopSimulation,
     ShowSimNetlist,
+    ShowSimPlot,
 }
 
 /// Where an action's shortcut applies. Actions of different contexts may share a key.
@@ -165,6 +166,7 @@ impl Action {
         Action::RunSimulation,
         Action::StopSimulation,
         Action::ShowSimNetlist,
+        Action::ShowSimPlot,
     ];
 
     pub fn label(self) -> &'static str {
@@ -238,6 +240,7 @@ impl Action {
             Action::RunSimulation => "Run simulation",
             Action::StopSimulation => "Stop simulation",
             Action::ShowSimNetlist => "Show SPICE netlist and log",
+            Action::ShowSimPlot => "Show simulation plot",
         }
     }
 
@@ -585,6 +588,7 @@ mod tests {
             Action::ToggleErcMarkers,
             Action::PanelActivity,
             Action::ShowSimNetlist,
+            Action::ShowSimPlot,
         ];
         for a in Action::ALL.iter().filter(|a| !unbound.contains(a)) {
             assert!(!map.shortcuts(*a).is_empty(), "{a:?} has no default shortcut");

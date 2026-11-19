@@ -1,6 +1,6 @@
 //! Results as text: a summary table and CSV (the `simulate` command line, agents).
 
-use model::{natural_cmp, si};
+use model::{Id, natural_cmp, si};
 
 use crate::SimResult;
 use crate::raw::Vector;
@@ -11,6 +11,8 @@ pub struct Signal {
     /// `V(/OUT)`, `I(R1_1)`.
     pub label: String,
     pub net: Option<String>,
+    /// A current's (symbol, pin).
+    pub current: Option<(Id, Id)>,
     pub unit: &'static str,
     pub vector: Vector,
 }
@@ -24,17 +26,17 @@ pub fn signals(r: &SimResult) -> Vec<Signal> {
         .into_iter()
         .filter_map(|(net, _)| {
             let vector = r.voltage(net)?.into_owned();
-            Some(Signal { label: format!("V({net})"), net: Some(net.clone()), unit: "V", vector })
+            Some(Signal { label: format!("V({net})"), net: Some(net.clone()), current: None, unit: "V", vector })
         })
         .collect();
     let mut currents: Vec<Signal> = r
         .netlist
         .sense
-        .values()
-        .filter_map(|source| {
+        .iter()
+        .filter_map(|(key, source)| {
             let vector = r.plot.vector(&format!("i({source})"))?.clone();
             let name = source.trim_start_matches("vsense_").to_ascii_uppercase();
-            Some(Signal { label: format!("I({name})"), net: None, unit: "A", vector })
+            Some(Signal { label: format!("I({name})"), net: None, current: Some(*key), unit: "A", vector })
         })
         .collect();
     currents.sort_by(|a, b| natural_cmp(&a.label, &b.label));
@@ -47,6 +49,7 @@ pub fn signals(r: &SimResult) -> Vec<Signal> {
 pub struct Row {
     pub label: String,
     pub net: Option<String>,
+    pub current: Option<(Id, Id)>,
     /// Formatted, one per [`columns`] entry.
     pub values: Vec<String>,
 }
@@ -76,13 +79,14 @@ pub fn rows(r: &SimResult) -> Vec<Row> {
                 let max = db.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
                 let end = db.last().copied().unwrap_or(f64::NAN);
                 let phase = v.phase().last().copied().unwrap_or(f64::NAN);
-                vec![format!("{max:.2}"), format!("{end:.2}"), format!("{phase:.1}°")]
+                let db = |v: f64| if v <= -300.0 { "−∞".to_string() } else { format!("{v:.2}") };
+                vec![db(max), db(end), format!("{phase:.1}°")]
             } else {
                 let min = v.re.iter().cloned().fold(f64::INFINITY, f64::min);
                 let max = v.re.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
                 vec![f(min), f(max), f(v.re.last().copied().unwrap_or(f64::NAN))]
             };
-            Row { label: s.label, net: s.net, values }
+            Row { label: s.label, net: s.net, current: s.current, values }
         })
         .collect()
 }

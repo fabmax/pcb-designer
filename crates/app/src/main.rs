@@ -62,6 +62,7 @@ mod outputs;
 mod part_form;
 mod parts_ui;
 mod pcb_ui;
+mod plot_ui;
 mod pointer_filter;
 mod preview;
 mod project_panel;

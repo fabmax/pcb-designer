@@ -26,6 +26,8 @@ pub struct Finished {
     pub duration: Duration,
     /// The summary table ([`report::rows`]).
     pub rows: Vec<report::Row>,
+    /// Counts runs of the session: a new result has a new number (for caches).
+    pub run: u64,
 }
 
 /// The last run that was started (or refused): its problems, netlist and log.
@@ -67,6 +69,7 @@ pub struct Session {
     attempt: Option<Attempt>,
     /// Analysis → (revision checked, stale).
     stale: HashMap<Id, (u64, bool)>,
+    runs: u64,
 }
 
 impl Session {
@@ -141,7 +144,9 @@ impl Session {
                     Some(plot) => {
                         let result = SimResult { plot, netlist: run.netlist, log: out.log, warnings: out.warnings };
                         let rows = report::rows(&result);
-                        self.results.insert(run.analysis, Finished { result, duration, rows });
+                        self.runs += 1;
+                        let finished = Finished { result, duration, rows, run: self.runs };
+                        self.results.insert(run.analysis, finished);
                         self.stale.remove(&run.analysis);
                         Outcome::Done
                     }

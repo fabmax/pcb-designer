@@ -29,6 +29,8 @@ pub enum SimAct {
     ShowNetlist,
     ShowLog,
     OpenSettings,
+    /// Open the Simulation tab.
+    ShowPlot,
     /// Messages, on the Simulation tab.
     ShowMessages,
     SelectNet(String),
@@ -53,6 +55,12 @@ pub struct SimPanel {
     window_log: bool,
     /// The current netlist of the shown analysis: (revision, analysis, text).
     netlist: Option<(u64, Id, String)>,
+    /// The plots' views, per analysis.
+    pub plots: std::collections::HashMap<Id, crate::plot_ui::PlotState>,
+    /// AC plots leave out the phase.
+    pub no_phase: bool,
+    /// The user closed the plot tab: runs don't open it again (until opened by hand).
+    pub plot_closed: bool,
 }
 
 /// The kinds of analyses, in the "+" menu's order.
@@ -66,6 +74,7 @@ impl SimPanel {
         self.texts.clear();
         self.invalid.clear();
         self.netlist = None;
+        self.plots.clear();
     }
 
     /// Looks for ngspice again (the setting changed).
@@ -89,6 +98,10 @@ impl SimPanel {
         self.tab.and_then(|id| setup.analyses.iter().find(|a| a.id == id)).or(setup.analyses.first())
     }
 
+    pub fn show_tab(&mut self, id: Id) {
+        self.tab = Some(id);
+    }
+
     /// Starts `analysis`. Returns an error to show when ngspice is missing or the netlist
     /// has errors.
     pub fn run(&mut self, doc: &mut Document, analysis: Id, configured: Option<PathBuf>) -> Result<(), String> {
@@ -109,14 +122,22 @@ impl SimPanel {
         }
     }
 
-    /// Per frame: collects a finished run. Returns a status line for a failed one.
-    pub fn poll(&mut self, doc: &Document) -> Option<String> {
+    /// Per frame: collects a finished run: `Ok(sweep)` when it worked (a sweep: it has a
+    /// plot), else a status line.
+    pub fn poll(&mut self, doc: &Document) -> Option<Result<bool, String>> {
         let setup = &doc.project().schematic.simulation;
         self.session.retain(|id| setup.analyses.iter().any(|a| a.id == id));
+        self.plots.retain(|id, _| setup.analyses.iter().any(|a| a.id == *id));
         let outcome = self.session.poll()?;
-        let name = self.session.attempt().map_or(String::new(), |a| a.name.clone());
+        let attempt = self.session.attempt()?;
         match outcome {
-            Outcome::Failed(_) => Some(format!("Simulation of {name} failed: {}", errors_text(self.session.attempt()))),
+            Outcome::Failed(_) => {
+                Some(Err(format!("Simulation of {} failed: {}", attempt.name, errors_text(self.session.attempt()))))
+            }
+            Outcome::Done => {
+                let sweep = self.session.result(attempt.analysis).is_some_and(|f| f.result.scale().is_some());
+                Some(Ok(sweep))
+            }
             _ => None,
         }
     }
@@ -154,7 +175,14 @@ impl SimPanel {
                 self.analysis_ui(ui, &mut setup.analyses[i], doc.project());
                 ui.add_space(8.0);
                 let a = setup.analyses[i].clone();
-                self.results_ui(ui, doc, &a, &mut act);
+                if let Some(probe) = self.results_ui(ui, doc, &a, &mut act) {
+                    let probes = &mut setup.analyses[i].probes;
+                    let sig = sim::plot::Signal::of_probe(&probe);
+                    match probes.iter().position(|p| sim::plot::Signal::of_probe(p) == sig) {
+                        Some(k) => _ = probes.remove(k),
+                        None => probes.push(probe),
+                    }
+                }
             }
         }
         ui.add_space(8.0);
@@ -276,6 +304,12 @@ impl SimPanel {
             if icon_button(ui, Icon::Play, "Run", theme::success()).on_hover_text("Run this analysis (⌘R)").clicked()
             {
                 *act = Some(SimAct::Run(a.id));
+            }
+            if a.kind != AnalysisKind::Op
+                && self.session.result(a.id).is_some()
+                && ui.button("Plot").on_hover_text("Show the Simulation tab").clicked()
+            {
+                *act = Some(SimAct::ShowPlot);
             }
             let Some(attempt) = self.session.attempt().filter(|t| t.analysis == a.id) else { return };
             let errors = attempt.problems.iter().filter(|p| p.level == Level::Error).count();
@@ -409,12 +443,16 @@ impl SimPanel {
 
     /// The last result of `a`: a table of the probed and named nets (all with "Show all
     /// nets") and the probed currents. Dimmed when the schematic changed since.
-    fn results_ui(&mut self, ui: &mut Ui, doc: &Document, a: &Analysis, act: &mut Option<SimAct>) {
+    /// The result table. Returns a probe to add or remove (a row's check box: the
+    /// signals the plot shows).
+    fn results_ui(&mut self, ui: &mut Ui, doc: &Document, a: &Analysis, act: &mut Option<SimAct>) -> Option<Probe> {
         let stale = self.session.is_stale(doc.project(), doc.connectivity(), a, doc.revision);
         let Some(done) = self.session.result(a.id) else {
             hint(ui, "Not run yet.");
-            return;
+            return None;
         };
+        let sweep = done.result.scale().is_some();
+        let mut toggle = None;
         ui.horizontal(|ui| {
             ui.label(RichText::new("Results").strong());
             let took = format!("{} · {:.2} s", sim::report::title(&done.result), done.duration.as_secs_f64());
@@ -445,17 +483,33 @@ impl SimPanel {
             .collect();
         if rows.is_empty() {
             hint(ui, if self.show_all { "No signals match." } else { "No named nets: tick Show all nets." });
-            return;
+            return None;
         }
+        let plotted: HashSet<sim::plot::Signal> = a.probes.iter().map(sim::plot::Signal::of_probe).collect();
         let columns = sim::report::columns(&done.result);
         let dim = |t: String| if stale { RichText::new(t).color(theme::text_dim()) } else { RichText::new(t) };
         egui::Grid::new(("sim_results", a.id)).striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
+            if sweep {
+                label(ui, "Plot");
+            }
             label(ui, "Signal");
             for c in columns {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| label(ui, c));
             }
             ui.end_row();
             for row in rows.iter().take(500) {
+                let sig = match (&row.net, row.current) {
+                    (Some(net), _) => Some(sim::plot::Signal::Voltage(net.clone())),
+                    (None, Some((s, p))) => Some(sim::plot::Signal::Current(s, p)),
+                    _ => None,
+                };
+                if sweep {
+                    let mut on = sig.as_ref().is_some_and(|s| plotted.contains(s));
+                    let tip = if a.probes.is_empty() { "Plot only the ticked signals" } else { "Plot this signal" };
+                    if ui.checkbox(&mut on, "").on_hover_text(tip).changed() {
+                        toggle = sig.map(|s| s.probe());
+                    }
+                }
                 let r = ui.add(egui::Button::selectable(false, dim(row.label.clone())));
                 if let Some(net) = &row.net
                     && r.on_hover_text("Select the net").clicked()
@@ -473,6 +527,7 @@ impl SimPanel {
         if rows.len() > 500 {
             hint(ui, &format!("… and {} more", rows.len() - 500));
         }
+        toggle
     }
 
     /// Ground, supplies, temperature and extra lines (for every analysis), and the netlist
@@ -734,6 +789,8 @@ mod tests {
     #[test]
     fn source_components() {
         let p = view::demo::demo_project();
-        assert!(sources(&p).is_empty(), "the demo has no source");
+        let s = sources(&p);
+        assert_eq!(s.len(), 1, "the test bench's V1");
+        assert_eq!((s[0].1.as_str(), s[0].2), ("V1", "V"));
     }
 }

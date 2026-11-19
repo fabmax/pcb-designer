@@ -25,6 +25,7 @@ pub enum TabRef {
         preview: bool,
     },
     Gerber,
+    Simulation,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -8,6 +8,12 @@ fn dark() -> bool {
     view::style::theme() == Theme::Dark
 }
 
+/// A canvas palette colour (`view::style`) for egui.
+pub fn color(c: render::Color) -> Color32 {
+    let [r, g, b, a] = c.0;
+    Color32::from_rgba_unmultiplied(r, g, b, a)
+}
+
 pub fn accent() -> Color32 {
     if dark() { Color32::from_rgb(0x4c, 0x9a, 0xff) } else { Color32::from_rgb(0x1f, 0x6f, 0xe0) }
 }

@@ -2,7 +2,7 @@
 
 use editor_core::query::{pad_positions, pin_positions};
 use editor_core::{Command, Editor};
-use model::builtin::{self, PART_CAPACITOR, PART_HEADER_1X4, PART_LED, PART_RESISTOR};
+use model::builtin::{self, PART_CAPACITOR, PART_HEADER_1X4, PART_LED, PART_RESISTOR, PART_VSOURCE};
 use model::*;
 
 fn place(ed: &mut Editor, part: Id, x: f64, y: f64, rotation: Angle, refdes: &str, value: &str) -> Id {
@@ -98,7 +98,7 @@ pub const DEMO_PAGE_OFFSET: Point = Point::new(101_600_000, 101_600_000);
 /// The LED and its resistor are on a sub-sheet, "Indicator", fed through its pin IN.
 pub fn demo_project() -> Project {
     let mut ed = Editor::new(Project::new("Demo"));
-    let parts = vec![PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4];
+    let parts = vec![PART_RESISTOR, PART_CAPACITOR, PART_LED, PART_HEADER_1X4, PART_VSOURCE];
     ed.execute(Command::import_parts(&builtin::builtin_library(), &parts).unwrap()).unwrap();
 
     // Schematic.
@@ -164,11 +164,38 @@ pub fn demo_project() -> Project {
         })],
     })
     .unwrap();
-    // Simulation: +5V comes from the connector, so a supply stands in for it.
+    // Simulation: +5V comes from the connector; on the "Testbench" sheet a source stands
+    // in for it, 5 V with a 0.5 V, 1 kHz ripple (and 1 V for AC). Sources have no
+    // footprint, so the board doesn't change.
+    let changes = ed
+        .execute(Command::AddSheet { parent: None, name: "Testbench".into(), pos: Point::mm(25.4, -25.4), size: None })
+        .unwrap();
+    let bench = changes.changes.iter().find_map(|c| if let ObjectId::Sheet(s) = c.id { Some(s) } else { None });
+    let v1 = place_on(&mut ed, bench, PART_VSOURCE, 25.4, 0.0, Angle::ZERO, "V1", "");
+    stub_label(&mut ed, v1, "+", "+5V");
+    stub_label(&mut ed, v1, "-", "GND");
+    let mut c = ed.project().schematic.components.get(v1).unwrap().clone();
+    let waveform = Waveform::Sine { offset: 5.0, amplitude: 0.5, frequency: 1e3, delay: 0.0, damping: 0.0, phase: 0.0 };
+    c.sim.source = Some(Source { waveform, ac: 1.0, ac_phase: 0.0 });
+    ed.execute(Command::Update { objects: vec![Object::Component(c)] }).unwrap();
+    let probes =
+        vec![Probe::Voltage { net: "+5V".into(), at: None }, Probe::Voltage { net: "Net-(D1-2)".into(), at: None }];
     ed.execute(Command::SetSimulation {
         simulation: Simulation {
-            analyses: vec![Analysis::new("Operating point", AnalysisKind::Op)],
-            supplies: vec![Supply { net: "+5V".into(), voltage: 5.0 }],
+            analyses: vec![
+                Analysis::new("Operating point", AnalysisKind::Op),
+                Analysis {
+                    probes: probes.clone(),
+                    ..Analysis::new(
+                        "Transient",
+                        AnalysisKind::Tran { stop: 3e-3, step: Some(5e-6), start: 0.0, max_step: Some(5e-6) },
+                    )
+                },
+                Analysis {
+                    probes,
+                    ..Analysis::new("AC", AnalysisKind::Ac { start: 1.0, stop: 1e7, points_per_decade: 50 })
+                },
+            ],
             ..Default::default()
         },
     })
@@ -291,7 +318,7 @@ mod tests {
     fn demo_is_valid() {
         let p = demo_project();
         assert_eq!(p.validate(), Vec::<String>::new());
-        assert_eq!(p.schematic.components.len(), 5);
+        assert_eq!(p.schematic.components.len(), 6, "five parts and the test bench source");
         assert_eq!(p.board.footprints.len(), 5);
         assert!(p.board.tracks.len() >= 4);
     }
