@@ -919,6 +919,62 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
+### M22: standard built-in library (proposal, to be refined)
+
+Grow the Built-in library into a small standard library of generic parts. Each part is one
+symbol with its common packages as variants (SMD and THT). A variant's pin → pad mapping
+covers pinouts that differ between packages (SOT-23 vs TO-92). The value is set per
+component, and `default_value` names a typical part. Footprints follow IPC-7351B nominal
+density from the package datasheets. Families come from generators (chip, SOD/SMA,
+SOT, TO, axial/radial, pin rows), not hand-written per part. Ids stay deterministic.
+
+**Passives**
+- Resistor: 0402, 0603, 0805, 1206, 2512; THT axial (DIN0207, 10.16 mm), standing
+  (2.54 mm).
+- Capacitor: 0402, 0603, 0805, 1206, 1210; THT disc 2.54 / 5.08 mm.
+- Polarised capacitor: tantalum A/B/C/D (3216/3528/6032/7343); SMD electrolytic Ø4,
+  5, 6.3, 8, 10 mm; THT radial Ø5/2.0, Ø6.3/2.5, Ø8/3.5, Ø10/5.0 mm.
+- Inductor: 0603, 0805, 1210; shielded SMD power 3×3, 4×4, 5×5, 6×6, 10×10 mm.
+- Ferrite bead: 0402, 0603, 0805.
+- Fuse / PTC: 0603, 1206, 1812.
+- Crystal: 2-pin HC-49/US (THT) and HC-49 SMD; 4-pad 3225 and 2016 (2 pins + GND).
+- Trimmer potentiometer: Bourns 3362P (THT), TC33 (SMD).
+
+**Diodes**
+- Diode: SOD-123, SOD-323, MiniMELF, SMA, SMB, SMC; THT DO-35, DO-41, DO-201AD.
+- Schottky, Zener, TVS (uni- and bidirectional): own symbols, the same package set.
+- LED: 0402, 0603, 0805, 1206; THT 3 mm and 5 mm.
+
+**Transistors**
+- NPN / PNP: SOT-23 (BC847 / BC857), SOT-223, TO-92 (2N3904 / 2N3906; EBC).
+- N- / P-MOSFET: SOT-23 (2N7002 / BSS84, AO3400 / AO3401), SOT-223, DPAK, TO-220
+  (IRLZ44N).
+
+**Connectors**
+- Pin rows, 2.54 mm: `Conn_01x01` to `Conn_01x40` and `Conn_02x01` to `Conn_02x20`
+  (2 to 40 pins). 100 parts, so generated. Variants:
+  - pin header, vertical and right-angle (THT);
+  - pin socket, vertical (THT);
+  - pin header, vertical SMD.
+- The same generic connector parts also carry these variants, where the pin count
+  exists:
+  - JST PH (2.0 mm) and XH (2.5 mm), 2–8 pins;
+  - JST SH (1.0 mm, SMD, Qwiic / STEMMA QT), 2–6 pins;
+  - screw terminals at 5.0 and 3.5 mm, 2–4 pins.
+- USB-C receptacle, USB 2.0 only (16 pins); USB Micro-B.
+- Test point: SMD pad and THT loop.
+
+**Other common parts**
+- Tactile switch: 6×6 THT, 6×6 SMD, 3×4 SMD. Slide switch SPDT.
+- LDO regulator: AMS1117 (SOT-223), AP2112K (SOT-23-5), LM7805 (TO-220).
+- Op amp: single (SOIC-8, SOT-23-5) and dual LM358 (SOIC-8, DIP-8); the 74HC00
+  stays.
+
+**Board parts**: mounting holes M2, M2.5, M3, M4 (plain and plated); fiducial 1 mm.
+
+**Later**: 1.27 / 2.00 mm pin rows, RGB LEDs, dual diodes (BAV99), resistor arrays,
+crystal oscillators, barrel jacks, more logic and regulators, 3D models.
+
 
 ## Later
 
