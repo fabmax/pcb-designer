@@ -123,12 +123,15 @@ pub fn capacitor() -> Symbol {
     s.finish()
 }
 
-/// Pin 1 is "+": the straight plate.
+/// Pin 1 is "+": the open plate; the solid one is "-" (IEC style).
 pub fn capacitor_polarized() -> Symbol {
-    let mut s = two_pin("Capacitor_Polarized", ("1", "+"), ("2", "-"), 0.5, 2.5);
-    s.line_w(&[(-0.5, -2.0), (-0.5, 2.0)], 0.4);
-    s.arc(3.5, 0.0, 3.0, 140.0, 80.0);
-    s.text("+", -1.6, 1.6, HAlign::Center, VAlign::Center);
+    let mut s = two_pin("Capacitor_Polarized", ("1", "+"), ("2", "-"), 0.9, 2.5);
+    s.rect(-0.9, -2.0, -0.3, 2.0, false);
+    // Schematic fills are the light body colour: the solid plate is an outline filled by a
+    // wide line.
+    s.rect(0.3, -2.0, 0.9, 2.0, false);
+    s.line_w(&[(0.6, -1.8), (0.6, 1.8)], 0.4);
+    s.text("+", -1.7, 1.7, HAlign::Center, VAlign::Center);
     s.finish()
 }
 
@@ -256,20 +259,21 @@ pub fn bjt(pnp: bool) -> Symbol {
 /// points into the channel (N) or out of it (P).
 pub fn mosfet(p_channel: bool) -> Symbol {
     let mut s = Sym::new(if p_channel { "PMOS" } else { "NMOS" });
-    s.pin("G", "G", -G, 0.0, 0.0, G - 0.5);
+    s.pin("G", "G", -G, 0.0, 0.0, G - 0.75);
     s.pin("D", "D", G, 2.0 * G, 270.0, G);
     s.pin("S", "S", G, -2.0 * G, 90.0, G);
-    s.line(&[(-0.5, -1.27), (-0.5, 1.27)]);
-    for (a, b) in [(0.76, 1.52), (-0.38, 0.38), (-1.52, -0.76)] {
-        s.line_w(&[(0.0, a), (0.0, b)], 0.4);
+    // Gate plate, then the channel in three segments with clear gaps.
+    s.line(&[(-0.75, -1.65), (-0.75, 1.65)]);
+    for (a, b) in [(1.05, 1.65), (-0.3, 0.3), (-1.65, -1.05)] {
+        s.line_w(&[(0.0, a), (0.0, b)], 0.3);
     }
-    s.line(&[(0.0, 1.14), (G, 1.14), (G, G)]);
-    s.line(&[(0.0, -1.14), (G, -1.14), (G, -G)]);
-    s.line(&[(0.0, 0.0), (G, 0.0), (G, -1.14)]);
+    s.line(&[(0.0, 1.35), (G, 1.35), (G, G)]);
+    s.line(&[(0.0, -1.35), (G, -1.35), (G, -G)]);
+    s.line(&[(0.0, 0.0), (G, 0.0), (G, -1.35)]);
     if p_channel {
-        s.poly(&[(1.2, 0.0), (0.4, 0.4), (0.4, -0.4)], true);
+        s.poly(&[(1.3, 0.0), (0.5, 0.4), (0.5, -0.4)], true);
     } else {
-        s.poly(&[(0.2, 0.0), (1.0, 0.4), (1.0, -0.4)], true);
+        s.poly(&[(0.4, 0.0), (1.2, 0.4), (1.2, -0.4)], true);
     }
     s.ref_value_right(3.3, 0.0);
     s.finish()
