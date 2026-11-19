@@ -84,6 +84,9 @@ const BOTTOM: f32 = 36.0;
 const TOP: f32 = 10.0;
 
 pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> {
+    // The tab has the canvas background, like the schematic; the chart sets itself off
+    // from it (see `chart_bg`).
+    ui.painter().rect_filled(ui.max_rect(), 0.0, theme::color(view::style::pal().background));
     let mut act = None;
     let setup = &doc.project().schematic.simulation;
     let Some(analysis) = panel.current(setup).cloned() else {
@@ -326,8 +329,7 @@ fn draw(
     let painter = ui.painter_at(outer);
     let x = state.x.expect("fitted");
     let ys = [state.y[0].expect("fitted"), state.y[1].expect("fitted")];
-    let bg = theme::color(view::style::pal().background);
-    painter.rect_filled(rect, 4.0, bg);
+    painter.rect_filled(rect, 4.0, chart_bg());
     let grid = theme::border();
     let text = theme::text_dim();
     let font = FontId::proportional(11.0);
@@ -479,6 +481,17 @@ fn draw(
                 }
             });
         });
+    }
+}
+
+/// The chart's background: the window background in the dark theme; white in the light
+/// one, where the window background is a mid grey that hides the grid and leaves the
+/// lighter trace colours at 1.5:1 contrast (white: 2.2:1 at worst, the readout table
+/// names every trace).
+fn chart_bg() -> Color32 {
+    match view::style::theme() {
+        view::style::Theme::Dark => theme::window_bg(),
+        view::style::Theme::Light => Color32::WHITE,
     }
 }
 

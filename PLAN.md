@@ -490,7 +490,9 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   user closed it (`plot_closed`). Ticking a row in the panel's result table adds or
   removes a `Probe` (one `SetSimulation`). Trace colours: `style::trace_color`, an
   8-colour categorical palette per theme checked for colour-vision deficiency; past 8
-  colours repeat dashed.
+  colours repeat dashed. The tab has the canvas background (like the schematic), the
+  chart the window background in dark and white in light (the light window grey hid
+  the grid and left yellow at 1.5:1).
 - **Demo:** a "Testbench" sheet with `V1` (5 V + 0.5 V 1 kHz sine, AC 1 V) on +5V
   replaces the supply; analyses Operating point, Transient (3 ms) and AC, the last two
   probing +5V and the LED's anode.
