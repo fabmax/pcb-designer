@@ -91,6 +91,9 @@ PLAN.md, "Simulation (`sim`)":
   part), a third y axis, the Measure table (`sim::measure`, also in `simulate`'s
   replies with `from` / `to`), supply suggestions, reordering analysis tabs, a `hold`
   script step.
+- S6b: the tuner (`sim::tune`): rows in the setup, slider values as temporary
+  overrides of the runs' netlists, live re-runs, Apply and Reset, "Tune R1" on a
+  part; `simulate` takes `values`.
 
 Still to come in the areas S1 built:
 
@@ -275,7 +278,7 @@ give a usable simulator; S6–S8 make it comfortable, compatible and fast.
 ### S6: Comfort
 
 Three commits on one branch: S6a (done: probes, measurements, supplies, tab order),
-S6b the tuner, S6c parameter sweeps.
+S6b (done: the tuner), S6c parameter sweeps.
 
 - **Tuner (S6b):** a Tuner section in the Simulation tab under the readout table; rows
   added by right-click on a part → "Tune R1" or the section's **+** (a filtered list of
@@ -287,7 +290,7 @@ S6b the tuner, S6c parameter sweeps.
   are saved in the setup (`Simulation::tune`; adding or removing one is an undo step);
   the tuned values are not: they override the netlist of runs without touching the
   document, stale checks use the tuned netlist, the schematic's tags show the tuned
-  run, and a bar "Tuned: R1 = 4.7k · Apply · Reset" says so. Apply writes them all in
+  run, and the tuner's header says "Tuned: R1 = 4.7k · Apply · Reset". Apply writes them all in
   one undo step. Runs on release, and while dragging when the last run took under
   150 ms (one in flight, the newest value queued). The tuner runs the analysis the tab
   shows. Agents: `simulate` takes `values` (`{"R1": "4k7", "V1.amplitude": 0.2}`),

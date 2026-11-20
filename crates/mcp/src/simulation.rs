@@ -5,11 +5,12 @@
 use std::time::{Duration, Instant};
 
 use editor_core::connectivity::Connectivity;
-use model::{Analysis, AnalysisKind, Id, Probe, Project, si};
+use model::{Analysis, AnalysisKind, Id, Probe, Project, TuneParam, si};
 use render::font::{self, HAlign, VAlign};
 use render::{Camera, Color, Instance, Scene};
 use serde_json::{Value, json};
 use sim::plot::{self, Axis, PlotData, Scale, Signal};
+use sim::tune::Overrides;
 use sim::{Finished, Level, Netlist, Outcome, Session};
 use view::Document;
 
@@ -31,6 +32,9 @@ pub struct SimulateRequest {
     /// The x range measurements cover (default: the whole run).
     pub from: Option<f64>,
     pub to: Option<f64>,
+    /// Values for this run only: `R1` (a part's value) or `V1.amplitude` (a source's
+    /// field) to an SI value (`4k7`, `0.2`).
+    pub values: Vec<(String, String)>,
 }
 
 /// A run an agent is waiting for.
@@ -43,6 +47,8 @@ pub struct SimJob {
     pub extra: Vec<Probe>,
     pub points: Vec<f64>,
     pub range: (Option<f64>, Option<f64>),
+    /// The request's `values`, put into its components.
+    pub overrides: Overrides,
     pub started: Instant,
 }
 
@@ -119,15 +125,62 @@ fn parse_signal(name: &str, netlist: &Netlist, conn: &Connectivity) -> Result<Si
     }
 }
 
+/// Parses `simulate`'s values: `R1` → the part's value (a DC source's level),
+/// `V1.amplitude` → a field of its source (`V1.ac`: the AC magnitude), each to an SI
+/// value.
+pub fn parse_values(project: &Project, values: &[(String, String)]) -> Result<Overrides, String> {
+    let tunable = sim::tune::tunable(project);
+    let mut out = Vec::new();
+    for (key, text) in values {
+        let key = key.trim();
+        let (refdes, field) = match key.split_once('.') {
+            Some((r, f)) => (r, Some(f)),
+            None => (key, None),
+        };
+        let c = project
+            .schematic
+            .components
+            .iter()
+            .find(|c| c.refdes.eq_ignore_ascii_case(refdes))
+            .ok_or_else(|| format!("values: no component {refdes:?}"))?;
+        let param = match field {
+            // A source's own value is its DC level.
+            None if c.sim.source.is_some() => TuneParam::Source { component: c.id, field: "value".into() },
+            None => TuneParam::Value { component: c.id },
+            Some(f) => TuneParam::Source { component: c.id, field: f.to_ascii_lowercase() },
+        };
+        if !tunable.contains(&param) {
+            let fields: Vec<String> = tunable
+                .iter()
+                .filter(|p| p.component() == c.id)
+                .map(|p| match p {
+                    TuneParam::Value { .. } => c.refdes.clone(),
+                    TuneParam::Source { field, .. } => format!("{}.{field}", c.refdes),
+                })
+                .collect();
+            let hint = if fields.is_empty() {
+                "nothing of it can".to_string()
+            } else {
+                format!("it has {}", fields.join(", "))
+            };
+            return Err(format!("values: {key:?} can't be set for a run ({hint})"));
+        }
+        let v = si::parse(text).ok_or_else(|| format!("values: {key:?}: {text:?} isn't a value"))?;
+        out.push((param, v));
+    }
+    Ok(Overrides::new(project, &out))
+}
+
 /// Prepares an agent's run: the analysis, the signals, the currents to measure.
 pub fn prepare(doc: &mut Document, req: &SimulateRequest, default: Option<Id>) -> Result<(SimJob, Analysis), String> {
     doc.update_connectivity(false);
     let project = doc.project();
     let analysis = find_analysis(project, req.analysis.as_deref(), default)?.clone();
     let conn = doc.connectivity();
+    let overrides = parse_values(project, &req.values)?;
     let signals = match &req.signals {
         Some(names) if !names.is_empty() => {
-            let netlist = sim::netlist::build(project, conn, &analysis);
+            let netlist = sim::netlist::build_with(project, conn, &analysis, &overrides);
             Some(parse_signals(names, &netlist, conn)?)
         }
         _ => None,
@@ -147,6 +200,7 @@ pub fn prepare(doc: &mut Document, req: &SimulateRequest, default: Option<Id>) -
         extra,
         points: req.points.clone(),
         range: (req.from, req.to),
+        overrides,
         started: Instant::now(),
     };
     Ok((job, analysis))
@@ -155,7 +209,7 @@ pub fn prepare(doc: &mut Document, req: &SimulateRequest, default: Option<Id>) -
 /// Starts an agent's run in `session`.
 pub fn start(session: &mut Session, doc: &Document, job: &SimJob, backend: sim::SharedBackend) -> Result<(), String> {
     let a = find_analysis(doc.project(), Some(&job.analysis.to_string()), None)?;
-    if session.start_with(doc.project(), doc.connectivity(), a, &job.extra, backend) {
+    if session.start_with(doc.project(), doc.connectivity(), a, &job.extra, &job.overrides, backend) {
         Ok(())
     } else {
         Err(format!("{} not started: {}", a.name, errors(session)))

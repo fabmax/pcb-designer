@@ -14,6 +14,7 @@ use editor_core::connectivity::Connectivity;
 use model::{Analysis, Id, Probe, Project};
 
 use crate::netlist::{self, Level, Netlist, SimProblem};
+use crate::tune::Overrides;
 use crate::{Backend, Cancel, Output, SimError, SimResult, report};
 
 /// A backend the worker thread can own.
@@ -30,6 +31,8 @@ pub struct Finished {
     pub run: u64,
     /// Current probes measured in this run only, beyond the analysis' (an agent's).
     pub extra: Vec<Probe>,
+    /// The tuned values it ran with.
+    pub overrides: Overrides,
 }
 
 /// The last run that was started (or refused): its problems, netlist and log.
@@ -62,6 +65,7 @@ struct Run {
     cancel: Cancel,
     netlist: Netlist,
     extra: Vec<Probe>,
+    overrides: Overrides,
     worker: JoinHandle<Result<Output, SimError>>,
 }
 
@@ -70,8 +74,8 @@ pub struct Session {
     run: Option<Run>,
     results: HashMap<Id, Finished>,
     attempt: Option<Attempt>,
-    /// Analysis → (revision checked, stale).
-    stale: HashMap<Id, (u64, bool)>,
+    /// Analysis → (revision and overrides checked, stale).
+    stale: HashMap<Id, (u64, Overrides, bool)>,
     runs: u64,
 }
 
@@ -85,22 +89,23 @@ impl Session {
         analysis: &Analysis,
         backend: SharedBackend,
     ) -> bool {
-        self.start_with(project, conn, analysis, &[], backend)
+        self.start_with(project, conn, analysis, &[], &Overrides::default(), backend)
     }
 
     /// [`start`](Self::start), measuring the currents of `extra` probes as well (for this
-    /// run only: the result isn't stale for them).
+    /// run only: the result isn't stale for them), with components `overrides`.
     pub fn start_with(
         &mut self,
         project: &Project,
         conn: &Connectivity,
         analysis: &Analysis,
         extra: &[Probe],
+        overrides: &Overrides,
         backend: SharedBackend,
     ) -> bool {
         self.stop();
         let analysis = &with_probes(analysis, extra);
-        let netlist = netlist::build(project, conn, analysis);
+        let netlist = netlist::build_with(project, conn, analysis, overrides);
         let mut attempt = Attempt {
             analysis: analysis.id,
             name: analysis.name.clone(),
@@ -122,8 +127,9 @@ impl Session {
             .name("simulation".into())
             .spawn(move || backend.run(&text, &c))
             .expect("spawn simulation thread");
-        let extra = extra.to_vec();
-        self.run = Some(Run { analysis: analysis.id, started: Instant::now(), cancel, netlist, extra, worker });
+        let (extra, overrides) = (extra.to_vec(), overrides.clone());
+        let started = Instant::now();
+        self.run = Some(Run { analysis: analysis.id, started, cancel, netlist, extra, overrides, worker });
         true
     }
 
@@ -163,7 +169,14 @@ impl Session {
                         let result = SimResult { plot, netlist: run.netlist, log: out.log, warnings: out.warnings };
                         let rows = report::rows(&result);
                         self.runs += 1;
-                        let finished = Finished { result, duration, rows, run: self.runs, extra: run.extra };
+                        let finished = Finished {
+                            result,
+                            duration,
+                            rows,
+                            run: self.runs,
+                            extra: run.extra,
+                            overrides: run.overrides,
+                        };
                         self.results.insert(run.analysis, finished);
                         self.stale.remove(&run.analysis);
                         Outcome::Done
@@ -199,17 +212,27 @@ impl Session {
         self.attempt.as_ref()
     }
 
-    /// Whether `analysis`' result no longer matches the schematic (its netlist would
-    /// differ now). False without a result. Rebuilds the netlist once per `revision`.
-    pub fn is_stale(&mut self, project: &Project, conn: &Connectivity, analysis: &Analysis, revision: u64) -> bool {
+    /// Whether `analysis`' result no longer matches the schematic with `overrides` (the
+    /// tuned values now): its netlist would differ. False without a result. Rebuilds the
+    /// netlist once per `revision` and overrides.
+    pub fn is_stale(
+        &mut self,
+        project: &Project,
+        conn: &Connectivity,
+        analysis: &Analysis,
+        overrides: &Overrides,
+        revision: u64,
+    ) -> bool {
         let Some(done) = self.results.get(&analysis.id) else { return false };
-        if let Some(&(rev, stale)) = self.stale.get(&analysis.id)
-            && rev == revision
+        if let Some((rev, o, stale)) = self.stale.get(&analysis.id)
+            && *rev == revision
+            && o == overrides
         {
-            return stale;
+            return *stale;
         }
-        let stale = netlist::build(project, conn, &with_probes(analysis, &done.extra)).text != done.result.netlist.text;
-        self.stale.insert(analysis.id, (revision, stale));
+        let a = with_probes(analysis, &done.extra);
+        let stale = netlist::build_with(project, conn, &a, overrides).text != done.result.netlist.text;
+        self.stale.insert(analysis.id, (revision, overrides.clone(), stale));
         stale
     }
 

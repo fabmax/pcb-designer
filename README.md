@@ -247,6 +247,15 @@ Simulation**. What's planned next is in [simulation-plan.md](simulation-plan.md)
   points and the phase margin (loop gain at 0 dB). **Copy** copies them as text. Volts,
   amperes and watts each get an axis (a third one on the far right). An operating point
   shows a sortable table.
+- **Tuner** (under the plot): try values without changing the schematic. Right-click
+  a part → **Tune R1**, or **Tune…** lists every part value and source setting
+  (amplitude, frequency, AC level, …). A row has a slider (log over a decade either
+  way for values, snapped to E24 for resistors and E12 for capacitors and inductors;
+  0 to twice the value for source settings), the value, the slider's range and
+  snapping. Moving a slider runs the analysis again on release (while dragging when
+  runs are quick); plot and schematic values show the tuned run. **Apply** writes a
+  value into the schematic (one undo step), the header's **Apply** all of them,
+  **Reset** goes back. The rows are saved with the project, the tuned values aren't.
 - **Probe tool** (**O**, in the tool bar's Simulation group, shown with the panel or
   tab open): click a wire, label or junction to plot its net's voltage, drag from one
   net to another for the voltage between them (`V(OUT,IN)`), click the body of a pin
@@ -311,7 +320,8 @@ comment), `set_check_settings` (severities and the pin conflict matrix), `measur
 the last Gerber export, a simulation's plot or the whole window), `simulate` (runs an
 analysis and answers its values: an operating point's voltages, currents and powers, or
 per signal of a sweep (`OUT`, `V(OUT,IN)`, `R1.1`, `P(R1)`) up to 200 points, the values
-at given x and the measurements of the Measure table; the run shows in the app), `get_spice_netlist` (the netlist an analysis would run,
+at given x and the measurements of the Measure table; `values` tries part values and
+source settings for that run only; the run shows in the app), `get_spice_netlist` (the netlist an analysis would run,
 with node and device names and problems) and `save_project`. Sheets are added, renamed and deleted with
 `execute` (`add_sheet`, `update`, `delete`), and `move_to_sheet` moves objects (or
 re-parents a sheet) while `duplicate` copies objects in one step and `add_cutout` cuts into a zone or keepout; `get_project` lists their paths, and wherever

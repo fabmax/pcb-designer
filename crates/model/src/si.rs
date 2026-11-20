@@ -264,3 +264,88 @@ mod tests {
         assert_eq!(spice(1.5e6), "1.5e6");
     }
 }
+
+/// `value` as a component value: four significant digits and a prefix without a space,
+/// in a form SPICE reads the same (`4.7k`, `100n`, `2.2u`, `1meg`, `330`).
+pub fn value_text(value: f64) -> String {
+    let text = format(value, "");
+    match text.split_once(' ') {
+        None => text,
+        Some((n, p)) => {
+            let p = match p {
+                "M" => "meg",
+                "µ" => "u",
+                p => p,
+            };
+            format!("{n}{p}")
+        }
+    }
+}
+
+/// The E series of preferred values (E6, E12, E24, E96): one decade's values.
+pub fn e_series(n: u32) -> &'static [f64] {
+    const E6: [f64; 6] = [1.0, 1.5, 2.2, 3.3, 4.7, 6.8];
+    const E12: [f64; 12] = [1.0, 1.2, 1.5, 1.8, 2.2, 2.7, 3.3, 3.9, 4.7, 5.6, 6.8, 8.2];
+    const E24: [f64; 24] = [
+        1.0, 1.1, 1.2, 1.3, 1.5, 1.6, 1.8, 2.0, 2.2, 2.4, 2.7, 3.0, 3.3, 3.6, 3.9, 4.3, 4.7, 5.1, 5.6, 6.2, 6.8, 7.5,
+        8.2, 9.1,
+    ];
+    const E96: [f64; 96] = [
+        1.00, 1.02, 1.05, 1.07, 1.10, 1.13, 1.15, 1.18, 1.21, 1.24, 1.27, 1.30, 1.33, 1.37, 1.40, 1.43, 1.47, 1.50,
+        1.54, 1.58, 1.62, 1.65, 1.69, 1.74, 1.78, 1.82, 1.87, 1.91, 1.96, 2.00, 2.05, 2.10, 2.15, 2.21, 2.26, 2.32,
+        2.37, 2.43, 2.49, 2.55, 2.61, 2.67, 2.74, 2.80, 2.87, 2.94, 3.01, 3.09, 3.16, 3.24, 3.32, 3.40, 3.48, 3.57,
+        3.65, 3.74, 3.83, 3.92, 4.02, 4.12, 4.22, 4.32, 4.42, 4.53, 4.64, 4.75, 4.87, 4.99, 5.11, 5.23, 5.36, 5.49,
+        5.62, 5.76, 5.90, 6.04, 6.19, 6.34, 6.49, 6.65, 6.81, 6.98, 7.15, 7.32, 7.50, 7.68, 7.87, 8.06, 8.25, 8.45,
+        8.66, 8.87, 9.09, 9.31, 9.53, 9.76,
+    ];
+    match n {
+        6 => &E6,
+        12 => &E12,
+        24 => &E24,
+        _ => &E96,
+    }
+}
+
+/// The value of E series `n` nearest to `value` (in ratio); `value` itself when it
+/// isn't positive.
+pub fn snap_e(value: f64, n: u32) -> f64 {
+    if !(value > 0.0 && value.is_finite()) {
+        return value;
+    }
+    let decade = 10f64.powf(value.log10().floor());
+    let m = value / decade;
+    let series = e_series(n);
+    // The candidates: this decade's values and the next decade's first.
+    let best = series
+        .iter()
+        .copied()
+        .chain(std::iter::once(10.0))
+        .min_by(|a, b| (a / m).ln().abs().total_cmp(&(b / m).ln().abs()))
+        .unwrap_or(1.0);
+    // Round away float noise (4.7 · 1000 = 4699.999…).
+    let v = best * decade;
+    let scale = 10f64.powi(3 - v.log10().floor() as i32);
+    (v * scale).round() / scale
+}
+
+#[cfg(test)]
+mod value_tests {
+    use super::*;
+
+    #[test]
+    fn value_texts_and_e_series() {
+        assert_eq!(value_text(4700.0), "4.7k");
+        assert_eq!(value_text(1e-7), "100n");
+        assert_eq!(value_text(2.2e-6), "2.2u");
+        assert_eq!(value_text(1e6), "1meg");
+        assert_eq!(value_text(330.0), "330");
+        for v in [4700.0, 1e-7, 2.2e-6, 1e6, 330.0, 0.0047] {
+            assert!((parse(&value_text(v)).unwrap() / v - 1.0).abs() < 1e-9, "{v}");
+        }
+        assert_eq!(snap_e(4600.0, 24), 4700.0);
+        assert_eq!(snap_e(9.6e-9, 12), 1e-8);
+        assert_eq!(snap_e(1234.0, 96), 1240.0);
+        assert_eq!(snap_e(5.0, 6), 4.7);
+        assert_eq!(snap_e(-1.0, 6), -1.0);
+    }
+}

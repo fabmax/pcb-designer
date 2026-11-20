@@ -74,11 +74,23 @@ fn a_run_keeps_its_result_until_the_schematic_changes() {
     assert!(a.problems.iter().any(|p| p.level == Level::Warning && p.message == "warning: a hint"));
     assert!(a.netlist.contains("R1 vsense_r1_1_in vsense_r1_2_in 10000"), "{}", a.netlist);
 
-    assert!(!s.is_stale(b.project(), &b.conn(), &op, 1));
+    let none = sim::tune::Overrides::default();
+    assert!(!s.is_stale(b.project(), &b.conn(), &op, &none, 1));
+    // Tuned values make it stale too, until a run with them.
+    let r1 = b.project().schematic.components.iter().find(|c| c.refdes == "R1").unwrap().id;
+    let tuned = sim::tune::Overrides::new(b.project(), &[(TuneParam::Value { component: r1 }, 2200.0)]);
+    assert!(s.is_stale(b.project(), &b.conn(), &op, &tuned, 1));
+    let fake = Fake { gate: open(), ..Default::default() };
+    let netlists = fake.netlists.clone();
+    assert!(s.start_with(b.project(), &b.conn(), &op, &[], &tuned, Arc::new(fake)));
+    assert_eq!(wait(&mut s), Outcome::Done);
+    assert!(netlists.lock().unwrap()[0].contains("vsense_r1_2_in 2200"), "{:?}", netlists.lock().unwrap());
+    assert!(!s.is_stale(b.project(), &b.conn(), &op, &tuned, 1));
+    assert!(s.is_stale(b.project(), &b.conn(), &op, &none, 1));
     // A value changes: the result stays, marked stale.
     let r2 = b.project().schematic.components.iter().find(|c| c.refdes == "R2").unwrap().id;
     b.update_component(r2, |c| c.value = "4k7".into());
-    assert!(s.is_stale(b.project(), &b.conn(), &op, 2));
+    assert!(s.is_stale(b.project(), &b.conn(), &op, &tuned, 2));
     assert!(s.result(op.id).is_some());
     // Results of deleted analyses go.
     s.retain(|id| id != op.id);

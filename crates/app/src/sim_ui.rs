@@ -47,7 +47,7 @@ pub struct SimPanel {
     tab: Option<Id>,
     /// Text being typed into value fields, and those that didn't parse.
     texts: FxHashMap<egui::Id, String>,
-    si: crate::fields::SiFields,
+    pub si: crate::fields::SiFields,
     filter: String,
     show_all: bool,
     ngspice: Option<Detected>,
@@ -75,6 +75,11 @@ pub struct SimPanel {
     pub probe_drag: Option<(ProbeTarget, egui::Pos2)>,
     /// An agent's run (MCP `simulate`), answered when it ends.
     agent: Option<(mcp::simulation::SimJob, mcp::host::Responder)>,
+    /// The tuner's slider values (its rows are the setup's).
+    pub tuner: sim::tune::Tuner,
+    /// The tuner changed a value while a run was going: run the tab's analysis again
+    /// when it ends.
+    pub tune_pending: bool,
 }
 
 /// What the schematic overlay depends on.
@@ -85,6 +90,7 @@ struct OverlayKey {
     values: Option<(Id, u64)>,
     hover: Option<ProbeTarget>,
     dark: bool,
+    tuned: Vec<(TuneParam, f64)>,
 }
 
 /// `v` rounded to three significant digits (the schematic's tags).
@@ -119,6 +125,8 @@ impl SimPanel {
         self.plots.clear();
         self.overlay = None;
         self.hover = None;
+        self.tuner.reset();
+        self.tune_pending = false;
     }
 
     /// Looks for ngspice again (the setting changed).
@@ -200,6 +208,7 @@ impl SimPanel {
             values: values.and_then(|a| Some((a.id, self.session.result(a.id)?.run))),
             hover: self.hover.clone().filter(|_| shown),
             dark: view::style::theme() == view::style::Theme::Dark,
+            tuned: self.tuned(doc.project()),
         };
         if let Some((k, o, _)) = &self.overlay
             && *k == key
@@ -223,7 +232,8 @@ impl SimPanel {
             }
         }
         let mut devices = Vec::new();
-        let stale = values.is_some_and(|a| self.session.is_stale(doc.project(), conn, a, doc.revision));
+        let overrides = self.overrides(doc.project());
+        let stale = values.is_some_and(|a| self.session.is_stale(doc.project(), conn, a, &overrides, doc.revision));
         if let Some(a) = values
             && let Some(done) = self.session.result(a.id)
         {
@@ -264,6 +274,47 @@ impl SimPanel {
         self.overlay.as_ref()?.2.iter().find(|d| d.component == component)
     }
 
+    /// The tuned values that differ from the document's.
+    pub fn tuned(&self, project: &Project) -> Vec<(TuneParam, f64)> {
+        self.tuner.changed(project, &project.schematic.simulation.tune, None)
+    }
+
+    /// The components runs use: the tuned values put in.
+    pub fn overrides(&self, project: &Project) -> sim::tune::Overrides {
+        self.tuner.overrides(project, &project.schematic.simulation.tune, None)
+    }
+
+    /// The tuner changed a value: runs the tab's analysis with it, or once the run going
+    /// ends. Quiet when ngspice is missing (the panel says so) or the netlist has errors
+    /// (the panel's problems show them).
+    pub fn tune_run(&mut self, doc: &mut Document, configured: Option<PathBuf>) {
+        let Some(id) = self.current(&doc.project().schematic.simulation).map(|a| a.id) else { return };
+        if self.session.running().is_some() {
+            self.tune_pending = true;
+            return;
+        }
+        self.tune_pending = false;
+        // Nothing to do when the last run had these values already.
+        doc.update_connectivity(false);
+        let project = doc.project();
+        if let Some(a) = project.schematic.simulation.analyses.iter().find(|a| a.id == id)
+            && self.session.result(id).is_some()
+        {
+            let overrides = self.overrides(project);
+            if !self.session.is_stale(project, doc.connectivity(), a, &overrides, doc.revision) {
+                return;
+            }
+        }
+        let _ = self.run(doc, id, configured);
+    }
+
+    /// Whether the tab's last run was quick enough to re-run while a slider moves.
+    pub fn tune_live(&self, project: &Project) -> bool {
+        self.current(&project.schematic.simulation)
+            .and_then(|a| self.session.result(a.id))
+            .is_some_and(|f| f.duration < sim::tune::LIVE)
+    }
+
     pub fn show_tab(&mut self, id: Id) {
         self.tab = Some(id);
     }
@@ -281,7 +332,8 @@ impl SimPanel {
         let Some(a) = project.schematic.simulation.analyses.iter().find(|a| a.id == analysis) else {
             return Err("No such analysis".into());
         };
-        if self.session.start(project, doc.connectivity(), a, Arc::new(ngspice)) {
+        let overrides = self.overrides(project);
+        if self.session.start_with(project, doc.connectivity(), a, &[], &overrides, Arc::new(ngspice)) {
             Ok(())
         } else {
             Err(format!("{} not started: {}", a.name, errors_text(self.session.attempt())))
@@ -319,6 +371,7 @@ impl SimPanel {
         let setup = &doc.project().schematic.simulation;
         self.session.retain(|id| setup.analyses.iter().any(|a| a.id == id));
         self.plots.retain(|id, _| setup.analyses.iter().any(|a| a.id == *id));
+        self.tuner.retain(&setup.tune);
         let outcome = self.session.poll();
         if let Some((job, _)) = &self.agent
             && let Some(answer) = mcp::simulation::check(job, &mut self.session, doc)
@@ -629,7 +682,8 @@ impl SimPanel {
     /// The result table. Returns a probe to add or remove (a row's check box: the
     /// signals the plot shows).
     fn results_ui(&mut self, ui: &mut Ui, doc: &Document, a: &Analysis, act: &mut Option<SimAct>) -> Option<Probe> {
-        let stale = self.session.is_stale(doc.project(), doc.connectivity(), a, doc.revision);
+        let overrides = self.overrides(doc.project());
+        let stale = self.session.is_stale(doc.project(), doc.connectivity(), a, &overrides, doc.revision);
         let Some(done) = self.session.result(a.id) else {
             hint(ui, "Not run yet.");
             return None;

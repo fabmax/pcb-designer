@@ -63,6 +63,37 @@ impl Backend for Fake {
 }
 
 #[test]
+fn simulate_takes_values_for_one_run() {
+    let mut host = demo();
+    let nl = ask(&mut host, Request::SpiceNetlist { analysis: None }).unwrap();
+    let nodes = nl["nodes"].as_object().unwrap().values().map(|n| n.as_str().unwrap().to_string()).collect();
+    host.sim_backend = Some(Arc::new(Fake { nodes }));
+    let r1 = |host: &HeadlessHost| {
+        host.doc.project().schematic.components.iter().find(|c| c.refdes == "R1").unwrap().value.clone()
+    };
+    let before = r1(&host);
+    let values = vec![("R1".to_string(), "2k2".to_string()), ("V1.ac".to_string(), "0.25".to_string())];
+    let req = SimulateRequest { analysis: Some("Transient".into()), values, ..Default::default() };
+    ask(&mut host, Request::Simulate(req)).unwrap();
+    let netlist = host.sim.attempt().unwrap().netlist.clone();
+    assert!(netlist.lines().any(|l| l.starts_with("R1 ") && l.ends_with(" 2200")), "{netlist}");
+    assert!(netlist.contains("AC 0.25"), "{netlist}");
+    // The schematic keeps its value.
+    assert_eq!(r1(&host), before);
+
+    let bad = |key: &str, value: &str| {
+        let mut host = demo();
+        let values = vec![(key.to_string(), value.to_string())];
+        let req = SimulateRequest { analysis: Some("Transient".into()), values, ..Default::default() };
+        ask(&mut host, Request::Simulate(req)).unwrap_err()
+    };
+    assert!(bad("R99", "1k").contains("no component"));
+    assert!(bad("R1", "lots").contains("isn't a value"));
+    let e = bad("V1.nope", "1");
+    assert!(e.contains("V1.ac"), "{e}");
+}
+
+#[test]
 fn spice_netlist_names_nodes_and_devices() {
     let mut host = demo();
     let v = ask(&mut host, Request::SpiceNetlist { analysis: Some("ac".into()) }).unwrap();
@@ -184,7 +215,8 @@ fn simulate_with_ngspice() {
     let doc = &mut host.doc;
     doc.update_connectivity(false);
     let a = doc.project().schematic.simulation.analyses[1].clone();
-    assert!(!host.sim.is_stale(host.doc.project(), host.doc.connectivity(), &a, host.doc.revision));
+    let none = sim::tune::Overrides::default();
+    assert!(!host.sim.is_stale(host.doc.project(), host.doc.connectivity(), &a, &none, host.doc.revision));
     // AC: magnitude and phase.
     let v = simulate(&mut host, "AC", None, &[1e3]).unwrap();
     let labels: Vec<&str> = v["signals"].as_array().unwrap().iter().map(|s| s["signal"].as_str().unwrap()).collect();

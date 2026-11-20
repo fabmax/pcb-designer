@@ -17,6 +17,7 @@ pub mod raw;
 pub mod report;
 pub mod results;
 pub mod session;
+pub mod tune;
 
 use editor_core::connectivity::Connectivity;
 use model::{Analysis, Project};

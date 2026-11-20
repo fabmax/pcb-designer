@@ -309,6 +309,12 @@ pub struct SimulateParams {
     pub from: Option<f64>,
     #[serde(default)]
     pub to: Option<f64>,
+    /// Values for this run only (the schematic doesn't change): a part's value by its
+    /// reference ("R1": "4k7"; a DC source's level: "V1": 5) or a source's field
+    /// ("V1.amplitude": 0.2; fields: ac, and the waveform's: value, offset, amplitude,
+    /// frequency, low, high, rise, fall, width, period, …).
+    #[serde(default)]
+    pub values: Option<std::collections::BTreeMap<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -709,7 +715,19 @@ impl PcbTools {
         through their component's sim field.")]
     async fn simulate(&self, Parameters(p): Parameters<SimulateParams>) -> Result<CallToolResult, ErrorData> {
         let points = p.points.unwrap_or_default();
-        let req = SimulateRequest { analysis: p.analysis, signals: p.signals, points, from: p.from, to: p.to };
+        let values = p
+            .values
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(k, v)| {
+                let text = match v {
+                    serde_json::Value::String(s) => s,
+                    v => v.to_string(),
+                };
+                (k, text)
+            })
+            .collect();
+        let req = SimulateRequest { analysis: p.analysis, signals: p.signals, points, from: p.from, to: p.to, values };
         self.call(Request::Simulate(req)).await
     }
 

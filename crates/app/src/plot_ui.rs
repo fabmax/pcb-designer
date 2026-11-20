@@ -27,6 +27,12 @@ pub enum PlotAct {
     Run(Id),
     /// Right-click → Remove probe: (analysis, probe index).
     RemoveProbe(Id, usize),
+    /// The tuner's rows changed (one `SetSimulation`).
+    SetTune(Vec<TuneRow>),
+    /// A tuned value changed: run the tab's analysis with it.
+    TuneRun,
+    /// Write tuned values into the schematic: one parameter's, else all.
+    ApplyTune(Option<TuneParam>),
 }
 
 /// A signal's target on the schematic (hovering its row highlights it).
@@ -131,13 +137,31 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
     // The tab has the canvas background, like the schematic; the chart sets itself off
     // from it (see `chart_bg`).
     ui.painter().rect_filled(ui.max_rect(), 0.0, theme::color(view::style::pal().background));
-    let mut act = None;
     let setup = &doc.project().schematic.simulation;
     let Some(analysis) = panel.current(setup).cloned() else {
         centered_hint(ui, "Add an analysis in the Simulation panel (⌘2) to plot it.");
         return None;
     };
-    let stale = panel.session.is_stale(doc.project(), doc.connectivity(), &analysis, doc.revision);
+    // The plot (and its table) above, the tuner at the bottom.
+    let full = ui.available_rect_before_wrap();
+    let tuner_h = crate::tune_ui::height(doc.project()).min(full.height() * 0.45);
+    let split = full.bottom() - tuner_h;
+    let top = Rect::from_min_max(full.min, pos2(full.right(), split));
+    let bottom = Rect::from_min_max(pos2(full.left(), split), full.max);
+    let mut top_ui = ui.new_child(egui::UiBuilder::new().id_salt("plot").max_rect(top));
+    let act = plot_ui(&mut top_ui, panel, doc, analysis);
+    let mut bottom_ui = ui.new_child(egui::UiBuilder::new().id_salt("tuner").max_rect(bottom));
+    bottom_ui.painter().hline(bottom.x_range(), bottom.top(), Stroke::new(1.0, theme::border()));
+    let tune = crate::tune_ui::ui(&mut bottom_ui, panel, doc);
+    ui.advance_cursor_after_rect(full);
+    tune.or(act)
+}
+
+fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis) -> Option<PlotAct> {
+    let mut act = None;
+    let setup = &doc.project().schematic.simulation;
+    let overrides = panel.overrides(doc.project());
+    let stale = panel.session.is_stale(doc.project(), doc.connectivity(), &analysis, &overrides, doc.revision);
     let running = panel.session.running().is_some_and(|(id, _)| id == analysis.id);
     let ac = matches!(analysis.kind, AnalysisKind::Ac { .. });
 

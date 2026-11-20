@@ -451,6 +451,42 @@ pub enum Waveform {
 }
 
 impl Source {
+    /// The numeric fields a tuner or sweep can change: the waveform's (see
+    /// [`Waveform::fields_mut`]) plus `ac` (the AC magnitude).
+    pub fn fields_mut(&mut self) -> Vec<(&'static str, &mut f64)> {
+        let mut f = self.waveform.fields_mut();
+        f.push(("ac", &mut self.ac));
+        f
+    }
+
+    /// A field's value by key.
+    pub fn field(&self, key: &str) -> Option<f64> {
+        self.clone().fields_mut().into_iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
+    }
+
+    /// Sets a field by key; false when there is no such field.
+    pub fn set_field(&mut self, key: &str, value: f64) -> bool {
+        match self.fields_mut().into_iter().find(|(k, _)| *k == key) {
+            Some((_, v)) => {
+                *v = value;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The unit of a field: the source's own (`unit`, V or A) for levels, s, Hz, ° or
+    /// 1/s for the others.
+    pub fn field_unit<'a>(key: &str, unit: &'a str) -> &'a str {
+        match key {
+            "frequency" => "Hz",
+            "phase" => "°",
+            "damping" => "1/s",
+            "delay" | "rise" | "fall" | "width" | "period" | "delay1" | "tau1" | "delay2" | "tau2" => "s",
+            _ => unit,
+        }
+    }
+
     /// The value text of a source component: "DC 5 V", "SIN 1 V 1 kHz", "PULSE 0–3.3 V
     /// 1 kHz", plus "AC 1 V" for an AC input. `unit`: "V" or "A".
     pub fn describe(&self, unit: &str) -> String {
@@ -487,6 +523,34 @@ impl Default for Waveform {
 }
 
 impl Waveform {
+    /// Its numeric fields by key (none for PWL).
+    pub fn fields_mut(&mut self) -> Vec<(&'static str, &mut f64)> {
+        match self {
+            Waveform::Dc { value } => vec![("value", value)],
+            Waveform::Sine { offset, amplitude, frequency, delay, damping, phase } => vec![
+                ("offset", offset),
+                ("amplitude", amplitude),
+                ("frequency", frequency),
+                ("delay", delay),
+                ("damping", damping),
+                ("phase", phase),
+            ],
+            Waveform::Pulse { low, high, delay, rise, fall, width, period } => vec![
+                ("low", low),
+                ("high", high),
+                ("delay", delay),
+                ("rise", rise),
+                ("fall", fall),
+                ("width", width),
+                ("period", period),
+            ],
+            Waveform::Pwl { .. } => Vec::new(),
+            Waveform::Exp { v1, v2, delay1, tau1, delay2, tau2 } => {
+                vec![("v1", v1), ("v2", v2), ("delay1", delay1), ("tau1", tau1), ("delay2", delay2), ("tau2", tau2)]
+            }
+        }
+    }
+
     /// The value at time 0 (the DC value for operating point and DC sweeps).
     pub fn initial(&self) -> f64 {
         match self {
@@ -660,6 +724,82 @@ pub struct Simulation {
     /// Extra SPICE lines (`.param`, `.options`), as typed.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub extra: String,
+    /// The tuner's rows (the tuned values themselves aren't saved).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tune: Vec<TuneRow>,
+}
+
+/// A value the tuner (or a parameter sweep) changes.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TuneParam {
+    /// A component's value (parts whose model takes `${VALUE}`: R, C, L, …).
+    Value { component: Id },
+    /// A source's field: a waveform field (`amplitude`, `frequency`, `value`, …) or `ac`.
+    Source { component: Id, field: String },
+}
+
+impl TuneParam {
+    pub fn component(&self) -> Id {
+        match self {
+            TuneParam::Value { component } | TuneParam::Source { component, .. } => *component,
+        }
+    }
+
+    /// Component values move on a log scale, source fields on a linear one.
+    pub fn is_log(&self) -> bool {
+        matches!(self, TuneParam::Value { .. })
+    }
+}
+
+/// Snapping of tuned values to a preferred value series.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Snap {
+    #[default]
+    None,
+    E6,
+    E12,
+    E24,
+    E96,
+}
+
+impl Snap {
+    pub const ALL: [Snap; 5] = [Snap::None, Snap::E6, Snap::E12, Snap::E24, Snap::E96];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Snap::None => "None",
+            Snap::E6 => "E6",
+            Snap::E12 => "E12",
+            Snap::E24 => "E24",
+            Snap::E96 => "E96",
+        }
+    }
+
+    pub fn apply(self, v: f64) -> f64 {
+        match self {
+            Snap::None => v,
+            Snap::E6 => crate::si::snap_e(v, 6),
+            Snap::E12 => crate::si::snap_e(v, 12),
+            Snap::E24 => crate::si::snap_e(v, 24),
+            Snap::E96 => crate::si::snap_e(v, 96),
+        }
+    }
+}
+
+/// A tuner row: the parameter, its slider's range and snapping.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TuneRow {
+    pub param: TuneParam,
+    pub min: f64,
+    pub max: f64,
+    #[serde(default, skip_serializing_if = "is_no_snap")]
+    pub snap: Snap,
+}
+
+fn is_no_snap(s: &Snap) -> bool {
+    *s == Snap::None
 }
 
 fn room() -> f64 {
@@ -678,6 +818,7 @@ impl Default for Simulation {
             supplies: Vec::new(),
             temperature: room(),
             extra: String::new(),
+            tune: Vec::new(),
         }
     }
 }

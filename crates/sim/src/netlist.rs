@@ -20,6 +20,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use editor_core::connectivity::Connectivity;
 use model::*;
 
+use crate::tune::Overrides;
+
 /// How serious a netlist finding is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
@@ -86,7 +88,18 @@ impl Netlist {
 
 /// The netlist of `project` for `analysis` (its analysis line and its current probes).
 pub fn build(project: &Project, conn: &Connectivity, analysis: &Analysis) -> Netlist {
-    let mut b = Builder { project, out: Netlist::default(), used_nodes: HashSet::new(), used_devices: HashSet::new() };
+    build_with(project, conn, analysis, &Overrides::default())
+}
+
+/// [`build`] with components overridden (tuned values, a sweep's step).
+pub fn build_with(project: &Project, conn: &Connectivity, analysis: &Analysis, overrides: &Overrides) -> Netlist {
+    let mut b = Builder {
+        project,
+        overrides,
+        out: Netlist::default(),
+        used_nodes: HashSet::new(),
+        used_devices: HashSet::new(),
+    };
     b.used_nodes.insert("0".into());
     b.nodes(conn);
     let mut lines = Vec::new();
@@ -145,6 +158,7 @@ fn one_line(s: &str) -> String {
 
 struct Builder<'a> {
     project: &'a Project,
+    overrides: &'a Overrides,
     out: Netlist,
     used_nodes: HashSet<String>,
     used_devices: HashSet<String>,
@@ -245,6 +259,7 @@ impl Builder<'_> {
         let mut no_model = Vec::new();
         let mut simulated = HashSet::new();
         for c in components {
+            let c = self.overrides.component(c);
             let Some(part) = project.library.parts.get(c.part) else { continue };
             if part.is_board_part() || c.sim.exclude {
                 continue;

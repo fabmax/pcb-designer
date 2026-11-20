@@ -78,6 +78,7 @@ mod theme;
 #[cfg(target_os = "macos")]
 mod title_bar;
 mod toolbar;
+mod tune_ui;
 mod units;
 mod workspace;
 

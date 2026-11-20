@@ -10,6 +10,12 @@ fn setup() -> Simulation {
             Analysis::new("Bode", AnalysisKind::Ac { start: 10.0, stop: 1e6, points_per_decade: 50 }),
         ],
         supplies: vec![Supply { net: "+5V".into(), voltage: 5.0 }],
+        tune: vec![TuneRow {
+            param: TuneParam::Source { component: Id::new(), field: "amplitude".into() },
+            min: 0.0,
+            max: 2.0,
+            snap: Snap::None,
+        }],
         ..Default::default()
     }
 }
@@ -59,6 +65,17 @@ fn bad_setups_are_refused() {
         refused(&mut ed, &|s| s.analyses[0].kind =
             AnalysisKind::Dc { source: Id::new(), start: 0.0, stop: 1.0, step: 0.1 })
         .contains("not a component")
+    );
+    let row =
+        |min: f64, max: f64| TuneRow { param: TuneParam::Value { component: Id::new() }, min, max, snap: Snap::E24 };
+    assert!(refused(&mut ed, &|s| s.tune = vec![row(10.0, 1.0)]).contains("min < max"));
+    assert!(refused(&mut ed, &|s| s.tune = vec![row(0.0, 1.0)]).contains("positive"));
+    assert!(
+        refused(&mut ed, &|s| {
+            let r = row(1.0, 10.0);
+            s.tune = vec![r.clone(), r];
+        })
+        .contains("twice")
     );
     assert!(ed.project().schematic.simulation.is_default());
 }

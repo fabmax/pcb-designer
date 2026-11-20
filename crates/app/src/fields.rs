@@ -279,6 +279,19 @@ impl SiFields {
         unit: &str,
         empty: &str,
     ) -> Option<Option<f64>> {
+        self.field_sized(ui, salt, value, unit, empty, 110.0)
+    }
+
+    /// [`field`](Self::field) `width` points wide.
+    pub fn field_sized(
+        &mut self,
+        ui: &mut egui::Ui,
+        salt: impl std::hash::Hash + std::fmt::Debug,
+        value: Option<f64>,
+        unit: &str,
+        empty: &str,
+        width: f32,
+    ) -> Option<Option<f64>> {
         let id = egui::Id::unique(salt);
         let shown = value.map_or(String::new(), |v| si::format(v, unit));
         let focused = ui.memory(|m| m.has_focus(id));
@@ -287,7 +300,7 @@ impl SiFields {
         if !focused && !bad {
             buf.clone_from(&shown);
         }
-        let mut edit = egui::TextEdit::singleline(buf).id(id).desired_width(110.0).hint_text(empty);
+        let mut edit = egui::TextEdit::singleline(buf).id(id).desired_width(width).hint_text(empty);
         if bad {
             edit = edit.text_color(theme::error());
         }

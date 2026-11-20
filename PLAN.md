@@ -545,6 +545,22 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   `SetSimulation`); `suggested_supplies` lists power port nets that no supply and no
   voltage source pin powers, with `supply_voltage` from the name (`None` for `VCC`, the
   user types it).
+- **Tuner** (`sim::tune`, `app/src/tune_ui.rs`): rows are `Simulation::tune`
+  (`TuneParam` = a part's value or a source's field by key, from `Source::fields_mut`;
+  the setup check refuses a parameter twice, min ≥ max, and min ≤ 0 on log rows). The
+  slider values live in `SimPanel::tuner` (`Tuner`, not saved); `Tuner::changed` is
+  what differs from the document, and `Overrides` (component copies with the values
+  put in) is what `netlist::build_with`, `Session::start_with` and `is_stale` take, so
+  a tuned run isn't stale and an untuned one is. A part's value is stored as its value
+  text reads back (`si::value_text`), so Apply (one `Update` of the override
+  components) leaves nothing tuned. Re-runs: on release or a typed value, while
+  dragging when the tab's last run took under `tune::LIVE`; `tune_run` skips a run whose
+  netlist matches the last and queues one (`tune_pending`, started from the app's
+  frame) while a run goes. The tuner's height doesn't depend on what is tuned (the
+  "Tuned:" summary sits in its header) and rows `push_id` their parameter: a layout
+  change under a dragged slider ends the drag. "Tune R1" in the schematic's context
+  menu takes a symbol or its field; a source's level (value, amplitude, high, v2)
+  first. Agent runs use their `values` only, not the tuner's.
 - **Model editing** (`app/src/sim_form.rs`): the parsing lives in `model::simulation`
   (`logical_lines`, `ModelCard`, `SubcktHeader`, `SimModel::problems`, `SimDevice::ports`)
   so the netlister, the library's issues and the forms agree. `Library::sim_pins` is the
@@ -561,7 +577,8 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   or id, else the host's shown one; signals parsed against a fresh netlist: `R1.1`,
   `I(R1.1)`, `OUT`, `V(OUT)`) and run by the host through its `Session`
   (`start_with` + extra current probes, which `Finished::extra` keeps so the result
-  isn't stale for them). `check` after each poll answers: done, failed, stopped (by the
+  isn't stale for them) and `values` (`parse_values`: `R1`, a DC source's `V1`,
+  `V1.amplitude`, checked against `tune::tunable`) as `Overrides`. `check` after each poll answers: done, failed, stopped (by the
   user, another analysis started), or 120 s passed (the server waits 130 s for it,
   other calls 60 s). The app answers from `SimPanel::poll`; the headless host blocks
   in a poll loop with its own session (`sim_backend` lets tests fake ngspice).

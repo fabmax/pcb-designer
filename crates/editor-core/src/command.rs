@@ -1980,6 +1980,18 @@ fn check_simulation(project: &Project, sim: &Simulation) -> Result<(), String> {
     if !(sim.temperature.is_finite() && sim.temperature > -273.15) {
         return Err("temperature below absolute zero".into());
     }
+    let mut tuned = HashSet::new();
+    for row in &sim.tune {
+        if !tuned.insert(&row.param) {
+            return Err("a parameter is tuned twice".into());
+        }
+        if !(row.min.is_finite() && row.max.is_finite() && row.min < row.max) {
+            return Err("a tuner row needs min < max".into());
+        }
+        if row.param.is_log() && row.min <= 0.0 {
+            return Err("a component value's tuning range must be positive".into());
+        }
+    }
     Ok(())
 }
 

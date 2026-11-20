@@ -255,6 +255,8 @@ enum Deferred {
     Action(Action),
     /// An item tab asked to open another item ("Edit footprint" of a part).
     Navigate(u64, Open),
+    /// "Tune R1" in a schematic's context menu: a tuner row for the component.
+    Tune(Id),
 }
 
 /// Which editor takes keyboard shortcuts.
@@ -3847,6 +3849,60 @@ impl PcbApp {
 
     /// Runs an analysis (`None`: the one the Simulation panel shows; an operating point
     /// is added when there is none) and shows the panel.
+    /// Replaces the tuner's rows (one undo step).
+    fn set_tune_rows(&mut self, rows: Vec<TuneRow>) {
+        let mut setup = self.doc().project().schematic.simulation.clone();
+        setup.tune = rows;
+        if let Err(e) = self.doc_mut().execute(Command::SetSimulation { simulation: setup }) {
+            self.set_status(e.to_string());
+        }
+    }
+
+    /// Writes tuned values into the schematic (one parameter's, else all), one undo step.
+    fn apply_tune(&mut self, param: Option<TuneParam>) {
+        let project = self.doc().project();
+        let tuned: Vec<(TuneParam, f64)> =
+            self.sim.tuned(project).into_iter().filter(|(p, _)| param.as_ref().is_none_or(|q| q == p)).collect();
+        let overrides = sim::tune::Overrides::new(project, &tuned);
+        let objects: Vec<Object> = overrides.components().cloned().map(Object::Component).collect();
+        if objects.is_empty() {
+            return;
+        }
+        match self.doc_mut().execute(Command::Update { objects }) {
+            Ok(_) => {
+                for (p, _) in &tuned {
+                    self.sim.tuner.forget(p);
+                }
+            }
+            Err(e) => self.set_status(e.to_string()),
+        }
+    }
+
+    /// "Tune R1": adds the component's value (a source: its first field) to the tuner
+    /// and shows the Simulation tab.
+    fn tune_component(&mut self, component: Id) {
+        let project = self.doc().project();
+        let setup = &project.schematic.simulation;
+        let Some(c) = project.schematic.components.get(component) else { return };
+        let mut params = sim::tune::tunable_of(project, c);
+        // A source's level first: its DC value, amplitude, high level.
+        let rank = |p: &TuneParam| match p {
+            TuneParam::Source { field, .. } => {
+                ["value", "amplitude", "high", "v2"].iter().position(|f| f == field).unwrap_or(9)
+            }
+            TuneParam::Value { .. } => 0,
+        };
+        params.sort_by_key(rank);
+        if !params.iter().any(|p| setup.tune.iter().any(|r| &r.param == p))
+            && let Some(row) = params.first().and_then(|p| sim::tune::default_row(project, p))
+        {
+            let mut rows = setup.tune.clone();
+            rows.push(row);
+            self.set_tune_rows(rows);
+        }
+        self.open_sim_tab(true);
+    }
+
     fn run_simulation(&mut self, analysis: Option<Id>) {
         self.commit_text_edit();
         self.settings.dock.show(Panel::Simulation);
@@ -4676,9 +4732,39 @@ impl TreeBehavior<'_> {
                     .any(|&id| doc.project().get(id).is_some_and(|o| view::handles::rect_to_polygon(&o).is_some()));
             let kind = if sheet.is_some() { menu::CanvasKind::Schematic } else { menu::CanvasKind::Board };
             let entries = menu::canvas_menu(self.keymap, kind, selected, movable, rect, false);
+            // One part (or its text) selected on a sheet whose values can be tuned:
+            // "Tune R1".
+            let tune = match pane.it.selection.as_slice() {
+                [id @ (ObjectId::Symbol(_) | ObjectId::SymbolField(_))] if sheet.is_some() => {
+                    let project = doc.project();
+                    let sch = &project.schematic;
+                    let symbol = match *id {
+                        ObjectId::SymbolField(f) => sch.fields.get(f).map(|f| f.symbol),
+                        ObjectId::Symbol(s) => Some(s),
+                        _ => None,
+                    };
+                    symbol
+                        .and_then(|s| sch.symbols.get(s))
+                        .and_then(|s| sch.components.get(s.component))
+                        .filter(|c| !sim::tune::tunable_of(project, c).is_empty())
+                        .map(|c| (c.id, c.refdes.clone()))
+                }
+                _ => None,
+            };
             response.context_menu(|ui| {
                 if let Some(menu::Cmd::Action(a)) = menu::entries_menu_ui(ui, &entries) {
                     self.deferred.push(Deferred::Action(a));
+                }
+                if let Some((c, refdes)) = &tune {
+                    ui.separator();
+                    if ui
+                        .button(format!("Tune {refdes}"))
+                        .on_hover_text("Try its values in the Simulation tab's tuner")
+                        .clicked()
+                    {
+                        self.deferred.push(Deferred::Tune(*c));
+                        ui.close();
+                    }
                 }
             });
             if pane.it.is_dragging() {
@@ -5145,6 +5231,13 @@ impl eframe::App for PcbApp {
                         self.set_status(e);
                     }
                 }
+                Deferred::Plot(PlotAct::SetTune(rows)) => self.set_tune_rows(rows),
+                Deferred::Plot(PlotAct::TuneRun) => {
+                    let configured = self.settings.ngspice_path();
+                    self.sim.tune_run(&mut self.project.lib.doc, configured);
+                }
+                Deferred::Plot(PlotAct::ApplyTune(param)) => self.apply_tune(param),
+                Deferred::Tune(component) => self.tune_component(component),
                 Deferred::Action(a) => self.run_action(a),
             }
         }
@@ -5226,6 +5319,11 @@ impl eframe::App for PcbApp {
                 self.open_sim_tab(false);
             }
             _ => {}
+        }
+        // A tuned value changed while the last run went: run it with the newest.
+        if self.sim.tune_pending && self.sim.session.running().is_none() {
+            let configured = self.settings.ngspice_path();
+            self.sim.tune_run(&mut self.project.lib.doc, configured);
         }
         if self.sim.session.running().is_some() {
             ctx.request_repaint_after(Duration::from_millis(100));
