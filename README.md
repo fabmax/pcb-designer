@@ -515,3 +515,8 @@ project folder in `.pcb-designer/`, which ignores itself for git.
 
 For development, `cargo run -p mcp --example mcp_call -- URL TOOL '{"json":"args"}'`
 calls a tool from the command line (`TOOL = list` lists them).
+
+## License
+
+PCB Designer is licensed under the [MIT License](LICENSE). Bundled third-party assets
+keep their own licenses (JetBrains Mono: SIL OFL 1.1; Tabler icons: MIT).
