@@ -168,7 +168,7 @@ pub fn demo_project() -> Project {
     // in for it, 5 V with a 0.5 V, 1 kHz ripple (and 1 V for AC). Sources have no
     // footprint, so the board doesn't change.
     let changes = ed
-        .execute(Command::AddSheet { parent: None, name: "Testbench".into(), pos: Point::mm(25.4, -25.4), size: None })
+        .execute(Command::AddSheet { parent: None, name: "Testbench".into(), pos: Point::mm(63.5, 5.08), size: None })
         .unwrap();
     let bench = changes.changes.iter().find_map(|c| if let ObjectId::Sheet(s) = c.id { Some(s) } else { None });
     let v1 = place_on(&mut ed, bench, PART_VSOURCE, 25.4, 0.0, Angle::ZERO, "V1", "");
