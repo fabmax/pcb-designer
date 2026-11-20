@@ -27,6 +27,7 @@ use view::ViewKind;
 
 use crate::host::{Call, Reply, Request, ViewSpec};
 use crate::library::LibraryRequest;
+use crate::simulation::{self, SimulateRequest};
 
 pub type Waker = Arc<dyn Fn() + Send + Sync>;
 
@@ -145,6 +146,9 @@ pub enum ScreenshotTarget {
     Gerber,
     /// The whole application window as the user sees it (GUI only).
     Window,
+    /// The plot of an analysis' last run (`analysis`): the whole run, its probes (else
+    /// its named nets).
+    Simulation,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -286,6 +290,29 @@ pub struct SetSelectionParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct SimulateParams {
+    /// The analysis, by name. Default: the one the Simulation panel shows, else the first.
+    #[serde(default)]
+    pub analysis: Option<String>,
+    /// Signals: net names ("OUT" or "V(OUT)") and pin currents ("R1.1" or "I(R1.1)",
+    /// reference and pin number or name). Default: the analysis' probes, else its named
+    /// nets (up to 8). Currents not probed are measured for this run only.
+    #[serde(default)]
+    pub signals: Option<Vec<String>>,
+    /// Sweeps: x values (seconds, hertz, or the swept source's volts or amperes) to read
+    /// each signal at.
+    #[serde(default)]
+    pub points: Option<Vec<f64>>,
+}
+
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+pub struct SpiceNetlistParams {
+    /// The analysis, by name. Default: the one the Simulation panel shows, else the first.
+    #[serde(default)]
+    pub analysis: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ScreenshotParams {
     pub target: ScreenshotTarget,
     /// Schematic sheet: id, name or path ("/Power/Regulator"). Default: the root sheet.
@@ -298,6 +325,10 @@ pub struct ScreenshotParams {
     /// Gerber: only these files (file names or labels like "Top Copper"). Default: all.
     #[serde(default)]
     pub layers: Option<Vec<String>>,
+    /// Simulation: the analysis (name). Default: the one the Simulation panel shows,
+    /// else the first.
+    #[serde(default)]
+    pub analysis: Option<String>,
     /// Image size for views in pixels (default 1200x800, 64..4096).
     #[serde(default)]
     pub width: Option<u32>,
@@ -408,12 +439,14 @@ impl PcbTools {
     }
 
     async fn call(&self, request: Request) -> Result<CallToolResult, ErrorData> {
+        // A simulation may run for its own limit, plus building its netlist.
+        let limit = if matches!(request, Request::Simulate(_)) { simulation::TIMEOUT.as_secs() + 10 } else { 60 };
         let (tx, rx) = oneshot::channel();
         if self.calls.send(Call { request, reply: tx }).is_err() {
             return Ok(error("the application is shutting down"));
         }
         (self.wake)();
-        let result = match tokio::time::timeout(Duration::from_secs(60), rx).await {
+        let result = match tokio::time::timeout(Duration::from_secs(limit), rx).await {
             Ok(Ok(r)) => r,
             Ok(Err(_)) => Err("the application dropped the request".into()),
             Err(_) => Err("timed out waiting for the application (a dialog may be open)".into()),
@@ -635,25 +668,50 @@ impl PcbTools {
     }
 
     #[tool(description = "PNG image of the schematic, the board, the last Gerber export (read \
-        back from the files, to check them; mask layers drawn inverted, drills as holes) or the \
-        whole application window.")]
+        back from the files, to check them; mask layers drawn inverted, drills as holes), the \
+        plot of a simulation's last run, or the whole application window.")]
     async fn screenshot(&self, Parameters(p): Parameters<ScreenshotParams>) -> Result<CallToolResult, ErrorData> {
-        if matches!(p.target, ScreenshotTarget::Gerber) {
-            let (width, height) = (p.width.unwrap_or(1200), p.height.unwrap_or(800));
-            return self.call(Request::GerberScreenshot { layers: p.layers, width, height }).await;
+        let (width, height) = (p.width.unwrap_or(1200), p.height.unwrap_or(800));
+        match p.target {
+            ScreenshotTarget::Gerber => {
+                return self.call(Request::GerberScreenshot { layers: p.layers, width, height }).await;
+            }
+            ScreenshotTarget::Simulation => {
+                return self.call(Request::SimulationScreenshot { analysis: p.analysis, width, height }).await;
+            }
+            _ => {}
         }
         let target = match p.target {
             ScreenshotTarget::Schematic => Some(ViewName::Schematic.spec(p.sheet)),
             ScreenshotTarget::Board => Some(ViewName::Board.spec(p.sheet)),
-            ScreenshotTarget::Window | ScreenshotTarget::Gerber => None,
+            ScreenshotTarget::Window | ScreenshotTarget::Gerber | ScreenshotTarget::Simulation => None,
         };
-        let request = Request::Screenshot {
-            target,
-            fit: p.fit.unwrap_or(true),
-            width: p.width.unwrap_or(1200),
-            height: p.height.unwrap_or(800),
-        };
+        let request = Request::Screenshot { target, fit: p.fit.unwrap_or(true), width, height };
         self.call(request).await
+    }
+
+    #[tool(description = "Run a simulation analysis of the schematic with ngspice and answer \
+        when it ends (at most 120 s; the user sees the run in the Simulation panel and plot, and \
+        a run of theirs is stopped). An operating point answers each net's voltage, each pin's \
+        current (into the pin) and each device's power. A sweep (transient, AC, DC sweep) \
+        answers per signal its min, max, average, end value and up to 200 points (x, y; dense \
+        runs keep their envelope), plus its values at `points`; AC signals in dB, with their \
+        phase in degrees as separate signals. Set analyses up with the set_simulation command \
+        (execute); give parts models in the library (edit_library) and sources their waveform \
+        through their component's sim field.")]
+    async fn simulate(&self, Parameters(p): Parameters<SimulateParams>) -> Result<CallToolResult, ErrorData> {
+        let points = p.points.unwrap_or_default();
+        self.call(Request::Simulate(SimulateRequest { analysis: p.analysis, signals: p.signals, points })).await
+    }
+
+    #[tool(description = "The SPICE netlist an analysis would run now, with the SPICE node of \
+        each net, the device name of each component, and problems (errors stop a run; each with \
+        the objects involved).")]
+    async fn get_spice_netlist(
+        &self,
+        Parameters(p): Parameters<SpiceNetlistParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::SpiceNetlist { analysis: p.analysis }).await
     }
 
     #[tool(description = "Libraries: name, kind (project: the project's own copies of the \

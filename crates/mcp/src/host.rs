@@ -19,6 +19,7 @@ use view::interaction::new_group;
 use view::{Document, ViewId, ViewKind};
 
 use crate::library::LibraryRequest;
+use crate::simulation::{SimJob, SimulateRequest};
 
 /// What a tool asks the application to do.
 #[derive(Debug)]
@@ -115,6 +116,18 @@ pub enum Request {
     /// Replace the open project by an imported KiCad project (`.kicad_pro`).
     ImportKicadProject {
         path: PathBuf,
+    },
+    /// Run an analysis and answer with its values (see [`crate::simulation`]).
+    Simulate(SimulateRequest),
+    /// The SPICE netlist an analysis would run now.
+    SpiceNetlist {
+        analysis: Option<String>,
+    },
+    /// The plot of an analysis' last run.
+    SimulationScreenshot {
+        analysis: Option<String>,
+        width: u32,
+        height: u32,
     },
 }
 
@@ -213,6 +226,12 @@ impl Request {
             Request::KicadDownload { update: true } => "update KiCad libraries".into(),
             Request::Library(r) => r.describe(),
             Request::ImportKicadProject { path } => format!("import KiCad project {}", path.display()),
+            Request::Simulate(r) => match &r.analysis {
+                Some(a) => format!("simulate {a}"),
+                None => "simulate".into(),
+            },
+            Request::SpiceNetlist { .. } => "read the SPICE netlist".into(),
+            Request::SimulationScreenshot { .. } => "screenshot the simulation plot".into(),
         }
     }
 
@@ -259,8 +278,28 @@ pub trait Host {
     fn set_selection(&mut self, view: ViewId, ids: Vec<ObjectId>);
     /// PNG of a view: everything (`fit`) or what the user currently sees.
     fn render_view(&mut self, view: ViewId, fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String>;
-    /// Render any scene (fitted) offscreen, on the board background.
-    fn render_scene(&mut self, scene: &Scene, width: u32, height: u32) -> Result<Vec<u8>, String>;
+    /// Render any scene offscreen, on the board background, seen by `camera` (`None`:
+    /// fitted).
+    fn render_scene(
+        &mut self,
+        scene: &Scene,
+        camera: Option<Camera>,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<u8>, String>;
+    /// The analysis the user looks at (the Simulation panel's).
+    fn shown_analysis(&self) -> Option<Id> {
+        None
+    }
+    /// The last finished run of an analysis.
+    fn sim_result(&self, _analysis: Id) -> Option<&sim::Finished> {
+        None
+    }
+    /// Run an agent's simulation and answer when it ends ([`crate::simulation::start`],
+    /// then [`crate::simulation::check`] after each poll of the session).
+    fn simulate(&mut self, _job: SimJob, reply: Responder) {
+        let _ = reply.send(Err("this host can't simulate".into()));
+    }
     /// Capture the application window. Hosts without a window refuse.
     fn window_screenshot(&mut self, reply: Responder) {
         let _ = reply.send(Err("this host has no window; screenshot a view instead".into()));
@@ -419,6 +458,19 @@ pub fn handle(call: Call, host: &mut dyn Host) -> Outcome {
             host.library_request(r, reply);
             return Outcome::Deferred;
         }
+        Request::Simulate(req) => {
+            let default = host.shown_analysis();
+            return match crate::simulation::prepare(host.document_mut(), &req, default) {
+                Ok((job, _)) => {
+                    host.simulate(job, reply);
+                    Outcome::Deferred
+                }
+                Err(e) => {
+                    let _ = reply.send(Err(e.clone()));
+                    Outcome::Answered(Err(e))
+                }
+            };
+        }
         Request::ImportKicadProject { path } => {
             return match kicad::import_project(&path) {
                 Ok(import) => {
@@ -569,8 +621,31 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
         Request::KicadImport(_)
         | Request::KicadDownload { .. }
         | Request::Library(_)
+        | Request::Simulate(_)
         | Request::ImportKicadProject { .. } => {
             unreachable!("answered by the host")
+        }
+        Request::SpiceNetlist { analysis } => {
+            let default = host.shown_analysis();
+            let doc = host.document_mut();
+            doc.update_connectivity(false);
+            let a = crate::simulation::find_analysis(doc.project(), analysis.as_deref(), default)?;
+            crate::simulation::netlist_reply(doc.project(), doc.connectivity(), a)
+        }
+        Request::SimulationScreenshot { analysis, width, height } => {
+            let default = host.shown_analysis();
+            host.document_mut().update_connectivity(false);
+            let doc = host.document();
+            let a = crate::simulation::find_analysis(doc.project(), analysis.as_deref(), default)?;
+            let done =
+                host.sim_result(a.id).ok_or_else(|| format!("{} has no results yet: run it with simulate", a.name))?;
+            let conn = doc.connectivity();
+            let signals = sim::plot::signals(a, &done.result, conn).0;
+            let (w, h) = (width.clamp(64, 4096), height.clamp(64, 4096));
+            let (scene, camera) = crate::simulation::plot_scene(done, &signals, conn, w, h).ok_or_else(|| {
+                format!("{} is an operating point: it has no plot; simulate answers its values", a.name)
+            })?;
+            return host.render_scene(&scene, Some(camera), w, h).map(Reply::Png);
         }
         Request::Execute { commands } => execute_json(host.document_mut(), commands)?,
         Request::ExcludeFindings { keys, comment, include } => {
@@ -639,7 +714,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
                 }
             }
             let (w, h) = (width.clamp(64, 4096), height.clamp(64, 4096));
-            return host.render_scene(&gv.scene, w, h).map(Reply::Png);
+            return host.render_scene(&gv.scene, None, w, h).map(Reply::Png);
         }
         Request::Save { path } => {
             let doc = host.document_mut();

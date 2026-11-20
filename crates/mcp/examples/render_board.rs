@@ -49,7 +49,7 @@ fn main() {
                 gv.scene.layer_mut(f.render_layer).visible = layers.iter().any(|l| *l == f.label || *l == f.name);
             }
         }
-        let png = mcp::Host::render_scene(&mut host, &gv.scene, w, h).expect("render");
+        let png = mcp::Host::render_scene(&mut host, &gv.scene, None, w, h).expect("render");
         std::fs::write(&out, png).expect("write");
         let _ = std::fs::remove_dir_all(&tmp);
         println!("wrote {out}");

@@ -43,7 +43,7 @@ Breaking changes are fine: the project is far from production. Rename or remove 
 
 Dependency direction: `model` → `editor-core` → `view` → `mcp` → `app`. `render` is
 standalone, `gerber` sits on `editor-core` and `render` (under `view`), `sim` on
-`editor-core` (under `app`), and `kicad` sits on `model` and `view`.
+`editor-core` (under `mcp`), and `kicad` sits on `model` and `view`.
 
 - `model`: pure data. Lengths are integer nanometres (`Coord`), every object has a UUID,
   and `Store` keeps insertion order so saved files diff well.
@@ -139,7 +139,8 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
     `ui-double-click X,Y`, `ui-right-click X,Y`, `ui-press X,Y` / `ui-release X,Y` (a drag
     in screen points, with `ui-move` between), `type TEXT` and `run [ANALYSIS]` (runs
     a simulation; later steps wait for it), and `zoom F` (zooms the canvas under the
-    pointer, after a `move` / `ui-move`). Hover the canvas
+    pointer, after a `move` / `ui-move`) and `scroll DY` (scrolls a panel or form under
+    the pointer down by DY points). Hover the canvas
     (`move X,Y`) before keys meant for it. Keys take modifiers
     (`key Cmd+D`); `key Cmd+C` / `Cmd+V` use the real system clipboard. Put a `wait 30` before a
     double-click: egui counts clicks less than 0.3 s apart as one triple-click.

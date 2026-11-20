@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::geom::{Angle, Point, Shape, Size, Text};
 use crate::id::Id;
+use crate::simulation::{SimDevice, SimPin};
 use crate::store::Store;
 use crate::units::Coord;
 
@@ -525,10 +526,117 @@ impl Library {
         self.issues().into_iter().map(|(_, m)| m).collect()
     }
 
+    /// A part's pins in SPICE node order: its model's, or every unit's pins in symbol
+    /// order when the model lists none.
+    pub fn sim_pins(&self, part: &Part) -> Vec<SimPin> {
+        match &part.sim {
+            Some(m) if !m.pins.is_empty() => m.pins.clone(),
+            _ => part
+                .units
+                .iter()
+                .enumerate()
+                .flat_map(|(u, unit)| {
+                    self.symbols
+                        .get(unit.symbol)
+                        .into_iter()
+                        .flat_map(move |s| s.pins.iter().map(move |p| SimPin { unit: u as u32, pin: p.id }))
+                })
+                .collect(),
+        }
+    }
+
+    /// Pins for `ports` (a model's SPICE ports, in order): by name or number, the usual
+    /// aliases (`A` anode, `K` cathode, `C`/`B`/`E`, `D`/`G`/`S`, `+`/`−`, `1`/`2`), then
+    /// the unused pins in symbol order for what's left.
+    pub fn auto_map_pins(&self, part: &Part, ports: &[String]) -> Vec<SimPin> {
+        let pins: Vec<(SimPin, &Pin)> = part
+            .units
+            .iter()
+            .enumerate()
+            .flat_map(|(u, unit)| {
+                self.symbols
+                    .get(unit.symbol)
+                    .into_iter()
+                    .flat_map(move |s| s.pins.iter().map(move |p| (SimPin { unit: u as u32, pin: p.id }, p)))
+            })
+            .collect();
+        let aliases = |port: &str| -> Vec<&'static str> {
+            match port.to_ascii_lowercase().as_str() {
+                "a" => vec!["anode", "a", "+"],
+                "k" => vec!["cathode", "k", "-", "−"],
+                "c" => vec!["collector", "c"],
+                "b" => vec!["base", "b"],
+                "e" => vec!["emitter", "e"],
+                "d" => vec!["drain", "d"],
+                "g" => vec!["gate", "g"],
+                "s" => vec!["source", "s"],
+                "+" => vec!["+", "p", "pos", "plus", "1"],
+                "−" | "-" => vec!["-", "−", "n", "neg", "minus", "2"],
+                _ => Vec::new(),
+            }
+        };
+        let mut used = std::collections::HashSet::new();
+        let mut out: Vec<Option<SimPin>> = ports
+            .iter()
+            .map(|port| {
+                let names = aliases(port);
+                let hit = pins.iter().find(|(sp, p)| {
+                    !used.contains(sp)
+                        && (p.name.eq_ignore_ascii_case(port)
+                            || p.number.eq_ignore_ascii_case(port)
+                            || names.iter().any(|n| p.name.eq_ignore_ascii_case(n)))
+                });
+                let hit = hit.or_else(|| {
+                    pins.iter()
+                        .find(|(sp, p)| !used.contains(sp) && names.iter().any(|n| p.number.eq_ignore_ascii_case(n)))
+                });
+                hit.map(|(sp, _)| {
+                    used.insert(*sp);
+                    *sp
+                })
+            })
+            .collect();
+        let mut rest = pins.iter().map(|(sp, _)| *sp).filter(|sp| !used.contains(sp));
+        for slot in out.iter_mut().filter(|s| s.is_none()) {
+            *slot = rest.next();
+        }
+        out.into_iter().flatten().collect()
+    }
+
+    /// Problems of a part's simulation model (none without one, or for board parts).
+    pub fn sim_issues(&self, part: &Part) -> Vec<String> {
+        let Some(m) = &part.sim else { return Vec::new() };
+        // Board parts (no units) are never simulated.
+        if m.device == SimDevice::Ignore || part.units.is_empty() {
+            return Vec::new();
+        }
+        let pins = self.sim_pins(part);
+        let mut out = m.problems(pins.len());
+        let mut seen = std::collections::HashSet::new();
+        for p in &m.pins {
+            if !seen.insert(*p) {
+                out.push("a pin is mapped twice".into());
+            }
+            let ok = part
+                .units
+                .get(p.unit as usize)
+                .and_then(|u| self.symbols.get(u.symbol))
+                .is_some_and(|s| s.pins.contains(p.pin));
+            if !ok {
+                out.push("a mapped pin isn't on the part".into());
+            }
+        }
+        out.dedup();
+        out
+    }
+
     /// Problems with the parts, each with the part it concerns.
     pub fn issues(&self) -> Vec<(Id, String)> {
         let mut issues = Vec::new();
         for part in self.parts.iter() {
+            for m in self.sim_issues(part) {
+                issues.push((part.id, format!("part {:?}: simulation model: {m}", part.name)));
+            }
             for (i, u) in part.units.iter().enumerate() {
                 if !self.symbols.contains(u.symbol) {
                     issues.push((part.id, format!("part {:?}: unit {i} references missing symbol", part.name)));
@@ -591,6 +699,26 @@ mod tests {
         assert_eq!(part.unit_reference("U1", 0), "U1-A");
         assert_eq!(part.unit_reference("U1", 1), "U1-B", "unnamed: the unit's letter");
         assert_eq!(part.unit_reference("U1", 2), "U1-Power");
+    }
+
+    #[test]
+    fn auto_map_finds_the_builtin_models_pins() {
+        let lib = crate::builtin::builtin_library();
+        let mut checked = 0;
+        // Every part with a fixed-port model and up to three pins: the order the model needs.
+        for part in lib.parts.iter() {
+            let Some(m) = &part.sim else { continue };
+            let fixed =
+                matches!(m.device, SimDevice::Primitive { .. } | SimDevice::VoltageSource | SimDevice::CurrentSource);
+            if !fixed || lib.sim_pins(part).len() > 3 {
+                continue;
+            }
+            let name = &part.name;
+            let want = lib.sim_pins(part);
+            assert_eq!(lib.auto_map_pins(part, &m.device.ports()), want, "{name}");
+            checked += 1;
+        }
+        assert!(checked >= 6, "{checked}");
     }
 
     #[test]

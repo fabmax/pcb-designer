@@ -371,6 +371,8 @@ fn units_of_a_dual_opamp_are_separate_symbols() {
     let mut dual = single.clone();
     dual.id = Id::new();
     dual.name = "Dual".into();
+    // The single op amp's model has one unit's pins.
+    dual.sim = None;
     dual.units.push(PartUnit { name: "B".into(), symbol: sym });
     let conn =
         |pad_name: &str, unit: u32, pin_name: &str| PadConnection { pad: pad(pad_name), unit, pin: pin(pin_name) };

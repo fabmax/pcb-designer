@@ -373,8 +373,8 @@ fn draw(
     let painter = ui.painter_at(outer);
     let (x, ys) = scales;
     painter.rect_filled(rect, 4.0, chart_bg());
-    let grid = theme::border();
-    let text = theme::text_dim();
+    let grid = theme::color(view::style::pal().plot_grid);
+    let text = theme::color(view::style::pal().plot_text);
     let font = FontId::proportional(11.0);
     let px = |v: f64| rect.left() + x.frac(v) as f32 * rect.width();
     let py = |s: &Scale, v: f64| rect.bottom() - s.frac(v) as f32 * rect.height();
@@ -531,10 +531,7 @@ fn draw(
 /// lighter trace colours at 1.5:1 contrast (white: 2.2:1 at worst, the readout table
 /// names every trace).
 fn chart_bg() -> Color32 {
-    match view::style::theme() {
-        view::style::Theme::Dark => theme::window_bg(),
-        view::style::Theme::Light => Color32::WHITE,
-    }
+    theme::color(view::style::pal().plot_bg)
 }
 
 /// A trace's colour: a short thick line, dashed like the trace.

@@ -4,7 +4,8 @@
 //! `press x,y`, `move x,y`, `release x,y` drag, `double-click x,y`; `ui-click
 //! x,y` clicks at a screen position in points, `ui-double-click x,y` / `ui-right-click x,y`
 //! likewise, `ui-move x,y` hovers there, `type TEXT` types text, `run [ANALYSIS]` runs a
-//! simulation and waits for it, `zoom F` zooms the canvas under the pointer); each step runs a few frames after the previous one.
+//! simulation and waits for it, `zoom F` zooms the canvas under the pointer, `scroll DY` scrolls what's under it);
+//! each step runs a few frames after the previous one.
 
 use std::collections::VecDeque;
 use view::ViewKind;
@@ -41,6 +42,9 @@ enum Step {
     Run(String),
     /// Zoom the canvas under the pointer by a factor (a pinch).
     Zoom(f32),
+    /// Scroll what's under the pointer by points (positive: content moves up, as a
+    /// downward scroll does).
+    Scroll(f32),
 }
 
 #[derive(Debug, Default)]
@@ -116,6 +120,7 @@ impl Script {
                 "run" => steps.push_back(Step::Run(arg.trim().to_string())),
                 "board" => steps.push_back(Step::Board(true)),
                 "schematic" => steps.push_back(Step::Board(false)),
+                "scroll" => steps.push_back(Step::Scroll(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
                 "zoom" => steps.push_back(Step::Zoom(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
                 "wait" => steps.push_back(Step::Wait(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
                 _ => return Err(format!("unknown script step {cmd:?}")),
@@ -197,6 +202,13 @@ impl Script {
                 modifiers: m,
             }],
             Step::Zoom(f) => vec![Event::Zoom(f)],
+            Step::Scroll(dy) => vec![Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta: egui::vec2(0.0, -dy),
+                phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Unknown,
+                modifiers: m,
+            }],
             Step::Wait(n) => {
                 self.wait = n;
                 Vec::new()

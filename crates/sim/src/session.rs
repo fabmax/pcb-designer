@@ -11,7 +11,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use editor_core::connectivity::Connectivity;
-use model::{Analysis, Id, Project};
+use model::{Analysis, Id, Probe, Project};
 
 use crate::netlist::{self, Level, Netlist, SimProblem};
 use crate::{Backend, Cancel, Output, SimError, SimResult, report};
@@ -28,6 +28,8 @@ pub struct Finished {
     pub rows: Vec<report::Row>,
     /// Counts runs of the session: a new result has a new number (for caches).
     pub run: u64,
+    /// Current probes measured in this run only, beyond the analysis' (an agent's).
+    pub extra: Vec<Probe>,
 }
 
 /// The last run that was started (or refused): its problems, netlist and log.
@@ -59,6 +61,7 @@ struct Run {
     started: Instant,
     cancel: Cancel,
     netlist: Netlist,
+    extra: Vec<Probe>,
     worker: JoinHandle<Result<Output, SimError>>,
 }
 
@@ -82,7 +85,21 @@ impl Session {
         analysis: &Analysis,
         backend: SharedBackend,
     ) -> bool {
+        self.start_with(project, conn, analysis, &[], backend)
+    }
+
+    /// [`start`](Self::start), measuring the currents of `extra` probes as well (for this
+    /// run only: the result isn't stale for them).
+    pub fn start_with(
+        &mut self,
+        project: &Project,
+        conn: &Connectivity,
+        analysis: &Analysis,
+        extra: &[Probe],
+        backend: SharedBackend,
+    ) -> bool {
         self.stop();
+        let analysis = &with_probes(analysis, extra);
         let netlist = netlist::build(project, conn, analysis);
         let mut attempt = Attempt {
             analysis: analysis.id,
@@ -105,7 +122,8 @@ impl Session {
             .name("simulation".into())
             .spawn(move || backend.run(&text, &c))
             .expect("spawn simulation thread");
-        self.run = Some(Run { analysis: analysis.id, started: Instant::now(), cancel, netlist, worker });
+        let extra = extra.to_vec();
+        self.run = Some(Run { analysis: analysis.id, started: Instant::now(), cancel, netlist, extra, worker });
         true
     }
 
@@ -145,7 +163,7 @@ impl Session {
                         let result = SimResult { plot, netlist: run.netlist, log: out.log, warnings: out.warnings };
                         let rows = report::rows(&result);
                         self.runs += 1;
-                        let finished = Finished { result, duration, rows, run: self.runs };
+                        let finished = Finished { result, duration, rows, run: self.runs, extra: run.extra };
                         self.results.insert(run.analysis, finished);
                         self.stale.remove(&run.analysis);
                         Outcome::Done
@@ -190,7 +208,7 @@ impl Session {
         {
             return stale;
         }
-        let stale = netlist::build(project, conn, analysis).text != done.result.netlist.text;
+        let stale = netlist::build(project, conn, &with_probes(analysis, &done.extra)).text != done.result.netlist.text;
         self.stale.insert(analysis.id, (revision, stale));
         stale
     }
@@ -206,4 +224,11 @@ impl Session {
         self.stop();
         *self = Session::default();
     }
+}
+
+/// `analysis` with `extra` probes added.
+fn with_probes(analysis: &Analysis, extra: &[Probe]) -> Analysis {
+    let mut a = analysis.clone();
+    a.probes.extend(extra.iter().cloned());
+    a
 }

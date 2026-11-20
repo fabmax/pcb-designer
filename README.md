@@ -255,6 +255,15 @@ Simulation**. What's planned next is in [simulation-plan.md](simulation-plan.md)
   board doesn't change.
 - Problems (no ground, values that aren't numbers, parts without model, ngspice's
   errors) show in Messages' **Simulation** tab; click one to see its parts.
+- **Models of your parts:** the part form's **Simulation** section picks the device
+  (resistor, diode, BJT, MOSFET, op amp subcircuit, source, a raw SPICE line, or Not
+  simulated), takes the model text (a `.model` card or a `.subckt`, pasted from a
+  datasheet; the line under it says what it parsed), maps the model's ports to the
+  part's pins (**Auto-map** matches names like A/K, C/B/E, D/G/S, + and −) and sets
+  parameters. Model problems show in the library's issues.
+- **A component's model:** Properties → **Simulation**: **Exclude from simulation**,
+  parameter overrides (empty: the part's value, shown greyed), and for sources the
+  waveform with its fields and a preview.
 - **Parts:** every Built-in part has a simulation model (resistors, capacitors and
   inductors take their value: `10k`, `4k7`, `100n`, `1M` is mega). **VSource** and
   **ISource** (category Simulation) are sources for simulation only and never reach the
@@ -266,7 +275,7 @@ Simulation**. What's planned next is in [simulation-plan.md](simulation-plan.md)
   analysis of the project's setup (operating point, DC sweep, AC, transient; the first,
   or an operating point when there is none) and prints the values, or writes every point
   as CSV; `--netlist` prints the SPICE netlist. Agents set the setup up with the
-  `SetSimulation` command.
+  `SetSimulation` command and run it with the `simulate` MCP tool.
 
 ## Letting an agent use the app (MCP)
 
@@ -288,8 +297,12 @@ Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `get_netlist` (nets, buses and their members, schematic and ERC problems), `get_routing`,
 `run_drc`, `exclude_findings` (exclude or include ERC/DRC findings by key, with a
 comment), `set_check_settings` (severities and the pin conflict matrix), `measure_clearance`, `export_gerber`, `execute` (any editor command, as one undo step, e.g.
-`add_text` on a sheet or a board layer), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board
-or the whole window) and `save_project`. Sheets are added, renamed and deleted with
+`add_text` on a sheet or a board layer), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board,
+the last Gerber export, a simulation's plot or the whole window), `simulate` (runs an
+analysis and answers its values: an operating point's voltages, currents and powers, or
+per signal of a sweep min, max, average, end, up to 200 points and the values at given
+x; the run shows in the app), `get_spice_netlist` (the netlist an analysis would run,
+with node and device names and problems) and `save_project`. Sheets are added, renamed and deleted with
 `execute` (`add_sheet`, `update`, `delete`), and `move_to_sheet` moves objects (or
 re-parents a sheet) while `duplicate` copies objects in one step and `add_cutout` cuts into a zone or keepout; `get_project` lists their paths, and wherever
 a sheet is asked for (`sheet`, `parent`), an id, a name or a path like `/Power/Regulator`
@@ -415,7 +428,8 @@ claude mcp add pcb-designer -- /path/to/pcb-designer --mcp-stdio ~/boards/my.pcb
 ```
 
 (Tools → "Copy Claude Code command (headless)" fills in the paths.) Screenshots are
-rendered offscreen.
+rendered offscreen; `simulate` finds ngspice like the app (the Settings path, `PATH`,
+the usual places).
 
 ## KiCad libraries
 

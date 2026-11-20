@@ -24,6 +24,7 @@ pub struct Properties {
     /// Text fields being edited: their buffers aren't reset to the model's value. Usually
     /// one; two in the frame where focus moves from one to another.
     editing: Vec<(ObjectId, &'static str)>,
+    sim: crate::sim_form::ComponentForm,
 }
 
 struct Ctx<'a> {
@@ -46,7 +47,10 @@ impl Properties {
                 );
             }
             [id] => self.single(ui, &mut cx, *id),
-            ids => multiple(ui, ids),
+            ids => {
+                multiple(ui, ids);
+                exclude_many(ui, &mut cx, ids);
+            }
         }
         if !self.active && self.group.take().is_some() {
             cx.doc.close_group();
@@ -857,6 +861,9 @@ impl Properties {
                 ui.end_row();
             }
         });
+        if let Some(new) = self.sim.ui(ui, cx.doc.project(), &c) {
+            self.update(cx, Object::Component(new), false);
+        }
         pin_table(ui, cx.doc, Some(s.id), c.id);
     }
 
@@ -1158,6 +1165,43 @@ fn multiple(ui: &mut egui::Ui, ids: &[ObjectId]) {
     });
     ui.add_space(6.0);
     ui.label(RichText::new("R rotate · X mirror · F flip · Del delete").color(theme::text_dim()));
+}
+
+/// "Exclude from simulation" for several selected symbols (all of them simulated):
+/// ticked when all are excluded; one command sets them all.
+fn exclude_many(ui: &mut egui::Ui, cx: &mut Ctx, ids: &[ObjectId]) {
+    let p = cx.doc.project();
+    let mut comps: Vec<Component> = Vec::new();
+    for id in ids {
+        let ObjectId::Symbol(s) = id else { return };
+        let Some(c) = p.schematic.symbols.get(*s).and_then(|s| p.schematic.components.get(s.component)) else { return };
+        let simulated = p
+            .library
+            .parts
+            .get(c.part)
+            .and_then(|part| part.sim.as_ref())
+            .is_some_and(|m| m.device != SimDevice::Ignore);
+        if !simulated {
+            return;
+        }
+        if !comps.iter().any(|x| x.id == c.id) {
+            comps.push(c.clone());
+        }
+    }
+    let mut all = comps.iter().all(|c| c.sim.exclude);
+    ui.add_space(6.0);
+    if ui.checkbox(&mut all, "Exclude from simulation").changed() {
+        let objects = comps
+            .into_iter()
+            .map(|mut c| {
+                c.sim.exclude = all;
+                Object::Component(c)
+            })
+            .collect();
+        if let Err(e) = cx.doc.execute(Command::Update { objects }) {
+            *cx.message = Some(e.to_string());
+        }
+    }
 }
 
 /// Project statistics (Overview panel).

@@ -40,6 +40,66 @@ impl SimModel {
     pub fn new(device: SimDevice) -> SimModel {
         SimModel { device, pins: Vec::new(), params: BTreeMap::new() }
     }
+
+    /// Problems of the model itself (its text and pin count), `pins` being the mapped
+    /// pins (explicit or automatic).
+    pub fn problems(&self, pins: usize) -> Vec<String> {
+        let mut out = Vec::new();
+        let want = |n: usize, out: &mut Vec<String>| {
+            if pins != n {
+                out.push(format!("the model has {n} ports, {pins} pins are mapped"));
+            }
+        };
+        match &self.device {
+            SimDevice::Ignore => {}
+            SimDevice::Resistor
+            | SimDevice::Capacitor
+            | SimDevice::Inductor
+            | SimDevice::VoltageSource
+            | SimDevice::CurrentSource => want(2, &mut out),
+            SimDevice::Primitive { kind, model } => match ModelCard::parse(model) {
+                None => out.push("the model text has no .model line".into()),
+                Some(card) => {
+                    if PrimitiveKind::of_card(&card) != Some(*kind) {
+                        out.push(format!("a {} card doesn't fit a {}", card.kind, kind.label()));
+                    }
+                    want(kind.ports().len(), &mut out);
+                }
+            },
+            SimDevice::Subckt { text } => match SubcktHeader::parse(text) {
+                None => out.push("the model text has no .subckt line".into()),
+                Some(h) => {
+                    if !logical_lines(text).iter().any(|l| l.to_ascii_lowercase().starts_with(".ends")) {
+                        out.push("the subcircuit has no .ends line".into());
+                    }
+                    want(h.ports.len(), &mut out);
+                }
+            },
+            SimDevice::Spice { template } => {
+                let used = spice_nodes(template);
+                if used > pins {
+                    out.push(format!("the line uses ${{N{used}}}, {pins} pins are mapped"));
+                }
+            }
+        }
+        out
+    }
+}
+
+/// The highest `${Nk}` a SPICE line template uses.
+pub fn spice_nodes(template: &str) -> usize {
+    let mut max = 0;
+    let mut rest = template;
+    while let Some(i) = rest.find("${N") {
+        rest = &rest[i + 3..];
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        if rest[digits.len()..].starts_with('}')
+            && let Ok(k) = digits.parse::<usize>()
+        {
+            max = max.max(k);
+        }
+    }
+    max
 }
 
 /// A pin of a part: its unit and the pin of that unit's symbol.
@@ -81,6 +141,30 @@ pub enum SimDevice {
 }
 
 impl SimDevice {
+    /// The SPICE ports in node order: fixed for primitives, R, C, L and sources, the
+    /// `.subckt` line's for subcircuits, `N1`… for a SPICE line (as many as it uses).
+    pub fn ports(&self) -> Vec<String> {
+        let fixed = |p: &[&str]| p.iter().map(|s| s.to_string()).collect();
+        match self {
+            SimDevice::Ignore => Vec::new(),
+            SimDevice::Resistor | SimDevice::Capacitor | SimDevice::Inductor => fixed(&["1", "2"]),
+            SimDevice::VoltageSource | SimDevice::CurrentSource => fixed(&["+", "−"]),
+            SimDevice::Primitive { kind, .. } => fixed(kind.ports()),
+            SimDevice::Subckt { text } => SubcktHeader::parse(text).map(|h| h.ports).unwrap_or_default(),
+            SimDevice::Spice { template } => (1..=spice_nodes(template)).map(|k| format!("N{k}")).collect(),
+        }
+    }
+
+    /// The text of a primitive, subcircuit or SPICE line.
+    pub fn text(&self) -> Option<&str> {
+        match self {
+            SimDevice::Primitive { model, .. } => Some(model),
+            SimDevice::Subckt { text } => Some(text),
+            SimDevice::Spice { template } => Some(template),
+            _ => None,
+        }
+    }
+
     pub fn label(&self) -> &'static str {
         match self {
             SimDevice::Ignore => "Not simulated",
@@ -131,6 +215,48 @@ impl PrimitiveKind {
         }
     }
 
+    pub const ALL: [PrimitiveKind; 7] = [
+        PrimitiveKind::Diode,
+        PrimitiveKind::Npn,
+        PrimitiveKind::Pnp,
+        PrimitiveKind::Njf,
+        PrimitiveKind::Pjf,
+        PrimitiveKind::Nmos,
+        PrimitiveKind::Pmos,
+    ];
+
+    /// The kind a `.model` card is for (`VDMOS` by its `pchan` flag).
+    pub fn of_card(card: &ModelCard) -> Option<PrimitiveKind> {
+        Some(match card.kind.to_ascii_uppercase().as_str() {
+            "D" => PrimitiveKind::Diode,
+            "NPN" => PrimitiveKind::Npn,
+            "PNP" => PrimitiveKind::Pnp,
+            "NJF" => PrimitiveKind::Njf,
+            "PJF" => PrimitiveKind::Pjf,
+            "NMOS" => PrimitiveKind::Nmos,
+            "PMOS" => PrimitiveKind::Pmos,
+            "VDMOS" if card.params.iter().any(|(k, _)| k.eq_ignore_ascii_case("pchan")) => PrimitiveKind::Pmos,
+            "VDMOS" => PrimitiveKind::Nmos,
+            _ => return None,
+        })
+    }
+
+    /// A card with SPICE's default parameters, named after `name`.
+    pub fn generic_card(self, name: &str) -> String {
+        let kind = match self {
+            PrimitiveKind::Diode => "D",
+            PrimitiveKind::Npn => "NPN",
+            PrimitiveKind::Pnp => "PNP",
+            PrimitiveKind::Njf => "NJF",
+            PrimitiveKind::Pjf => "PJF",
+            PrimitiveKind::Nmos => "VDMOS",
+            PrimitiveKind::Pmos => "VDMOS",
+        };
+        let flags = if self == PrimitiveKind::Pmos { "pchan" } else { "" };
+        let name: String = name.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
+        format!(".model {}_{name} {kind}({flags})", self.letter())
+    }
+
     /// Names of the nodes, in order.
     pub fn ports(self) -> &'static [&'static str] {
         match self {
@@ -138,6 +264,99 @@ impl PrimitiveKind {
             PrimitiveKind::Npn | PrimitiveKind::Pnp => &["C", "B", "E"],
             _ => &["D", "G", "S"],
         }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// SPICE text
+
+/// SPICE text joined across `+` continuation lines, without comment lines.
+pub fn logical_lines(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for l in text.lines() {
+        let t = l.trim();
+        if t.is_empty() || t.starts_with('*') {
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix('+')
+            && let Some(last) = out.last_mut()
+        {
+            last.push(' ');
+            last.push_str(rest.trim());
+            continue;
+        }
+        out.push(t.to_string());
+    }
+    out
+}
+
+/// A `.model NAME TYPE(params)` card, taken apart.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModelCard {
+    pub name: String,
+    /// `D`, `NPN`, `VDMOS`, …
+    pub kind: String,
+    /// In order; flags (VDMOS `pchan`) have no value.
+    pub params: Vec<(String, Option<String>)>,
+}
+
+impl ModelCard {
+    pub fn parse(text: &str) -> Option<ModelCard> {
+        let line = logical_lines(text).into_iter().find(|l| l.to_ascii_lowercase().starts_with(".model"))?;
+        let rest = line[6..].trim_start();
+        let (name, rest) = rest.split_once(char::is_whitespace)?;
+        let rest = rest.trim_start();
+        let end = rest.find(|c: char| c == '(' || c.is_whitespace()).unwrap_or(rest.len());
+        let kind = rest[..end].to_string();
+        let body = rest[end..].replace(['(', ')', ','], " ").replace('=', " = ");
+        let tokens: Vec<&str> = body.split_whitespace().collect();
+        let mut params = Vec::new();
+        let mut i = 0;
+        while i < tokens.len() {
+            if tokens.get(i + 1) == Some(&"=") && i + 2 < tokens.len() {
+                params.push((tokens[i].to_string(), Some(tokens[i + 2].to_string())));
+                i += 3;
+            } else {
+                params.push((tokens[i].to_string(), None));
+                i += 1;
+            }
+        }
+        (!kind.is_empty()).then(|| ModelCard { name: name.to_string(), kind, params })
+    }
+
+    pub fn with(mut self, overrides: &[(String, String)]) -> ModelCard {
+        for (k, v) in overrides {
+            match self.params.iter_mut().find(|(n, _)| n.eq_ignore_ascii_case(k)) {
+                Some(p) => p.1 = Some(v.clone()),
+                None => self.params.push((k.clone(), Some(v.clone()))),
+            }
+        }
+        self
+    }
+
+    pub fn text(&self) -> String {
+        let params: Vec<String> =
+            self.params.iter().map(|(k, v)| v.as_ref().map_or_else(|| k.clone(), |v| format!("{k}={v}"))).collect();
+        format!(".model {} {}({})", self.name, self.kind, params.join(" "))
+    }
+}
+
+/// The `.subckt NAME ports… [params: …]` line of a subcircuit.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SubcktHeader {
+    pub name: String,
+    pub ports: Vec<String>,
+}
+
+impl SubcktHeader {
+    pub fn parse(text: &str) -> Option<SubcktHeader> {
+        let lines = logical_lines(text);
+        let line = lines.iter().find(|l| l.to_ascii_lowercase().starts_with(".subckt"))?;
+        let mut tokens = line.split_whitespace().skip(1);
+        let name = tokens.next()?.to_string();
+        let ports =
+            tokens.take_while(|t| !t.contains('=') && !t.eq_ignore_ascii_case("params:")).map(str::to_string).collect();
+        Some(SubcktHeader { name, ports })
     }
 }
 
@@ -303,6 +522,121 @@ impl Waveform {
             Waveform::Exp { .. } => "Exponential",
         }
     }
+
+    /// The labels of the kinds, in menu order ([`with_kind`](Self::with_kind) takes them).
+    pub const KINDS: [&'static str; 5] = ["DC", "Sine", "Pulse", "Piecewise linear", "Exponential"];
+
+    /// The base value: DC value, sine offset, pulse low, first PWL value, exponential v1.
+    pub fn base(&self) -> f64 {
+        match self {
+            Waveform::Dc { value } => *value,
+            Waveform::Sine { offset, .. } => *offset,
+            Waveform::Pulse { low, .. } => *low,
+            Waveform::Pwl { points, .. } => points.first().map_or(0.0, |p| p.1),
+            Waveform::Exp { v1, .. } => *v1,
+        }
+    }
+
+    /// This waveform as another kind (by its [`label`](Self::label)), keeping the base
+    /// value; the rest are defaults (1 above the base, 1 kHz).
+    pub fn with_kind(&self, kind: &str) -> Waveform {
+        if kind == self.label() {
+            return self.clone();
+        }
+        let b = self.base();
+        match kind {
+            "Sine" => {
+                Waveform::Sine { offset: b, amplitude: 1.0, frequency: 1e3, delay: 0.0, damping: 0.0, phase: 0.0 }
+            }
+            "Pulse" => Waveform::Pulse {
+                low: b,
+                high: b + 1.0,
+                delay: 0.0,
+                rise: 1e-6,
+                fall: 1e-6,
+                width: 0.5e-3,
+                period: 1e-3,
+            },
+            "Piecewise linear" => Waveform::Pwl { points: vec![(0.0, b), (1e-3, b + 1.0)], repeat: false },
+            "Exponential" => Waveform::Exp { v1: b, v2: b + 1.0, delay1: 0.0, tau1: 1e-4, delay2: 5e-4, tau2: 1e-4 },
+            _ => Waveform::Dc { value: b },
+        }
+    }
+
+    /// The value at time `t` (as ngspice computes it in a transient).
+    pub fn at(&self, t: f64) -> f64 {
+        match self {
+            Waveform::Dc { value } => *value,
+            Waveform::Sine { offset, amplitude, frequency, delay, damping, phase } => {
+                if t < *delay {
+                    offset + amplitude * phase.to_radians().sin()
+                } else {
+                    let u = t - delay;
+                    offset
+                        + amplitude
+                            * (std::f64::consts::TAU * frequency * u + phase.to_radians()).sin()
+                            * (-damping * u).exp()
+                }
+            }
+            Waveform::Pulse { low, high, delay, rise, fall, width, period } => {
+                if t < *delay {
+                    return *low;
+                }
+                let mut u = t - delay;
+                if *period > 0.0 {
+                    u %= period;
+                } else if u > rise + width + fall {
+                    return *low;
+                }
+                if u < *rise {
+                    low + (high - low) * u / rise.max(1e-30)
+                } else if u < rise + width {
+                    *high
+                } else if u < rise + width + fall {
+                    high - (high - low) * (u - rise - width) / fall.max(1e-30)
+                } else {
+                    *low
+                }
+            }
+            Waveform::Pwl { points, repeat } => {
+                let Some(&(t_end, _)) = points.last() else { return 0.0 };
+                let t = if *repeat && t_end > 0.0 { t % t_end } else { t };
+                match points.iter().position(|p| p.0 > t) {
+                    None => points.last().map_or(0.0, |p| p.1),
+                    Some(0) => points[0].1,
+                    Some(i) => {
+                        let ((t0, v0), (t1, v1)) = (points[i - 1], points[i]);
+                        if t1 > t0 { v0 + (v1 - v0) * (t - t0) / (t1 - t0) } else { v1 }
+                    }
+                }
+            }
+            Waveform::Exp { v1, v2, delay1, tau1, delay2, tau2 } => {
+                let mut v = *v1;
+                if t >= *delay1 {
+                    v += (v2 - v1) * (1.0 - (-(t - delay1) / tau1.max(1e-30)).exp());
+                }
+                if t >= *delay2 {
+                    v += (v1 - v2) * (1.0 - (-(t - delay2) / tau2.max(1e-30)).exp());
+                }
+                v
+            }
+        }
+    }
+
+    /// A time span that shows the waveform: three periods, a pulse or PWL with some time
+    /// after it, an exponential's two edges settled.
+    pub fn preview_span(&self) -> f64 {
+        let span = match self {
+            Waveform::Dc { .. } => 1e-3,
+            Waveform::Sine { frequency, delay, .. } if *frequency > 0.0 => delay + 3.0 / frequency,
+            Waveform::Sine { .. } => 1e-3,
+            Waveform::Pulse { delay, period, .. } if *period > 0.0 => delay + 3.0 * period,
+            Waveform::Pulse { delay, rise, width, fall, .. } => (delay + rise + width + fall) * 1.5,
+            Waveform::Pwl { points, .. } => points.last().map_or(1e-3, |p| p.0 * 1.2),
+            Waveform::Exp { delay2, tau2, .. } => delay2 + 5.0 * tau2,
+        };
+        if span > 0.0 && span.is_finite() { span } else { 1e-3 }
+    }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -432,4 +766,66 @@ pub enum Probe {
     },
     /// The current into a pin of a placed symbol.
     Current { symbol: Id, pin: Id },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn waveforms() {
+        let sine = Waveform::Dc { value: 5.0 }.with_kind("Sine");
+        assert_eq!(sine.base(), 5.0);
+        assert!((sine.at(0.25e-3) - 6.0).abs() < 1e-9, "the peak a quarter period in");
+        assert!((sine.preview_span() - 3e-3).abs() < 1e-12);
+        let pulse = sine.with_kind("Pulse");
+        assert_eq!((pulse.at(0.0), pulse.at(0.2e-3), pulse.at(0.8e-3), pulse.at(1.2e-3)), (5.0, 6.0, 5.0, 6.0));
+        let pwl = Waveform::Pwl { points: vec![(0.0, 0.0), (1.0, 2.0)], repeat: false };
+        assert_eq!((pwl.at(0.5), pwl.at(5.0)), (1.0, 2.0));
+        let exp = pwl.with_kind("Exponential");
+        assert!((exp.at(0.49e-3) - 1.0).abs() < 0.01, "risen to v2");
+        assert!(exp.at(1.5e-3).abs() < 0.01, "back to v1");
+    }
+
+    #[test]
+    fn model_problems() {
+        let diode = |text: &str| SimModel::new(SimDevice::Primitive { kind: PrimitiveKind::Diode, model: text.into() });
+        assert!(diode(".model X D(IS=1n)").problems(2).is_empty());
+        assert_eq!(diode(".model X NPN()").problems(2), ["a NPN card doesn't fit a Diode"]);
+        assert_eq!(diode("IS=1n").problems(2), ["the model text has no .model line"]);
+        assert_eq!(diode(".model X D()").problems(3), ["the model has 2 ports, 3 pins are mapped"]);
+        let sub = SimModel::new(SimDevice::Subckt {
+            text: ".subckt AMP inp inn out params: g=1\nE1 out 0 inp inn {g}".into(),
+        });
+        assert_eq!(sub.device.ports(), ["inp", "inn", "out"]);
+        assert_eq!(sub.problems(3), ["the subcircuit has no .ends line"]);
+        let line = SimModel::new(SimDevice::Spice { template: "B${REF} ${N1} ${N3} V=1".into() });
+        assert_eq!(line.device.ports(), ["N1", "N2", "N3"]);
+        assert_eq!(line.problems(2), ["the line uses ${N3}, 2 pins are mapped"]);
+        for k in PrimitiveKind::ALL {
+            let card = ModelCard::parse(&k.generic_card("2N7002")).unwrap();
+            assert_eq!(PrimitiveKind::of_card(&card), Some(k), "{}", k.generic_card("x"));
+        }
+    }
+
+    #[test]
+    fn builtin_models_have_no_issues() {
+        let lib = crate::builtin::builtin_library();
+        let issues: Vec<_> =
+            lib.parts.iter().flat_map(|p| lib.sim_issues(p).into_iter().map(|m| (p.name.clone(), m))).collect();
+        assert!(issues.is_empty(), "{issues:?}");
+    }
+
+    #[test]
+    fn model_cards() {
+        let c = ModelCard::parse(".model 1N4148 D(IS=2.52n N = 1.752\n+ RS=0.568)").unwrap();
+        assert_eq!(c.name, "1N4148");
+        assert_eq!(c.kind, "D");
+        assert_eq!(c.params.len(), 3);
+        assert_eq!(c.params[1], ("N".into(), Some("1.752".into())));
+        let c = c.with(&[("rs".into(), "1".into()), ("BV".into(), "100".into())]);
+        assert_eq!(c.text(), ".model 1N4148 D(IS=2.52n N=1.752 RS=1 BV=100)");
+        let v = ModelCard::parse(".model BSS84 VDMOS(pchan Vto=-1.6 Kp=0.1)").unwrap();
+        assert_eq!(v.params[0], ("pchan".into(), None));
+    }
 }

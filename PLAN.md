@@ -502,8 +502,9 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   (`plot::Missing`, `missing_reason`: net gone, not simulated, pin not in the model,
   run again); right-click on a readout row removes its probe, hovering one highlights
   its net or pin on the schematic. The tab has the canvas background (like the schematic), the
-  chart the window background in dark and white in light (the light window grey hid
-  the grid and left yellow at 1.5:1).
+  chart `plot_bg` (the window background in dark, white in light: the light window grey
+  hid the grid and left yellow at 1.5:1), `plot_grid` and `plot_text` from the canvas
+  palette, so the offscreen plot (MCP) matches.
 - **On the schematic** (`view::sim_overlay`): `SchTool::Probe` (O) is handled by the
   app (`probe_ui`), which knows the target analysis (`SimPanel::probe_analysis`: the
   panel's if a sweep, else the first sweep). `probe_target` takes a wire, label or
@@ -522,6 +523,29 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   with more than two pins get a hover tooltip (pin V, I, power). `SimPanel::hover` is
   cleared each frame before the tree draws and set by the Probe tool or a hovered
   table row.
+- **Model editing** (`app/src/sim_form.rs`): the parsing lives in `model::simulation`
+  (`logical_lines`, `ModelCard`, `SubcktHeader`, `SimModel::problems`, `SimDevice::ports`)
+  so the netlister, the library's issues and the forms agree. `Library::sim_pins` is the
+  explicit mapping or every unit's pins; `sim_issues` adds pins mapped twice or not on
+  the part, skips board parts (no units); `issues()` lists them as "simulation model:".
+  `auto_map_pins` matches port names and aliases, then fills with unused pins; a
+  subcircuit whose ports change is mapped again. Switching the device keeps the text (a
+  primitive without text gets `generic_card`). `ComponentForm` (Properties) edits a
+  clone of the component, committed as one `Update`; overrides list the model's
+  parameters with the part's values as hints, empty = no override; PWL is `t v, t v`
+  text. `SiFields` keeps the text being typed and the invalid ones (shared with the
+  panel).
+- **Agents** (`mcp::simulation`): `simulate` is prepared in `handle` (analysis by name
+  or id, else the host's shown one; signals parsed against a fresh netlist: `R1.1`,
+  `I(R1.1)`, `OUT`, `V(OUT)`) and run by the host through its `Session`
+  (`start_with` + extra current probes, which `Finished::extra` keeps so the result
+  isn't stale for them). `check` after each poll answers: done, failed, stopped (by the
+  user, another analysis started), or 120 s passed (the server waits 130 s for it,
+  other calls 60 s). The app answers from `SimPanel::poll`; the headless host blocks
+  in a poll loop with its own session (`sim_backend` lets tests fake ngspice).
+  Replies round to six significant digits; sweeps' points are `decimate`d over 49
+  columns (≤ 200 points). The screenshot draws the plot as a `render` scene in pixels
+  (y up, a camera at zoom 1), text with the canvas font, dashes cut by hand.
 - **Demo:** a "Testbench" sheet with `V1` (5 V + 0.5 V 1 kHz sine, AC 1 V) on +5V
   replaces the supply; analyses Operating point, Transient (3 ms) and AC, the last two
   probing +5V and the LED's anode.
@@ -531,7 +555,8 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   demo) skip with a note when ngspice isn't found. `tests/all/bench.rs` builds circuits
   by labelling pin ends. `tests/all/plot.rs` covers scales, ticks, decimation and AC
   traces on a made-up result. `tests/all/session.rs` drives the session with a fake backend
-  that waits for a gate (start, refuse, fail, stop, restart, stale).
+  that waits for a gate (start, refuse, fail, stop, restart, stale).`mcp/tests/all/simulation.rs` covers the tools with a fake
+  transient backend, and with ngspice (skipped without it).
 
 ## Rendering (`render`)
 
@@ -836,10 +861,12 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
 
 - rmcp Streamable HTTP on its own tokio thread, loopback only, browser Origins refused.
   Calls go over a channel to the app, run between frames (not mid-drag), and wake it
-  with `request_repaint`; 60 s timeout. Headless: `--mcp-stdio` with a `HeadlessHost`.
+  with `request_repaint`; 60 s timeout (`simulate` 130 s). Headless: `--mcp-stdio` with a
+  `HeadlessHost`.
 - The `Host` trait is implemented by the app and the headless host. `document()` is
   read-only and `document_mut()` mutable, so requests can read the document while
-  holding `libraries()` references (no library clones). `Request` variants
+  holding `libraries()` references (no library clones). `render_scene` takes an
+  optional camera (the simulation plot is drawn in pixels). `Request` variants
   are handled in `describe` and `respond` (`host.rs`). Library requests may answer later
   (`agent::Job`) because they can add tabs.
 - `execute` takes a batch of commands (one undo step, all-or-nothing) and advertises the

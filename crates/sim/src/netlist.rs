@@ -254,22 +254,7 @@ impl Builder<'_> {
             simulated.insert(c.id);
             let objects = self.symbols_of(c.id);
             // The pins, in node order.
-            let model_pins: Vec<SimPin> = if model.pins.is_empty() {
-                part.units
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(u, unit)| {
-                        project
-                            .library
-                            .symbols
-                            .get(unit.symbol)
-                            .into_iter()
-                            .flat_map(move |s| s.pins.iter().map(move |p| SimPin { unit: u as u32, pin: p.id }))
-                    })
-                    .collect()
-            } else {
-                model.pins.clone()
-            };
+            let model_pins = project.library.sim_pins(part);
             let name = self.device_name(model, c);
             let mut nodes = Vec::with_capacity(model_pins.len());
             let mut sense = Vec::new();
@@ -599,76 +584,6 @@ fn source_spec(source: Option<&Source>) -> Result<String, String> {
     Ok(spec)
 }
 
-/// SPICE text joined across `+` continuation lines, without comment lines.
-fn logical_lines(text: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for l in text.lines() {
-        let t = l.trim();
-        if t.is_empty() || t.starts_with('*') {
-            continue;
-        }
-        if let Some(rest) = t.strip_prefix('+')
-            && let Some(last) = out.last_mut()
-        {
-            last.push(' ');
-            last.push_str(rest.trim());
-            continue;
-        }
-        out.push(t.to_string());
-    }
-    out
-}
-
-/// A `.model NAME TYPE(params)` card, taken apart.
-#[derive(Clone, Debug, PartialEq)]
-struct ModelCard {
-    name: String,
-    kind: String,
-    /// In order; flags (VDMOS `pchan`) have no value.
-    params: Vec<(String, Option<String>)>,
-}
-
-impl ModelCard {
-    fn parse(text: &str) -> Option<ModelCard> {
-        let line = logical_lines(text).into_iter().find(|l| l.to_ascii_lowercase().starts_with(".model"))?;
-        let rest = line[6..].trim_start();
-        let (name, rest) = rest.split_once(char::is_whitespace)?;
-        let rest = rest.trim_start();
-        let end = rest.find(|c: char| c == '(' || c.is_whitespace()).unwrap_or(rest.len());
-        let kind = rest[..end].to_string();
-        let body = rest[end..].replace(['(', ')', ','], " ").replace('=', " = ");
-        let tokens: Vec<&str> = body.split_whitespace().collect();
-        let mut params = Vec::new();
-        let mut i = 0;
-        while i < tokens.len() {
-            if tokens.get(i + 1) == Some(&"=") && i + 2 < tokens.len() {
-                params.push((tokens[i].to_string(), Some(tokens[i + 2].to_string())));
-                i += 3;
-            } else {
-                params.push((tokens[i].to_string(), None));
-                i += 1;
-            }
-        }
-        (!kind.is_empty()).then(|| ModelCard { name: name.to_string(), kind, params })
-    }
-
-    fn with(mut self, overrides: &[(String, String)]) -> ModelCard {
-        for (k, v) in overrides {
-            match self.params.iter_mut().find(|(n, _)| n.eq_ignore_ascii_case(k)) {
-                Some(p) => p.1 = Some(v.clone()),
-                None => self.params.push((k.clone(), Some(v.clone()))),
-            }
-        }
-        self
-    }
-
-    fn text(&self) -> String {
-        let params: Vec<String> =
-            self.params.iter().map(|(k, v)| v.as_ref().map_or_else(|| k.clone(), |v| format!("{k}={v}"))).collect();
-        format!(".model {} {}({})", self.name, self.kind, params.join(" "))
-    }
-}
-
 /// A `.subckt NAME ports…` definition.
 #[derive(Clone, Debug, PartialEq)]
 struct Subckt {
@@ -679,11 +594,8 @@ struct Subckt {
 
 impl Subckt {
     fn parse(text: &str) -> Option<Subckt> {
-        let line = logical_lines(text).into_iter().find(|l| l.to_ascii_lowercase().starts_with(".subckt"))?;
-        let mut tokens = line.split_whitespace().skip(1);
-        let name = tokens.next()?.to_string();
-        let ports = tokens.take_while(|t| !t.contains('=') && !t.eq_ignore_ascii_case("params:")).count();
-        Some(Subckt { name, ports, text: text.trim().to_string() })
+        let h = SubcktHeader::parse(text)?;
+        Some(Subckt { name: h.name, ports: h.ports.len(), text: text.trim().to_string() })
     }
 
     /// The text with the subcircuit renamed (its `.subckt` and `.ends` lines).
@@ -784,19 +696,6 @@ mod tests {
         assert_eq!(node_name("/Power/A"), "power_a");
         assert_eq!(node_name("3V3"), "n3v3");
         assert_eq!(node_name("///"), "n");
-    }
-
-    #[test]
-    fn model_cards() {
-        let c = ModelCard::parse(".model 1N4148 D(IS=2.52n N = 1.752\n+ RS=0.568)").unwrap();
-        assert_eq!(c.name, "1N4148");
-        assert_eq!(c.kind, "D");
-        assert_eq!(c.params.len(), 3);
-        assert_eq!(c.params[1], ("N".into(), Some("1.752".into())));
-        let c = c.with(&[("rs".into(), "1".into()), ("BV".into(), "100".into())]);
-        assert_eq!(c.text(), ".model 1N4148 D(IS=2.52n N=1.752 RS=1 BV=100)");
-        let v = ModelCard::parse(".model BSS84 VDMOS(pchan Vto=-1.6 Kp=0.1)").unwrap();
-        assert_eq!(v.params[0], ("pchan".into(), None));
     }
 
     #[test]

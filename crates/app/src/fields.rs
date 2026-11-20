@@ -52,6 +52,18 @@ impl Fields {
         current: &str,
         width: f32,
     ) -> Option<String> {
+        self.text_hint(ui, salt, current, width, "")
+    }
+
+    /// A text field with a greyed hint while empty.
+    pub fn text_hint(
+        &mut self,
+        ui: &mut egui::Ui,
+        salt: impl std::hash::Hash + std::fmt::Debug,
+        current: &str,
+        width: f32,
+        hint: &str,
+    ) -> Option<String> {
         let id = ui.make_persistent_id(salt);
         let focused = ui.memory(|m| m.has_focus(id));
         let buf = self.texts.entry(id).or_insert_with(|| current.to_string());
@@ -60,8 +72,33 @@ impl Fields {
             buf.push_str(current);
         }
         let width = width.min(ui.available_width());
-        let r = ui.add(egui::TextEdit::singleline(buf).id(id).desired_width(width));
+        let r = ui.add(egui::TextEdit::singleline(buf).id(id).desired_width(width).hint_text(hint));
         (r.lost_focus() && buf != current).then(|| buf.clone())
+    }
+
+    /// Monospace multi-line text, committed on focus loss or ⌘Enter. Returns the new
+    /// text if it changed.
+    pub fn multiline(
+        &mut self,
+        ui: &mut egui::Ui,
+        salt: impl std::hash::Hash + std::fmt::Debug,
+        current: &str,
+        rows: usize,
+    ) -> Option<String> {
+        let id = ui.make_persistent_id(salt);
+        let focused = ui.memory(|m| m.has_focus(id));
+        let buf = self.texts.entry(id).or_insert_with(|| current.to_string());
+        if !focused {
+            buf.clear();
+            buf.push_str(current);
+        }
+        let r =
+            ui.add(egui::TextEdit::multiline(buf).id(id).code_editor().desired_rows(rows).desired_width(f32::INFINITY));
+        let submit = r.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command);
+        if submit {
+            ui.memory_mut(|m| m.surrender_focus(id));
+        }
+        ((r.lost_focus() || submit) && buf != current).then(|| buf.clone())
     }
 
     /// A category: a text field with a menu of `suggestions` (from [`categories`]).
@@ -216,6 +253,64 @@ pub fn power_style_combo(
         .chain(model::PowerStyle::ALL.into_iter().map(|s| (Some(s), s.label().to_string())))
         .collect();
     combo(ui, salt, &current, &options)
+}
+
+/// Value fields with SI prefixes ("10m", "1.5k"), committed on Enter or focus loss.
+/// Text that isn't a value shows red and isn't committed.
+#[derive(Default)]
+pub struct SiFields {
+    texts: FxHashMap<egui::Id, String>,
+    invalid: std::collections::HashSet<egui::Id>,
+}
+
+impl SiFields {
+    pub fn clear(&mut self) {
+        self.texts.clear();
+        self.invalid.clear();
+    }
+
+    /// `empty`: the hint of an optional value's empty field (empty: the value is
+    /// required). Returns the new value when it changed.
+    pub fn field(
+        &mut self,
+        ui: &mut egui::Ui,
+        salt: impl std::hash::Hash + std::fmt::Debug,
+        value: Option<f64>,
+        unit: &str,
+        empty: &str,
+    ) -> Option<Option<f64>> {
+        let id = egui::Id::unique(salt);
+        let shown = value.map_or(String::new(), |v| si::format(v, unit));
+        let focused = ui.memory(|m| m.has_focus(id));
+        let bad = self.invalid.contains(&id);
+        let buf = self.texts.entry(id).or_insert_with(|| shown.clone());
+        if !focused && !bad {
+            buf.clone_from(&shown);
+        }
+        let mut edit = egui::TextEdit::singleline(buf).id(id).desired_width(110.0).hint_text(empty);
+        if bad {
+            edit = edit.text_color(theme::error());
+        }
+        let r = ui.add(edit);
+        if bad {
+            r.clone()
+                .on_hover_text(format!("Not a value: type a number with an optional prefix, like 10m or 1.5k{unit}"));
+        }
+        if !r.lost_focus() {
+            return None;
+        }
+        let text = buf.trim().to_string();
+        let new = if text.is_empty() && !empty.is_empty() {
+            None
+        } else if let Some(v) = si::parse(&text) {
+            Some(v)
+        } else {
+            self.invalid.insert(id);
+            return None;
+        };
+        self.invalid.remove(&id);
+        (new != value).then_some(new)
+    }
 }
 
 /// Generic combo over `options`; returns the newly chosen value.

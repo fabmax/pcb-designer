@@ -4,6 +4,7 @@
 //! * [`host`]: requests sent from the server to the thread owning the document, and how
 //!   they are answered ([`host::handle`]) given a [`host::Host`].
 //! * [`library`]: the library tools (create, open, read, edit, save, render libraries).
+//! * [`simulation`]: simulate, the SPICE netlist and the plot for agents.
 //! * [`headless`]: a host without GUI (tests, headless mode).
 //!
 //! All edits go through editor-core commands, so they are undoable and show up live.
@@ -12,6 +13,7 @@ pub mod headless;
 pub mod host;
 pub mod library;
 pub mod server;
+pub mod simulation;
 pub mod stdio;
 
 pub use host::{Call, Host, Outcome, Reply, Request, handle};

@@ -72,6 +72,7 @@ mod script;
 mod settings;
 mod settings_ui;
 mod sheet_picker;
+mod sim_form;
 mod sim_ui;
 mod theme;
 #[cfg(target_os = "macos")]
@@ -339,7 +340,9 @@ fn run_stdio(startup: Startup, kicad_paths: Vec<std::path::PathBuf>) -> Result<(
     };
     log::info!("MCP on stdio: {}", doc.title());
     let mut host = mcp::headless::HeadlessHost::new(doc);
-    host.kicad_root = settings::Settings::load().kicad_dir();
+    let settings = settings::Settings::load();
+    host.kicad_root = settings.kicad_dir();
+    host.ngspice = settings.ngspice_path();
     host.kicad_paths = kicad_paths;
     mcp::stdio::serve_stdio(&mut host)
 }

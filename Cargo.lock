@@ -2471,6 +2471,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "sim",
  "tempfile",
  "tokio",
  "tokio-util",

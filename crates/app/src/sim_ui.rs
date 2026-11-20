@@ -47,7 +47,7 @@ pub struct SimPanel {
     tab: Option<Id>,
     /// Text being typed into value fields, and those that didn't parse.
     texts: FxHashMap<egui::Id, String>,
-    invalid: HashSet<egui::Id>,
+    si: crate::fields::SiFields,
     filter: String,
     show_all: bool,
     ngspice: Option<Detected>,
@@ -68,6 +68,8 @@ pub struct SimPanel {
     pub hover: Option<ProbeTarget>,
     /// The overlay as last built, and what it was built from.
     overlay: Option<(OverlayKey, SimOverlay, Vec<sim::report::Device>)>,
+    /// An agent's run (MCP `simulate`), answered when it ends.
+    agent: Option<(mcp::simulation::SimJob, mcp::host::Responder)>,
 }
 
 /// What the schematic overlay depends on.
@@ -107,7 +109,7 @@ impl SimPanel {
         self.session.clear();
         self.tab = None;
         self.texts.clear();
-        self.invalid.clear();
+        self.si.clear();
         self.netlist = None;
         self.plots.clear();
         self.overlay = None;
@@ -274,13 +276,45 @@ impl SimPanel {
         }
     }
 
+    /// Starts an agent's run; [`poll`](Self::poll) answers it when it ends.
+    pub fn start_agent(
+        &mut self,
+        doc: &Document,
+        job: mcp::simulation::SimJob,
+        reply: mcp::host::Responder,
+        configured: Option<PathBuf>,
+    ) {
+        if let Some((_, earlier)) = self.agent.take() {
+            let _ = earlier.send(Err("stopped: another simulate call came".into()));
+        }
+        let backend: sim::SharedBackend = match self.ngspice(configured) {
+            Ok((n, _)) => Arc::new(n.clone()),
+            Err(e) => {
+                let _ = reply.send(Err(e.clone()));
+                return;
+            }
+        };
+        self.tab = Some(job.analysis);
+        match mcp::simulation::start(&mut self.session, doc, &job, backend) {
+            Ok(()) => self.agent = Some((job, reply)),
+            Err(e) => _ = reply.send(Err(e)),
+        }
+    }
+
     /// Per frame: collects a finished run: `Ok(sweep)` when it worked (a sweep: it has a
-    /// plot), else a status line.
+    /// plot), else a status line. Answers an agent's run that ended.
     pub fn poll(&mut self, doc: &Document) -> Option<Result<bool, String>> {
         let setup = &doc.project().schematic.simulation;
         self.session.retain(|id| setup.analyses.iter().any(|a| a.id == id));
         self.plots.retain(|id, _| setup.analyses.iter().any(|a| a.id == *id));
-        let outcome = self.session.poll()?;
+        let outcome = self.session.poll();
+        if let Some((job, _)) = &self.agent
+            && let Some(answer) = mcp::simulation::check(job, &mut self.session, doc)
+            && let Some((_, reply)) = self.agent.take()
+        {
+            let _ = reply.send(answer.map(mcp::Reply::Json));
+        }
+        let outcome = outcome?;
         let attempt = self.session.attempt()?;
         match outcome {
             Outcome::Failed(_) => {
@@ -555,37 +589,7 @@ impl SimPanel {
         unit: &str,
         empty: &str,
     ) -> Option<Option<f64>> {
-        let id = egui::Id::unique(("sim_value", salt));
-        let shown = value.map_or(String::new(), |v| si::format(v, unit));
-        let focused = ui.memory(|m| m.has_focus(id));
-        let bad = self.invalid.contains(&id);
-        let buf = self.texts.entry(id).or_insert_with(|| shown.clone());
-        if !focused && !bad {
-            buf.clone_from(&shown);
-        }
-        let mut edit = egui::TextEdit::singleline(buf).id(id).desired_width(110.0).hint_text(empty);
-        if bad {
-            edit = edit.text_color(theme::error());
-        }
-        let r = ui.add(edit);
-        if bad {
-            r.clone()
-                .on_hover_text(format!("Not a value: type a number with an optional prefix, like 10m or 1.5k{unit}"));
-        }
-        if !r.lost_focus() {
-            return None;
-        }
-        let text = buf.trim().to_string();
-        let new = if text.is_empty() && !empty.is_empty() {
-            None
-        } else if let Some(v) = si::parse(&text) {
-            Some(v)
-        } else {
-            self.invalid.insert(id);
-            return None;
-        };
-        self.invalid.remove(&id);
-        (new != value).then_some(new)
+        self.si.field(ui, ("sim_value", salt), value, unit, empty)
     }
 
     /// The last result of `a`: a table of the probed and named nets (all with "Show all
@@ -768,6 +772,7 @@ impl SimPanel {
                 if let Some(i) = remove {
                     setup.supplies.remove(i);
                     self.texts.clear();
+                    self.si.clear();
                 }
                 let unused = power_nets(doc).into_iter().find(|n| !setup.supplies.iter().any(|s| &s.net == n));
                 if ui.small_button("Add supply").clicked() {

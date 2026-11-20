@@ -1,5 +1,5 @@
 //! Part form: name and defaults, units (symbols), footprint variants and the pin-pad
-//! mapping of each variant. Every change is one undoable `update` of the part.
+//! mapping of each variant, the simulation model (`sim_form`). Every change is one undoable `update` of the part.
 
 use egui::RichText;
 use model::*;
@@ -15,6 +15,7 @@ use crate::theme;
 pub struct PartForm {
     fields: Fields,
     new_property: String,
+    new_sim_param: String,
     /// The part whose unit and variant `shown` chooses (reset when another opens).
     shown_part: Option<Id>,
     shown: PartPreview,
@@ -297,6 +298,10 @@ impl PartForm {
             });
         }
 
+        // ---- Simulation
+        ui.add_space(12.0);
+        crate::sim_form::model_section(ui, &mut self.fields, &mut self.new_sim_param, lib_ref, &mut part);
+
         // ---- Properties
         ui.add_space(12.0);
         ui.label(RichText::new("Properties").strong());
@@ -338,6 +343,8 @@ impl PartForm {
             .into_iter()
             .filter(|i| i.starts_with(&prefix))
             .map(|i| i[prefix.len()..].trim_start_matches([':', ' ']).to_string())
+            // Shown in the Simulation section.
+            .filter(|i| !i.starts_with("simulation model:"))
             .collect();
         issues_ui(ui, &issues);
 

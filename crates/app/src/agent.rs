@@ -14,6 +14,7 @@ use view::{Document, ViewId};
 
 use crate::app::Panes;
 use crate::kicad_import::KicadImport;
+use crate::sim_ui::SimPanel;
 
 pub const DEFAULT_PORT: u16 = 7340;
 
@@ -122,10 +123,13 @@ impl Agent {
         panes: &mut Panes,
         libraries: &[&Library],
         kicad: &mut KicadImport,
+        sim: (&mut SimPanel, Option<std::path::PathBuf>),
     ) -> Vec<Job> {
         let Some((_, rx)) = &self.server else { return Vec::new() };
         let mut jobs = Vec::new();
-        let mut host = AppHost { ctx, doc, panes, libraries, offscreen: &mut self.offscreen, kicad, jobs: &mut jobs };
+        let (sim, ngspice) = sim;
+        let offscreen = &mut self.offscreen;
+        let mut host = AppHost { ctx, doc, panes, libraries, offscreen, kicad, jobs: &mut jobs, sim, ngspice };
         while let Ok(call) = rx.try_recv() {
             self.calls += 1;
             let description = call.request.describe();
@@ -166,6 +170,9 @@ struct AppHost<'a> {
     offscreen: &'a mut Option<Offscreen>,
     kicad: &'a mut KicadImport,
     jobs: &'a mut Vec<Job>,
+    sim: &'a mut SimPanel,
+    /// The ngspice setting.
+    ngspice: Option<std::path::PathBuf>,
 }
 
 impl Host for AppHost<'_> {
@@ -201,9 +208,28 @@ impl Host for AppHost<'_> {
         render_png(self.offscreen, &self.doc.view(view).scene, camera, &canvas.background, width, height)
     }
 
-    fn render_scene(&mut self, scene: &render::Scene, width: u32, height: u32) -> Result<Vec<u8>, String> {
+    fn render_scene(
+        &mut self,
+        scene: &render::Scene,
+        camera: Option<render::Camera>,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<u8>, String> {
         let background = mcp::headless::background(view::ViewKind::Board);
-        render_png(self.offscreen, scene, None, &background, width, height)
+        render_png(self.offscreen, scene, camera, &background, width, height)
+    }
+
+    fn shown_analysis(&self) -> Option<model::Id> {
+        self.sim.current(&self.doc.project().schematic.simulation).map(|a| a.id)
+    }
+
+    fn sim_result(&self, analysis: model::Id) -> Option<&sim::Finished> {
+        self.sim.session.result(analysis)
+    }
+
+    fn simulate(&mut self, job: mcp::simulation::SimJob, reply: Responder) {
+        self.sim.start_agent(self.doc, job, reply, self.ngspice.clone());
+        self.ctx.request_repaint();
     }
 
     fn kicad_search(&mut self, query: &str, footprints: bool, limit: usize) -> Result<Value, String> {

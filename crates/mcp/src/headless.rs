@@ -7,14 +7,15 @@
 //! straight into the project (there is nobody to place them from a library window).
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use editor_core::Command;
 use kicad::Catalog;
 use kicad::download::{self, Source};
-use model::{Library, ObjectId};
-use render::Scene;
+use model::{Id, Library, ObjectId};
 use render::gpu::Background;
 use render::offscreen::Offscreen;
+use render::{Camera, Scene};
 use serde_json::Value;
 use view::project_libs::{self, MissingLibrary};
 use view::{Document, LibraryDoc, ViewId, ViewKind};
@@ -23,6 +24,7 @@ use crate::host::{
     Host, KicadImport, Reply, Responder, kicad_download_reply, kicad_import_reply, kicad_request, render_png,
 };
 use crate::library::{Libraries, LibraryRequest};
+use crate::simulation::{self, SimJob};
 
 pub struct HeadlessHost {
     pub doc: Document,
@@ -38,6 +40,11 @@ pub struct HeadlessHost {
     /// don't depend on the machine).
     pub installed_kicad: bool,
     pub kicad_source: Source,
+    /// Where ngspice is (`None`: the usual places).
+    pub ngspice: Option<PathBuf>,
+    /// The simulator (`None`: ngspice, found at the first run; tests set a fake).
+    pub sim_backend: Option<sim::SharedBackend>,
+    pub sim: sim::Session,
     catalog: Option<Catalog>,
     selection: std::collections::HashMap<ViewId, Vec<ObjectId>>,
     offscreen: Option<Offscreen>,
@@ -53,12 +60,26 @@ impl HeadlessHost {
             kicad_paths: Vec::new(),
             installed_kicad: true,
             kicad_source: Source::default(),
+            ngspice: None,
+            sim_backend: None,
+            sim: sim::Session::default(),
             catalog: None,
             selection: Default::default(),
             offscreen: None,
         };
         host.sync_libraries();
         host
+    }
+
+    /// The simulator: the one set, else ngspice (found once).
+    fn backend(&mut self) -> Result<sim::SharedBackend, String> {
+        if let Some(b) = &self.sim_backend {
+            return Ok(b.clone());
+        }
+        let ngspice = sim::Ngspice::find(self.ngspice.as_deref()).map_err(|e| e.to_string())?;
+        let b: sim::SharedBackend = Arc::new(ngspice);
+        self.sim_backend = Some(b.clone());
+        Ok(b)
     }
 
     fn catalog(&mut self) -> &mut Catalog {
@@ -150,8 +171,35 @@ impl Host for HeadlessHost {
         render_png(&mut self.offscreen, &self.doc.view(view).scene, None, &bg, width, height)
     }
 
-    fn render_scene(&mut self, scene: &Scene, width: u32, height: u32) -> Result<Vec<u8>, String> {
-        render_png(&mut self.offscreen, scene, None, &background(ViewKind::Board), width, height)
+    fn render_scene(
+        &mut self,
+        scene: &Scene,
+        camera: Option<Camera>,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<u8>, String> {
+        render_png(&mut self.offscreen, scene, camera, &background(ViewKind::Board), width, height)
+    }
+
+    fn sim_result(&self, analysis: Id) -> Option<&sim::Finished> {
+        self.sim.result(analysis)
+    }
+
+    /// Runs to the end: nothing else happens meanwhile in a headless host.
+    fn simulate(&mut self, job: SimJob, reply: Responder) {
+        let started = self.backend().and_then(|b| simulation::start(&mut self.sim, &self.doc, &job, b));
+        if let Err(e) = started {
+            let _ = reply.send(Err(e));
+            return;
+        }
+        loop {
+            self.sim.poll();
+            if let Some(r) = simulation::check(&job, &mut self.sim, &self.doc) {
+                let _ = reply.send(r.map(Reply::Json));
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
     }
 
     fn kicad_search(&mut self, query: &str, footprints: bool, limit: usize) -> Result<Value, String> {

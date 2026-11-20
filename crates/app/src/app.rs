@@ -5132,8 +5132,14 @@ impl eframe::App for PcbApp {
         // Agent requests are answered between user interactions.
         if !self.busy() {
             let libraries: Vec<&Library> = self.libraries.iter().map(|l| l.lib.library()).collect();
-            let jobs =
-                self.agent.process(&ctx, &mut self.project.lib.doc, &mut self.panes, &libraries, &mut self.kicad);
+            let jobs = self.agent.process(
+                &ctx,
+                &mut self.project.lib.doc,
+                &mut self.panes,
+                &libraries,
+                &mut self.kicad,
+                (&mut self.sim, self.settings.ngspice_path()),
+            );
             for job in jobs {
                 match job {
                     Job::Kicad(job, reply) => {

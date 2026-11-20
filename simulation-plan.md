@@ -40,7 +40,7 @@ What to avoid: SPICE syntax as the main interface (LTspice), simulations as sche
 objects (Qucs-S: clutters the drawing and the print), and a separate modal window (KiCad's
 simulator is its own frame; ours should be a tab that can sit beside the schematic).
 
-## Built so far (S1–S4)
+## Built so far (S1–S5)
 
 The engine and everything headless are built; their design and gotchas are in
 PLAN.md, "Simulation (`sim`)":
@@ -78,6 +78,15 @@ PLAN.md, "Simulation (`sim`)":
   `P(R1)` rows. Probes resolve by object, then name; missing ones show why. Hovering
   a readout or operating point row highlights it on the schematic; right-click removes
   a probe. A `zoom F` script step.
+- S5: the part form's Simulation section (device combo, monospace model text with a
+  parse line, the port → pin table with Auto-map, parameters, model problems in
+  `Library::issues`); a component's Simulation rows in Properties (Exclude, parameter
+  overrides with the model's values as hints, a source's waveform with its fields, PWL
+  text and a preview plot; Exclude for a multi-selection). MCP `simulate` (through the
+  app's session; answers values, decimated points, statistics and samples at
+  `points`; unprobed currents measured for that run only), `get_spice_netlist`, and
+  `screenshot` target `simulation` (the plot drawn as a render scene offscreen). The
+  headless host has its own session. A `scroll DY` script step.
 
 Still to come in the areas S1 built:
 
@@ -89,13 +98,10 @@ Still to come in the areas S1 built:
   sweeps fall back to processes), a crash in a model takes the app down with unsaved
   work (a "Run in a separate process" setting stays available for that), and
   `ControlledExit` must be handled instead of letting ngspice end the app.
-- `Library::issues` for models (S5): a pin listed twice or missing, a subcircuit whose
-  port count differs from its pins, model text without a `.model` / `.subckt` line
-  (today the netlister reports these per component).
 - Differential voltage probes (`Probe::Voltage` gets a reference, S6).
 - Plot: measurements between the cursors (min, max, average, RMS, frequency),
-  overlays of earlier runs, PNG export (with MCP's screenshot, S5), the zoom saved in
-  the workspace.
+  overlays of earlier runs, PNG export from the GUI (MCP's screenshot renders it
+  offscreen already), the zoom saved in the workspace.
 - Schematic values: placement that avoids other texts (tags can overlap a part's
   reference or another tag), values at the cursor of a sweep (scrubbing), currents of
   bigger parts as tags.
@@ -103,8 +109,11 @@ Still to come in the areas S1 built:
   might be wanted.
 - Supplies suggested from power port names (S6). (S2's "Add supply" picks the first
   power port net without one, its voltage from the name.)
-- `sim::Session` in the headless host, for MCP's `simulate` (S5).
 - Analysis tabs can't be reordered yet (S6).
+- Per-unit models for multi-unit parts (a dual op amp as one subcircuit instance per
+  unit): today a model covers every unit's pins at once.
+- The model text field has no syntax highlighting; `simulate` takes no inline analysis
+  (agents add one with `SetSimulation` first).
 
 ## Running (`sim`)
 
@@ -225,15 +234,15 @@ and warnings. Its badge counts like the others; it is empty until the first run.
 
 ## MCP and CLI
 
-- `simulate { analysis: name | inline AnalysisKind, probes?: [...] }`: runs (synchronously
-  for the agent, the app's UI stays live) and returns the operating point as a table, or
-  for sweeps the vectors decimated to ≤ 200 points per signal plus min, max, average and
-  final value, so answers stay small. `points: [x…]` samples signals at given x values.
-- `get_spice_netlist { analysis }`: the netlist text and the node map.
+- `simulate { analysis?, signals?, points? }` (built, S5): runs an analysis of the
+  setup (by name; no inline kinds) through the app's session and answers when it ends
+  (120 s at most): an operating point's values, or for sweeps each signal decimated to
+  ≤ 200 points plus min, max, average and end, and its values at `points`.
+- `get_spice_netlist { analysis }` (built): the text, node and device maps, problems.
 - Setup through `execute` with `SetSimulation` and component `Update`s (sources, model
   overrides) — no special tools. Part models through `edit_library` like other part
   content.
-- `screenshot` gains `simulation` to render the plot (offscreen, same widget logic).
+- `screenshot` target `simulation` (built): the plot of the last run, offscreen.
 - The CLI's `simulate` exists (S1); agents get the same summary from `sim::report`.
 
 ## KiCad import
@@ -260,15 +269,8 @@ Datasheet). Mapping them:
 
 ## Milestones
 
-Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1–S4 are done and
-give a usable simulator; S5–S8 make it comfortable, compatible and fast.
-
-### S5: Models in the editors, and MCP
-
-- Part form Simulation section (device, model text, port table, parameters), library
-  issues for models.
-- Properties: excluded, overrides, source waveform editor.
-- MCP `simulate`, `get_spice_netlist`, simulation screenshots; README tool list.
+Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1–S5 are done and
+give a usable simulator; S6–S8 make it comfortable, compatible and fast.
 
 ### S6: Comfort
 
