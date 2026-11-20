@@ -213,8 +213,7 @@ on the canvas (View → ERC markers turns the schematic's off).
 Circuits simulate with [ngspice](https://ngspice.sourceforge.io/), which you install
 yourself (`brew install ngspice`, `apt install ngspice`, or the Windows download); it is
 found on `PATH` and the usual install places, or set its path in **Settings →
-Simulation**. Probing on the schematic is still to come
-([simulation-plan.md](simulation-plan.md)).
+Simulation**. What's planned next is in [simulation-plan.md](simulation-plan.md).
 
 - **Simulation panel** (⌘2, or the **Simulation** menu): one tab per analysis
   (operating point, transient, AC, DC sweep; **+** adds one, right-click renames,
@@ -222,7 +221,9 @@ Simulation**. Probing on the schematic is still to come
   `1meg`); text that isn't a value turns red and isn't applied. **Run** (⌘R) runs the
   analysis shown (with none, it adds an operating point), **Stop** (⌘.) stops it; the
   status bar shows a running simulation. The result table lists the named nets (all of
-  them with **Show all nets**); click one to select it. When the schematic changes in a
+  them with **Show all nets**) and the measured currents; click a net to select it. An
+  operating point measures the current into every pin (`I(R1.1)`) and each part's
+  power (`P(R1)`). When the schematic changes in a
   way that changes the netlist, the results dim with "Changed since the run".
   **Circuit** holds the ground net, supplies, temperature and extra SPICE lines, and
   shows the SPICE netlist and ngspice's log. Every change undoes like any other edit.
@@ -235,7 +236,20 @@ Simulation**. Probing on the schematic is still to come
   a box, double-click or **V** fits. Click places cursor A, Shift+click cursor B
   (drag them to move, Esc removes them); the table under the plot shows each trace's
   value at A and B and the difference, and a click on a row hides or shows its trace.
+  Hovering a row highlights its net or pin on the schematic; right-click → **Remove
+  probe**. A probe without data says why (run again, net gone, part not simulated).
   **Export CSV…** saves the traces shown. An operating point shows a sortable table.
+- **Probe tool** (**O**, in the tool bar's Simulation group, shown with the panel or
+  tab open): click a wire, label or junction to plot its net's voltage, the body of a
+  pin (not its end) to plot the current into it; click a probed one to remove it. The
+  tip names what a click probes. Probes go to the analysis the panel shows if it's a
+  transient, AC or DC sweep, else to the first one. Probed wires and pins show in
+  their trace colours.
+- **Values on the schematic** (**View → Simulation values**, with the panel or tab
+  open): after an operating point run, each net shows its voltage once per sheet, and
+  two-pin parts their current with an arrow in its direction; hover a bigger part for
+  each pin's voltage and current and its power. They dim when the schematic changed
+  since the run.
 - **Test bench:** keep sources on a sheet of their own ("Testbench" in the demo): a
   source stands in for a connector's supply or signal, and has no footprint, so the
   board doesn't change.

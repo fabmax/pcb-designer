@@ -409,7 +409,8 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   default), changed whole by `SetSimulation` through `Setup` (`simulation_changed`).
   `check_simulation` refuses duplicate ids or names, empty names, bad ranges and DC
   sweeps of non-components. `Probe::Voltage { net, at }` binds to an object first, the
-  net name second (resolution comes with the probe tool); `Probe::Current` to a pin.
+  net name second (`plot::Signal::of_probe(p, conn)`: a renamed net still follows its
+  wire); `Probe::Current` to a pin.
 - **SI values** (`model::si`): `parse` takes `10k`, `4k7`, `2R2`, `5V1`, `µ`/`u`, `meg`,
   units and trailing words; `M` is mega (SPICE says milli). It refuses `1N4148` (a unit
   word must follow the number). `format` is engineering notation; `spice` writes 12
@@ -428,7 +429,11 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   different texts under one name are renamed `_2`. VDMOS cards get three nodes, other
   MOSFETs a bulk tied to the source. `value_number` finds the number of a value or a
   voltage inside a part number (`BZT52C3V3` → 3.3) for `${VALUE}` parameters. Current
-  probes insert a 0 V `VSENSE_…` in series with the pin. Supplies are `VSUPPLY_…` to
+  probes insert a 0 V `VSENSE_…` in series with the pin; an operating point does so on
+  every pin of every device (cheap there, and a sweep keeps its few probes), so its
+  netlist differs from a sweep's. `Netlist::pins` lists every simulated pin
+  (`DevicePin`: component, refdes, symbol, pin, key, outer node) for labels (`I(R1.1)`)
+  and the device table. Supplies are `VSUPPLY_…` to
   ground. Problems carry the component's symbols for zooming.
 - **ngspice** (`sim::Ngspice`, a `Backend`): `-b -r out.raw circuit.cir` in a temp dir,
   both pipes drained on threads, a `Cancel` polled every 5 ms kills it. Found from the
@@ -442,7 +447,10 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   evaluate wrongly in ngspice 47 without an error.
 - `SimResult` reads by net (`voltage`, ground as zeros) and pin (`current`), `Vector`
   has `db`, `phase`, `magnitude` and `at` (interpolated). `sim::report` gives the text
-  summary and CSV of the `simulate` command.
+  summary and CSV of the `simulate` command; its rows are the nets, then per device its
+  pin currents and (operating points) `P(R1)` = Σ V·I into the pins (positive: the
+  device takes power, a source's is negative). `report::devices` is that table with
+  each pin's voltage and current.
 - **Built-in models** (`builtin::generate::sims`): a table by part name sets the
   generated parts' models (1N4148, B5819, zener with `BV=${VALUE}`, 2N3904/2N3906,
   2N7002/BSS84 as VDMOS, a Butterworth–Van Dyke crystal with `f=${VALUE}`, ferrite and
@@ -490,9 +498,30 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   user closed it (`plot_closed`). Ticking a row in the panel's result table adds or
   removes a `Probe` (one `SetSimulation`). Trace colours: `style::trace_color`, an
   8-colour categorical palette per theme checked for colour-vision deficiency; past 8
-  colours repeat dashed. The tab has the canvas background (like the schematic), the
+  colours repeat dashed; a probe's colour is its index. Missing signals carry a reason
+  (`plot::Missing`, `missing_reason`: net gone, not simulated, pin not in the model,
+  run again); right-click on a readout row removes its probe, hovering one highlights
+  its net or pin on the schematic. The tab has the canvas background (like the schematic), the
   chart the window background in dark and white in light (the light window grey hid
   the grid and left yellow at 1.5:1).
+- **On the schematic** (`view::sim_overlay`): `SchTool::Probe` (O) is handled by the
+  app (`probe_ui`), which knows the target analysis (`SimPanel::probe_analysis`: the
+  panel's if a sweep, else the first sweep). `probe_target` takes a wire, label or
+  junction's net, else the nearest pin whose body (not its end) is within the
+  tolerance. A click toggles the probe by signal (one `SetSimulation`). The tool group
+  (Probe, Run) shows while the Simulation panel or tab is open. `SimOverlay` (probed
+  nets and pins with colours, voltage tags, two-pin currents as (symbol, pin the
+  current enters, text), `dim`, hovered net/pin) is built by `SimPanel::overlay`
+  (cached on revision, run, probe analysis, hover and theme) and handed to
+  `Document::set_sim_overlay`, which redraws each sheet's `SIM_ITEM` on change, with
+  the connectivity and on restyle. Everything shows only while the panel or tab is
+  open. Values come from the panel's operating point, else the last one run;
+  voltage tags sit at a net's first label on the sheet, else the middle of its longest
+  wire there; ground gets none; current tags reach away from the part body. Tags use
+  `sim_value` / `sim_value_bg`, three significant digits, and are world-sized. Parts
+  with more than two pins get a hover tooltip (pin V, I, power). `SimPanel::hover` is
+  cleared each frame before the tree draws and set by the Probe tool or a hovered
+  table row.
 - **Demo:** a "Testbench" sheet with `V1` (5 V + 0.5 V 1 kHz sine, AC 1 V) on +5V
   replaces the supply; analyses Operating point, Transient (3 ms) and AC, the last two
   probing +5V and the LED's anode.

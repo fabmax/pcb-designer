@@ -116,6 +116,7 @@ pub struct MenuState<'a> {
     pub move_to_sheet: bool,
     /// ERC markers are shown on the schematic.
     pub erc_markers: bool,
+    pub sim_values: bool,
     /// A simulation is running.
     pub sim_running: bool,
 }
@@ -242,6 +243,15 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
             checked: s.erc_markers,
             radio: false,
             hover: Some("Mark errors and warnings of the electrical rules check on the schematic"),
+        },
+        Entry::Check {
+            label: "Simulation values".into(),
+            cmd: Cmd::Action(Action::ToggleSimValues),
+            checked: s.sim_values,
+            radio: false,
+            hover: Some(
+                "Show the operating point's voltages and currents on the schematic (with the Simulation panel open)",
+            ),
         },
         item("Reset panel layout", Cmd::ResetPanels),
         Entry::Separator,
@@ -453,6 +463,7 @@ mod tests {
             headless_command: "claude mcp add …".into(),
             move_to_sheet: false,
             erc_markers: true,
+            sim_values: true,
             sim_running: false,
         }
     }

@@ -15,6 +15,7 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, Ui, pos
 use model::*;
 use sim::plot::{self, Axis, PlotData, Scale, Signal};
 use view::Document;
+use view::sim_overlay::ProbeTarget;
 
 use crate::sim_ui::SimPanel;
 use crate::theme;
@@ -24,6 +25,17 @@ pub enum PlotAct {
     /// The plot was clicked: it takes the keys.
     Focus,
     Run(Id),
+    /// Right-click → Remove probe: (analysis, probe index).
+    RemoveProbe(Id, usize),
+}
+
+/// A signal's target on the schematic (hovering its row highlights it).
+fn target(s: &Signal) -> ProbeTarget {
+    match s {
+        // The net is found by name: `at` is only used to probe.
+        Signal::Voltage(net) => ProbeTarget::Net { net: net.clone(), at: model::ObjectId::Wire(Id::from_u128(0)) },
+        Signal::Current(symbol, pin) => ProbeTarget::Pin { symbol: *symbol, pin: *pin },
+    }
 }
 
 /// A plot's data, with what it was made of (run, signals, phase) and how many named
@@ -165,13 +177,21 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
     }
 
     let Some(done) = panel.session.result(analysis.id) else {
-        let text = if running { "Simulating…" } else { "Run the analysis (⌘R) to plot it." };
+        let text = if running {
+            "Simulating…"
+        } else if analysis.probes.is_empty() && analysis.kind != AnalysisKind::Op {
+            "Run the analysis (⌘R) to plot it. Pick signals with the Probe tool (O) on the schematic."
+        } else {
+            "Run the analysis (⌘R) to plot it."
+        };
         centered_hint(ui, text);
         return act;
     };
     let dim = stale || running;
     if done.result.scale().is_none() {
-        op_table(ui, &done.rows, &mut state.sort, dim);
+        if let Some(t) = op_table(ui, &done.rows, &mut state.sort, dim) {
+            panel.hover = Some(t);
+        }
         return act;
     }
 
@@ -179,7 +199,7 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
     let (signals, named) = plot::signals(&analysis, &done.result, doc.connectivity());
     let key = (done.run, signals.clone(), phase);
     if state.data.as_ref().is_none_or(|d| d.0 != key) {
-        let Some(data) = plot::data(&done.result, &signals, phase) else { return act };
+        let Some(data) = plot::data(&done.result, &signals, phase, doc.connectivity()) else { return act };
         let range = (data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0));
         if state.fitted_to != Some(range) {
             state.x = None;
@@ -221,7 +241,13 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
     ui.add_space(4.0);
     egui::ScrollArea::vertical().id_salt(("plot_table", analysis.id)).auto_shrink([false, false]).show(ui, |ui| {
         egui::Frame::new().inner_margin(egui::Margin { left: 12, right: 12, top: 0, bottom: 8 }).show(ui, |ui| {
-            readout(ui, state, &data, named, analysis.probes.is_empty());
+            let (hover, remove) = readout(ui, state, &data, &signals, named, analysis.probes.is_empty());
+            if let Some(s) = hover {
+                panel.hover = Some(target(&s));
+            }
+            if let Some(i) = remove {
+                act = Some(PlotAct::RemoveProbe(analysis.id, i));
+            }
         });
     });
     act
@@ -523,7 +549,30 @@ fn swatch(ui: &mut Ui, color: Color32, dashed: bool) {
 }
 
 /// The traces with their values at the cursors; a click on a row hides or shows it.
-fn readout(ui: &mut Ui, state: &mut PlotState, data: &PlotData, named: usize, auto: bool) {
+/// Returns the signal hovered and a probe to remove (right-click; `auto`: no probes).
+fn readout(
+    ui: &mut Ui,
+    state: &mut PlotState,
+    data: &PlotData,
+    signals: &[Signal],
+    named: usize,
+    auto: bool,
+) -> (Option<Signal>, Option<usize>) {
+    let mut hover = None;
+    let mut remove = None;
+    let mut row_menu = |r: &egui::Response, signal: usize| {
+        if r.hovered() {
+            hover = signals.get(signal).cloned();
+        }
+        if !auto {
+            r.context_menu(|ui| {
+                if ui.button("Remove probe").clicked() {
+                    remove = Some(signal);
+                    ui.close();
+                }
+            });
+        }
+    };
     let at = |c: Option<f64>| c.and_then(|v| plot::nearest(&data.x, v));
     let (a, b) = (at(state.cursors[0]), at(state.cursors[1]));
     let mut toggle = None;
@@ -560,6 +609,7 @@ fn readout(ui: &mut Ui, state: &mut PlotState, data: &PlotData, named: usize, au
                     ui.add(egui::Label::new(text).sense(Sense::click()))
                 })
                 .inner;
+            row_menu(&r, t.signal);
             if r.on_hover_text(if hidden { "Show" } else { "Hide" }).clicked() {
                 toggle = Some(t.label.clone());
             }
@@ -573,7 +623,9 @@ fn readout(ui: &mut Ui, state: &mut PlotState, data: &PlotData, named: usize, au
             ui.end_row();
         }
         for m in &data.missing {
-            ui.label(RichText::new(format!("{m} · no data in this run")).color(theme::text_dim()));
+            let text = RichText::new(format!("{} · {}", m.label, m.reason)).color(theme::text_dim());
+            let r = ui.add(egui::Label::new(text).sense(Sense::click()));
+            row_menu(&r, m.signal);
             ui.end_row();
         }
     });
@@ -596,10 +648,13 @@ fn readout(ui: &mut Ui, state: &mut PlotState, data: &PlotData, named: usize, au
     if state.cursors.iter().all(Option::is_none) {
         crate::fields::hint(ui, "Click the plot to place cursor A, Shift+click for B.");
     }
+    (hover, remove)
 }
 
-/// The operating point's values, sortable by signal or value.
-fn op_table(ui: &mut Ui, rows: &[sim::report::Row], sort: &mut (usize, bool), dim: bool) {
+/// The operating point's values, sortable by signal or value. Returns the hovered row's
+/// target.
+fn op_table(ui: &mut Ui, rows: &[sim::report::Row], sort: &mut (usize, bool), dim: bool) -> Option<ProbeTarget> {
+    let mut hover = None;
     let mut rows: Vec<&sim::report::Row> = rows.iter().collect();
     let number = |r: &sim::report::Row| r.values.first().and_then(|v| si::parse(v)).unwrap_or(f64::NAN);
     match sort.0 {
@@ -627,13 +682,21 @@ fn op_table(ui: &mut Ui, rows: &[sim::report::Row], sort: &mut (usize, bool), di
                         let t = RichText::new(t);
                         if dim { t.color(theme::text_dim()) } else { t }
                     };
-                    ui.label(text(&r.label));
+                    let l = ui.add(egui::Label::new(text(&r.label)).sense(Sense::hover()));
                     ui.label(text(r.values.first().map_or("", |v| v.as_str())).monospace());
+                    if l.hovered() {
+                        hover = match (&r.net, r.current) {
+                            (Some(net), _) => Some(target(&Signal::Voltage(net.clone()))),
+                            (None, Some((s, p))) => Some(target(&Signal::Current(s, p))),
+                            _ => None,
+                        };
+                    }
                     ui.end_row();
                 }
             });
         });
     });
+    hover
 }
 
 fn export_csv(data: &PlotData, hidden: &HashSet<String>, name: &str) {

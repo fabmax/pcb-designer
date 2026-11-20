@@ -4,7 +4,7 @@
 //! `press x,y`, `move x,y`, `release x,y` drag, `double-click x,y`; `ui-click
 //! x,y` clicks at a screen position in points, `ui-double-click x,y` / `ui-right-click x,y`
 //! likewise, `ui-move x,y` hovers there, `type TEXT` types text, `run [ANALYSIS]` runs a
-//! simulation and waits for it); each step runs a few frames after the previous one.
+//! simulation and waits for it, `zoom F` zooms the canvas under the pointer); each step runs a few frames after the previous one.
 
 use std::collections::VecDeque;
 use view::ViewKind;
@@ -39,6 +39,8 @@ enum Step {
     Board(bool),
     /// Run a simulation (the analysis named, or the panel's); later steps wait for it.
     Run(String),
+    /// Zoom the canvas under the pointer by a factor (a pinch).
+    Zoom(f32),
 }
 
 #[derive(Debug, Default)]
@@ -114,6 +116,7 @@ impl Script {
                 "run" => steps.push_back(Step::Run(arg.trim().to_string())),
                 "board" => steps.push_back(Step::Board(true)),
                 "schematic" => steps.push_back(Step::Board(false)),
+                "zoom" => steps.push_back(Step::Zoom(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
                 "wait" => steps.push_back(Step::Wait(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
                 _ => return Err(format!("unknown script step {cmd:?}")),
             }
@@ -193,6 +196,7 @@ impl Script {
                 pressed: matches!(step, Step::Screen(Step2::Press(_))),
                 modifiers: m,
             }],
+            Step::Zoom(f) => vec![Event::Zoom(f)],
             Step::Wait(n) => {
                 self.wait = n;
                 Vec::new()

@@ -51,6 +51,7 @@ pub enum Action {
     SchJunction,
     SchNoConnect,
     SchPowerFlag,
+    SchProbe,
     SchFindPart,
     ToggleErcMarkers,
     Posture,
@@ -85,6 +86,7 @@ pub enum Action {
     StopSimulation,
     ShowSimNetlist,
     ShowSimPlot,
+    ToggleSimValues,
 }
 
 /// Where an action's shortcut applies. Actions of different contexts may share a key.
@@ -133,6 +135,7 @@ impl Action {
         Action::SchJunction,
         Action::SchNoConnect,
         Action::SchPowerFlag,
+        Action::SchProbe,
         Action::SchFindPart,
         Action::ToggleErcMarkers,
         Action::Posture,
@@ -167,6 +170,7 @@ impl Action {
         Action::StopSimulation,
         Action::ShowSimNetlist,
         Action::ShowSimPlot,
+        Action::ToggleSimValues,
     ];
 
     pub fn label(self) -> &'static str {
@@ -207,6 +211,7 @@ impl Action {
             Action::SchJunction => "Junction tool (schematic)",
             Action::SchNoConnect => "No-connect flag tool (schematic)",
             Action::SchPowerFlag => "Power flag tool (schematic)",
+            Action::SchProbe => "Probe tool: plot voltages and currents (schematic)",
             Action::SchFindPart => "Find a part to place (schematic)",
             Action::ToggleErcMarkers => "Show/hide ERC markers (schematic)",
             Action::Posture => "Corner direction (wires, tracks)",
@@ -241,6 +246,7 @@ impl Action {
             Action::StopSimulation => "Stop simulation",
             Action::ShowSimNetlist => "Show SPICE netlist and log",
             Action::ShowSimPlot => "Show simulation plot",
+            Action::ToggleSimValues => "Show/hide simulation values on the schematic",
         }
     }
 
@@ -263,6 +269,7 @@ impl Action {
             | Action::SchJunction
             | Action::SchNoConnect
             | Action::SchPowerFlag
+            | Action::SchProbe
             | Action::SchFindPart
             | Action::MoveToSheet => Some(Context::Schematic),
             Action::PcbRoute
@@ -466,6 +473,7 @@ impl Default for Keymap {
             (Action::SchJunction, vec![S::key(Key::J)]),
             (Action::SchNoConnect, vec![S::key(Key::Q)]),
             (Action::SchPowerFlag, vec![S::shift(Key::P)]),
+            (Action::SchProbe, vec![S::key(Key::O)]),
             (Action::Posture, vec![S::key(Key::Slash)]),
             (Action::NextCorners, vec![S::shift(Key::Space)]),
             (Action::PcbRoute, vec![S::key(Key::T)]),
@@ -589,6 +597,7 @@ mod tests {
             Action::PanelActivity,
             Action::ShowSimNetlist,
             Action::ShowSimPlot,
+            Action::ToggleSimValues,
         ];
         for a in Action::ALL.iter().filter(|a| !unbound.contains(a)) {
             assert!(!map.shortcuts(*a).is_empty(), "{a:?} has no default shortcut");

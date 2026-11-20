@@ -1,24 +1,81 @@
 //! Results as text: a summary table and CSV (the `simulate` command line, agents).
 
+use std::collections::HashMap;
+
 use model::{Id, natural_cmp, si};
 
 use crate::SimResult;
 use crate::raw::Vector;
 
-/// A signal of a result: a net's voltage (`net` set) or a probed current.
+/// A signal of a result: a net's voltage (`net` set), a measured current (`current`)
+/// or a device's power (`power`, operating points).
 #[derive(Clone, Debug)]
 pub struct Signal {
-    /// `V(/OUT)`, `I(R1_1)`.
+    /// `V(/OUT)`, `I(R1.1)`, `P(R1)`.
     pub label: String,
     pub net: Option<String>,
     /// A current's (symbol, pin).
     pub current: Option<(Id, Id)>,
+    /// A power's component.
+    pub power: Option<Id>,
     pub unit: &'static str,
     pub vector: Vector,
 }
 
-/// The signals of a result: every net's voltage (in natural order) and the probed
-/// currents.
+/// A simulated device at its operating point.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Device {
+    pub component: Id,
+    pub refdes: String,
+    pub pins: Vec<PinValue>,
+    /// Σ V·I over the pins (positive: the device takes power). `None` if a current is
+    /// missing.
+    pub power: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PinValue {
+    pub symbol: Option<Id>,
+    pub pin: Id,
+    pub key: String,
+    /// To ground.
+    pub voltage: Option<f64>,
+    /// Into the pin.
+    pub current: Option<f64>,
+}
+
+/// The devices of an operating point with each pin's voltage and current and their
+/// power (empty for sweeps).
+pub fn devices(r: &SimResult) -> Vec<Device> {
+    if r.scale().is_some() {
+        return Vec::new();
+    }
+    let first = |name: &str| r.plot.vector(name).and_then(|v| v.re.first().copied());
+    let mut out: Vec<Device> = Vec::new();
+    for p in &r.netlist.pins {
+        if out.last().is_none_or(|d| d.component != p.component) {
+            out.push(Device { component: p.component, refdes: p.refdes.clone(), pins: Vec::new(), power: None });
+        }
+        let voltage = if p.node == "0" { Some(0.0) } else { first(&format!("v({})", p.node)) };
+        let current =
+            p.symbol.and_then(|s| r.netlist.sense.get(&(s, p.pin))).and_then(|src| first(&format!("i({src})")));
+        out.last_mut().unwrap().pins.push(PinValue {
+            symbol: p.symbol,
+            pin: p.pin,
+            key: p.key.clone(),
+            voltage,
+            current,
+        });
+    }
+    for d in &mut out {
+        d.power = d.pins.iter().map(|p| Some(p.voltage? * p.current?)).sum();
+    }
+    out
+}
+
+/// The signals of a result: every net's voltage (in natural order), the measured
+/// currents (devices in reference order, pins in node order) and, for an operating
+/// point, each device's power after its currents.
 pub fn signals(r: &SimResult) -> Vec<Signal> {
     let mut nets: Vec<(&String, &String)> = r.netlist.nodes.iter().filter(|(_, node)| *node != "0").collect();
     nets.sort_by(|a, b| natural_cmp(a.0, b.0));
@@ -26,21 +83,48 @@ pub fn signals(r: &SimResult) -> Vec<Signal> {
         .into_iter()
         .filter_map(|(net, _)| {
             let vector = r.voltage(net)?.into_owned();
-            Some(Signal { label: format!("V({net})"), net: Some(net.clone()), current: None, unit: "V", vector })
+            Some(Signal {
+                label: format!("V({net})"),
+                net: Some(net.clone()),
+                current: None,
+                power: None,
+                unit: "V",
+                vector,
+            })
         })
         .collect();
-    let mut currents: Vec<Signal> = r
-        .netlist
-        .sense
-        .iter()
-        .filter_map(|(key, source)| {
-            let vector = r.plot.vector(&format!("i({source})"))?.clone();
-            let name = source.trim_start_matches("vsense_").to_ascii_uppercase();
-            Some(Signal { label: format!("I({name})"), net: None, current: Some(*key), unit: "A", vector })
-        })
-        .collect();
-    currents.sort_by(|a, b| natural_cmp(&a.label, &b.label));
-    out.extend(currents);
+    let op = r.scale().is_none();
+    let powers: HashMap<Id, f64> = if op {
+        devices(r).into_iter().filter_map(|d| Some((d.component, d.power?))).collect()
+    } else {
+        HashMap::new()
+    };
+    for (i, p) in r.netlist.pins.iter().enumerate() {
+        if let Some(symbol) = p.symbol
+            && let Some(source) = r.netlist.sense.get(&(symbol, p.pin))
+            && let Some(vector) = r.plot.vector(&format!("i({source})"))
+        {
+            out.push(Signal {
+                label: format!("I({}.{})", p.refdes, p.key),
+                net: None,
+                current: Some((symbol, p.pin)),
+                power: None,
+                unit: "A",
+                vector: vector.clone(),
+            });
+        }
+        let last_of_device = r.netlist.pins.get(i + 1).is_none_or(|n| n.component != p.component);
+        if last_of_device && let Some(&w) = powers.get(&p.component) {
+            out.push(Signal {
+                label: format!("P({})", p.refdes),
+                net: None,
+                current: None,
+                power: Some(p.component),
+                unit: "W",
+                vector: Vector { name: format!("p({})", p.refdes), kind: "power".into(), re: vec![w], im: None },
+            });
+        }
+    }
     out
 }
 
@@ -50,6 +134,7 @@ pub struct Row {
     pub label: String,
     pub net: Option<String>,
     pub current: Option<(Id, Id)>,
+    pub power: Option<Id>,
     /// Formatted, one per [`columns`] entry.
     pub values: Vec<String>,
 }
@@ -86,7 +171,7 @@ pub fn rows(r: &SimResult) -> Vec<Row> {
                 let max = v.re.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
                 vec![f(min), f(max), f(v.re.last().copied().unwrap_or(f64::NAN))]
             };
-            Row { label: s.label, net: s.net, current: s.current, values }
+            Row { label: s.label, net: s.net, current: s.current, power: s.power, values }
         })
         .collect()
 }

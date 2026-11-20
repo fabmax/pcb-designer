@@ -40,7 +40,7 @@ What to avoid: SPICE syntax as the main interface (LTspice), simulations as sche
 objects (Qucs-S: clutters the drawing and the print), and a separate modal window (KiCad's
 simulator is its own frame; ours should be a tab that can sit beside the schematic).
 
-## Built so far (S1–S3)
+## Built so far (S1–S4)
 
 The engine and everything headless are built; their design and gotchas are in
 PLAN.md, "Simulation (`sim`)":
@@ -67,6 +67,17 @@ PLAN.md, "Simulation (`sim`)":
   dimming, CSV export; an operating point shows a sortable table. Check boxes in the
   panel's result table choose the plotted signals. The demo has a test bench sheet.
   `--show simulation` and a `run [ANALYSIS]` script step.
+- S4: the Probe tool (O; a Simulation group with Probe and Run on the schematic tool
+  bar while the panel or tab is open): a wire, label or junction probes its net's
+  voltage, a pin's body the current into it, a probed one is removed; probes go to the
+  panel's analysis if it's a sweep, else the first sweep. Probed nets' wires and pins
+  drawn in their trace colours; an operating point's voltages (a tag per net and sheet)
+  and the currents of two-pin parts (an arrow and the magnitude) on the schematic, a
+  tooltip with pin voltages, currents and power for bigger parts (View → Simulation
+  values). Operating points measure every pin's current; the table has `I(R1.1)` and
+  `P(R1)` rows. Probes resolve by object, then name; missing ones show why. Hovering
+  a readout or operating point row highlights it on the schematic; right-click removes
+  a probe. A `zoom F` script step.
 
 Still to come in the areas S1 built:
 
@@ -84,7 +95,12 @@ Still to come in the areas S1 built:
 - Differential voltage probes (`Probe::Voltage` gets a reference, S6).
 - Plot: measurements between the cursors (min, max, average, RMS, frequency),
   overlays of earlier runs, PNG export (with MCP's screenshot, S5), the zoom saved in
-  the workspace, device currents and power in the operating point table.
+  the workspace.
+- Schematic values: placement that avoids other texts (tags can overlap a part's
+  reference or another tag), values at the cursor of a sweep (scrubbing), currents of
+  bigger parts as tags.
+- The values only show while the Simulation panel or tab is open; a pinned "always"
+  might be wanted.
 - Supplies suggested from power port names (S6). (S2's "Add supply" picks the first
   power port net without one, its voltage from the name.)
 - `sim::Session` in the headless host, for MCP's `simulate` (S5).
@@ -174,17 +190,10 @@ it has its own focus (`Focus::Simulation`) for its keys.
 
 ### On the schematic (`view`)
 
-- **Operating point annotations:** after an OP run, each net gets one value tag ("2.48 V")
-  at its first label, else near the middle of its longest wire, and each component a
-  current tag near its first pin, drawn as an overlay layer in the scene like the ERC
-  markers (`View::set_sim_annotations`, palette colours, hidden from the View menu,
-  dimmed when stale). Sizes follow the zoom like texts.
-- **Probe tool** (`view::sim_tools`): highlights the net under the pointer (as hover
-  does), shows a pin hit when over a pin end, and on click returns a `Probe` for the app
-  to add. Differential probes (click a second net with a modifier) are in S6.
-- **Probe highlights:** the wires of a probed net drawn in the trace colour, slightly
-  thicker (an overlay like cross-probing, not a restyle of the scene).
-- Cross-probing from the plot: hovering a trace in the legend highlights its net.
+Built in S4 (`view::sim_overlay`, design in PLAN.md): the Probe tool's targets, and one
+overlay item per sheet with the probes in trace colours, the operating point's values
+and the hovered target. Differential probes (click a second net with a modifier) are
+in S6.
 
 ### Part editor and Properties
 
@@ -251,16 +260,8 @@ Datasheet). Mapping them:
 
 ## Milestones
 
-Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1–S3 are done; S4
-gives a usable simulator, S5–S8 make it comfortable, compatible and fast.
-
-### S4: Probing and results on the schematic
-
-- Probe tool with net and pin hover, add/remove probes (`SetSimulation`), default probes
-  for runs without any.
-- Probe highlights in trace colours; legend hover highlights the net.
-- Operating point annotations; View menu toggle.
-- Probe resolution (object, then name), missing-probe display.
+Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1–S4 are done and
+give a usable simulator; S5–S8 make it comfortable, compatible and fast.
 
 ### S5: Models in the editors, and MCP
 

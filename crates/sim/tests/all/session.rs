@@ -72,7 +72,7 @@ fn a_run_keeps_its_result_until_the_schematic_changes() {
     let a = s.attempt().unwrap();
     assert_eq!(a.log, "the log");
     assert!(a.problems.iter().any(|p| p.level == Level::Warning && p.message == "warning: a hint"));
-    assert!(a.netlist.contains("R1 in out 10000"));
+    assert!(a.netlist.contains("R1 vsense_r1_1_in vsense_r1_2_in 10000"), "{}", a.netlist);
 
     assert!(!s.is_stale(b.project(), &b.conn(), &op, 1));
     // A value changes: the result stays, marked stale.

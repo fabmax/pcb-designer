@@ -29,6 +29,9 @@ pub enum SchTool {
     Place,
     /// Place the symbol of a new sheet (see [`SchPlacer::place_sheet`]).
     Sheet,
+    /// Add and remove simulation probes (handled by the app: it knows the analysis; see
+    /// [`crate::sim_overlay::probe_target`]).
+    Probe,
 }
 
 impl SchTool {
@@ -60,6 +63,7 @@ impl SchTool {
             SchTool::Text => "Text",
             SchTool::Place => "Place",
             SchTool::Sheet => "Sheet",
+            SchTool::Probe => "Probe",
         }
     }
 
@@ -81,6 +85,9 @@ impl SchTool {
             SchTool::Text => "Click to place, then type · Shift+Enter new line · Enter done · Esc cancel · R rotate",
             SchTool::Place => "Click to place · R rotate · X mirror · Esc done",
             SchTool::Sheet => "Click to place the sheet's top left corner · Esc cancels",
+            SchTool::Probe => {
+                "Click a wire or label to plot its voltage, a pin to plot the current into it · again removes · Esc done"
+            }
         }
     }
 }
@@ -541,7 +548,7 @@ impl SchPlacer {
         let s = &self.settings;
         let mut placed = Placed::default();
         let command = match self.tool {
-            SchTool::Select => return Ok(placed),
+            SchTool::Select | SchTool::Probe => return Ok(placed),
             SchTool::Wire => {
                 let Some(start) = self.start else {
                     self.start = Some(p);
@@ -723,7 +730,7 @@ impl SchPlacer {
         let Some(p) = self.cursor else { return Vec::new() };
         let s = &self.settings;
         match self.tool {
-            SchTool::Select => Vec::new(),
+            SchTool::Select | SchTool::Probe => Vec::new(),
             SchTool::Wire | SchTool::Bus => {
                 let mut g = Vec::new();
                 if let Some(start) = self.start {

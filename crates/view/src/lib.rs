@@ -25,6 +25,7 @@ pub mod pcb_tools;
 pub mod probe;
 pub mod project_libs;
 pub mod sch_tools;
+pub mod sim_overlay;
 pub mod style;
 pub mod text_edit;
 pub mod tool_memory;

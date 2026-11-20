@@ -12,6 +12,7 @@ use model::io::{FileError, load_project, save_project};
 use model::{Component, Coord, Id, LayerId, ObjectId, ObjectKind, Point, Project, Rect, Text};
 
 use crate::interaction::{Edit, Target, reference_point};
+use crate::sim_overlay::SimOverlay;
 use crate::text_edit::{EditGeometry, EditKey, EditSite, Mods, Outcome, TextEdit, TextTarget};
 use crate::view::{View, ViewId, ViewKind};
 
@@ -52,6 +53,8 @@ pub struct Document {
     pub read_only: Option<String>,
     /// A text being edited in place, in a view, and the colour it's drawn in.
     text_edit: Option<(EditSite, TextEdit, render::Color)>,
+    /// What the sheets show of a simulation.
+    sim: SimOverlay,
 }
 
 /// Result of the last design rule check.
@@ -100,6 +103,7 @@ impl Document {
             slow: Duration::from_millis(4),
             read_only: None,
             text_edit: None,
+            sim: SimOverlay::default(),
         };
         doc.update_connectivity(false);
         doc
@@ -319,6 +323,28 @@ impl Document {
             view.set_connectivity(&self.connectivity);
         }
         self.board.set_copper(project, &self.copper);
+        self.draw_sim();
+    }
+
+    /// Show a simulation's probes and values on the sheets (redrawn when it changes and
+    /// with the connectivity).
+    pub fn set_sim_overlay(&mut self, o: SimOverlay) {
+        if o == self.sim {
+            return;
+        }
+        self.sim = o;
+        self.draw_sim();
+    }
+
+    pub fn sim_overlay(&self) -> &SimOverlay {
+        &self.sim
+    }
+
+    fn draw_sim(&mut self) {
+        let project = self.editor.project();
+        for view in &mut self.sheets {
+            view.set_sim(project, &self.connectivity, &self.sim);
+        }
     }
 
     /// Highlight the copper of these nets on the board (empty clears).
@@ -351,6 +377,9 @@ impl Document {
             self.copper_stale = true;
             for view in &mut self.sheets {
                 view.set_connectivity(&self.connectivity);
+            }
+            if !self.sim.is_empty() {
+                self.draw_sim();
             }
             done = true;
         }
@@ -570,6 +599,7 @@ impl Document {
                 let mut view = View::new(id, project);
                 view.set_erc_markers(self.erc_markers);
                 view.set_connectivity(&self.connectivity);
+                view.set_sim(project, &self.connectivity, &self.sim);
                 self.sheets.push(view);
             } else if !exists {
                 self.sheets.retain(|v| v.id != id);

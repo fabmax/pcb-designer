@@ -13,6 +13,7 @@ use crate::draw::{Painter, mmf, substitute};
 use crate::index::SpatialIndex;
 use crate::pcb_tools::PcbGhost;
 use crate::sch_tools::SchGhost;
+use crate::sim_overlay::SimOverlay;
 use crate::style::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -163,6 +164,8 @@ const DRC_ITEM: u64 = (3 << 62) | 4;
 const FRAME_ITEM: u64 = (3 << 62) | 5;
 /// A text being edited in place.
 const TEXT_EDIT_ITEM: u64 = (3 << 62) | 6;
+/// Probes and values of a simulation (schematic sheets).
+const SIM_ITEM: u64 = (3 << 62) | 7;
 
 fn overlay_item(id: ObjectId, hover: bool) -> u64 {
     item(id) | if hover { 2 << 62 } else { 1 << 62 }
@@ -553,6 +556,19 @@ impl View {
             }
         }
         self.scene.set_item(CONNECTIVITY_ITEM, out);
+    }
+
+    /// Show a simulation's probes and values (schematic sheets; see
+    /// [`crate::sim_overlay`]).
+    pub fn set_sim(&mut self, project: &Project, c: &editor_core::connectivity::Connectivity, o: &SimOverlay) {
+        let Some(sheet) = self.id.sheet() else { return };
+        if o.is_empty() {
+            self.scene.remove_item(SIM_ITEM);
+            return;
+        }
+        let mut p = Painter::default();
+        crate::sim_overlay::draw(project, c, sheet, o, self.hover_layer, &mut p);
+        self.scene.set_item(SIM_ITEM, p.out);
     }
 
     /// Show or hide the ERC markers (call [`View::set_connectivity`] afterwards).

@@ -74,6 +74,9 @@ pub struct Palette {
     /// Objects selected in the other view (cross-probing).
     pub probe: Color,
     pub probe_fill: Color,
+    /// Simulation values on the schematic (voltage and current tags) and their background.
+    pub sim_value: Color,
+    pub sim_value_bg: Color,
     pub hover: Color,
     /// What a tool would create (library editors).
     pub preview: Color,
@@ -132,6 +135,8 @@ pub static DARK: Palette = Palette {
     net_highlight: Color::rgba(0xff, 0xff, 0xff, 0x60),
     probe: Color::rgba(0xff, 0xd0, 0x4c, 0xd0),
     probe_fill: Color::rgba(0xff, 0xd0, 0x4c, 0x22),
+    sim_value: Color::rgb(0x8c, 0xd0, 0xff),
+    sim_value_bg: Color::rgba(0x16, 0x18, 0x1d, 0xd8),
     hover: Color::rgba(0xff, 0xff, 0xff, 0x50),
     preview: Color::rgba(0x4c, 0x9a, 0xff, 0xc0),
     origin: Color::rgba(0x9a, 0xa0, 0xb0, 0x90),
@@ -192,6 +197,8 @@ pub static LIGHT: Palette = Palette {
     net_highlight: Color::rgba(0x00, 0x00, 0x00, 0x48),
     probe: Color::rgba(0xd0, 0x90, 0x00, 0xe0),
     probe_fill: Color::rgba(0xff, 0xc0, 0x00, 0x30),
+    sim_value: Color::rgb(0x0b, 0x5c, 0xad),
+    sim_value_bg: Color::rgba(0xff, 0xff, 0xff, 0xe0),
     hover: Color::rgba(0x00, 0x00, 0x00, 0x38),
     preview: Color::rgba(0x1f, 0x6f, 0xe0, 0xc0),
     origin: Color::rgba(0x60, 0x66, 0x74, 0x90),

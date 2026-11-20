@@ -289,7 +289,17 @@ fn reports() {
     assert!(text.starts_with("Operating Point\n"), "{text}");
     assert!(text.contains("V(IN)    5 V\n"), "{text}");
     assert!(text.contains("V(OUT)   4 V\n"), "{text}");
-    assert!(text.contains("I(R1_1)  1 mA\n"), "{text}");
+    assert!(text.contains("I(R1.1)  1 mA\n"), "{text}");
+    assert!(text.contains("I(R1.2)  -1 mA\n"), "{text}");
+    assert!(text.contains("P(R1)    1 mW\n"), "{text}");
+    assert!(text.contains("P(R2)    4 mW\n"), "{text}");
+    assert!(text.contains("P(V1)    -5 mW\n"), "{text}");
+    let devices = sim::report::devices(&r);
+    let r1 = devices.iter().find(|d| d.refdes == "R1").unwrap();
+    assert_eq!(
+        r1.pins.iter().map(|p| p.voltage.map(|v| (v * 1e3).round())).collect::<Vec<_>>(),
+        [Some(5000.0), Some(4000.0)]
+    );
 
     let tran = b.analysis(AnalysisKind::Tran { stop: 1e-3, step: Some(1e-4), start: 0.0, max_step: None });
     let r = ok(&b, &tran).unwrap();

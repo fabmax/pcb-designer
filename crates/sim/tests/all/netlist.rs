@@ -5,8 +5,9 @@ use sim::netlist::{self, Level};
 
 use crate::bench::Bench;
 
+/// A transient: its netlist has no sense sources (an operating point's measures every pin).
 fn op() -> Analysis {
-    Analysis::new("OP", AnalysisKind::Op)
+    Analysis::new("TRAN", AnalysisKind::Tran { stop: 1e-3, step: None, start: 0.0, max_step: None })
 }
 
 fn lines(text: &str) -> Vec<&str> {
@@ -193,6 +194,25 @@ fn current_probes_add_sense_sources() {
     has_line(&n, "VSENSE_R1_1 a vsense_r1_1_in 0");
     has_line(&n, "R1 vsense_r1_1_in 0 1000");
     assert_eq!(n.sense.get(&(r1, pin)).map(String::as_str), Some("vsense_r1_1"));
+}
+
+#[test]
+fn operating_points_measure_every_pin() {
+    let mut b = Bench::new();
+    let v1 = b.dc(5.0, "A", "GND");
+    let (r1c, r1) = b.place("Resistor", "1k", &["A", "B"]);
+    b.place("Resistor", "1k", &["B", "GND"]);
+    let n = netlist::build(b.project(), &b.conn(), &Analysis::new("OP", AnalysisKind::Op));
+    has_line(&n, "VSENSE_R1_1 a vsense_r1_1_in 0");
+    has_line(&n, "VSENSE_R1_2 b vsense_r1_2_in 0");
+    has_line(&n, "R1 vsense_r1_1_in vsense_r1_2_in 1000");
+    assert_eq!(n.sense.len(), 6);
+    let r1_pins: Vec<(&str, &str)> =
+        n.pins.iter().filter(|p| p.component == r1c).map(|p| (p.key.as_str(), p.node.as_str())).collect();
+    assert_eq!(r1_pins, [("1", "a"), ("2", "b")]);
+    assert_eq!(n.pins.first().map(|p| p.component), Some(r1c), "devices in reference order");
+    assert_eq!(n.pins.last().map(|p| p.component), Some(v1));
+    assert_eq!(n.current_label(r1, b.pin(r1, "2")).as_deref(), Some("I(R1.2)"));
 }
 
 #[test]

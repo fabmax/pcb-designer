@@ -17,6 +17,7 @@ use model::*;
 use rustc_hash::FxHashMap;
 use sim::{Attempt, Level, Outcome, Session};
 use view::Document;
+use view::sim_overlay::{ProbeTarget, SimOverlay};
 
 use crate::fields::{grid, hint, label};
 use crate::icons::{self, Icon};
@@ -61,6 +62,40 @@ pub struct SimPanel {
     pub no_phase: bool,
     /// The user closed the plot tab: runs don't open it again (until opened by hand).
     pub plot_closed: bool,
+    /// View → Simulation values is off.
+    pub hide_values: bool,
+    /// What the Probe tool points at, or a signal hovered in a table: highlighted.
+    pub hover: Option<ProbeTarget>,
+    /// The overlay as last built, and what it was built from.
+    overlay: Option<(OverlayKey, SimOverlay, Vec<sim::report::Device>)>,
+}
+
+/// What the schematic overlay depends on.
+#[derive(Clone, Debug, PartialEq)]
+struct OverlayKey {
+    revision: u64,
+    probes: Option<Id>,
+    values: Option<(Id, u64)>,
+    hover: Option<ProbeTarget>,
+    dark: bool,
+}
+
+/// `v` rounded to three significant digits (the schematic's tags).
+fn three_digits(v: f64) -> f64 {
+    if v == 0.0 || !v.is_finite() {
+        return v;
+    }
+    let f = 10f64.powf(v.abs().log10().floor() - 2.0);
+    (v / f).round() * f
+}
+
+/// Adds `probe`, or removes it when its signal is probed already.
+fn toggle(probes: &mut Vec<Probe>, probe: Probe, conn: &editor_core::connectivity::Connectivity) {
+    let sig = sim::plot::Signal::of_probe(&probe, conn);
+    match probes.iter().position(|p| sim::plot::Signal::of_probe(p, conn) == sig) {
+        Some(k) => _ = probes.remove(k),
+        None => probes.push(probe),
+    }
 }
 
 /// The kinds of analyses, in the "+" menu's order.
@@ -75,6 +110,8 @@ impl SimPanel {
         self.invalid.clear();
         self.netlist = None;
         self.plots.clear();
+        self.overlay = None;
+        self.hover = None;
     }
 
     /// Looks for ngspice again (the setting changed).
@@ -96,6 +133,121 @@ impl SimPanel {
     /// The analysis shown (the tab picked, else the first).
     pub fn current<'a>(&self, setup: &'a Simulation) -> Option<&'a Analysis> {
         self.tab.and_then(|id| setup.analyses.iter().find(|a| a.id == id)).or(setup.analyses.first())
+    }
+
+    /// The analysis probes go to: the one shown if it's a sweep, else the first sweep.
+    pub fn probe_analysis<'a>(&self, setup: &'a Simulation) -> Option<&'a Analysis> {
+        let sweep = |a: &&Analysis| !matches!(a.kind, AnalysisKind::Op);
+        self.current(setup).filter(sweep).or_else(|| setup.analyses.iter().find(sweep))
+    }
+
+    /// The operating point whose values the schematic shows: the one shown, else the
+    /// last one run.
+    fn values_analysis<'a>(&self, setup: &'a Simulation) -> Option<&'a Analysis> {
+        let op = |a: &&Analysis| matches!(a.kind, AnalysisKind::Op) && self.session.result(a.id).is_some();
+        self.current(setup)
+            .filter(op)
+            .or_else(|| setup.analyses.iter().filter(op).max_by_key(|a| self.session.result(a.id).map(|r| r.run)))
+    }
+
+    /// Adds a probe to or removes it from the probe analysis (one `SetSimulation`).
+    pub fn toggle_probe(&self, doc: &mut Document, probe: Probe) -> Result<(), String> {
+        let mut setup = doc.project().schematic.simulation.clone();
+        let Some(id) = self.probe_analysis(&setup).map(|a| a.id) else {
+            return Err("Add a transient, AC or DC sweep analysis to probe".into());
+        };
+        let a = setup.analyses.iter_mut().find(|a| a.id == id).expect("probe analysis");
+        toggle(&mut a.probes, probe, doc.connectivity());
+        doc.execute(Command::SetSimulation { simulation: setup }).map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    /// Removes the probe at `index` of `analysis`.
+    pub fn remove_probe(doc: &mut Document, analysis: Id, index: usize) -> Result<(), String> {
+        let mut setup = doc.project().schematic.simulation.clone();
+        let Some(a) = setup.analyses.iter_mut().find(|a| a.id == analysis) else { return Ok(()) };
+        if index >= a.probes.len() {
+            return Ok(());
+        }
+        a.probes.remove(index);
+        doc.execute(Command::SetSimulation { simulation: setup }).map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    /// Whether `target` is probed in the probe analysis.
+    pub fn is_probed(&self, doc: &Document, target: &ProbeTarget) -> bool {
+        let conn = doc.connectivity();
+        let sig = sim::plot::Signal::of_probe(&target.probe(), conn);
+        self.probe_analysis(&doc.project().schematic.simulation)
+            .is_some_and(|a| a.probes.iter().any(|p| sim::plot::Signal::of_probe(p, conn) == sig))
+    }
+
+    /// What the schematic shows (`shown`: the Simulation panel or tab is open): the probe
+    /// analysis' probes in their trace colours, the operating point's voltages and the
+    /// currents of two-pin parts, and the hovered target.
+    pub fn overlay(&mut self, doc: &Document, shown: bool) -> SimOverlay {
+        let setup = &doc.project().schematic.simulation;
+        let probes = shown.then(|| self.probe_analysis(setup)).flatten().map(|a| a.id);
+        let values = if shown && !self.hide_values { self.values_analysis(setup) } else { None };
+        let key = OverlayKey {
+            revision: doc.revision,
+            probes,
+            values: values.and_then(|a| Some((a.id, self.session.result(a.id)?.run))),
+            hover: self.hover.clone().filter(|_| shown),
+            dark: view::style::theme() == view::style::Theme::Dark,
+        };
+        if let Some((k, o, _)) = &self.overlay
+            && *k == key
+        {
+            return o.clone();
+        }
+        let conn = doc.connectivity();
+        let mut o = SimOverlay::default();
+        if let Some(a) = probes.and_then(|id| setup.analyses.iter().find(|a| a.id == id)) {
+            for (i, p) in a.probes.iter().enumerate() {
+                let color = view::style::trace_color(i);
+                match sim::plot::Signal::of_probe(p, conn) {
+                    sim::plot::Signal::Voltage(net) => o.nets.push((net, color)),
+                    sim::plot::Signal::Current(s, pin) => o.pins.push((s, pin, color)),
+                }
+            }
+        }
+        let mut devices = Vec::new();
+        let stale = values.is_some_and(|a| self.session.is_stale(doc.project(), conn, a, doc.revision));
+        if let Some(a) = values
+            && let Some(done) = self.session.result(a.id)
+        {
+            o.dim = stale;
+            let r = &done.result;
+            for (net, node) in &r.netlist.nodes {
+                if node != "0"
+                    && let Some(v) = r.op_voltage(net)
+                {
+                    o.voltages.push((net.clone(), si::format(three_digits(v), "V")));
+                }
+            }
+            devices = sim::report::devices(r);
+            for d in devices.iter().filter(|d| d.pins.len() == 2) {
+                let (a, b) = (&d.pins[0], &d.pins[1]);
+                let (Some(ia), Some(sa), Some(sb)) = (a.current, a.symbol, b.symbol) else { continue };
+                if ia.abs() < 1e-12 {
+                    continue;
+                }
+                let (symbol, pin) = if ia > 0.0 { (sa, a.pin) } else { (sb, b.pin) };
+                o.currents.push((symbol, pin, si::format(three_digits(ia.abs()), "A")));
+            }
+        }
+        match key.hover.clone() {
+            Some(ProbeTarget::Net { net, .. }) => o.hover_net = Some(net),
+            Some(ProbeTarget::Pin { symbol, pin }) => o.hover_pin = Some((symbol, pin)),
+            None => {}
+        }
+        self.overlay = Some((key, o.clone(), devices));
+        o
+    }
+
+    /// The operating point of a device whose values the schematic shows (as of the last
+    /// [`overlay`](Self::overlay)).
+    pub fn device(&self, component: Id) -> Option<&sim::report::Device> {
+        self.overlay.as_ref()?.2.iter().find(|d| d.component == component)
     }
 
     pub fn show_tab(&mut self, id: Id) {
@@ -176,12 +328,7 @@ impl SimPanel {
                 ui.add_space(8.0);
                 let a = setup.analyses[i].clone();
                 if let Some(probe) = self.results_ui(ui, doc, &a, &mut act) {
-                    let probes = &mut setup.analyses[i].probes;
-                    let sig = sim::plot::Signal::of_probe(&probe);
-                    match probes.iter().position(|p| sim::plot::Signal::of_probe(p) == sig) {
-                        Some(k) => _ = probes.remove(k),
-                        None => probes.push(probe),
-                    }
+                    toggle(&mut setup.analyses[i].probes, probe, doc.connectivity());
                 }
             }
         }
@@ -485,7 +632,8 @@ impl SimPanel {
             hint(ui, if self.show_all { "No signals match." } else { "No named nets: tick Show all nets." });
             return None;
         }
-        let plotted: HashSet<sim::plot::Signal> = a.probes.iter().map(sim::plot::Signal::of_probe).collect();
+        let plotted: HashSet<sim::plot::Signal> =
+            a.probes.iter().map(|p| sim::plot::Signal::of_probe(p, conn)).collect();
         let columns = sim::report::columns(&done.result);
         let dim = |t: String| if stale { RichText::new(t).color(theme::text_dim()) } else { RichText::new(t) };
         egui::Grid::new(("sim_results", a.id)).striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
@@ -507,10 +655,18 @@ impl SimPanel {
                     let mut on = sig.as_ref().is_some_and(|s| plotted.contains(s));
                     let tip = if a.probes.is_empty() { "Plot only the ticked signals" } else { "Plot this signal" };
                     if ui.checkbox(&mut on, "").on_hover_text(tip).changed() {
-                        toggle = sig.map(|s| s.probe());
+                        toggle = sig.as_ref().map(|s| s.probe());
                     }
                 }
                 let r = ui.add(egui::Button::selectable(false, dim(row.label.clone())));
+                if sig.as_ref().is_some_and(|s| plotted.contains(s)) {
+                    r.context_menu(|ui| {
+                        if ui.button("Remove probe").clicked() {
+                            toggle = sig.as_ref().map(|s| s.probe());
+                            ui.close();
+                        }
+                    });
+                }
                 if let Some(net) = &row.net
                     && r.on_hover_text("Select the net").clicked()
                 {
@@ -522,6 +678,41 @@ impl SimPanel {
                     });
                 }
                 ui.end_row();
+            }
+            // Probes without data in this result, and why.
+            if sweep {
+                let have: HashSet<sim::plot::Signal> = done
+                    .rows
+                    .iter()
+                    .filter_map(|r| match (&r.net, r.current) {
+                        (Some(net), _) => Some(sim::plot::Signal::Voltage(net.clone())),
+                        (None, Some((s, p))) => Some(sim::plot::Signal::Current(s, p)),
+                        _ => None,
+                    })
+                    .collect();
+                for sig in a.probes.iter().map(|p| sim::plot::Signal::of_probe(p, conn)) {
+                    if have.contains(&sig) {
+                        continue;
+                    }
+                    let mut on = true;
+                    if ui.checkbox(&mut on, "").on_hover_text("Remove the probe").changed() {
+                        toggle = Some(sig.probe());
+                    }
+                    let label = match &sig {
+                        sim::plot::Signal::Voltage(net) => format!("V({net})"),
+                        sim::plot::Signal::Current(s, p) => view::sim_overlay::pin_name(doc.project(), *s, *p)
+                            .map_or("I(?)".into(), |(r, k)| format!("I({r}.{k})")),
+                    };
+                    let reason = sim::plot::missing_reason(&done.result, &sig, conn);
+                    let r = ui.label(RichText::new(format!("{label} · {reason}")).color(theme::text_dim()));
+                    r.context_menu(|ui| {
+                        if ui.button("Remove probe").clicked() {
+                            toggle = Some(sig.probe());
+                            ui.close();
+                        }
+                    });
+                    ui.end_row();
+                }
             }
         });
         if rows.len() > 500 {

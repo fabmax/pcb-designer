@@ -12,10 +12,23 @@ use crate::toolbar::{self, ToolButton};
 
 const LABEL_SIDES: [&str; 4] = ["0°", "90°", "180°", "270°"];
 
-/// Floating tool bar and usage hint over the schematic canvas. Returns a newly chosen tool.
-pub fn toolbar(ui: &mut egui::Ui, canvas: egui::Rect, sch: &SchPlacer, keymap: &Keymap) -> Option<SchTool> {
-    let b =
-        |tool, icon, about, action| ToolButton { tool, icon, name: SchTool::label(tool), about, action: Some(action) };
+/// A tool bar button: a tool, or Run (simulation).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pick {
+    Tool(SchTool),
+    Run,
+}
+
+/// Floating tool bar and usage hint over the schematic canvas. With `sim` (the Simulation
+/// panel or tab is open) a group with the Probe tool and Run. Returns what was clicked.
+pub fn toolbar(ui: &mut egui::Ui, canvas: egui::Rect, sch: &SchPlacer, keymap: &Keymap, sim: bool) -> Option<Pick> {
+    let b = |tool, icon, about, action| ToolButton {
+        tool: Pick::Tool(tool),
+        icon,
+        name: SchTool::label(tool),
+        about,
+        action: Some(action),
+    };
     let select = [b(
         SchTool::Select,
         Icon::Select,
@@ -53,18 +66,35 @@ pub fn toolbar(ui: &mut egui::Ui, canvas: egui::Rect, sch: &SchPlacer, keymap: &
             Action::SchPowerFlag,
         ),
     ];
+    let simulation = [
+        b(
+            SchTool::Probe,
+            Icon::Probe,
+            "Click wires and pins to plot their voltages and currents in the simulation.",
+            Action::SchProbe,
+        ),
+        ToolButton {
+            tool: Pick::Run,
+            icon: Icon::Play,
+            name: "Run simulation",
+            about: "Run the analysis the Simulation panel shows.",
+            action: Some(Action::RunSimulation),
+        },
+    ];
     let place = [ToolButton {
-        tool: SchTool::Place,
+        tool: Pick::Tool(SchTool::Place),
         icon: Icon::Place,
         name: "Place",
         about: "Placing a part from the library. Esc stops.",
         action: None,
     }];
-    let placing: &[ToolButton<SchTool>] = if sch.tool() == SchTool::Place { &place } else { &[] };
+    let placing: &[ToolButton<Pick>] = if sch.tool() == SchTool::Place { &place } else { &[] };
+    let sim: &[ToolButton<Pick>] = if sim || sch.tool() == SchTool::Probe { &simulation } else { &[] };
     let id = egui::Id::unique("sch_toolbar");
-    let (chosen, _) = toolbar::strip(ui, canvas, id, &[&select, &draw, placing], sch.tool(), keymap);
+    let current = Pick::Tool(sch.tool());
+    let (chosen, _) = toolbar::strip(ui, canvas, id, &[&select, &draw, sim, placing], current, keymap);
     toolbar::hint(ui, canvas, sch.tool().hint());
-    chosen.filter(|&t| t != SchTool::Place)
+    chosen.filter(|&t| t != Pick::Tool(SchTool::Place))
 }
 
 /// Settings of the active tool.
@@ -75,6 +105,12 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
     let s = &mut sch.settings;
     match tool {
         SchTool::Select => {}
+        SchTool::Probe => hint(
+            ui,
+            "Click a wire, label or junction to plot its net's voltage, the body of a pin to plot the \
+             current into it. Clicking a probed one removes it. Probes go to the analysis the Simulation \
+             panel shows if it's a sweep, else to the first transient, AC or DC sweep.",
+        ),
         SchTool::Sheet => {
             let name = sch.new_sheet.as_deref().unwrap_or_default();
             hint(

@@ -18,4 +18,5 @@ mod pcb_tools;
 mod probe;
 mod sch_tools;
 mod sheets;
+mod sim_overlay;
 mod text_edit;

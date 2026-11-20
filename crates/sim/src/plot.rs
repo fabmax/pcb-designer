@@ -22,9 +22,13 @@ pub enum Signal {
 }
 
 impl Signal {
-    pub fn of_probe(p: &Probe) -> Signal {
+    /// A probe's signal: a voltage probe's net is the one of its object (`at`) if that
+    /// is still on a net, else the net of its name.
+    pub fn of_probe(p: &Probe, conn: &Connectivity) -> Signal {
         match p {
-            Probe::Voltage { net, .. } => Signal::Voltage(net.clone()),
+            Probe::Voltage { net, at } => {
+                Signal::Voltage(at.and_then(|o| conn.net_of(o)).map_or_else(|| net.clone(), |n| n.name.clone()))
+            }
             Probe::Current { symbol, pin } => Signal::Current(*symbol, *pin),
         }
     }
@@ -42,7 +46,7 @@ impl Signal {
 /// there are (0 when probes were given).
 pub fn signals(analysis: &Analysis, result: &SimResult, conn: &Connectivity) -> (Vec<Signal>, usize) {
     if !analysis.probes.is_empty() {
-        return (analysis.probes.iter().map(Signal::of_probe).collect(), 0);
+        return (analysis.probes.iter().map(|p| Signal::of_probe(p, conn)).collect(), 0);
     }
     let mut named: Vec<&String> = result
         .netlist
@@ -86,8 +90,17 @@ pub struct PlotData {
     pub log_x: bool,
     pub x: Vec<f64>,
     pub traces: Vec<Trace>,
-    /// Signals that have no data (net gone, pin not probed in this run): their labels.
-    pub missing: Vec<String>,
+    /// Signals that have no data (net gone, pin not probed in this run).
+    pub missing: Vec<Missing>,
+}
+
+/// A signal without data, and why.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Missing {
+    pub label: String,
+    pub reason: String,
+    /// Index of the signal (the probe).
+    pub signal: usize,
 }
 
 impl PlotData {
@@ -101,7 +114,7 @@ impl PlotData {
 /// dB on the left, with `phase` the unwrapped phase in degrees on the right (dashed).
 /// Else voltages on the left and currents on the right (on the left when there are
 /// only currents).
-pub fn data(result: &SimResult, signals: &[Signal], phase: bool) -> Option<PlotData> {
+pub fn data(result: &SimResult, signals: &[Signal], phase: bool, conn: &Connectivity) -> Option<PlotData> {
     let scale = result.scale()?;
     let (x_label, x_unit) = match scale.kind.as_str() {
         "time" => ("Time".to_string(), "s"),
@@ -116,16 +129,13 @@ pub fn data(result: &SimResult, signals: &[Signal], phase: bool) -> Option<PlotD
     for (i, s) in signals.iter().enumerate() {
         let (label, vector) = match s {
             Signal::Voltage(net) => (format!("V({net})"), result.voltage(net).map(|v| v.into_owned())),
-            Signal::Current(symbol, pin) => {
-                let name = result.netlist.sense.get(&(*symbol, *pin)).map_or_else(
-                    || "?".to_string(),
-                    |s| s.trim_start_matches("vsense_").trim_start_matches("VSENSE_").to_ascii_uppercase(),
-                );
-                (format!("I({name})"), result.current(*symbol, *pin).cloned())
-            }
+            Signal::Current(symbol, pin) => (
+                result.netlist.current_label(*symbol, *pin).unwrap_or_else(|| "I(?)".into()),
+                result.current(*symbol, *pin).cloned(),
+            ),
         };
         let Some(v) = vector else {
-            missing.push(label);
+            missing.push(Missing { label, reason: missing_reason(result, s, conn), signal: i });
             continue;
         };
         if ac {
@@ -156,6 +166,25 @@ pub fn data(result: &SimResult, signals: &[Signal], phase: bool) -> Option<PlotD
         }
     }
     Some(PlotData { x_label, x_unit, log_x: ac, x: scale.re.clone(), traces, missing })
+}
+
+/// Why a signal has no data in `result`.
+pub fn missing_reason(result: &SimResult, s: &Signal, conn: &Connectivity) -> String {
+    match s {
+        Signal::Voltage(net) if conn.net(net).is_none() => "the net is gone".into(),
+        Signal::Voltage(_) => "not in this result: run again".into(),
+        Signal::Current(symbol, pin) => {
+            let nl = &result.netlist;
+            let simulated = nl.pins.iter().any(|p| p.symbol == Some(*symbol));
+            if !simulated {
+                "the part was not simulated".into()
+            } else if !nl.pins.iter().any(|p| p.symbol == Some(*symbol) && p.pin == *pin) {
+                "the pin is not part of the model".into()
+            } else {
+                "not measured in this result: run again".into()
+            }
+        }
+    }
 }
 
 /// Phase in degrees without the jumps at ±180°.

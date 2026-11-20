@@ -73,6 +73,7 @@ icons! {
     Nets => "nets",
     Activity => "tabler/activity",
     Simulation => "tabler/wave-sine",
+    Probe => "probe",
     /// Run and stop a simulation.
     Play => "tabler/player-play",
     Stop => "tabler/player-stop",

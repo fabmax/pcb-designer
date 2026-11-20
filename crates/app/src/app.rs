@@ -51,6 +51,7 @@ use crate::title_bar;
 use crate::toolbar;
 use crate::units::{self, GridKind};
 use crate::workspace::{self, ItemRef, ItemState, LibRef, TabRef, ViewState, Workspace};
+use view::sim_overlay;
 
 pub enum Startup {
     Open(PathBuf),
@@ -2101,6 +2102,7 @@ impl PcbApp {
             Action::SchJunction => SchTool::Junction,
             Action::SchNoConnect => SchTool::NoConnect,
             Action::SchPowerFlag => SchTool::PowerFlag,
+            Action::SchProbe => SchTool::Probe,
             Action::ToolSelect => SchTool::Select,
             Action::Posture => {
                 self.sch.toggle_posture();
@@ -2473,6 +2475,7 @@ impl PcbApp {
             Action::StopSimulation => return self.sim.session.stop(),
             Action::ShowSimNetlist => return self.sim.show_window(false),
             Action::ShowSimPlot => return self.open_sim_tab(true),
+            Action::ToggleSimValues => return self.sim.hide_values = !self.sim.hide_values,
             _ => {}
         }
         if matches!(action, Action::SchFindPart | Action::PcbFindPart) {
@@ -2581,6 +2584,7 @@ impl PcbApp {
             | Action::SchJunction
             | Action::SchNoConnect
             | Action::SchPowerFlag
+            | Action::SchProbe
             | Action::Posture
             | Action::NextCorners
             | Action::PcbRoute
@@ -2608,7 +2612,8 @@ impl PcbApp {
             | Action::RunSimulation
             | Action::StopSimulation
             | Action::ShowSimNetlist
-            | Action::ShowSimPlot => return,
+            | Action::ShowSimPlot
+            | Action::ToggleSimValues => return,
         };
         let view = self.active;
         if key_action == KeyAction::Delete && !self.confirm_sheet_delete(&self.panes.selection(view)) {
@@ -2724,6 +2729,7 @@ impl PcbApp {
             | Action::SchJunction
             | Action::SchNoConnect
             | Action::SchPowerFlag
+            | Action::SchProbe
             | Action::ToggleErcMarkers
             | Action::NextCorners
             | Action::RoundCorners
@@ -2753,7 +2759,8 @@ impl PcbApp {
             | Action::RunSimulation
             | Action::StopSimulation
             | Action::ShowSimNetlist
-            | Action::ShowSimPlot => None,
+            | Action::ShowSimPlot
+            | Action::ToggleSimValues => None,
         };
         if let Some(m) = msg {
             self.set_status(m);
@@ -2821,6 +2828,7 @@ impl PcbApp {
             headless_command: self.headless_command(),
             move_to_sheet: !self.movable_to_sheet().is_empty(),
             erc_markers: self.doc().erc_markers(),
+            sim_values: !self.sim.hide_values,
             sim_running: self.sim.session.running().is_some(),
         })
     }
@@ -4312,6 +4320,40 @@ struct TreeBehavior<'a> {
     gerber: &'a mut GerberPane,
     gerber_outdated: bool,
     sim: &'a mut SimPanel,
+    /// The Simulation panel or tab is open.
+    sim_shown: bool,
+}
+
+/// The operating point of a part with more than two pins, as a tooltip at the pointer:
+/// each pin's voltage and current (into the pin) and the power.
+fn device_tip(ui: &egui::Ui, d: &sim::report::Device, stale: bool) {
+    egui::Tooltip::always_open(
+        ui.ctx().clone(),
+        ui.layer_id(),
+        egui::Id::unique("device_tip"),
+        egui::PopupAnchor::Pointer,
+    )
+    .gap(14.0)
+    .show(|ui| {
+        ui.label(egui::RichText::new(&d.refdes).strong());
+        let f = |v: Option<f64>, unit| v.map_or("–".to_string(), |v| model::si::format(v, unit));
+        egui::Grid::new("device_tip_grid").spacing([12.0, 2.0]).show(ui, |ui| {
+            for t in ["Pin", "Voltage", "Current in"] {
+                ui.label(egui::RichText::new(t).color(theme::text_dim()).small());
+            }
+            ui.end_row();
+            for p in &d.pins {
+                ui.label(&p.key);
+                ui.label(egui::RichText::new(f(p.voltage, "V")).monospace());
+                ui.label(egui::RichText::new(f(p.current, "A")).monospace());
+                ui.end_row();
+            }
+        });
+        ui.label(format!("Power {}", f(d.power, "W")));
+        if stale {
+            ui.label(egui::RichText::new("Changed since the run").color(theme::warn()).small());
+        }
+    });
 }
 
 /// Make `sheet` the one the schematic tools work on, clearing their preview on the sheet
@@ -4321,6 +4363,48 @@ fn switch_sheet(sch: &mut SchPlacer, doc: &mut Document, sheet: Id) {
         let (project, view) = doc.project_and_view(ViewId::Sheet(old));
         view.set_preview(project, &[]);
     }
+}
+
+/// The Probe tool on a sheet: the target under the pointer is highlighted with a tip; a
+/// click adds or removes its probe.
+#[allow(clippy::too_many_arguments)]
+fn probe_ui(
+    ui: &egui::Ui,
+    doc: &mut Document,
+    pane: &Pane,
+    sim: &mut SimPanel,
+    status: &mut Option<(String, Instant)>,
+    view: ViewId,
+    response: &egui::Response,
+    on_edit: bool,
+) {
+    let tol = (6.0 / pane.canvas.camera.zoom * 1e6) as Coord;
+    let target = response.hover_pos().and_then(|p| {
+        let [x, y] = pane.canvas.screen_to_world(p);
+        sim_overlay::probe_target(doc.project(), doc.connectivity(), doc.view(view), Point::mm(x, y), tol)
+    });
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+    }
+    let Some(target) = target else { return };
+    let probed = sim.is_probed(doc, &target);
+    let tip = format!("{}{}", target.describe(doc.project()), if probed { " · click removes the probe" } else { "" });
+    egui::Tooltip::always_open(
+        ui.ctx().clone(),
+        ui.layer_id(),
+        egui::Id::unique("probe_tip"),
+        egui::PopupAnchor::Pointer,
+    )
+    .gap(14.0)
+    .show(|ui| ui.label(tip));
+    if response.hovered()
+        && !on_edit
+        && ui.input(|i| i.pointer.primary_pressed())
+        && let Err(e) = sim.toggle_probe(doc, target.probe())
+    {
+        *status = Some((e, Instant::now()));
+    }
+    sim.hover = Some(target);
 }
 
 impl TreeBehavior<'_> {
@@ -4333,8 +4417,12 @@ impl TreeBehavior<'_> {
         let scene = &mut doc.view_mut(view).scene;
         let canvas = &mut pane.canvas;
         let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
+        let picked = view.sheet().and_then(|_| sch_ui::toolbar(ui, rect, self.sch, self.keymap, self.sim_shown));
+        if picked == Some(sch_ui::Pick::Run) {
+            self.deferred.push(Deferred::Action(Action::RunSimulation));
+        }
         if let Some(sheet) = view.sheet()
-            && let Some(tool) = sch_ui::toolbar(ui, rect, self.sch, self.keymap)
+            && let Some(sch_ui::Pick::Tool(tool)) = picked
         {
             let pane = self.panes.get(view);
             if tool != SchTool::Select {
@@ -4423,7 +4511,24 @@ impl TreeBehavior<'_> {
             pane.text_drag = false;
         }
         let tools_here = sheet.is_some() && self.sch.sheet == sheet;
-        if sheet.is_some() && self.sch.is_placing() {
+        if sheet.is_some()
+            && let Some(p) = response.hover_pos()
+            && !doc.sim_overlay().voltages.is_empty()
+        {
+            let [x, y] = pane.canvas.screen_to_world(p);
+            let tol = (4.0 / pane.canvas.camera.zoom * 1e6) as Coord;
+            if let Some(ObjectId::Symbol(s)) = doc.view(view).hit(doc.project(), Point::mm(x, y), tol)
+                && let Some(c) = doc.project().schematic.symbols.get(s).map(|s| s.component)
+                && let Some(d) = self.sim.device(c).filter(|d| d.pins.len() > 2)
+            {
+                device_tip(ui, d, doc.sim_overlay().dim);
+            }
+        }
+        if sheet.is_some() && self.sch.tool() == SchTool::Probe {
+            if tools_here {
+                probe_ui(ui, doc, pane, self.sim, self.status, view, &response, on_edit);
+            }
+        } else if sheet.is_some() && self.sch.is_placing() {
             if tools_here {
                 let world = response.hover_pos().map(|p| {
                     let [x, y] = pane.canvas.screen_to_world(p);
@@ -4917,6 +5022,10 @@ impl eframe::App for PcbApp {
         self.dock_panel(ui, Side::Bottom);
 
         self.hovered = None;
+        // Set again by whatever hovers a probe target this frame (the Probe tool, a table).
+        self.sim.hover = None;
+        let sim_shown =
+            self.settings.dock.is_open(Panel::Simulation) || self.tree.tiles.find_pane(&Tab::Simulation).is_some();
         let central = egui::Frame::NONE.fill(theme::window_bg()).inner_margin(egui::Margin {
             left: gap,
             right: gap,
@@ -4947,6 +5056,7 @@ impl eframe::App for PcbApp {
                 gerber: &mut self.gerber,
                 gerber_outdated: self.outputs_outdated,
                 sim: &mut self.sim,
+                sim_shown,
             };
             if self.tree.root.is_none() {
                 let shortcut = self.keymap.menu_text(ui.ctx(), Action::PanelProject);
@@ -4996,9 +5106,16 @@ impl eframe::App for PcbApp {
                 }
                 Deferred::Plot(PlotAct::Focus) => self.focus = Focus::Simulation,
                 Deferred::Plot(PlotAct::Run(id)) => self.run_simulation(Some(id)),
+                Deferred::Plot(PlotAct::RemoveProbe(analysis, i)) => {
+                    if let Err(e) = SimPanel::remove_probe(self.doc_mut(), analysis, i) {
+                        self.set_status(e);
+                    }
+                }
                 Deferred::Action(a) => self.run_action(a),
             }
         }
+        let overlay = self.sim.overlay(&self.project.lib.doc, sim_shown);
+        self.project.lib.doc.set_sim_overlay(overlay);
         self.maintain_item_tabs();
         if let ViewId::Sheet(s) = self.active {
             self.last_sheet = Some(s);

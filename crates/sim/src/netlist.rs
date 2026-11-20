@@ -12,7 +12,8 @@
 //! * Numbers are written as plain exponents (`si::spice`), never with SPICE suffixes:
 //!   SPICE reads `M` as milli and ignores unknown letters (`1F` is one femto).
 //! * Current probes put a 0 V source in series with the pin (`VSENSE_R1_1`), whose
-//!   branch current is the current into the pin.
+//!   branch current is the current into the pin. An operating point measures every pin
+//!   of every device this way (the device table and power).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -45,10 +46,34 @@ pub struct Netlist {
     pub devices: HashMap<Id, String>,
     /// (symbol instance, pin) → the sense source measuring the current into the pin.
     pub sense: HashMap<(Id, Id), String>,
+    /// The pins of the simulated devices, devices in reference order, pins in node order.
+    pub pins: Vec<DevicePin>,
     pub problems: Vec<SimProblem>,
 }
 
+/// A pin of a simulated device.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DevicePin {
+    pub component: Id,
+    pub refdes: String,
+    /// The symbol of the pin's unit (`None`: the unit isn't placed).
+    pub symbol: Option<Id>,
+    pub pin: Id,
+    /// The pin's number, else its name.
+    pub key: String,
+    /// The SPICE node outside the sense source (the net's node).
+    pub node: String,
+}
+
 impl Netlist {
+    /// The label of the current into a pin: `I(R1.1)`.
+    pub fn current_label(&self, symbol: Id, pin: Id) -> Option<String> {
+        self.pins
+            .iter()
+            .find(|p| p.symbol == Some(symbol) && p.pin == pin)
+            .map(|p| format!("I({}.{})", p.refdes, p.key))
+    }
+
     pub fn has_errors(&self) -> bool {
         self.problems.iter().any(|p| p.level == Level::Error)
     }
@@ -197,6 +222,7 @@ impl Builder<'_> {
     fn devices(&mut self, conn: &Connectivity, analysis: &Analysis, lines: &mut Vec<String>, models: &mut Models) {
         let project = self.project;
         let sch = &project.schematic;
+        let op = matches!(analysis.kind, AnalysisKind::Op);
         let probed: HashSet<(Id, Id)> = analysis
             .probes
             .iter()
@@ -228,7 +254,7 @@ impl Builder<'_> {
             simulated.insert(c.id);
             let objects = self.symbols_of(c.id);
             // The pins, in node order.
-            let pins: Vec<SimPin> = if model.pins.is_empty() {
+            let model_pins: Vec<SimPin> = if model.pins.is_empty() {
                 part.units
                     .iter()
                     .enumerate()
@@ -245,19 +271,28 @@ impl Builder<'_> {
                 model.pins.clone()
             };
             let name = self.device_name(model, c);
-            let mut nodes = Vec::with_capacity(pins.len());
+            let mut nodes = Vec::with_capacity(model_pins.len());
             let mut sense = Vec::new();
-            for (k, sp) in pins.iter().enumerate() {
+            let mut pins = Vec::new();
+            for (k, sp) in model_pins.iter().enumerate() {
                 let symbol = unit_symbol.get(&(c.id, sp.unit)).copied();
                 let net = symbol.and_then(|s| conn.net_of_pin(s, sp.pin));
                 let mut node = match net.and_then(|n| self.out.nodes.get(&n.name)) {
                     Some(n) => n.clone(),
                     None => self.unique_node(&format!("nc_{}_{}", node_name(&c.refdes), k + 1)),
                 };
+                let key = pin_key(project, part, *sp);
+                pins.push(DevicePin {
+                    component: c.id,
+                    refdes: c.refdes.clone(),
+                    symbol,
+                    pin: sp.pin,
+                    key: key.clone(),
+                    node: node.clone(),
+                });
                 if let Some(s) = symbol
-                    && probed.contains(&(s, sp.pin))
+                    && (op || probed.contains(&(s, sp.pin)))
                 {
-                    let key = pin_key(project, part, *sp);
                     let source = self.unique_device(&format!("VSENSE_{}_{}", sanitize(&c.refdes), sanitize(&key)));
                     let inner = self.unique_node(&format!("{}_{}", node_name(&source), "in"));
                     sense.push(format!("{source} {node} {inner} 0"));
@@ -271,8 +306,14 @@ impl Builder<'_> {
                     lines.extend(sense);
                     lines.push(line);
                     self.out.devices.insert(c.id, name);
+                    self.out.pins.extend(pins);
                 }
-                Err(message) => self.problem(Level::Error, format!("{}: {message}", c.refdes), objects),
+                Err(message) => {
+                    for p in pins.iter().filter_map(|p| p.symbol.map(|s| (s, p.pin))) {
+                        self.out.sense.remove(&p);
+                    }
+                    self.problem(Level::Error, format!("{}: {message}", c.refdes), objects)
+                }
             }
         }
         if !no_model.is_empty() {

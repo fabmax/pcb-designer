@@ -140,14 +140,16 @@ fn signals_default_to_named_nets() {
 
 #[test]
 fn ac_traces_are_db_and_phase() {
-    let (_b, r, _a) = rc();
+    let (b, r, _a) = rc();
+    let conn = b.conn();
     let signals = [Signal::Voltage("OUT".into()), Signal::Voltage("GONE".into())];
-    let d = plot::data(&r, &signals, true).unwrap();
+    let d = plot::data(&r, &signals, true, &conn).unwrap();
     assert!(d.log_x);
     assert_eq!(d.x_unit, "Hz");
     let labels: Vec<&str> = d.traces.iter().map(|t| t.label.as_str()).collect();
     assert_eq!(labels, ["V(OUT)", "V(OUT) phase"]);
-    assert_eq!(d.missing, vec!["V(GONE)".to_string()]);
+    let missing = plot::Missing { label: "V(GONE)".into(), reason: "the net is gone".into(), signal: 1 };
+    assert_eq!(d.missing, vec![missing]);
     assert_eq!((d.axis_unit(Axis::Left), d.axis_unit(Axis::Right)), ("dB", "°"));
     assert!(d.traces[0].y[0].abs() < 0.01, "0 dB at 1 Hz");
     // At the corner (159 Hz), -3 dB and -45°.
@@ -157,11 +159,37 @@ fn ac_traces_are_db_and_phase() {
     let ph = plot::interpolate(&d.x, &d.traces[1].y, corner).unwrap();
     assert!((ph + 45.0).abs() < 3.0, "{ph}");
     // Without phase; the y fit of the visible part.
-    let d = plot::data(&r, &signals[..1], false).unwrap();
+    let d = plot::data(&r, &signals[..1], false, &conn).unwrap();
     assert_eq!(d.traces.len(), 1);
     let (lo, hi) = plot::fit_y(&d, Axis::Left, 1.0, 10.0, &HashSet::new()).unwrap();
     assert!(lo > -1.0 && hi < 1.0, "{lo} {hi}");
     let csv = plot::csv(&d, &HashSet::new());
     assert!(csv.starts_with("Frequency (Hz),V(OUT) (dB)\n1,"), "{csv}");
     assert_eq!(csv.lines().count(), 52);
+}
+
+#[test]
+fn voltage_probes_follow_their_object() {
+    let (b, r, _a) = rc();
+    let conn = b.conn();
+    let label = b.project().schematic.labels.iter().find(|l| l.name == "OUT").unwrap().id;
+    // The probe's name is out of date (the net was renamed): its label finds the net.
+    let p = Probe::Voltage { net: "OLD".into(), at: Some(ObjectId::Label(label)) };
+    assert_eq!(Signal::of_probe(&p, &conn), Signal::Voltage("OUT".into()));
+    // The object is gone: the name.
+    let p = Probe::Voltage { net: "IN".into(), at: Some(ObjectId::Label(Id::new())) };
+    assert_eq!(Signal::of_probe(&p, &conn), Signal::Voltage("IN".into()));
+    // A current that wasn't measured.
+    let r1 = b
+        .project()
+        .schematic
+        .symbols
+        .iter()
+        .find(|s| r.netlist.pins.iter().any(|p| p.symbol == Some(s.id) && p.refdes == "R1"))
+        .unwrap()
+        .id;
+    let pin = r.netlist.pins.iter().find(|p| p.symbol == Some(r1)).unwrap().pin;
+    let d = plot::data(&r, &[Signal::Current(r1, pin)], false, &conn).unwrap();
+    assert_eq!(d.missing[0].label, "I(R1.1)");
+    assert_eq!(d.missing[0].reason, "not measured in this result: run again");
 }
