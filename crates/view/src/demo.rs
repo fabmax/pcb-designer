@@ -178,8 +178,7 @@ pub fn demo_project() -> Project {
     let waveform = Waveform::Sine { offset: 5.0, amplitude: 0.5, frequency: 1e3, delay: 0.0, damping: 0.0, phase: 0.0 };
     c.sim.source = Some(Source { waveform, ac: 1.0, ac_phase: 0.0 });
     ed.execute(Command::Update { objects: vec![Object::Component(c)] }).unwrap();
-    let probes =
-        vec![Probe::Voltage { net: "+5V".into(), at: None }, Probe::Voltage { net: "Net-(D1-2)".into(), at: None }];
+    let probes = vec![Probe::voltage("+5V", None), Probe::voltage("Net-(D1-2)", None)];
     ed.execute(Command::SetSimulation {
         simulation: Simulation {
             analyses: vec![

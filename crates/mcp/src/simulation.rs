@@ -28,6 +28,9 @@ pub struct SimulateRequest {
     pub signals: Option<Vec<String>>,
     /// x values (time, frequency, swept value) to read every signal at.
     pub points: Vec<f64>,
+    /// The x range measurements cover (default: the whole run).
+    pub from: Option<f64>,
+    pub to: Option<f64>,
 }
 
 /// A run an agent is waiting for.
@@ -39,6 +42,7 @@ pub struct SimJob {
     /// Currents the analysis doesn't probe: measured in this run only.
     pub extra: Vec<Probe>,
     pub points: Vec<f64>,
+    pub range: (Option<f64>, Option<f64>),
     pub started: Instant,
 }
 
@@ -75,11 +79,24 @@ fn parse_signal(name: &str, netlist: &Netlist, conn: &Connectivity) -> Result<Si
         let rest = s.strip_prefix(prefix).or_else(|| s.strip_prefix(prefix.to_ascii_lowercase()))?;
         rest.strip_prefix('(')?.strip_suffix(')')
     };
+    let net = |n: &str| -> Result<String, String> {
+        let n = n.trim();
+        conn.net(n).map(|net| net.name.clone()).ok_or_else(|| format!("no net {n:?}"))
+    };
+    if let Some(body) = inner('P') {
+        let pin = netlist.pins.iter().find(|p| p.refdes.eq_ignore_ascii_case(body.trim()));
+        return pin.map(|p| Signal::Power(p.component)).ok_or_else(|| format!("{name:?}: no simulated part {body:?}"));
+    }
     let (body, current) = match (inner('V'), inner('I')) {
         (Some(v), _) => (v, Some(false)),
         (_, Some(i)) => (i, Some(true)),
         _ => (s, None),
     };
+    if current == Some(false)
+        && let Some((a, b)) = body.split_once(',')
+    {
+        return Ok(Signal::Diff(net(a)?, net(b)?));
+    }
     if current != Some(false)
         && let Some((refdes, key)) = body.rsplit_once('.')
         && netlist.pins.iter().any(|p| p.refdes.eq_ignore_ascii_case(refdes))
@@ -121,10 +138,17 @@ pub fn prepare(doc: &mut Document, req: &SimulateRequest, default: Option<Id>) -
     let extra = signals
         .iter()
         .flatten()
-        .filter(|s| sweep && matches!(s, Signal::Current(..)) && !probed.contains(s))
+        .filter(|s| sweep && s.needs_sensing() && !probed.contains(s))
         .map(Signal::probe)
         .collect();
-    let job = SimJob { analysis: analysis.id, signals, extra, points: req.points.clone(), started: Instant::now() };
+    let job = SimJob {
+        analysis: analysis.id,
+        signals,
+        extra,
+        points: req.points.clone(),
+        range: (req.from, req.to),
+        started: Instant::now(),
+    };
     Ok((job, analysis))
 }
 
@@ -205,26 +229,27 @@ fn reply(analysis: &Analysis, job: &SimJob, done: &Finished, conn: &Connectivity
     let signals = job.signals.clone().unwrap_or_else(|| plot::signals(analysis, r, conn).0);
     let Some(data) = plot::data(r, &signals, true, conn) else {
         // An operating point: the table, or the signals asked for.
-        let rows: Vec<Value> = sim::report::signals(r)
-            .into_iter()
-            .filter(|s| match &job.signals {
-                None => true,
-                Some(asked) => asked.iter().any(|a| match a {
-                    Signal::Voltage(net) => s.net.as_deref() == Some(net),
-                    Signal::Current(sym, pin) => s.current == Some((*sym, *pin)),
-                }),
-            })
-            .map(|s| {
-                let v = s.vector.re.first().copied().unwrap_or(f64::NAN);
-                json!({ "signal": s.label, "value": round(v), "unit": s.unit, "text": si::format(v, s.unit) })
-            })
-            .collect();
+        let row = |label: String, v: f64, unit: &str| json!({ "signal": label, "value": round(v), "unit": unit, "text": si::format(v, unit) });
+        let rows: Vec<Value> = match &job.signals {
+            None => sim::report::signals(r)
+                .into_iter()
+                .map(|s| row(s.label, s.vector.re.first().copied().unwrap_or(f64::NAN), s.unit))
+                .collect(),
+            Some(asked) => asked
+                .iter()
+                .map(|a| {
+                    let v = plot::vector(r, a).and_then(|v| v.re.first().copied()).unwrap_or(f64::NAN);
+                    row(plot::signal_label(r, a), v, a.unit())
+                })
+                .collect(),
+        };
         out["values"] = json!(rows);
         return out;
     };
     let (lo, hi) = (data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(0.0));
     out["x"] = json!({ "label": data.x_label, "unit": data.x_unit, "from": round(lo), "to": round(hi), "samples": data.x.len() });
-    out["signals"] = json!(data.traces.iter().map(|t| trace_json(&data, t, &job.points)).collect::<Vec<_>>());
+    let range = (job.range.0.unwrap_or(lo), job.range.1.unwrap_or(hi));
+    out["signals"] = json!(data.traces.iter().map(|t| trace_json(&data, t, &job.points, range)).collect::<Vec<_>>());
     if !data.missing.is_empty() {
         out["missing"] =
             json!(data.missing.iter().map(|m| json!({"signal": m.label, "reason": m.reason})).collect::<Vec<_>>());
@@ -232,30 +257,43 @@ fn reply(analysis: &Analysis, job: &SimJob, done: &Finished, conn: &Connectivity
     out
 }
 
-fn trace_json(data: &PlotData, t: &plot::Trace, points: &[f64]) -> Value {
+fn trace_json(data: &PlotData, t: &plot::Trace, points: &[f64], (from, to): (f64, f64)) -> Value {
     let x = &data.x;
     let (lo, hi) = (x.first().copied().unwrap_or(0.0), x.last().copied().unwrap_or(0.0));
-    let finite = t.y.iter().copied().filter(|v| v.is_finite());
-    let min = finite.clone().fold(f64::INFINITY, f64::min);
-    let max = finite.fold(f64::NEG_INFINITY, f64::max);
-    // The average over x (trapezoids: transient steps vary), the mean for AC.
-    let average = if data.log_x || hi <= lo {
-        t.y.iter().sum::<f64>() / t.y.len().max(1) as f64
-    } else {
-        x.windows(2).zip(t.y.windows(2)).map(|(x, y)| (x[1] - x[0]) * (y[0] + y[1]) / 2.0).sum::<f64>() / (hi - lo)
-    };
     let scale = Scale::new(lo, hi, data.log_x);
     let columns = MAX_POINTS / 4 - 1;
     let pts = plot::decimate(x, &t.y, lo, hi, columns, |v| (scale.frac(v) * columns as f64).floor() as i64);
     let mut v = json!({
         "signal": t.label,
         "unit": t.unit,
-        "min": round(min),
-        "max": round(max),
-        "average": round(average),
         "end": round(t.y.last().copied().unwrap_or(f64::NAN)),
         "points": pts.iter().map(|p| json!([round(p[0]), round(p[1])])).collect::<Vec<_>>(),
     });
+    let opt = |v: Option<f64>| v.map_or(Value::Null, round);
+    if let Some(m) = sim::measure::measure(x, &t.y, from, to) {
+        v["min"] = round(m.min);
+        v["max"] = round(m.max);
+        if !data.log_x {
+            v["average"] = round(m.average);
+            v["rms"] = round(m.rms);
+            v["peak_to_peak"] = round(m.peak_to_peak);
+            v["frequency"] = opt(m.frequency);
+            v["rise"] = opt(m.rise);
+            v["fall"] = opt(m.fall);
+        }
+    }
+    if data.log_x
+        && t.unit == "dB"
+        && let Some(m) = sim::measure::measure_ac(x, &t.y, from, to)
+    {
+        v["peak"] = json!({ "db": round(m.peak_db), "frequency": round(m.peak_frequency) });
+        v["minus_3db"] = json!([opt(m.minus_3db.0), opt(m.minus_3db.1)]);
+    }
+    if t.unit == "°"
+        && let Some(mag) = data.traces.iter().find(|m| m.signal == t.signal && m.unit == "dB")
+    {
+        v["phase_margin"] = opt(sim::measure::phase_margin(x, &mag.y, &t.y, from, to));
+    }
     if !points.is_empty() {
         v["at"] = json!(
             points

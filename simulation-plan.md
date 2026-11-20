@@ -87,6 +87,10 @@ PLAN.md, "Simulation (`sim`)":
   `points`; unprobed currents measured for that run only), `get_spice_netlist`, and
   `screenshot` target `simulation` (the plot drawn as a render scene offscreen). The
   headless host has its own session. A `scroll DY` script step.
+- S6a: differential voltage probes (drag from net to net), power probes (Alt-click a
+  part), a third y axis, the Measure table (`sim::measure`, also in `simulate`'s
+  replies with `from` / `to`), supply suggestions, reordering analysis tabs, a `hold`
+  script step.
 
 Still to come in the areas S1 built:
 
@@ -98,18 +102,14 @@ Still to come in the areas S1 built:
   sweeps fall back to processes), a crash in a model takes the app down with unsaved
   work (a "Run in a separate process" setting stays available for that), and
   `ControlledExit` must be handled instead of letting ngspice end the app.
-- Differential voltage probes (`Probe::Voltage` gets a reference, S6).
-- Plot: measurements between the cursors (min, max, average, RMS, frequency),
-  overlays of earlier runs, PNG export from the GUI (MCP's screenshot renders it
+- Plot: overlays of earlier runs, PNG export from the GUI (MCP's screenshot renders it
   offscreen already), the zoom saved in the workspace.
 - Schematic values: placement that avoids other texts (tags can overlap a part's
   reference or another tag), values at the cursor of a sweep (scrubbing), currents of
   bigger parts as tags.
 - The values only show while the Simulation panel or tab is open; a pinned "always"
   might be wanted.
-- Supplies suggested from power port names (S6). (S2's "Add supply" picks the first
-  power port net without one, its voltage from the name.)
-- Analysis tabs can't be reordered yet (S6).
+- Expressions of signals (`V(OUT)/V(IN)`, `abs(I(R1.1))`); complex power for AC.
 - Per-unit models for multi-unit parts (a dual op amp as one subcircuit instance per
   unit): today a model covers every unit's pins at once.
 - The model text field has no syntax highlighting; `simulate` takes no inline analysis
@@ -274,17 +274,33 @@ give a usable simulator; S6–S8 make it comfortable, compatible and fast.
 
 ### S6: Comfort
 
-- **Tuner:** a slider row per chosen R/C/L/source parameter (range from the value ±
-  a decade, E-series snapping as an option), re-running on release (on drag for runs
-  under ~100 ms). Results of the tuned run replace the plot; "Apply" writes the value
-  to the component (one undo step).
-- Differential voltage probes; device power (`V × I`) probes; expressions.
-- Measurements per trace: min, max, average, RMS, peak-to-peak, frequency, rise/fall
-  time, −3 dB point, phase margin (AC loop gain).
-- Parameter sweeps: one parameter stepped (a component value or `.param`), overlaid
-  traces with a legend per step (ngspice `.control` loop or one run per step in
-  parallel processes).
-- Supplies suggestions from power port names.
+Three commits on one branch: S6a (done: probes, measurements, supplies, tab order),
+S6b the tuner, S6c parameter sweeps.
+
+- **Tuner (S6b):** a Tuner section in the Simulation tab under the readout table; rows
+  added by right-click on a part → "Tune R1" or the section's **+** (a filtered list of
+  tunable parameters). Tunable: the value of parts whose model uses `${VALUE}`, and a
+  source's numeric waveform fields and DC/AC values (model parameter overrides later).
+  A row: parameter, slider, value field, min/max, snapping (None/E6/E12/E24/E96), Apply,
+  ✕. Values get a log slider from value/10 to ×10 (E24 for R, E12 for C/L); source
+  fields a linear one from 0 to 2× (−2× to 2× when negative), no snapping. The rows
+  are saved in the setup (`Simulation::tune`; adding or removing one is an undo step);
+  the tuned values are not: they override the netlist of runs without touching the
+  document, stale checks use the tuned netlist, the schematic's tags show the tuned
+  run, and a bar "Tuned: R1 = 4.7k · Apply · Reset" says so. Apply writes them all in
+  one undo step. Runs on release, and while dragging when the last run took under
+  150 ms (one in flight, the newest value queued). The tuner runs the analysis the tab
+  shows. Agents: `simulate` takes `values` (`{"R1": "4k7", "V1.amplitude": 0.2}`),
+  the same temporary overrides for one run.
+- **Parameter sweeps (S6c):** `Analysis::step: Option<Step>` — a parameter (the tuner's
+  kinds) and list, linear or log values; one per analysis, for all four kinds (an
+  operating point gets a column per step). One netlist per step, run as parallel
+  ngspice processes (up to the cores); Stop stops all; stale by the base netlist. With
+  one signal each step gets a palette colour, with several each signal keeps its
+  colour and steps are shades; readout rows per signal and step ("V(OUT) · R1=4.7k"),
+  a signal's header row hides all its steps. Steps run with the tuner's other values;
+  the stepped parameter's tuner row is disabled. Agents set `step` through
+  `SetSimulation`; `simulate` answers per signal and step.
 
 ### S7: KiCad simulation import
 

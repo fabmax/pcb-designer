@@ -68,6 +68,11 @@ pub struct SimPanel {
     pub hover: Option<ProbeTarget>,
     /// The overlay as last built, and what it was built from.
     overlay: Option<(OverlayKey, SimOverlay, Vec<sim::report::Device>)>,
+    /// Voltages typed for suggested supplies whose name says none.
+    suggest: FxHashMap<String, f64>,
+    /// The Probe tool's press: what it pressed on and where (a drag to another net makes
+    /// a differential probe).
+    pub probe_drag: Option<(ProbeTarget, egui::Pos2)>,
     /// An agent's run (MCP `simulate`), answered when it ends.
     agent: Option<(mcp::simulation::SimJob, mcp::host::Responder)>,
 }
@@ -208,7 +213,12 @@ impl SimPanel {
                 let color = view::style::trace_color(i);
                 match sim::plot::Signal::of_probe(p, conn) {
                     sim::plot::Signal::Voltage(net) => o.nets.push((net, color)),
+                    sim::plot::Signal::Diff(net, reference) => {
+                        o.nets.push((net, color));
+                        o.nets.push((reference, color));
+                    }
                     sim::plot::Signal::Current(s, pin) => o.pins.push((s, pin, color)),
+                    sim::plot::Signal::Power(c) => o.parts.push((c, color)),
                 }
             }
         }
@@ -238,8 +248,10 @@ impl SimPanel {
             }
         }
         match key.hover.clone() {
-            Some(ProbeTarget::Net { net, .. }) => o.hover_net = Some(net),
-            Some(ProbeTarget::Pin { symbol, pin }) => o.hover_pin = Some((symbol, pin)),
+            Some(ProbeTarget::Net { net, .. }) => o.hover_nets.push(net),
+            Some(ProbeTarget::Diff { net, reference, .. }) => o.hover_nets.extend([net, reference]),
+            Some(ProbeTarget::Pin { symbol, pin }) => o.hover_pins.push((symbol, pin)),
+            Some(ProbeTarget::Part { component }) => o.hover_parts.push(component),
             None => {}
         }
         self.overlay = Some((key, o.clone(), devices));
@@ -406,12 +418,25 @@ impl SimPanel {
         let mut remove = None;
         let mut duplicate = None;
         let mut rename: Option<(usize, String)> = None;
+        let mut moved: Option<(usize, usize)> = None;
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
             for (i, a) in setup.analyses.iter().enumerate() {
-                let r = ui.selectable_label(Some(a.id) == current, &a.name).on_hover_text(a.kind.label());
+                let tab = egui::Button::selectable(Some(a.id) == current, &a.name).sense(egui::Sense::click_and_drag());
+                let r = ui.add(tab).on_hover_text(format!("{} · drag to reorder", a.kind.label()));
                 if r.clicked() {
                     self.tab = Some(a.id);
+                }
+                r.dnd_set_drag_payload(i);
+                if let Some(from) = r.dnd_hover_payload::<usize>()
+                    && *from != i
+                {
+                    // Where it would go: before this tab when coming from the right.
+                    let x = if *from > i { r.rect.left() - 1.0 } else { r.rect.right() + 1.0 };
+                    ui.painter().vline(x, r.rect.y_range(), egui::Stroke::new(2.0, theme::accent()));
+                }
+                if let Some(from) = r.dnd_release_payload::<usize>() {
+                    moved = Some((*from, i));
                 }
                 r.context_menu(|ui| {
                     let buf = egui::Id::unique(("sim_rename", a.id));
@@ -462,6 +487,13 @@ impl SimPanel {
         }
         if let Some(i) = remove {
             setup.analyses.remove(i);
+        }
+        if let Some((from, to)) = moved
+            && from != to
+            && from < setup.analyses.len()
+        {
+            let a = setup.analyses.remove(from);
+            setup.analyses.insert(to.min(setup.analyses.len()), a);
         }
     }
 
@@ -650,11 +682,7 @@ impl SimPanel {
             }
             ui.end_row();
             for row in rows.iter().take(500) {
-                let sig = match (&row.net, row.current) {
-                    (Some(net), _) => Some(sim::plot::Signal::Voltage(net.clone())),
-                    (None, Some((s, p))) => Some(sim::plot::Signal::Current(s, p)),
-                    _ => None,
-                };
+                let sig = row_signal(row);
                 if sweep {
                     let mut on = sig.as_ref().is_some_and(|s| plotted.contains(s));
                     let tip = if a.probes.is_empty() { "Plot only the ticked signals" } else { "Plot this signal" };
@@ -685,15 +713,7 @@ impl SimPanel {
             }
             // Probes without data in this result, and why.
             if sweep {
-                let have: HashSet<sim::plot::Signal> = done
-                    .rows
-                    .iter()
-                    .filter_map(|r| match (&r.net, r.current) {
-                        (Some(net), _) => Some(sim::plot::Signal::Voltage(net.clone())),
-                        (None, Some((s, p))) => Some(sim::plot::Signal::Current(s, p)),
-                        _ => None,
-                    })
-                    .collect();
+                let have: HashSet<sim::plot::Signal> = done.rows.iter().filter_map(row_signal).collect();
                 for sig in a.probes.iter().map(|p| sim::plot::Signal::of_probe(p, conn)) {
                     if have.contains(&sig) {
                         continue;
@@ -702,11 +722,7 @@ impl SimPanel {
                     if ui.checkbox(&mut on, "").on_hover_text("Remove the probe").changed() {
                         toggle = Some(sig.probe());
                     }
-                    let label = match &sig {
-                        sim::plot::Signal::Voltage(net) => format!("V({net})"),
-                        sim::plot::Signal::Current(s, p) => view::sim_overlay::pin_name(doc.project(), *s, *p)
-                            .map_or("I(?)".into(), |(r, k)| format!("I({r}.{k})")),
-                    };
+                    let label = probe_label(doc.project(), &sig);
                     let reason = sim::plot::missing_reason(&done.result, &sig, conn);
                     let r = ui.label(RichText::new(format!("{label} · {reason}")).color(theme::text_dim()));
                     r.context_menu(|ui| {
@@ -774,11 +790,52 @@ impl SimPanel {
                     self.texts.clear();
                     self.si.clear();
                 }
-                let unused = power_nets(doc).into_iter().find(|n| !setup.supplies.iter().any(|s| &s.net == n));
+                let suggested = suggested_supplies(doc);
                 if ui.small_button("Add supply").clicked() {
-                    let net = unused.or(nets.first().cloned()).unwrap_or_default();
-                    let voltage = supply_voltage(&net);
+                    let net = suggested.first().map(|s| s.0.clone()).or(nets.first().cloned()).unwrap_or_default();
+                    let voltage = supply_voltage(&net).unwrap_or(0.0);
                     setup.supplies.push(Supply { net, voltage });
+                }
+                if !suggested.is_empty() {
+                    ui.add_space(4.0);
+                    label(ui, "Power nets without a source");
+                    let mut add = Vec::new();
+                    grid(ui, "sim_suggested", |ui| {
+                        for (net, guess) in &suggested {
+                            ui.label(net);
+                            let typed = self.suggest.get(net).copied();
+                            let v = typed.or(*guess);
+                            ui.horizontal(|ui| {
+                                if let Some(new) = self.si_field(ui, ("suggest", net.as_str()), v, "V", "volts") {
+                                    match new {
+                                        Some(x) => _ = self.suggest.insert(net.clone(), x),
+                                        None => _ = self.suggest.remove(net),
+                                    }
+                                }
+                                let r = ui.add_enabled(v.is_some(), egui::Button::new("Add").small());
+                                if r.on_disabled_hover_text("Enter its voltage first").clicked()
+                                    && let Some(v) = v
+                                {
+                                    add.push(Supply { net: net.clone(), voltage: v });
+                                }
+                            });
+                            ui.end_row();
+                        }
+                    });
+                    let known: Vec<Supply> = suggested
+                        .iter()
+                        .filter_map(|(n, g)| {
+                            Some(Supply { net: n.clone(), voltage: self.suggest.get(n).copied().or(*g)? })
+                        })
+                        .collect();
+                    if known.len() > 1 && ui.small_button("Add all").on_hover_text("Those with a voltage").clicked() {
+                        add = known;
+                    }
+                    if !add.is_empty() {
+                        setup.supplies.extend(add);
+                        self.texts.clear();
+                        self.si.clear();
+                    }
                 }
                 ui.add_space(4.0);
                 label(ui, "Extra SPICE lines (.param, .options, models)");
@@ -892,6 +949,32 @@ fn plural(n: usize, what: &str) -> String {
     format!("{n} {what}{}", if n == 1 { "" } else { "s" })
 }
 
+/// The signal of a result table row.
+pub fn row_signal(row: &sim::report::Row) -> Option<sim::plot::Signal> {
+    match (&row.net, row.current, row.power) {
+        (Some(net), ..) => Some(sim::plot::Signal::Voltage(net.clone())),
+        (None, Some((s, p)), _) => Some(sim::plot::Signal::Current(s, p)),
+        (None, None, Some(c)) => Some(sim::plot::Signal::Power(c)),
+        _ => None,
+    }
+}
+
+/// A probe's label from the project (it may not be in a result): `V(OUT)`, `V(OUT,IN)`,
+/// `I(R1.1)`, `P(R1)`.
+pub fn probe_label(project: &Project, sig: &sim::plot::Signal) -> String {
+    use sim::plot::Signal;
+    match sig {
+        Signal::Voltage(net) => format!("V({net})"),
+        Signal::Diff(a, b) => format!("V({a},{b})"),
+        Signal::Current(s, p) => {
+            view::sim_overlay::pin_name(project, *s, *p).map_or("I(?)".into(), |(r, k)| format!("I({r}.{k})"))
+        }
+        Signal::Power(c) => {
+            format!("P({})", project.schematic.components.get(*c).map_or("?", |c| c.refdes.as_str()))
+        }
+    }
+}
+
 /// The errors of an attempt, one per line.
 fn errors_text(attempt: Option<&Attempt>) -> String {
     let errors: Vec<&str> = attempt
@@ -953,10 +1036,40 @@ fn power_nets(doc: &Document) -> Vec<String> {
     nets
 }
 
-/// The voltage a supply net's name suggests (`+5V` → 5, `3V3` → 3.3, `-12V` → −12).
-pub fn supply_voltage(net: &str) -> f64 {
-    let t = net.trim_start_matches('+');
-    si::parse(t).unwrap_or(0.0)
+/// The voltage a supply net's name suggests (`+5V` → 5, `3V3` → 3.3, `-12V` → −12),
+/// none for names without one (`VCC`).
+pub fn supply_voltage(net: &str) -> Option<f64> {
+    si::parse(net.trim_start_matches('+'))
+}
+
+/// Power port nets (not ground) that neither a supply nor a voltage source's pin
+/// powers, with the voltage their name suggests.
+pub fn suggested_supplies(doc: &Document) -> Vec<(String, Option<f64>)> {
+    let p = doc.project();
+    let conn = doc.connectivity();
+    let setup = &p.schematic.simulation;
+    let mut sourced: HashSet<String> = HashSet::new();
+    for (c, _, kind) in sources(p) {
+        if kind != "V" {
+            continue;
+        }
+        for s in p.schematic.symbols.iter().filter(|s| s.component == c) {
+            let Some(sym) = editor_core::query::symbol_of_instance(p, s) else { continue };
+            for pin in sym.pins.iter() {
+                if let Some(n) = conn.net_of_pin(s.id, pin.id) {
+                    sourced.insert(n.name.clone());
+                }
+            }
+        }
+    }
+    power_nets(doc)
+        .into_iter()
+        .filter(|n| !sourced.contains(n) && !setup.supplies.iter().any(|s| &s.net == n))
+        .map(|n| {
+            let v = supply_voltage(&n);
+            (n, v)
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -976,10 +1089,29 @@ mod tests {
 
     #[test]
     fn supply_voltages_from_names() {
-        assert_eq!(supply_voltage("+5V"), 5.0);
-        assert_eq!(supply_voltage("3V3"), 3.3);
-        assert_eq!(supply_voltage("-12V"), -12.0);
-        assert_eq!(supply_voltage("VCC"), 0.0);
+        assert_eq!(supply_voltage("+5V"), Some(5.0));
+        assert_eq!(supply_voltage("3V3"), Some(3.3));
+        assert_eq!(supply_voltage("-12V"), Some(-12.0));
+        assert_eq!(supply_voltage("VCC"), None);
+    }
+
+    #[test]
+    fn supplies_suggested_for_power_nets_without_a_source() {
+        let mut doc = Document::new(view::demo::demo_project());
+        doc.update_connectivity(false);
+        assert!(suggested_supplies(&doc).is_empty(), "V1 powers +5V");
+        let v1 = doc.project().schematic.components.iter().find(|c| c.refdes == "V1").unwrap().id;
+        let symbols: Vec<ObjectId> = doc
+            .project()
+            .schematic
+            .symbols
+            .iter()
+            .filter(|s| s.component == v1)
+            .map(|s| ObjectId::Symbol(s.id))
+            .collect();
+        doc.execute(editor_core::Command::Delete { ids: symbols }).unwrap();
+        doc.update_connectivity(false);
+        assert_eq!(suggested_supplies(&doc), vec![("+5V".to_string(), Some(5.0))]);
     }
 
     #[test]

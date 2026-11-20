@@ -757,15 +757,34 @@ impl AnalysisKind {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Probe {
-    /// The voltage of a net to ground. Found by `at` (a wire, label or junction on it),
-    /// else by the net's name when `at` is gone.
+    /// The voltage of a net to ground, or to `reference` (differential). Found by `at`
+    /// (a wire, label or junction on it), else by the net's name when `at` is gone.
     Voltage {
         net: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         at: Option<ObjectId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reference: Option<NetRef>,
     },
     /// The current into a pin of a placed symbol.
     Current { symbol: Id, pin: Id },
+    /// The power a component takes: Σ V·I over its pins (negative: it delivers power).
+    Power { component: Id },
+}
+
+impl Probe {
+    /// A voltage probe of a net to ground.
+    pub fn voltage(net: impl Into<String>, at: Option<ObjectId>) -> Probe {
+        Probe::Voltage { net: net.into(), at, reference: None }
+    }
+}
+
+/// A net as a probe names it: an object on it, else its name.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct NetRef {
+    pub net: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<ObjectId>,
 }
 
 #[cfg(test)]

@@ -294,8 +294,9 @@ pub struct SimulateParams {
     /// The analysis, by name. Default: the one the Simulation panel shows, else the first.
     #[serde(default)]
     pub analysis: Option<String>,
-    /// Signals: net names ("OUT" or "V(OUT)") and pin currents ("R1.1" or "I(R1.1)",
-    /// reference and pin number or name). Default: the analysis' probes, else its named
+    /// Signals: net names ("OUT" or "V(OUT)"), a net to another ("V(OUT,IN)"), pin
+    /// currents ("R1.1" or "I(R1.1)", reference and pin number or name) and a part's
+    /// power ("P(R1)", positive: it takes power). Default: the analysis' probes, else its named
     /// nets (up to 8). Currents not probed are measured for this run only.
     #[serde(default)]
     pub signals: Option<Vec<String>>,
@@ -303,6 +304,11 @@ pub struct SimulateParams {
     /// each signal at.
     #[serde(default)]
     pub points: Option<Vec<f64>>,
+    /// Sweeps: the x range the measurements cover (default: the whole run).
+    #[serde(default)]
+    pub from: Option<f64>,
+    #[serde(default)]
+    pub to: Option<f64>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
@@ -694,14 +700,17 @@ impl PcbTools {
         when it ends (at most 120 s; the user sees the run in the Simulation panel and plot, and \
         a run of theirs is stopped). An operating point answers each net's voltage, each pin's \
         current (into the pin) and each device's power. A sweep (transient, AC, DC sweep) \
-        answers per signal its min, max, average, end value and up to 200 points (x, y; dense \
-        runs keep their envelope), plus its values at `points`; AC signals in dB, with their \
-        phase in degrees as separate signals. Set analyses up with the set_simulation command \
+        answers per signal its end value and up to 200 points (x, y; dense runs keep their \
+        envelope), its values at `points`, and measurements over from..to: min, max, and for \
+        transient and DC average, rms, peak_to_peak, frequency, rise and fall (10-90 %); AC \
+        signals in dB with peak and minus_3db (below and above the peak), their phase in \
+        degrees as separate signals with phase_margin (loop gain). Set analyses up with the set_simulation command \
         (execute); give parts models in the library (edit_library) and sources their waveform \
         through their component's sim field.")]
     async fn simulate(&self, Parameters(p): Parameters<SimulateParams>) -> Result<CallToolResult, ErrorData> {
         let points = p.points.unwrap_or_default();
-        self.call(Request::Simulate(SimulateRequest { analysis: p.analysis, signals: p.signals, points })).await
+        let req = SimulateRequest { analysis: p.analysis, signals: p.signals, points, from: p.from, to: p.to };
+        self.call(Request::Simulate(req)).await
     }
 
     #[tool(description = "The SPICE netlist an analysis would run now, with the SPICE node of \

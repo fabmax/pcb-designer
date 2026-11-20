@@ -51,7 +51,7 @@ use crate::title_bar;
 use crate::toolbar;
 use crate::units::{self, GridKind};
 use crate::workspace::{self, ItemRef, ItemState, LibRef, TabRef, ViewState, Workspace};
-use view::sim_overlay;
+use view::sim_overlay::{self, ProbeTarget};
 
 pub enum Startup {
     Open(PathBuf),
@@ -4379,16 +4379,57 @@ fn probe_ui(
     on_edit: bool,
 ) {
     let tol = (6.0 / pane.canvas.camera.zoom * 1e6) as Coord;
-    let target = response.hover_pos().and_then(|p| {
+    let power = ui.input(|i| i.modifiers.alt);
+    let under = response.hover_pos().and_then(|p| {
         let [x, y] = pane.canvas.screen_to_world(p);
-        sim_overlay::probe_target(doc.project(), doc.connectivity(), doc.view(view), Point::mm(x, y), tol)
+        sim_overlay::probe_target(doc.project(), doc.connectivity(), doc.view(view), Point::mm(x, y), tol, power)
     });
     if response.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
     }
+    let (pressed, down, released) =
+        ui.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.primary_released()));
+    if pressed && response.hovered() && !on_edit {
+        sim.probe_drag = under.clone().zip(response.hover_pos());
+    }
+    // A drag from a net to another: the first net's voltage to the second.
+    let target = match (&sim.probe_drag, &under) {
+        (Some((ProbeTarget::Net { net, at }, _)), Some(ProbeTarget::Net { net: other, at: other_at }))
+            if net != other =>
+        {
+            Some(ProbeTarget::Diff { net: net.clone(), at: *at, reference: other.clone(), ref_at: *other_at })
+        }
+        (Some((start, _)), _) => Some(start.clone()),
+        (None, _) => under,
+    };
+    if let Some((ProbeTarget::Net { .. }, from)) = &sim.probe_drag
+        && down
+        && let Some(to) = ui.input(|i| i.pointer.latest_pos())
+    {
+        let color = theme::accent();
+        ui.painter().line_segment([*from, to], egui::Stroke::new(1.5, color));
+        ui.painter().circle_filled(*from, 3.0, color);
+    }
+    if released && let Some(t) = sim.probe_drag.take().and(target.clone()) {
+        if let Err(e) = sim.toggle_probe(doc, t.probe()) {
+            *status = Some((e, Instant::now()));
+        }
+        return;
+    }
     let Some(target) = target else { return };
     let probed = sim.is_probed(doc, &target);
-    let tip = format!("{}{}", target.describe(doc.project()), if probed { " · click removes the probe" } else { "" });
+    let dragging_net = matches!(sim.probe_drag, Some((ProbeTarget::Net { .. }, from))
+        if ui.input(|i| i.pointer.latest_pos()).is_some_and(|p| p.distance(from) > 4.0));
+    let hint = if dragging_net && matches!(target, ProbeTarget::Net { .. }) {
+        " · drop on another net for the voltage between them"
+    } else if probed {
+        " · click removes the probe"
+    } else if matches!(target, ProbeTarget::Net { .. }) && sim.probe_drag.is_none() {
+        " · drag to another net for the voltage between them"
+    } else {
+        ""
+    };
+    let tip = format!("{}{hint}", target.describe(doc.project()));
     egui::Tooltip::always_open(
         ui.ctx().clone(),
         ui.layer_id(),
@@ -4397,13 +4438,6 @@ fn probe_ui(
     )
     .gap(14.0)
     .show(|ui| ui.label(tip));
-    if response.hovered()
-        && !on_edit
-        && ui.input(|i| i.pointer.primary_pressed())
-        && let Err(e) = sim.toggle_probe(doc, target.probe())
-    {
-        *status = Some((e, Instant::now()));
-    }
     sim.hover = Some(target);
 }
 

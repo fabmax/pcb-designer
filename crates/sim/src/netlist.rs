@@ -231,6 +231,11 @@ impl Builder<'_> {
                 _ => None,
             })
             .collect();
+        let powered: HashSet<Id> = analysis
+            .probes
+            .iter()
+            .filter_map(|p| if let Probe::Power { component } = p { Some(*component) } else { None })
+            .collect();
         let mut unit_symbol: HashMap<(Id, u32), Id> = HashMap::new();
         for s in sch.symbols.iter() {
             unit_symbol.entry((s.component, s.unit)).or_insert(s.id);
@@ -276,7 +281,7 @@ impl Builder<'_> {
                     node: node.clone(),
                 });
                 if let Some(s) = symbol
-                    && (op || probed.contains(&(s, sp.pin)))
+                    && (op || powered.contains(&c.id) || probed.contains(&(s, sp.pin)))
                 {
                     let source = self.unique_device(&format!("VSENSE_{}_{}", sanitize(&c.refdes), sanitize(&key)));
                     let inner = self.unique_node(&format!("{}_{}", node_name(&source), "in"));
@@ -307,6 +312,13 @@ impl Builder<'_> {
             self.problem(Level::Warning, format!("Not simulated, no model: {}", refs.join(", ")), objects);
         }
         for p in &analysis.probes {
+            if let Probe::Power { component } = p
+                && !simulated.contains(component)
+            {
+                let what = sch.components.get(*component).map_or("a deleted part", |c| c.refdes.as_str());
+                let objects = self.symbols_of(*component);
+                self.problem(Level::Warning, format!("Power probe on {what}: it is not simulated"), objects);
+            }
             if let Probe::Current { symbol, pin } = p
                 && !self.out.sense.contains_key(&(*symbol, *pin))
             {

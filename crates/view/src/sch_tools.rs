@@ -86,7 +86,7 @@ impl SchTool {
             SchTool::Place => "Click to place · R rotate · X mirror · Esc done",
             SchTool::Sheet => "Click to place the sheet's top left corner · Esc cancels",
             SchTool::Probe => {
-                "Click a wire or label to plot its voltage, a pin to plot the current into it · again removes · Esc done"
+                "Click a net for its voltage, drag to another for the difference · a pin for its current · Alt-click a part for its power · again removes · Esc done"
             }
         }
     }

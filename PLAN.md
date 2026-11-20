@@ -482,8 +482,11 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   the Settings page caches its own lookup (with `ngspice -v`) per configured path.
 - **Plot** (`sim::plot`, headless; drawn by `app/src/plot_ui.rs` in `Tab::Simulation`):
   `signals` = the analysis' probes, or without any the named nets (at most 8, not
-  saved). `data` makes the traces: AC is dB left and unwrapped phase right (dashed,
-  "V(X) phase"); else volts left, amperes right (left when only currents). `Scale`
+  saved). `Signal` is `Voltage`, `Diff`, `Current` or `Power`; `plot::vector` and
+  `signal_label` read any of them from a result. `data` makes the traces: AC is dB left
+  and unwrapped phase right (dashed, "V(X) phase"); else one axis per unit in the order
+  V, A, W: the first present left, the next right, a third on `Axis::Right2` further
+  out. `Scale`
   (linear or log) does fractions, zoom around a point, pan and a minimum width (flat
   traces still get an axis). `linear_ticks` divides rather than multiplies for negative
   exponents (3 · 0.2 ≠ 0.6) and keeps ticks at the range ends (0.7 / 0.1 = 6.999…).
@@ -509,7 +512,14 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   app (`probe_ui`), which knows the target analysis (`SimPanel::probe_analysis`: the
   panel's if a sweep, else the first sweep). `probe_target` takes a wire, label or
   junction's net, else the nearest pin whose body (not its end) is within the
-  tolerance. A click toggles the probe by signal (one `SetSimulation`). The tool group
+  tolerance; with Alt the symbol under the pointer (`ProbeTarget::Part`, power). The
+  probe toggles on release (one `SetSimulation`): a press on a net remembered in
+  `SimPanel::probe_drag` and released on another net makes `ProbeTarget::Diff` (a
+  rubber band shows meanwhile). `Probe::Voltage { reference: Option<NetRef> }` is the
+  differential probe, resolved like the net; `Probe::Power { component }` makes the
+  netlist sense every pin of that device in sweeps, and `SimResult::power` sums V·I
+  (none for AC). The overlay draws a differential probe's two nets in its colour and a
+  powered part's units framed (symbol bounds from the view's index). The tool group
   (Probe, Run) shows while the Simulation panel or tab is open. `SimOverlay` (probed
   nets and pins with colours, voltage tags, two-pin currents as (symbol, pin the
   current enters, text), `dim`, hovered net/pin) is built by `SimPanel::overlay`
@@ -523,6 +533,18 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   with more than two pins get a hover tooltip (pin V, I, power). `SimPanel::hover` is
   cleared each frame before the tree draws and set by the Probe tool or a hovered
   table row.
+- **Measurements** (`sim::measure`): over a window with interpolated ends; average and
+  RMS integrate linear pieces exactly (uneven transient steps weigh right); frequency
+  from mean crossings with 10 % hysteresis, upward ones when there are two, else every
+  crossing as half a period; rise and fall 10–90 % of the window's range, the first
+  edge that starts below 10 %; AC peak, −3 dB points either side (interpolated in log
+  f) and the phase margin at the first downward 0 dB crossing. `measure::table` is the
+  plot's Measure table (cached per range and data in `PlotState`); its range is the
+  cursors when both are set, else the visible x. Agents get the same numbers.
+- **Panel extras:** analysis tabs drag to reorder (egui drag-and-drop payloads, one
+  `SetSimulation`); `suggested_supplies` lists power port nets that no supply and no
+  voltage source pin powers, with `supply_voltage` from the name (`None` for `VCC`, the
+  user types it).
 - **Model editing** (`app/src/sim_form.rs`): the parsing lives in `model::simulation`
   (`logical_lines`, `ModelCard`, `SubcktHeader`, `SimModel::problems`, `SimDevice::ports`)
   so the netlister, the library's issues and the forms agree. `Library::sim_pins` is the

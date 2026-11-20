@@ -134,7 +134,7 @@ fn signals_default_to_named_nets() {
     let (s, total) = plot::signals(&a, &r, &b.conn());
     assert_eq!(s, vec![Signal::Voltage("IN".into()), Signal::Voltage("OUT".into())]);
     assert_eq!(total, 2);
-    a.probes.push(Probe::Voltage { net: "OUT".into(), at: None });
+    a.probes.push(Probe::voltage("OUT", None));
     assert_eq!(plot::signals(&a, &r, &b.conn()).0, vec![Signal::Voltage("OUT".into())]);
 }
 
@@ -174,10 +174,10 @@ fn voltage_probes_follow_their_object() {
     let conn = b.conn();
     let label = b.project().schematic.labels.iter().find(|l| l.name == "OUT").unwrap().id;
     // The probe's name is out of date (the net was renamed): its label finds the net.
-    let p = Probe::Voltage { net: "OLD".into(), at: Some(ObjectId::Label(label)) };
+    let p = Probe::voltage("OLD", Some(ObjectId::Label(label)));
     assert_eq!(Signal::of_probe(&p, &conn), Signal::Voltage("OUT".into()));
     // The object is gone: the name.
-    let p = Probe::Voltage { net: "IN".into(), at: Some(ObjectId::Label(Id::new())) };
+    let p = Probe::voltage("IN", Some(ObjectId::Label(Id::new())));
     assert_eq!(Signal::of_probe(&p, &conn), Signal::Voltage("IN".into()));
     // A current that wasn't measured.
     let r1 = b

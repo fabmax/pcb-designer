@@ -47,6 +47,43 @@ impl SimResult {
         self.plot.vector(&format!("i({source})"))
     }
 
+    /// The voltage of `net` to `reference`.
+    pub fn voltage_between(&self, net: &str, reference: &str) -> Option<Vector> {
+        let (a, b) = (self.voltage(net)?, self.voltage(reference)?);
+        let sub = |x: &[f64], y: &[f64]| x.iter().zip(y).map(|(x, y)| x - y).collect::<Vec<_>>();
+        let im = match (&a.im, &b.im) {
+            (Some(x), Some(y)) => Some(sub(x, y)),
+            _ => None,
+        };
+        Some(Vector { name: format!("{}-{}", a.name, b.name), kind: "voltage".into(), re: sub(&a.re, &b.re), im })
+    }
+
+    /// The power a component takes, Σ V·I over its pins, when every pin's current was
+    /// measured (not for AC: complex power isn't shown).
+    pub fn power(&self, component: Id) -> Option<Vector> {
+        if self.plot.complex {
+            return None;
+        }
+        let pins: Vec<_> = self.netlist.pins.iter().filter(|p| p.component == component).collect();
+        if pins.is_empty() {
+            return None;
+        }
+        let mut re = vec![0.0; self.plot.len()];
+        for p in pins {
+            // An unplaced unit's pins are open: no current.
+            let Some(symbol) = p.symbol else { continue };
+            let i = self.current(symbol, p.pin)?;
+            if p.node == "0" {
+                continue;
+            }
+            let v = self.plot.vector(&format!("v({})", p.node))?;
+            for (k, out) in re.iter_mut().enumerate() {
+                *out += v.re.get(k).copied().unwrap_or(0.0) * i.re.get(k).copied().unwrap_or(0.0);
+            }
+        }
+        Some(Vector { name: "power".into(), kind: "power".into(), re, im: None })
+    }
+
     /// An operating point value (the first point) of a net's voltage.
     pub fn op_voltage(&self, net: &str) -> Option<f64> {
         self.voltage(net).and_then(|v| v.re.first().copied())

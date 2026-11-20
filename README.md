@@ -219,14 +219,17 @@ Simulation**. What's planned next is in [simulation-plan.md](simulation-plan.md)
   (operating point, transient, AC, DC sweep; **+** adds one, right-click renames,
   duplicates or deletes it) with its settings. Values take SI prefixes (`10m`, `1.5k`,
   `1meg`); text that isn't a value turns red and isn't applied. **Run** (⌘R) runs the
-  analysis shown (with none, it adds an operating point), **Stop** (⌘.) stops it; the
+  analysis shown (with none, it adds an operating point; drag the tabs to reorder them),
+  **Stop** (⌘.) stops it; the
   status bar shows a running simulation. The result table lists the named nets (all of
   them with **Show all nets**) and the measured currents; click a net to select it. An
   operating point measures the current into every pin (`I(R1.1)`) and each part's
   power (`P(R1)`). When the schematic changes in a
   way that changes the netlist, the results dim with "Changed since the run".
   **Circuit** holds the ground net, supplies, temperature and extra SPICE lines, and
-  shows the SPICE netlist and ngspice's log. Every change undoes like any other edit.
+  shows the SPICE netlist and ngspice's log. Power nets that no source or supply powers
+  are listed with the voltage their name suggests (`+3V3` → 3.3 V) and an **Add**
+  button. Every change undoes like any other edit.
 - **Simulation tab:** the first transient, AC or DC sweep that finishes opens a plot
   of the analysis the panel shows (also **Plot** in the panel, or **Simulation → Show
   simulation plot**; once you close it, runs don't reopen it). It plots the signals
@@ -238,10 +241,17 @@ Simulation**. What's planned next is in [simulation-plan.md](simulation-plan.md)
   value at A and B and the difference, and a click on a row hides or shows its trace.
   Hovering a row highlights its net or pin on the schematic; right-click → **Remove
   probe**. A probe without data says why (run again, net gone, part not simulated).
-  **Export CSV…** saves the traces shown. An operating point shows a sortable table.
+  **Export CSV…** saves the traces shown. **Measure** turns the table into measurements
+  between cursors A and B (else over the visible range): min, max, average, RMS,
+  peak-to-peak, frequency, rise and fall time (10–90 %); for AC the peak, the −3 dB
+  points and the phase margin (loop gain at 0 dB). **Copy** copies them as text. Volts,
+  amperes and watts each get an axis (a third one on the far right). An operating point
+  shows a sortable table.
 - **Probe tool** (**O**, in the tool bar's Simulation group, shown with the panel or
-  tab open): click a wire, label or junction to plot its net's voltage, the body of a
-  pin (not its end) to plot the current into it; click a probed one to remove it. The
+  tab open): click a wire, label or junction to plot its net's voltage, drag from one
+  net to another for the voltage between them (`V(OUT,IN)`), click the body of a pin
+  (not its end) to plot the current into it, Alt-click a part for the power it takes
+  (`P(R1)`, negative when it delivers power); click a probed one to remove it. The
   tip names what a click probes. Probes go to the analysis the panel shows if it's a
   transient, AC or DC sweep, else to the first one. Probed wires and pins show in
   their trace colours.
@@ -300,8 +310,8 @@ comment), `set_check_settings` (severities and the pin conflict matrix), `measur
 `add_text` on a sheet or a board layer), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board,
 the last Gerber export, a simulation's plot or the whole window), `simulate` (runs an
 analysis and answers its values: an operating point's voltages, currents and powers, or
-per signal of a sweep min, max, average, end, up to 200 points and the values at given
-x; the run shows in the app), `get_spice_netlist` (the netlist an analysis would run,
+per signal of a sweep (`OUT`, `V(OUT,IN)`, `R1.1`, `P(R1)`) up to 200 points, the values
+at given x and the measurements of the Measure table; the run shows in the app), `get_spice_netlist` (the netlist an analysis would run,
 with node and device names and problems) and `save_project`. Sheets are added, renamed and deleted with
 `execute` (`add_sheet`, `update`, `delete`), and `move_to_sheet` moves objects (or
 re-parents a sheet) while `duplicate` copies objects in one step and `add_cutout` cuts into a zone or keepout; `get_project` lists their paths, and wherever

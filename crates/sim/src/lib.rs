@@ -9,6 +9,7 @@
 //!
 //! Values with SI prefixes are parsed and formatted by `model::si`.
 
+pub mod measure;
 pub mod netlist;
 pub mod ngspice;
 pub mod plot;

@@ -34,7 +34,12 @@ fn target(s: &Signal) -> ProbeTarget {
     match s {
         // The net is found by name: `at` is only used to probe.
         Signal::Voltage(net) => ProbeTarget::Net { net: net.clone(), at: model::ObjectId::Wire(Id::from_u128(0)) },
+        Signal::Diff(net, reference) => {
+            let at = model::ObjectId::Wire(Id::from_u128(0));
+            ProbeTarget::Diff { net: net.clone(), at, reference: reference.clone(), ref_at: at }
+        }
         Signal::Current(symbol, pin) => ProbeTarget::Pin { symbol: *symbol, pin: *pin },
+        Signal::Power(component) => ProbeTarget::Part { component: *component },
     }
 }
 
@@ -49,7 +54,7 @@ type Decimated = ((u64, u64, u64, usize, bool, bool), Vec<Vec<[f64; 2]>>);
 #[derive(Default)]
 pub struct PlotState {
     x: Option<Scale>,
-    y: [Option<Scale>; 2],
+    y: [Option<Scale>; 3],
     /// The user zoomed or panned y: it no longer follows x.
     y_manual: bool,
     log_x: Option<bool>,
@@ -67,7 +72,14 @@ pub struct PlotState {
     decimated: Option<Decimated>,
     /// Operating point table: sort column (0: signal, 1: value) and descending.
     sort: (usize, bool),
+    /// The readout table shows measurements instead of the cursor values.
+    measure: bool,
+    /// The measurements as last computed: (range, data) and the table.
+    measured: Option<(MeasureKey, MeasureTable)>,
 }
+
+type MeasureKey = (u64, u64, usize);
+type MeasureTable = (Vec<&'static str>, Vec<Vec<String>>);
 
 #[derive(Clone, Copy)]
 enum Drag {
@@ -80,7 +92,7 @@ impl PlotState {
     /// Fits x to the whole run and y to the traces.
     pub fn fit(&mut self) {
         self.x = None;
-        self.y = [None, None];
+        self.y = [None; 3];
         self.y_manual = false;
     }
 
@@ -90,11 +102,11 @@ impl PlotState {
 
     /// The x and y scales, filling in what a fit cleared: x over the whole run, y to the
     /// visible part of the traces (always, while the user hasn't zoomed y).
-    fn scales(&mut self, data: &PlotData, log_x: bool) -> (Scale, [Scale; 2]) {
+    fn scales(&mut self, data: &PlotData, log_x: bool) -> (Scale, [Scale; 3]) {
         let (x0, x1) = (data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0));
         let x = *self.x.get_or_insert_with(|| Scale::new(x0, x1, log_x));
-        let mut ys = [Scale::new(-1.0, 1.0, false); 2];
-        for (i, axis) in [Axis::Left, Axis::Right].into_iter().enumerate() {
+        let mut ys = [Scale::new(-1.0, 1.0, false); 3];
+        for (i, axis) in Axis::ALL.into_iter().enumerate() {
             let y = match self.y[i] {
                 Some(y) if self.y_manual => y,
                 _ => {
@@ -206,7 +218,7 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
             state.fitted_to = Some(range);
         }
         if !state.y_manual {
-            state.y = [None, None];
+            state.y = [None; 3];
         }
         state.data = Some((key, Arc::new(data), named));
         state.decimated = None;
@@ -222,10 +234,16 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
     let table_h = (table_rows as f32 * 22.0 + 20.0).min(ui.available_height() * 0.4);
     let plot_h = (ui.available_height() - table_h).max(120.0);
     let (outer, response) = ui.allocate_exact_size(vec2(ui.available_width(), plot_h), Sense::click_and_drag());
-    let right_axis = !data.axis_unit(Axis::Right).is_empty();
+    let right = if !data.axis_unit(Axis::Right2).is_empty() {
+        2.0 * RIGHT
+    } else if !data.axis_unit(Axis::Right).is_empty() {
+        RIGHT
+    } else {
+        16.0
+    };
     let rect = Rect::from_min_max(
         pos2(outer.left() + LEFT, outer.top() + TOP),
-        pos2(outer.right() - if right_axis { RIGHT } else { 16.0 }, outer.bottom() - BOTTOM),
+        pos2(outer.right() - right, outer.bottom() - BOTTOM),
     );
     if rect.width() < 40.0 || rect.height() < 40.0 {
         return act;
@@ -364,7 +382,7 @@ fn draw(
     ui: &Ui,
     state: &mut PlotState,
     data: &PlotData,
-    scales: (Scale, [Scale; 2]),
+    scales: (Scale, [Scale; 3]),
     rect: Rect,
     outer: Rect,
     response: &egui::Response,
@@ -386,7 +404,7 @@ fn draw(
         painter.text(pos2(p, rect.bottom() + 4.0), Align2::CENTER_TOP, plot::label(v, data.x_unit), font.clone(), text);
     }
     painter.text(pos2(rect.center().x, outer.bottom() - 2.0), Align2::CENTER_BOTTOM, &data.x_label, font.clone(), text);
-    for (i, axis) in [Axis::Left, Axis::Right].into_iter().enumerate() {
+    for (i, axis) in Axis::ALL.into_iter().enumerate() {
         let unit = data.axis_unit(axis);
         if unit.is_empty() {
             continue;
@@ -404,8 +422,9 @@ fn draw(
                     text,
                 );
             } else {
+                let out = if axis == Axis::Right2 { RIGHT } else { 0.0 };
                 painter.text(
-                    pos2(rect.right() + 6.0, p),
+                    pos2(rect.right() + 6.0 + out, p),
                     Align2::LEFT_CENTER,
                     plot::label(v, unit),
                     font.clone(),
@@ -431,7 +450,7 @@ fn draw(
         if state.hidden.contains(&t.label) {
             continue;
         }
-        let s = &ys[if t.axis == Axis::Left { 0 } else { 1 }];
+        let s = &ys[t.axis.index()];
         let mut color = theme::color(view::style::trace_color(t.signal));
         if dim {
             color = color.gamma_multiply(0.35);
@@ -573,51 +592,111 @@ fn readout(
     let at = |c: Option<f64>| c.and_then(|v| plot::nearest(&data.x, v));
     let (a, b) = (at(state.cursors[0]), at(state.cursors[1]));
     let mut toggle = None;
+    // Measurements: between the cursors, else over the visible range.
+    let (lo, hi, between) = match state.cursors {
+        [Some(p), Some(q)] => (p.min(q), p.max(q), true),
+        _ => state.x.map_or((f64::NEG_INFINITY, f64::INFINITY, false), |x| (x.lo, x.hi, false)),
+    };
+    let table = state.measure.then(|| {
+        let key = (lo.to_bits(), hi.to_bits(), std::ptr::from_ref(data) as usize);
+        if state.measured.as_ref().is_none_or(|m| m.0 != key) {
+            state.measured = Some((key, sim::measure::table(data, lo, hi)));
+        }
+        state.measured.as_ref().expect("set above").1.clone()
+    });
+    ui.horizontal(|ui| {
+        let tip = "Measure the traces between cursors A and B, else over the visible range";
+        if ui.add(egui::Button::new("Measure").selected(state.measure)).on_hover_text(tip).clicked() {
+            state.measure = !state.measure;
+        }
+        if let Some((cols, rows)) = &table {
+            let (x0, x1) = (lo.max(data.x[0]), hi.min(*data.x.last().unwrap_or(&0.0)));
+            let span = format!("{} … {}", plot::label(x0, data.x_unit), plot::label(x1, data.x_unit));
+            let what = if between { format!("Between A and B · {span}") } else { format!("Visible range · {span}") };
+            ui.label(RichText::new(what).color(theme::text_dim()));
+            if ui.small_button("Copy").on_hover_text("The table as text, tab-separated").clicked() {
+                let mut text = format!("Signal\t{}\n", cols.join("\t"));
+                for (t, row) in data.traces.iter().zip(rows) {
+                    text.push_str(&format!("{}\t{}\n", t.label, row.join("\t")));
+                }
+                ui.ctx().copy_text(text);
+            }
+        }
+    });
     egui::Grid::new("plot_readout").striped(true).spacing([18.0, 3.0]).show(ui, |ui| {
         crate::fields::label(ui, "Signal");
         let head = |ui: &mut Ui, text: String| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| crate::fields::label(ui, &text))
         };
-        let xa = a.map(|i| data.x[i]);
-        let xb = b.map(|i| data.x[i]);
-        head(ui, xa.map_or("A".into(), |v| format!("A {}", plot::label(v, data.x_unit))));
-        head(ui, xb.map_or("B".into(), |v| format!("B {}", plot::label(v, data.x_unit))));
-        let dx = xa.zip(xb).map(|(p, q)| q - p);
-        head(
-            ui,
-            dx.map_or("B − A".into(), |d| {
-                let inv = if d != 0.0 && data.x_unit == "s" {
-                    format!(" · {}", plot::label(1.0 / d.abs(), "Hz"))
-                } else {
-                    String::new()
-                };
-                format!("Δ {}{inv}", plot::label(d, data.x_unit))
-            }),
-        );
-        ui.end_row();
-        for t in &data.traces {
-            let hidden = state.hidden.contains(&t.label);
-            let color = theme::color(view::style::trace_color(t.signal));
-            let r = ui
-                .horizontal(|ui| {
-                    swatch(ui, if hidden { color.gamma_multiply(0.25) } else { color }, t.dashed || t.signal >= 8);
-                    let text = RichText::new(&t.label);
-                    let text = if hidden { text.color(theme::text_dim()).strikethrough() } else { text };
-                    ui.add(egui::Label::new(text).sense(Sense::click()))
-                })
-                .inner;
-            row_menu(&r, t.signal);
-            if r.on_hover_text(if hidden { "Show" } else { "Hide" }).clicked() {
-                toggle = Some(t.label.clone());
-            }
-            let value = |i: Option<usize>| i.map_or(String::new(), |i| plot::label(t.y[i], t.unit));
-            let delta = a.zip(b).map_or(String::new(), |(i, j)| plot::label(t.y[j] - t.y[i], t.unit));
-            for v in [value(a), value(b), delta] {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(v).monospace())
-                });
+        if let Some((cols, rows)) = &table {
+            for c in cols {
+                head(ui, c.to_string());
             }
             ui.end_row();
+            for (k, t) in data.traces.iter().enumerate() {
+                let hidden = state.hidden.contains(&t.label);
+                let color = theme::color(view::style::trace_color(t.signal));
+                let r = ui
+                    .horizontal(|ui| {
+                        swatch(ui, if hidden { color.gamma_multiply(0.25) } else { color }, t.dashed || t.signal >= 8);
+                        let text = RichText::new(&t.label);
+                        let text = if hidden { text.color(theme::text_dim()).strikethrough() } else { text };
+                        ui.add(egui::Label::new(text).sense(Sense::click()))
+                    })
+                    .inner;
+                row_menu(&r, t.signal);
+                if r.on_hover_text(if hidden { "Show" } else { "Hide" }).clicked() {
+                    toggle = Some(t.label.clone());
+                }
+                for v in &rows[k] {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(RichText::new(v).monospace())
+                    });
+                }
+                ui.end_row();
+            }
+        } else {
+            let xa = a.map(|i| data.x[i]);
+            let xb = b.map(|i| data.x[i]);
+            head(ui, xa.map_or("A".into(), |v| format!("A {}", plot::label(v, data.x_unit))));
+            head(ui, xb.map_or("B".into(), |v| format!("B {}", plot::label(v, data.x_unit))));
+            let dx = xa.zip(xb).map(|(p, q)| q - p);
+            head(
+                ui,
+                dx.map_or("B − A".into(), |d| {
+                    let inv = if d != 0.0 && data.x_unit == "s" {
+                        format!(" · {}", plot::label(1.0 / d.abs(), "Hz"))
+                    } else {
+                        String::new()
+                    };
+                    format!("Δ {}{inv}", plot::label(d, data.x_unit))
+                }),
+            );
+            ui.end_row();
+            for t in &data.traces {
+                let hidden = state.hidden.contains(&t.label);
+                let color = theme::color(view::style::trace_color(t.signal));
+                let r = ui
+                    .horizontal(|ui| {
+                        swatch(ui, if hidden { color.gamma_multiply(0.25) } else { color }, t.dashed || t.signal >= 8);
+                        let text = RichText::new(&t.label);
+                        let text = if hidden { text.color(theme::text_dim()).strikethrough() } else { text };
+                        ui.add(egui::Label::new(text).sense(Sense::click()))
+                    })
+                    .inner;
+                row_menu(&r, t.signal);
+                if r.on_hover_text(if hidden { "Show" } else { "Hide" }).clicked() {
+                    toggle = Some(t.label.clone());
+                }
+                let value = |i: Option<usize>| i.map_or(String::new(), |i| plot::label(t.y[i], t.unit));
+                let delta = a.zip(b).map_or(String::new(), |(i, j)| plot::label(t.y[j] - t.y[i], t.unit));
+                for v in [value(a), value(b), delta] {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(RichText::new(v).monospace())
+                    });
+                }
+                ui.end_row();
+            }
         }
         for m in &data.missing {
             let text = RichText::new(format!("{} · {}", m.label, m.reason)).color(theme::text_dim());
@@ -770,7 +849,7 @@ mod tests {
         let mut state = PlotState::default();
         let data = data();
         state.fit();
-        let (x, [left, _]) = state.scales(&data, false);
+        let (x, [left, ..]) = state.scales(&data, false);
         assert_eq!((x.lo, x.hi), (0.0, 1e-3));
         assert!(left.lo < -0.9 && left.hi > 0.9, "{left:?}");
     }

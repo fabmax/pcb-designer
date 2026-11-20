@@ -45,11 +45,15 @@ enum Step {
     /// Scroll what's under the pointer by points (positive: content moves up, as a
     /// downward scroll does).
     Scroll(f32),
+    /// Hold modifiers for the following pointer steps (`hold Alt`; `hold` lets go).
+    Hold(Modifiers),
 }
 
 #[derive(Debug, Default)]
 pub struct Script {
     steps: VecDeque<Step>,
+    /// Modifiers a `hold` step holds down (for the pointer events that follow).
+    held: Modifiers,
     wait: u32,
     board: bool,
     /// The view changed (or the script just started): its tab is to be brought to the
@@ -122,11 +126,24 @@ impl Script {
                 "schematic" => steps.push_back(Step::Board(false)),
                 "scroll" => steps.push_back(Step::Scroll(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
                 "zoom" => steps.push_back(Step::Zoom(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
+                "hold" => {
+                    let mut m = Modifiers::NONE;
+                    for k in arg.split('+').map(str::trim).filter(|k| !k.is_empty()) {
+                        match k.to_ascii_lowercase().as_str() {
+                            "alt" | "option" => m.alt = true,
+                            "shift" => m.shift = true,
+                            "ctrl" => m.ctrl = true,
+                            "cmd" => m |= Modifiers::COMMAND,
+                            _ => return Err(format!("hold: unknown modifier {k:?}")),
+                        }
+                    }
+                    steps.push_back(Step::Hold(m));
+                }
                 "wait" => steps.push_back(Step::Wait(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
                 _ => return Err(format!("unknown script step {cmd:?}")),
             }
         }
-        Ok(Script { steps, wait: 0, board: false, switched: true, run: None })
+        Ok(Script { steps, held: Modifiers::NONE, wait: 0, board: false, switched: true, run: None })
     }
 
     /// The simulation a `run` step asked for: an analysis name, empty for the panel's.
@@ -162,8 +179,12 @@ impl Script {
             return Vec::new();
         }
         self.wait = GAP;
-        let m = Modifiers::NONE;
+        let m = self.held;
         match step {
+            Step::Hold(held) => {
+                self.held = held;
+                vec![Event::ModifiersChanged(held)]
+            }
             Step::Key(s) => {
                 let press = s.event();
                 let mut release = press.clone();

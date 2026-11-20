@@ -567,7 +567,8 @@ impl View {
             return;
         }
         let mut p = Painter::default();
-        crate::sim_overlay::draw(project, c, sheet, o, self.hover_layer, &mut p);
+        let index = &self.index;
+        crate::sim_overlay::draw(project, c, sheet, o, self.hover_layer, &mut p, &|id| index.bounds(id));
         self.scene.set_item(SIM_ITEM, p.out);
     }
 

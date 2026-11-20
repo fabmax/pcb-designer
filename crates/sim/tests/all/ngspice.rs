@@ -333,3 +333,28 @@ fn version() {
     let v = ng.version().unwrap();
     assert!(v.starts_with("ngspice-"), "{v}");
 }
+
+#[test]
+fn differential_and_power_signals_in_a_sweep() {
+    use sim::plot::{self, Signal};
+    let mut b = Bench::new();
+    let v1 = b.dc(4.0, "IN", "GND");
+    let (r1, _) = b.place("Resistor", "1k", &["IN", "MID"]);
+    b.place("Resistor", "3k", &["MID", "GND"]);
+    let mut a = b.analysis(AnalysisKind::Dc { source: v1, start: 0.0, stop: 4.0, step: 1.0 });
+    a.probes =
+        vec![Signal::Diff("IN".into(), "MID".into()).probe(), Signal::Power(r1).probe(), Signal::Power(v1).probe()];
+    let Some(r) = ok(&b, &a) else { return };
+    let conn = b.conn();
+    let signals: Vec<Signal> = a.probes.iter().map(|p| Signal::of_probe(p, &conn)).collect();
+    let d = plot::data(&r, &signals, false, &conn).unwrap();
+    let labels: Vec<&str> = d.traces.iter().map(|t| t.label.as_str()).collect();
+    assert_eq!(labels, ["V(IN,MID)", "P(R1)", "P(V1)"], "{:?}", d.missing);
+    // At 4 V: 1 mA, 1 V across R1, 1 mW in R1, the source delivers 4 mW.
+    let end = |k: usize| *d.traces[k].y.last().unwrap();
+    assert!(near(end(0), 1.0, 1e-6), "{}", end(0));
+    assert!(near(end(1), 1e-3, 1e-8), "{}", end(1));
+    assert!(near(end(2), -4e-3, 1e-8), "{}", end(2));
+    // Volts left, watts right.
+    assert_eq!((d.traces[0].axis, d.traces[1].axis), (plot::Axis::Left, plot::Axis::Right));
+}

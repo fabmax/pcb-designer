@@ -17,27 +17,78 @@ pub const AUTO_TRACES: usize = 8;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Signal {
     Voltage(String),
+    /// The voltage of the first net to the second.
+    Diff(String, String),
     /// Into a pin: (symbol, pin).
     Current(Id, Id),
+    /// The power a component takes.
+    Power(Id),
 }
 
 impl Signal {
     /// A probe's signal: a voltage probe's net is the one of its object (`at`) if that
-    /// is still on a net, else the net of its name.
+    /// is still on a net, else the net of its name (the reference's likewise).
     pub fn of_probe(p: &Probe, conn: &Connectivity) -> Signal {
+        let net = |name: &String, at: &Option<model::ObjectId>| {
+            at.and_then(|o| conn.net_of(o)).map_or_else(|| name.clone(), |n| n.name.clone())
+        };
         match p {
-            Probe::Voltage { net, at } => {
-                Signal::Voltage(at.and_then(|o| conn.net_of(o)).map_or_else(|| net.clone(), |n| n.name.clone()))
-            }
+            Probe::Voltage { net: name, at, reference: None } => Signal::Voltage(net(name, at)),
+            Probe::Voltage { net: name, at, reference: Some(r) } => Signal::Diff(net(name, at), net(&r.net, &r.at)),
             Probe::Current { symbol, pin } => Signal::Current(*symbol, *pin),
+            Probe::Power { component } => Signal::Power(*component),
         }
     }
 
     pub fn probe(&self) -> Probe {
         match self {
-            Signal::Voltage(net) => Probe::Voltage { net: net.clone(), at: None },
+            Signal::Voltage(net) => Probe::voltage(net.clone(), None),
+            Signal::Diff(net, reference) => Probe::Voltage {
+                net: net.clone(),
+                at: None,
+                reference: Some(model::NetRef { net: reference.clone(), at: None }),
+            },
             Signal::Current(symbol, pin) => Probe::Current { symbol: *symbol, pin: *pin },
+            Signal::Power(component) => Probe::Power { component: *component },
         }
+    }
+
+    /// Needs currents measured in a sweep (sense sources in the netlist).
+    pub fn needs_sensing(&self) -> bool {
+        matches!(self, Signal::Current(..) | Signal::Power(_))
+    }
+
+    /// The unit of its values (not AC).
+    pub fn unit(&self) -> &'static str {
+        match self {
+            Signal::Voltage(_) | Signal::Diff(..) => "V",
+            Signal::Current(..) => "A",
+            Signal::Power(_) => "W",
+        }
+    }
+}
+
+/// A signal's label in a result: `V(OUT)`, `V(OUT,IN)`, `I(R1.1)`, `P(R1)`.
+pub fn signal_label(result: &SimResult, s: &Signal) -> String {
+    match s {
+        Signal::Voltage(net) => format!("V({net})"),
+        Signal::Diff(a, b) => format!("V({a},{b})"),
+        Signal::Current(symbol, pin) => result.netlist.current_label(*symbol, *pin).unwrap_or_else(|| "I(?)".into()),
+        Signal::Power(c) => match result.netlist.pins.iter().find(|p| p.component == *c) {
+            Some(p) => format!("P({})", p.refdes),
+            None => "P(?)".into(),
+        },
+    }
+}
+
+/// A signal's values in a result (complex for AC).
+pub fn vector<'a>(result: &'a SimResult, s: &Signal) -> Option<std::borrow::Cow<'a, crate::Vector>> {
+    use std::borrow::Cow;
+    match s {
+        Signal::Voltage(net) => result.voltage(net),
+        Signal::Diff(a, b) => result.voltage_between(a, b).map(Cow::Owned),
+        Signal::Current(symbol, pin) => result.current(*symbol, *pin).map(Cow::Borrowed),
+        Signal::Power(c) => result.power(*c).map(Cow::Owned),
     }
 }
 
@@ -60,11 +111,21 @@ pub fn signals(analysis: &Analysis, result: &SimResult, conn: &Connectivity) -> 
     (named.into_iter().take(AUTO_TRACES).map(|n| Signal::Voltage(n.clone())).collect(), total)
 }
 
-/// Which y axis a trace goes on.
+/// Which y axis a trace goes on: left, right, or a second right axis further out
+/// (a third unit).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Axis {
     Left,
     Right,
+    Right2,
+}
+
+impl Axis {
+    pub const ALL: [Axis; 3] = [Axis::Left, Axis::Right, Axis::Right2];
+
+    pub fn index(self) -> usize {
+        self as usize
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -112,8 +173,8 @@ impl PlotData {
 
 /// The plot of `signals` in `result` (`None` for an operating point). AC: magnitude in
 /// dB on the left, with `phase` the unwrapped phase in degrees on the right (dashed).
-/// Else voltages on the left and currents on the right (on the left when there are
-/// only currents).
+/// Else one axis per unit in the order volts, amperes, watts: the first present on the
+/// left, the next on the right, a third on a second right axis.
 pub fn data(result: &SimResult, signals: &[Signal], phase: bool, conn: &Connectivity) -> Option<PlotData> {
     let scale = result.scale()?;
     let (x_label, x_unit) = match scale.kind.as_str() {
@@ -123,18 +184,12 @@ pub fn data(result: &SimResult, signals: &[Signal], phase: bool, conn: &Connecti
         _ => (format!("Source {}", scale.name.to_uppercase()), "V"),
     };
     let ac = result.plot.complex;
-    let only_currents = signals.iter().all(|s| matches!(s, Signal::Current(..)));
+    let units: Vec<&str> = ["V", "A", "W"].into_iter().filter(|u| signals.iter().any(|s| s.unit() == *u)).collect();
     let mut traces = Vec::new();
     let mut missing = Vec::new();
     for (i, s) in signals.iter().enumerate() {
-        let (label, vector) = match s {
-            Signal::Voltage(net) => (format!("V({net})"), result.voltage(net).map(|v| v.into_owned())),
-            Signal::Current(symbol, pin) => (
-                result.netlist.current_label(*symbol, *pin).unwrap_or_else(|| "I(?)".into()),
-                result.current(*symbol, *pin).cloned(),
-            ),
-        };
-        let Some(v) = vector else {
+        let label = signal_label(result, s);
+        let Some(v) = vector(result, s) else {
             missing.push(Missing { label, reason: missing_reason(result, s, conn), signal: i });
             continue;
         };
@@ -159,9 +214,8 @@ pub fn data(result: &SimResult, signals: &[Signal], phase: bool, conn: &Connecti
                 });
             }
         } else {
-            let current = matches!(s, Signal::Current(..));
-            let axis = if current && !only_currents { Axis::Right } else { Axis::Left };
-            let unit = if current { "A" } else { "V" };
+            let unit = s.unit();
+            let axis = Axis::ALL[units.iter().position(|u| *u == unit).unwrap_or(0)];
             traces.push(Trace { label, unit, axis, dashed: false, signal: i, y: v.re.clone() });
         }
     }
@@ -170,11 +224,20 @@ pub fn data(result: &SimResult, signals: &[Signal], phase: bool, conn: &Connecti
 
 /// Why a signal has no data in `result`.
 pub fn missing_reason(result: &SimResult, s: &Signal, conn: &Connectivity) -> String {
+    let net_reason = |net: &str| {
+        if conn.net(net).is_none() { "the net is gone" } else { "not in this result: run again" }
+    };
+    let nl = &result.netlist;
     match s {
-        Signal::Voltage(net) if conn.net(net).is_none() => "the net is gone".into(),
-        Signal::Voltage(_) => "not in this result: run again".into(),
+        Signal::Voltage(net) => net_reason(net).into(),
+        Signal::Diff(a, b) => {
+            if conn.net(a).is_none() || conn.net(b).is_none() {
+                net_reason(if conn.net(a).is_none() { a } else { b }).into()
+            } else {
+                "not in this result: run again".into()
+            }
+        }
         Signal::Current(symbol, pin) => {
-            let nl = &result.netlist;
             let simulated = nl.pins.iter().any(|p| p.symbol == Some(*symbol));
             if !simulated {
                 "the part was not simulated".into()
@@ -184,6 +247,9 @@ pub fn missing_reason(result: &SimResult, s: &Signal, conn: &Connectivity) -> St
                 "not measured in this result: run again".into()
             }
         }
+        Signal::Power(_) if result.plot.complex => "power isn't shown for AC".into(),
+        Signal::Power(c) if !nl.pins.iter().any(|p| p.component == *c) => "the part was not simulated".into(),
+        Signal::Power(_) => "not measured in this result: run again".into(),
     }
 }
 

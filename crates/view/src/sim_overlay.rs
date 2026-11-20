@@ -19,25 +19,40 @@ use crate::view::View;
 pub enum ProbeTarget {
     /// A net's voltage, found by the wire, label or junction clicked.
     Net { net: String, at: ObjectId },
+    /// The voltage of a net to another (a drag from one to the other).
+    Diff { net: String, at: ObjectId, reference: String, ref_at: ObjectId },
     /// The current into a pin (its body was clicked, not its end).
     Pin { symbol: Id, pin: Id },
+    /// The power a part takes (Alt-click on its body).
+    Part { component: Id },
 }
 
 impl ProbeTarget {
     pub fn probe(&self) -> Probe {
         match self {
-            ProbeTarget::Net { net, at } => Probe::Voltage { net: net.clone(), at: Some(*at) },
+            ProbeTarget::Net { net, at } => Probe::voltage(net.clone(), Some(*at)),
+            ProbeTarget::Diff { net, at, reference, ref_at } => Probe::Voltage {
+                net: net.clone(),
+                at: Some(*at),
+                reference: Some(NetRef { net: reference.clone(), at: Some(*ref_at) }),
+            },
             ProbeTarget::Pin { symbol, pin } => Probe::Current { symbol: *symbol, pin: *pin },
+            ProbeTarget::Part { component } => Probe::Power { component: *component },
         }
     }
 
-    /// "Voltage of /OUT", "Current into R1 pin 1".
+    /// "Voltage of /OUT", "Voltage of OUT to IN", "Current into R1 pin 1", "Power of R1".
     pub fn describe(&self, project: &Project) -> String {
         match self {
             ProbeTarget::Net { net, .. } => format!("Voltage of {net}"),
+            ProbeTarget::Diff { net, reference, .. } => format!("Voltage of {net} to {reference}"),
             ProbeTarget::Pin { symbol, pin } => {
                 let (refdes, key) = pin_name(project, *symbol, *pin).unwrap_or_else(|| ("?".into(), "?".into()));
                 format!("Current into {refdes} pin {key}")
+            }
+            ProbeTarget::Part { component } => {
+                let refdes = project.schematic.components.get(*component).map_or("?", |c| c.refdes.as_str());
+                format!("Power of {refdes}")
             }
         }
     }
@@ -60,8 +75,26 @@ fn pin_ends(project: &Project, symbol: Id, pin: Id) -> Option<(Point, Point)> {
 }
 
 /// What the Probe tool measures at `p` on `view`'s sheet: a wire, label or junction's
-/// net, else a pin whose body (not its end) is within `tol`.
-pub fn probe_target(project: &Project, conn: &Connectivity, view: &View, p: Point, tol: Coord) -> Option<ProbeTarget> {
+/// net, else a pin whose body (not its end) is within `tol`. With `power`, the part
+/// under `p` (its power).
+pub fn probe_target(
+    project: &Project,
+    conn: &Connectivity,
+    view: &View,
+    p: Point,
+    tol: Coord,
+    power: bool,
+) -> Option<ProbeTarget> {
+    if power {
+        let hit = view.hit(project, p, tol).filter(|id| matches!(id, ObjectId::Symbol(_)));
+        let hit = hit.or_else(|| view.index.near(p, 0).into_iter().find(|id| matches!(id, ObjectId::Symbol(_))));
+        return match hit {
+            Some(ObjectId::Symbol(s)) => {
+                project.schematic.symbols.get(s).map(|s| ProbeTarget::Part { component: s.component })
+            }
+            _ => None,
+        };
+    }
     if let Some(at @ (ObjectId::Wire(_) | ObjectId::Label(_) | ObjectId::Junction(_))) = view.hit(project, p, tol)
         && let Some(net) = conn.net_of(at)
     {
@@ -105,9 +138,12 @@ pub struct SimOverlay {
     pub currents: Vec<(Id, Id, String)>,
     /// The values are out of date: drawn faint.
     pub dim: bool,
-    /// A net and a pin to mark (the Probe tool or a table row hovers it).
-    pub hover_net: Option<String>,
-    pub hover_pin: Option<(Id, Id)>,
+    /// Parts whose power is probed: their outline in the trace colour.
+    pub parts: Vec<(Id, Color)>,
+    /// Nets, pins and parts to mark (the Probe tool or a table row hovers them).
+    pub hover_nets: Vec<String>,
+    pub hover_pins: Vec<(Id, Id)>,
+    pub hover_parts: Vec<Id>,
 }
 
 impl SimOverlay {
@@ -116,8 +152,10 @@ impl SimOverlay {
             && self.pins.is_empty()
             && self.voltages.is_empty()
             && self.currents.is_empty()
-            && self.hover_net.is_none()
-            && self.hover_pin.is_none()
+            && self.parts.is_empty()
+            && self.hover_nets.is_empty()
+            && self.hover_pins.is_empty()
+            && self.hover_parts.is_empty()
     }
 }
 
@@ -131,12 +169,13 @@ pub(crate) fn draw(
     o: &SimOverlay,
     layer: render::LayerId,
     p: &mut Painter,
+    bounds: &dyn Fn(ObjectId) -> Option<Rect>,
 ) {
     let sch = &project.schematic;
     let on_sheet = |symbol: Id| sch.symbols.get(symbol).is_some_and(|s| s.sheet == sheet);
     // Probed nets (and the hovered one): their wires, thick.
-    let hover = o.hover_net.as_ref().map(|n| (n.clone(), pal().hover));
-    let nets: Vec<&(String, Color)> = o.nets.iter().chain(hover.as_ref()).collect();
+    let hover: Vec<(String, Color)> = o.hover_nets.iter().map(|n| (n.clone(), pal().hover)).collect();
+    let nets: Vec<&(String, Color)> = o.nets.iter().chain(&hover).collect();
     if !nets.is_empty() {
         let color_of = |id: ObjectId| {
             let net = conn.net_of(id)?;
@@ -160,11 +199,24 @@ pub(crate) fn draw(
             arrow(p, layer, a, b, mm(1.0), color);
         }
     }
-    if let Some((symbol, pin)) = o.hover_pin.filter(|(s, _)| on_sheet(*s))
-        && let Some((a, b)) = pin_ends(project, symbol, pin)
-    {
-        p.line(layer, a, b, WIRE_WIDTH * 3, pal().hover);
-        arrow(p, layer, a, b, mm(1.0), pal().hover);
+    for &(symbol, pin) in o.hover_pins.iter().filter(|(s, _)| on_sheet(*s)) {
+        if let Some((a, b)) = pin_ends(project, symbol, pin) {
+            p.line(layer, a, b, WIRE_WIDTH * 3, pal().hover);
+            arrow(p, layer, a, b, mm(1.0), pal().hover);
+        }
+    }
+    // Parts whose power is probed (or hovered): a rounded frame around each unit.
+    let hover_parts: Vec<(Id, Color)> = o.hover_parts.iter().map(|c| (*c, pal().hover)).collect();
+    for &(component, color) in o.parts.iter().chain(&hover_parts) {
+        for s in sch.symbols.iter().filter(|s| s.component == component && s.sheet == sheet) {
+            if let Some(r) = bounds(ObjectId::Symbol(s.id)) {
+                let r = r.grow(mm(0.5));
+                let c = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
+                for k in 0..4 {
+                    p.line(layer, c[k], c[(k + 1) % 4], WIRE_WIDTH * 2, color.with_alpha(0xc0));
+                }
+            }
+        }
     }
     let alpha = |c: Color| if o.dim { c.with_alpha(0x70) } else { c };
     let (fg, bg) = (alpha(pal().sim_value), alpha(pal().sim_value_bg));

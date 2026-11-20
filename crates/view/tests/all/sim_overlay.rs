@@ -23,7 +23,7 @@ fn wires_probe_their_net_and_pin_bodies_their_current() {
     let view = doc.view(view::ViewId::Sheet(w.sheet));
     let mid = Point::new((w.a.x + w.b.x) / 2, (w.a.y + w.b.y) / 2);
     let net = conn.net_of(ObjectId::Wire(w.id)).unwrap().name.clone();
-    assert_eq!(probe_target(p, conn, view, mid, tol), Some(ProbeTarget::Net { net, at: ObjectId::Wire(w.id) }));
+    assert_eq!(probe_target(p, conn, view, mid, tol, false), Some(ProbeTarget::Net { net, at: ObjectId::Wire(w.id) }));
 
     // The middle of a pin: the current into it; its end is not the pin.
     let r1 = symbol(&doc, "R1");
@@ -32,11 +32,28 @@ fn wires_probe_their_net_and_pin_bodies_their_current() {
     let t = r1.transform();
     let (a, b) = (t.point(pin.pos), t.point(pin.inner_end()));
     let middle = Point::new((a.x + b.x) / 2, (a.y + b.y) / 2);
-    let target = probe_target(p, conn, view, middle, tol).unwrap();
+    let target = probe_target(p, conn, view, middle, tol, false).unwrap();
     assert_eq!(target, ProbeTarget::Pin { symbol: r1.id, pin: pin.id });
     assert_eq!(target.describe(p), format!("Current into R1 pin {}", pin.key()));
-    assert!(!matches!(probe_target(p, conn, view, a, tol), Some(ProbeTarget::Pin { .. })));
+    assert!(!matches!(probe_target(p, conn, view, a, tol, false), Some(ProbeTarget::Pin { .. })));
     assert_eq!(pin_positions(p, r1.id).iter().find(|q| q.0 == pin.id).unwrap().2, a);
+
+    // Alt: the part under the pointer, its power; nothing off the parts.
+    let part = probe_target(p, conn, view, middle, tol, true).unwrap();
+    assert_eq!(part, ProbeTarget::Part { component: r1.component });
+    assert_eq!(part.describe(p), "Power of R1");
+    assert_eq!(part.probe(), Probe::Power { component: r1.component });
+    assert_eq!(probe_target(p, conn, view, Point::mm(-500.0, -500.0), tol, true), None);
+}
+
+#[test]
+fn a_differential_target_names_both_nets() {
+    let at = ObjectId::Wire(Id::new());
+    let t = ProbeTarget::Diff { net: "OUT".into(), at, reference: "IN".into(), ref_at: at };
+    let p = demo_project();
+    assert_eq!(t.describe(&p), "Voltage of OUT to IN");
+    let Probe::Voltage { net, reference: Some(r), .. } = t.probe() else { panic!() };
+    assert_eq!((net.as_str(), r.net.as_str()), ("OUT", "IN"));
 }
 
 #[test]
@@ -54,6 +71,7 @@ fn the_overlay_draws_on_the_sheets_and_clears() {
     doc.set_sim_overlay(SimOverlay {
         nets: vec![(net.clone(), render::Color::rgb(255, 0, 0))],
         voltages: vec![(net, "4.2 V".into())],
+        parts: doc.project().schematic.components.iter().map(|c| (c.id, render::Color::rgb(0, 0, 255))).collect(),
         ..Default::default()
     });
     assert!(count(&doc) > before);

@@ -107,9 +107,10 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
         SchTool::Select => {}
         SchTool::Probe => hint(
             ui,
-            "Click a wire, label or junction to plot its net's voltage, the body of a pin to plot the \
-             current into it. Clicking a probed one removes it. Probes go to the analysis the Simulation \
-             panel shows if it's a sweep, else to the first transient, AC or DC sweep.",
+            "Click a wire, label or junction to plot its net's voltage, drag from one net to another for \
+             the voltage between them, click the body of a pin to plot the current into it, Alt-click a \
+             part for its power. Clicking a probed one removes it. Probes go to the analysis the \
+             Simulation panel shows if it's a sweep, else to the first transient, AC or DC sweep.",
         ),
         SchTool::Sheet => {
             let name = sch.new_sheet.as_deref().unwrap_or_default();

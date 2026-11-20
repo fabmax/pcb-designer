@@ -33,6 +33,7 @@ fn simulate(
         analysis: Some(analysis.into()),
         signals: signals.map(|s| s.iter().map(|s| s.to_string()).collect()),
         points: points.to_vec(),
+        ..Default::default()
     };
     ask(host, Request::Simulate(req))
 }
@@ -100,6 +101,9 @@ fn simulate_answers_a_sweep_by_signal() {
     assert!((s["min"].as_f64().unwrap() - 4.5).abs() < 1e-3, "{s}");
     assert!((s["average"].as_f64().unwrap() - 5.0).abs() < 1e-3, "{s}");
     assert!((s["end"].as_f64().unwrap() - 5.0).abs() < 1e-3, "{s}");
+    assert!((s["frequency"].as_f64().unwrap() - 1e3).abs() < 1.0, "{s}");
+    assert!((s["rms"].as_f64().unwrap() - (25.0f64 + 0.125).sqrt()).abs() < 1e-3, "{s}");
+    assert!((s["peak_to_peak"].as_f64().unwrap() - 1.0).abs() < 1e-3, "{s}");
     let points = s["points"].as_array().unwrap();
     assert!(points.len() <= 200 && points.len() > 50, "{}", points.len());
     // At the sine's peak; past the end, the last value.
@@ -133,6 +137,10 @@ fn simulate_refuses_unknown_signals() {
     assert!(err.contains("R1 has no simulated pin \"9\" (pins: 1, 2)"), "{err}");
     let err = simulate(&mut host, "Transient", Some(&["I(X9.1)"]), &[]).unwrap_err();
     assert!(err.contains("REFDES.PIN"), "{err}");
+    let err = simulate(&mut host, "Transient", Some(&["P(X9)"]), &[]).unwrap_err();
+    assert!(err.contains("no simulated part"), "{err}");
+    let err = simulate(&mut host, "Transient", Some(&["V(+5V,NOPE)"]), &[]).unwrap_err();
+    assert!(err.contains("no net \"NOPE\""), "{err}");
     let err = simulate(&mut host, "Gone", None, &[]).unwrap_err();
     assert!(err.contains("no analysis"), "{err}");
 }
@@ -182,4 +190,12 @@ fn simulate_with_ngspice() {
     let labels: Vec<&str> = v["signals"].as_array().unwrap().iter().map(|s| s["signal"].as_str().unwrap()).collect();
     assert_eq!(labels, ["V(+5V)", "V(+5V) phase", "V(Net-(D1-2))", "V(Net-(D1-2)) phase"]);
     assert_eq!(v["signals"][0]["unit"], "dB");
+    assert!(v["signals"][0]["peak"]["db"].is_number(), "{v}");
+    assert!(v["signals"][1]["phase_margin"].is_null() || v["signals"][1]["phase_margin"].is_number());
+    // A net to another, and a part's power, in a transient.
+    let v = simulate(&mut host, "Transient", Some(&["V(+5V,GND)", "P(R1)"]), &[]).unwrap();
+    let labels: Vec<&str> = v["signals"].as_array().unwrap().iter().map(|s| s["signal"].as_str().unwrap()).collect();
+    assert_eq!(labels, ["V(+5V,GND)", "P(R1)"], "{v}");
+    assert_eq!(v["signals"][1]["unit"], "W");
+    assert!(v["signals"][1]["average"].as_f64().unwrap() > 1e-3, "{v}");
 }
