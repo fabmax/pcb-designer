@@ -311,10 +311,18 @@ fn a_dragged_segment_pushes_tracks() {
     let wall = ids(&mut ed, &[Point::mm(0.0, 0.0), Point::mm(20.0, 0.0)]);
     // A dog-leg: its middle segment is dragged down onto the wall.
     let leg = ids(&mut ed, &[Point::mm(0.0, 3.0), Point::mm(8.0, 3.0), Point::mm(12.0, 3.0), Point::mm(20.0, 3.0)]);
-    let s = drag(&mut ed, vec![ObjectId::Track(leg[1])], Point::mm(0.0, -2.8)).unwrap();
+    let s = drag(&mut ed, vec![ObjectId::Track(leg[1])], Point::mm(0.0, -3.0)).unwrap();
     assert_eq!(s.lines.len(), 1, "{s:?}");
     assert_eq!(s.lines[0].line.tracks, wall);
     no_clashes(&ed);
+    // Square corners (where it ran into the hull's sides) are cut at 45°.
+    let path = &s.lines[0].path;
+    octilinear(path);
+    for w in path.windows(3) {
+        let (u, v) = (w[1] - w[0], w[2] - w[1]);
+        let dot = u.x as f64 * v.x as f64 + u.y as f64 * v.y as f64;
+        assert!(dot > 0.0, "turns by 45° only: {path:?}");
+    }
 }
 
 #[test]
@@ -335,4 +343,22 @@ fn a_dragged_via_pushes_tracks_and_a_locked_via_stops_it() {
     ed.execute(Command::Update { objects: vec![Object::Via(o)] }).unwrap();
     let v = via(&mut ed, Point::mm(10.0, 3.0));
     assert!(drag(&mut ed, vec![ObjectId::Via(v)], Point::mm(0.0, -2.6)).is_err());
+}
+
+/// `cargo test --release -p editor-core --test all deep_cascade -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn deep_cascade_timing() {
+    for n in [10, 20, 40] {
+        let mut ed = Editor::new(Project::new("T"));
+        for i in 0..n {
+            let y = 0.46 * i as f64;
+            ids(&mut ed, &[Point::mm(0.0, y), Point::mm(40.0, y)]);
+        }
+        let copper = conn(ed.project());
+        let _ = copper.query(Rect::around(Point::ZERO, 0)).count(); // build the index
+        let t = std::time::Instant::now();
+        let r = shove(ed.project(), &copper, L, W, None, &[Point::mm(20.0, -5.0), Point::mm(20.0, 0.5)]);
+        eprintln!("{n} lines: {:?}, reached {}, pushed {}", t.elapsed(), r.reached, r.shoved.lines.len());
+    }
 }

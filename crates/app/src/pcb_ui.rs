@@ -93,7 +93,15 @@ pub fn toolbar(
                 .on_hover_text(tip.join("\n"));
         }
     });
+    // Where the router stops short, what's in the way.
+    let short = pcb.stopped_short().and_then(|r| r.blocked.as_ref());
     match pcb.clash() {
+        None if let Some(c) = short => toolbar::hint_in(
+            ui,
+            canvas,
+            &format!("Stops short: {} · click adds up to there · Shift: straight", c.message),
+            crate::theme::warn(),
+        ),
         Some(c) if !pcb.allows_violations() => toolbar::hint_in(
             ui,
             canvas,

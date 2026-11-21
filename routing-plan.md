@@ -223,18 +223,21 @@ the editor), so MCP's `move` doesn't shove; any drag of only tracks and vias sho
 (every track and via the move changed is the head), not just single segments and vias;
 a drag that can't push stops at its last good position.
 
-### R5: Polish
+### R5: Polish (done)
 
-The optimizer's corner shortcuts (pushed lines keep the hull's shape: vertical walls and
-chamfers round the head, never smoothed back), arc corner styles while shoving, the
-status text naming what blocked the route, performance on deep cascades (each line is
-re-pushed ~5× today: push a pusher's hits in one walk, or order the stack by distance),
-an index of pushed lines.
+Pushed lines get their square corners cut at 45° (PLAN.md, "Shove"); the hint bar says
+what a route stopping short ran into. Deep cascades measured ~7.5 ms for 40 lines with
+~4 pops per line, so the stack order and an index of pushed lines aren't needed yet
+(Later). Arc corner styles while shoving moved to Later.
 
 ## Later
 
 - Diff pairs (routing and shoving them as pairs), length tuning (meanders).
-- Shoving arc tracks.
+- Shoving arc tracks, and the Route tool's arc corner styles while shoving or walking
+  round (the router lays straight segments).
+- Smoothing beyond square corners (KiCad's optimizer: merging segments, shortcuts
+  between any two corners).
+- An index of pushed lines (each check scans them all), if cascades get deeper.
 - MCP `move` shoving like a drag (a `shove` flag running `router::shove_moved`).
 - "Hug and push" / walking around in shove mode when a shove fails.
 - Shoving footprints' copper (moving parts out of the way), KiCad's "smart pads"

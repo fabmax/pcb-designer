@@ -148,6 +148,11 @@ fn run(
 ) -> Result<Shoved, Blocked> {
     let mut e = Engine::new(project, copper, head, deadline);
     e.run()?;
+    let mut pushed: Vec<usize> = e.moved.keys().copied().collect();
+    pushed.sort_unstable();
+    for l in pushed {
+        e.smooth(l);
+    }
     let mut lines: Vec<Pushed> = e
         .moved
         .iter()
@@ -593,6 +598,62 @@ impl<'a> Engine<'a> {
             dragged.push(l);
         }
         Ok(dragged)
+    }
+
+    /// Line `l` with its square corners cut at 45°, as far as it stays clear: walking
+    /// round a hull leaves walls along its sides where the line ran into them.
+    fn smooth(&mut self, l: usize) {
+        let mut path = self.path(l);
+        let mut i = 1;
+        while i + 1 < path.len() {
+            match self.chamfer(l, &path, i) {
+                Some(cut) => {
+                    path = walk::simplify(cut);
+                    i = 1; // corners shifted
+                }
+                None => i += 1,
+            }
+        }
+        if path != self.path(l) {
+            self.set_path(l, path);
+        }
+    }
+
+    /// `path` with its corner `i` cut at 45° if it turns by 90° (the longest cut of the
+    /// whole shorter side, half or a quarter of it that is clear).
+    fn chamfer(&mut self, l: usize, path: &[Point], i: usize) -> Option<Vec<Point>> {
+        let (a, b, c) = (path[i - 1], path[i], path[i + 1]);
+        let dir = |p: Point, q: Point| Point::new((q.x - p.x).signum(), (q.y - p.y).signum());
+        let steps = |p: Point, q: Point| (q.x - p.x).abs().max((q.y - p.y).abs());
+        let (u, v) = (dir(a, b), dir(b, c));
+        if u.x * v.x + u.y * v.y != 0 {
+            return None; // not a square corner
+        }
+        let line = self.lines[l].clone();
+        let (bit, r) = (layer_bit(line.layer), line.width / 2);
+        let most = steps(a, b).min(steps(b, c));
+        for k in [most, most / 2, most / 4] {
+            if k < SLACK {
+                break;
+            }
+            let (p, q) = (b - Point::new(u.x * k, u.y * k), b + Point::new(v.x * k, v.y * k));
+            let mut cut = path[..i].to_vec();
+            cut.extend([p, q]);
+            cut.extend_from_slice(&path[i + 1..]);
+            // Only the new copper needs checking: from the corner before to the one after.
+            let new = [a, p, q, c];
+            let shapes: Shapes = new.windows(2).map(|w| (Geo::Capsule { a: w[0], b: w[1], r }, bit)).collect();
+            let probes: Vec<Probe> = new
+                .windows(2)
+                .map(|w| Probe::Track { layer: line.layer, a: w[0], b: w[1], mid: None, width: line.width })
+                .collect();
+            let clear =
+                self.hits(&shapes, self.clearances.of(line.net), line.net, Pusher::Line(l)).is_ok_and(|h| h.is_empty());
+            if clear && self.board_limits(&probes).is_ok() {
+                return Some(cut);
+            }
+        }
+        None
     }
 
     /// Keepouts and the board edge.

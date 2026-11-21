@@ -337,8 +337,12 @@ the current design of each area with the gotchas a change needs to know, the pla
   the last offset that worked and keeps the message (the drag stops at the obstacle). Limits: 1000
   pops and `SHOVE_TIME` (40 ms) for the whole call; on failure a binary search (20 µm)
   finds the longest head that pushes clear. Lines keep their end points. Pure: every
-  step starts from the board as it is, so pushed tracks spring back. Costs: a push
-  ~0.1 ms; 40 nested lines ~10–28 ms (each re-pushed ~5×). `Command::SetTrackPaths`
+  step starts from the board as it is, so pushed tracks spring back. Once settled, each
+  pushed line is smoothed (`smooth`): every 90° corner (where it ran into a hull's
+  side) is cut at 45°, the whole shorter side, half or a quarter of it, if the cut is
+  clear of everything (`hits` with no hits, the board limits). Costs (release): a push
+  ~0.1 ms; a cascade through 40 lines at minimum pitch ~7.5 ms (~4 pops per line;
+  `deep_cascade_timing`, an ignored test). `Command::SetTrackPaths`
   lays a chain along a new path (ids kept in order, extra segments copy the first
   track, left-overs deleted). `locked` on `Track` / `Via` (Properties, KiCad import;
   not serialized when false).
