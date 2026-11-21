@@ -1206,7 +1206,9 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   on the right; changes apply at once and come back to the app as `Changes`. Search:
   each row is in `ENTRIES` (page, label, keywords; `Rows::row` looks its keywords up by
   label, so a new row needs an entry), keymap rows match by action name and shortcut
-  text. `--show settings:PAGE` opens it (screenshots).
+  text. `--show settings:PAGE` opens it (screenshots). `MIN_SIZE` is wide enough for
+  the widest page (Appearance's UI scale buttons): egui grows a window to its content, so
+  a narrower minimum made switching pages widen the window. A wider page needs it raised.
 - **Remembered tool settings** (`view::tool_memory`): `SchSettings`, `PcbSettings`,
   `tools::Settings` and `ArrayForm` serialize their style fields; transient ones
   (rotation, the next name, the routing layer, the zone net) are `#[serde(skip)]` and come
@@ -1220,6 +1222,9 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   colours per theme, global, read through `board_layer_color` (so board, footprint
   editor, Gerber viewer and MCP renders in the app follow); a change calls
   `PcbApp::restyle`. Stored as hex strings in the settings. Schematic colours are fixed.
+  Edited with `color_edit` (app): a swatch with our own picker popup (egui's has a copy
+  button whose glyph our fonts lack) and the hex code, editable (pasted codes apply while
+  typing, `#` optional).
 - **Window** size, position, maximized and fullscreen are tracked every frame
   (`track_window`) and saved in `on_exit` (eframe persistence stays off). Scripted and
   screenshot runs keep 1600×1000 and never write settings or workspaces. A position on a

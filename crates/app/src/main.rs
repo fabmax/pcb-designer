@@ -43,6 +43,7 @@ mod array_form;
 mod canvas;
 mod checks_ui;
 mod clipboard;
+mod color_edit;
 mod dock;
 mod fields;
 mod icons;

@@ -8,7 +8,6 @@
 
 use egui::text::LayoutJob;
 use egui::{Color32, FontId, Key, RichText, TextFormat, Ui};
-use render::Color;
 use serde::{Deserialize, Serialize};
 use view::style::{LayerColor, Theme};
 
@@ -18,6 +17,10 @@ use crate::theme;
 use crate::units::{self, Unit};
 
 const TITLE: &str = "Settings";
+
+/// The window's smallest size. Wide enough for every page (the widest is Appearance with
+/// its UI scale buttons), so switching pages never widens the window by itself.
+const MIN_SIZE: [f32; 2] = [900.0, 420.0];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -257,7 +260,7 @@ impl SettingsWindow {
     ) -> Changes {
         let mut changes = Changes::default();
         let mut open = self.open;
-        let size = settings.settings_window.size.unwrap_or([860.0, 600.0]);
+        let size = settings.settings_window.size.unwrap_or([MIN_SIZE[0], 600.0]);
         let keymap_rows: Vec<(String, String)> = Action::ALL
             .iter()
             .map(|&a| {
@@ -265,7 +268,7 @@ impl SettingsWindow {
                 (a.label().to_string(), keys.join(" "))
             })
             .collect();
-        theme::window_sized(ctx, TITLE, &mut open, size, [640.0, 420.0], |ui| {
+        theme::window_sized(ctx, TITLE, &mut open, size, MIN_SIZE, |ui| {
             if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, Key::F)) {
                 self.focus_search = true;
             }
@@ -403,17 +406,7 @@ impl SettingsWindow {
             let mut color = view::style::layer_color(c);
             let changed = color != default;
             rows.row_with(ui, c.label(), COLOR_KEYWORDS, None, |ui| {
-                let [r, g, b, a] = color.0;
-                let mut c32 = Color32::from_rgba_unmultiplied(r, g, b, a);
-                let picker = egui::widgets::color_picker::color_edit_button_srgba(
-                    ui,
-                    &mut c32,
-                    egui::widgets::color_picker::Alpha::OnlyBlend,
-                );
-                if picker.changed() {
-                    color = Color(c32.to_srgba_unmultiplied());
-                }
-                ui.label(RichText::new(view::style::color_hex(color)).monospace().color(theme::text_dim()));
+                crate::color_edit::color_edit(ui, &mut color.0);
                 if changed && ui.small_button("Reset").on_hover_text("Back to the theme's colour").clicked() {
                     color = default;
                 }
