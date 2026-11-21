@@ -427,6 +427,7 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
         }
     }
     stackup(ui, doc, message);
+    assembly_preset(ui, doc, message);
     net_classes(ui, doc, message);
     crate::checks_ui::drc_severities(ui, doc, message);
     // The rules and severities; layers and net classes are the design's.
@@ -446,6 +447,35 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
             }
         }
         doc.close_group();
+    }
+}
+
+/// The assembly service the BOM and position files are laid out for.
+fn assembly_preset(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<String>) {
+    fields::section(
+        ui,
+        "Assembly files",
+        Some(
+            "The column layout of the bill of materials and the position file (pick and place) the \
+             export writes. JLCPCB's BOM takes the part number from an LCSC property, PCBWay's from MPN \
+             and Manufacturer. Board parts and components marked \"Do not populate\" are left out.",
+        ),
+    );
+    let current = doc.project().board.assembly;
+    let mut command = None;
+    grid(ui, "assembly_preset", |ui| {
+        label(ui, "Layout for");
+        let options: Vec<(AssemblyPreset, String)> =
+            AssemblyPreset::ALL.iter().map(|p| (*p, p.label().to_string())).collect();
+        if let Some(preset) = fields::combo(ui, "assembly_preset", &current, &options) {
+            command = Some(Command::SetAssemblyPreset { preset });
+        }
+        ui.end_row();
+    });
+    if let Some(cmd) = command
+        && let Err(e) = doc.execute(cmd)
+    {
+        *message = Some(e.to_string());
     }
 }
 

@@ -8,13 +8,15 @@
 //!                     [--screenshot FILE.png [--frames N] [--select all|REFDES]]
 //!                     [--panel NAME]... [--script STEPS]
 //!        pcb-designer --mcp-stdio [PROJECT_DIR | --demo]
-//!        pcb-designer export-gerber PROJECT_DIR
+//!        pcb-designer export-gerber PROJECT_DIR [--assembly generic|jlcpcb|pcbway]
 //!        pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR
 //!        pcb-designer simulate PROJECT_DIR [--analysis NAME] [--csv FILE] [--netlist]
 //!
 //! `export-gerber` writes the Gerber, drill and job files into `PROJECT_DIR/output/gerber/`
 //! and the assembly files (BOM, positions) into `PROJECT_DIR/output/assembly/` without a
-//! window, listing design rule violations as warnings.
+//! window, listing design rule violations as warnings. `--assembly` lays the assembly
+//! files out for a service for this export (the project's preset otherwise; it isn't
+//! saved).
 //!
 //! `import-kicad` imports a KiCad project (schematic and board) and saves it as a project
 //! folder, printing the import report. A `.kicad_pro` given to the app opens its import
@@ -108,11 +110,20 @@ fn main() -> eframe::Result {
     let mut stdio = false;
     let mut args = std::env::args().skip(1);
     if std::env::args().nth(1).as_deref() == Some("export-gerber") {
-        let Some(dir) = std::env::args().nth(2) else {
-            eprintln!("usage: pcb-designer export-gerber PROJECT_DIR");
+        let usage = || {
+            eprintln!("usage: pcb-designer export-gerber PROJECT_DIR [--assembly generic|jlcpcb|pcbway]");
             std::process::exit(2);
         };
-        if let Err(e) = export_gerber(dir.as_ref()) {
+        let rest: Vec<String> = std::env::args().skip(2).collect();
+        let (dir, preset) = match rest.as_slice() {
+            [dir] => (dir, None),
+            [dir, flag, name] if flag == "--assembly" => match model::AssemblyPreset::parse(name) {
+                Some(p) => (dir, Some(p)),
+                None => usage(),
+            },
+            _ => usage(),
+        };
+        if let Err(e) = export_gerber(dir.as_ref(), preset) {
             eprintln!("pcb-designer: {e}");
             std::process::exit(1);
         }
@@ -228,8 +239,11 @@ fn main() -> eframe::Result {
 }
 
 /// `export-gerber`: Gerber and drill files of a project, without a window.
-fn export_gerber(dir: &std::path::Path) -> Result<(), String> {
+fn export_gerber(dir: &std::path::Path, preset: Option<model::AssemblyPreset>) -> Result<(), String> {
     let mut doc = view::Document::open(dir).map_err(|e| format!("cannot open {}: {e}", dir.display()))?;
+    if let Some(preset) = preset {
+        doc.execute(editor_core::Command::SetAssemblyPreset { preset }).map_err(|e| e.to_string())?;
+    }
     let export = doc.export_gerber().map_err(|e| e.to_string())?;
     for v in &export.warnings {
         eprintln!("warning: {}: {}", v.kind.label(), v.message);

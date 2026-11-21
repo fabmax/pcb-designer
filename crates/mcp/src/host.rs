@@ -69,7 +69,11 @@ pub enum Request {
         b: editor_core::clearance::Feature,
     },
     /// Gerber and drill files into the project folder.
-    ExportGerber,
+    ExportGerber {
+        /// Lay the BOM and position files out for this service (and keep it as the
+        /// board's preset).
+        assembly: Option<model::AssemblyPreset>,
+    },
     /// Commands as JSON: `sheet` and `parent` may name a sheet (see [`resolve_sheets`]).
     Execute {
         commands: Vec<Value>,
@@ -204,7 +208,7 @@ impl Request {
             Request::Routing => "read routing state".into(),
             Request::Drc { .. } => "run the design rule check".into(),
             Request::MeasureClearance { .. } => "measure a clearance".into(),
-            Request::ExportGerber => "export Gerber files".into(),
+            Request::ExportGerber { .. } => "export Gerber files".into(),
             Request::Execute { commands } => match &commands[..] {
                 [one] => one.get("command").and_then(Value::as_str).unwrap_or("command").replace('_', " "),
                 many => format!("{} commands", many.len()),
@@ -249,6 +253,7 @@ impl Request {
                 | Request::Save { .. }
                 | Request::KicadImport(_)
                 | Request::ImportKicadProject { .. }
+                | Request::ExportGerber { assembly: Some(_) }
         ) || matches!(self, Request::Library(r) if r.modifies())
     }
 }
@@ -601,7 +606,12 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
                 "b_name": editor_core::clearance::name(project, copper, b),
             })
         }
-        Request::ExportGerber => {
+        Request::ExportGerber { assembly } => {
+            if let Some(preset) = assembly
+                && preset != host.document().project().board.assembly
+            {
+                host.document_mut().execute(Command::SetAssemblyPreset { preset }).map_err(|e| e.to_string())?;
+            }
             let export = host.document_mut().export_gerber().map_err(|e| e.to_string())?;
             let mut by_kind: std::collections::BTreeMap<&str, usize> = Default::default();
             for x in &export.warnings {
@@ -612,6 +622,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
                 "zip": export.dir.parent().map(|d| d.join(&export.manifest.zip)),
                 "files": export.manifest.files.iter().map(|f| json!({"name": f.name, "label": f.label})).collect::<Vec<_>>(),
                 "assembly_dir": export.dir.parent().map(|d| d.join("assembly")),
+                "assembly_preset": host.document().project().board.assembly.label(),
                 "assembly": export.manifest.assembly.iter().map(|f| json!({"name": f.name, "label": f.label})).collect::<Vec<_>>(),
                 "drc_violations": export.warnings.len(),
                 "drc_by_kind": by_kind,

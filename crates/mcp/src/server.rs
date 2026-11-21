@@ -252,6 +252,14 @@ pub struct ExcludeParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct ExportParams {
+    /// The assembly service the BOM and position files are for: "generic", "jlcpcb" or
+    /// "pcbway". Omitted: the board's preset (Board setup).
+    #[serde(default)]
+    pub assembly: Option<model::AssemblyPreset>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct ClearanceParams {
     pub a: editor_core::clearance::Feature,
     pub b: editor_core::clearance::Feature,
@@ -646,11 +654,13 @@ impl PcbTools {
         attributes), Excellon drill files (plated, non-plated) and a Gerber job file \
         (.gbrjob) into <project folder>/output/gerber/, replacing the previous export, plus a \
         zip next to that folder; and for assembly a bill of materials and component positions \
-        (pick and place, CSV) into <project folder>/output/assembly/. Zones are refilled and the design rules checked first; violations are \
-        reported but don't stop the export. Fails without a board outline or when the project \
-        was never saved.")]
-    async fn export_gerber(&self) -> Result<CallToolResult, ErrorData> {
-        self.call(Request::ExportGerber).await
+        (pick and place, CSV) into <project folder>/output/assembly/, laid out for the board's \
+        assembly preset (generic, jlcpcb or pcbway; `assembly` sets it, undoably, and keeps it). \
+        Components marked dnp are left out of both. Zones are refilled and the design rules \
+        checked first; violations are reported but don't stop the export. Fails without a board \
+        outline or when the project was never saved.")]
+    async fn export_gerber(&self, Parameters(p): Parameters<ExportParams>) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::ExportGerber { assembly: p.assembly }).await
     }
 
     #[tool(description = "Execute editing commands (the same ones the GUI uses) as a single undo \

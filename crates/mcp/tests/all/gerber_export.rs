@@ -17,13 +17,13 @@ fn ask(host: &mut HeadlessHost, request: Request) -> Result<Value, String> {
 #[test]
 fn exports_into_the_project_folder() {
     let mut host = HeadlessHost::new(Document::new(view::demo::demo_project()));
-    let err = ask(&mut host, Request::ExportGerber).unwrap_err();
+    let err = ask(&mut host, Request::ExportGerber { assembly: None }).unwrap_err();
     assert!(err.contains("save the project"), "{err}");
 
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("demo.pcbproj");
     host.doc.save_as(&dir).unwrap();
-    let v = ask(&mut host, Request::ExportGerber).unwrap();
+    let v = ask(&mut host, Request::ExportGerber { assembly: None }).unwrap();
     let files = v["files"].as_array().unwrap();
     assert!(files.iter().any(|f| f["label"] == "Top Copper"), "{v}");
     for f in files {
@@ -37,6 +37,14 @@ fn exports_into_the_project_folder() {
         assert!(dir.join("output/assembly").join(f["name"].as_str().unwrap()).is_file());
     }
     assert!(v["drc_violations"].as_u64().unwrap() > 0, "the demo has unrouted connections");
+    assert_eq!(v["assembly_preset"], "Generic");
+    // A preset given is kept (one undo step).
+    let v = ask(&mut host, Request::ExportGerber { assembly: Some(model::AssemblyPreset::Jlcpcb) }).unwrap();
+    assert_eq!(v["assembly_preset"], "JLCPCB");
+    assert_eq!(host.doc.project().board.assembly, model::AssemblyPreset::Jlcpcb);
+    let bom = v["assembly"].as_array().unwrap().iter().find(|f| f["label"] == "Bill of Materials").unwrap();
+    let text = std::fs::read_to_string(dir.join("output/assembly").join(bom["name"].as_str().unwrap())).unwrap();
+    assert!(text.starts_with("Comment,Designator,Footprint,LCSC Part #"), "{text}");
 
     // The export, read back and rendered (all files, or some).
     for layers in [None, Some(vec!["Top Copper".to_string(), "Plated Drill".into()])] {

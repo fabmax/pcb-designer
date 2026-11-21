@@ -530,3 +530,39 @@ fn dnp_components_are_left_out_of_the_assembly_files() {
             .any(|f| f.component == doc.project().schematic.component_by_refdes("R1").unwrap().id)
     );
 }
+
+/// The board's assembly preset lays the BOM and position files out for a service, with
+/// part numbers from the components' properties.
+#[test]
+fn assembly_presets_lay_out_the_columns() {
+    use model::AssemblyPreset;
+    let mut doc = Document::new(view::demo::demo_project());
+    let mut r1 = doc.project().schematic.component_by_refdes("R1").unwrap().clone();
+    r1.properties.insert("lcsc".into(), "C23138".into());
+    r1.properties.insert("MPN".into(), "RC0603FR-07330RL".into());
+    r1.properties.insert("Manufacturer".into(), "Yageo".into());
+    doc.execute(Command::Update { objects: vec![Object::Component(r1)] }).unwrap();
+    let mut files = |preset| {
+        doc.execute(Command::SetAssemblyPreset { preset }).unwrap();
+        let files = gerber::generate_assembly(doc.project());
+        let get = |kind| files.iter().find(|f| f.kind == kind).unwrap().content.clone();
+        (get(FileKind::Bom), get(FileKind::Positions))
+    };
+
+    let (bom, pos) = files(AssemblyPreset::Jlcpcb);
+    assert!(bom.starts_with("Comment,Designator,Footprint,LCSC Part #\r\n"), "{bom}");
+    assert!(bom.lines().any(|l| l.starts_with("330,R1,") && l.ends_with(",C23138")), "{bom}");
+    assert!(pos.starts_with("Designator,Mid X,Mid Y,Layer,Rotation\r\n"), "{pos}");
+    let r1 = pos.lines().find(|l| l.starts_with("R1,")).unwrap();
+    assert_eq!(r1.split(',').count(), 5);
+
+    let (bom, pos) = files(AssemblyPreset::Pcbway);
+    assert!(bom.starts_with("Item #,Designator,Qty,Manufacturer,Mfg Part #,"), "{bom}");
+    let line = bom.lines().find(|l| l.contains(",R1,")).unwrap();
+    assert!(line.contains(",Yageo,RC0603FR-07330RL,330,") && line.contains(",SMD,"), "{line}");
+    assert!(bom.lines().any(|l| l.contains(",THT,")), "the header is through-hole\n{bom}");
+    assert!(pos.starts_with("Designator,Footprint,Mid X,Mid Y,Layer,Rotation,Comment\r\n"), "{pos}");
+
+    let (bom, _) = files(AssemblyPreset::Generic);
+    assert!(bom.starts_with("Designator,Value,Footprint,Quantity,"), "{bom}");
+}

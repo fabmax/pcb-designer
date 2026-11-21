@@ -563,6 +563,34 @@ impl Stackup {
     }
 }
 
+/// Which assembly service the BOM and position files are laid out for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AssemblyPreset {
+    /// Designator, value, footprint, quantity and a column per property.
+    #[default]
+    Generic,
+    Jlcpcb,
+    Pcbway,
+}
+
+impl AssemblyPreset {
+    pub const ALL: [AssemblyPreset; 3] = [AssemblyPreset::Generic, AssemblyPreset::Jlcpcb, AssemblyPreset::Pcbway];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            AssemblyPreset::Generic => "Generic",
+            AssemblyPreset::Jlcpcb => "JLCPCB",
+            AssemblyPreset::Pcbway => "PCBWay",
+        }
+    }
+
+    /// By name, any case: "jlcpcb", "PCBWay", "generic".
+    pub fn parse(name: &str) -> Option<AssemblyPreset> {
+        AssemblyPreset::ALL.into_iter().find(|p| p.label().eq_ignore_ascii_case(name.trim()))
+    }
+}
+
 /// Surface finish of the exposed copper.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -865,6 +893,9 @@ pub struct Board {
     /// What the fab builds it from: thickness, copper, finish, colours (the job file).
     #[serde(default)]
     pub stackup: Stackup,
+    /// The column layout of the BOM and position files.
+    #[serde(default)]
+    pub assembly: AssemblyPreset,
 }
 
 impl Default for Board {
@@ -916,6 +947,7 @@ impl Board {
             texts: Store::default(),
             drc: DrcSettings::default(),
             stackup: Stackup::default(),
+            assembly: AssemblyPreset::default(),
         }
     }
 

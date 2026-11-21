@@ -161,13 +161,13 @@ pub fn generate_assembly(project: &Project) -> Vec<OutputFile> {
             name: format!("{stem}-bom.csv"),
             kind: FileKind::Bom,
             label: "Bill of Materials".into(),
-            content: assembly::bom(project),
+            content: assembly::bom(project, project.board.assembly),
         },
         OutputFile {
             name: format!("{stem}-positions.csv"),
             kind: FileKind::Positions,
             label: "Component Positions".into(),
-            content: assembly::positions(project),
+            content: assembly::positions(project, project.board.assembly),
         },
     ]
 }

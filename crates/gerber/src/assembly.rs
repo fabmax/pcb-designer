@@ -14,10 +14,37 @@ use model::*;
 struct Placed<'a> {
     refdes: &'a str,
     value: &'a str,
-    footprint: &'a str,
+    footprint: &'a Footprint,
     properties: &'a BTreeMap<String, String>,
     inst: &'a FootprintInstance,
 }
+
+impl Placed<'_> {
+    /// The first property among `keys` (any case) that's set.
+    fn property(&self, keys: &[&str]) -> String {
+        keys.iter()
+            .find_map(|k| self.properties.iter().find(|(p, v)| p.eq_ignore_ascii_case(k) && !v.trim().is_empty()))
+            .map_or(String::new(), |(_, v)| v.trim().to_string())
+    }
+
+    /// "SMD", or "THT" when any pad has a plated hole.
+    fn mount(&self) -> &'static str {
+        let tht = self.footprint.pads.iter().any(|p| matches!(p.kind, PadKind::ThroughHole { .. }));
+        if tht { "THT" } else { "SMD" }
+    }
+
+    fn side(&self) -> &'static str {
+        match self.inst.side {
+            Side::Top => "Top",
+            Side::Bottom => "Bottom",
+        }
+    }
+}
+
+/// Part number properties JLCPCB's BOM takes.
+const LCSC_KEYS: [&str; 4] = ["LCSC", "LCSC Part #", "LCSC Part", "JLCPCB Part #"];
+const MPN_KEYS: [&str; 3] = ["MPN", "Manufacturer Part Number", "Mfr Part #"];
+const MANUFACTURER_KEYS: [&str; 2] = ["Manufacturer", "Mfr"];
 
 fn placed(project: &Project) -> Vec<Placed<'_>> {
     let mut out: Vec<Placed> = project
@@ -30,8 +57,8 @@ fn placed(project: &Project) -> Vec<Placed<'_>> {
             if part.is_board_part() || c.dnp {
                 return None;
             }
-            let fp = footprint_of_instance(project, inst)?;
-            Some(Placed { refdes: &c.refdes, value: &c.value, footprint: &fp.name, properties: &c.properties, inst })
+            let footprint = footprint_of_instance(project, inst)?;
+            Some(Placed { refdes: &c.refdes, value: &c.value, footprint, properties: &c.properties, inst })
         })
         .collect();
     out.sort_by(|a, b| natural_cmp(a.refdes, b.refdes));
@@ -53,33 +80,77 @@ fn row(out: &mut String, fields: impl IntoIterator<Item = String>) {
     out.push_str("\r\n");
 }
 
-/// The bill of materials: one line per value, footprint and properties, with the
-/// designators (in natural order) and the quantity, then a column per property key used
-/// by any component (MPN, manufacturer, LCSC part number, …).
-pub fn bom(project: &Project) -> String {
+/// The bill of materials laid out for `preset`: one line per value, footprint and
+/// properties, with the designators (in natural order) and the quantity.
+/// * Generic: then a column per property key used by any component (MPN, …).
+/// * JLCPCB: `Comment, Designator, Footprint, LCSC Part #`.
+/// * PCBWay: item number, designators, quantity, manufacturer, part number, value,
+///   footprint, SMD or THT, and an empty notes column.
+pub fn bom(project: &Project, preset: AssemblyPreset) -> String {
     let placed = placed(project);
-    let keys: Vec<&String> = {
-        let mut k: Vec<&String> = placed.iter().flat_map(|p| p.properties.keys()).collect();
-        k.sort();
-        k.dedup();
-        k
-    };
     // Lines in the order of their first designator.
     let mut lines: Vec<(Vec<&str>, &Placed)> = Vec::new();
     for p in &placed {
-        let same = |q: &Placed| q.value == p.value && q.footprint == p.footprint && q.properties == p.properties;
+        let same =
+            |q: &Placed| q.value == p.value && q.footprint.name == p.footprint.name && q.properties == p.properties;
         match lines.iter_mut().find(|(_, q)| same(q)) {
             Some((refs, _)) => refs.push(p.refdes),
             None => lines.push((vec![p.refdes], p)),
         }
     }
     let mut out = String::new();
-    let head = ["Designator", "Value", "Footprint", "Quantity"].map(String::from);
-    row(&mut out, head.into_iter().chain(keys.iter().map(|k| k.to_string())));
-    for (refs, p) in &lines {
-        let props = keys.iter().map(|k| p.properties.get(*k).cloned().unwrap_or_default());
-        let fields = [refs.join(","), p.value.to_string(), p.footprint.to_string(), refs.len().to_string()];
-        row(&mut out, fields.into_iter().chain(props));
+    match preset {
+        AssemblyPreset::Generic => {
+            let keys: Vec<&String> = {
+                let mut k: Vec<&String> = placed.iter().flat_map(|p| p.properties.keys()).collect();
+                k.sort();
+                k.dedup();
+                k
+            };
+            let head = ["Designator", "Value", "Footprint", "Quantity"].map(String::from);
+            row(&mut out, head.into_iter().chain(keys.iter().map(|k| k.to_string())));
+            for (refs, p) in &lines {
+                let props = keys.iter().map(|k| p.properties.get(*k).cloned().unwrap_or_default());
+                let fields = [refs.join(","), p.value.to_string(), p.footprint.name.clone(), refs.len().to_string()];
+                row(&mut out, fields.into_iter().chain(props));
+            }
+        }
+        AssemblyPreset::Jlcpcb => {
+            row(&mut out, ["Comment", "Designator", "Footprint", "LCSC Part #"].map(String::from));
+            for (refs, p) in &lines {
+                row(&mut out, [p.value.to_string(), refs.join(","), p.footprint.name.clone(), p.property(&LCSC_KEYS)]);
+            }
+        }
+        AssemblyPreset::Pcbway => {
+            let head = [
+                "Item #",
+                "Designator",
+                "Qty",
+                "Manufacturer",
+                "Mfg Part #",
+                "Description / Value",
+                "Package/Footprint",
+                "Type",
+                "Your Instructions / Notes",
+            ];
+            row(&mut out, head.map(String::from));
+            for (i, (refs, p)) in lines.iter().enumerate() {
+                row(
+                    &mut out,
+                    [
+                        (i + 1).to_string(),
+                        refs.join(","),
+                        refs.len().to_string(),
+                        p.property(&MANUFACTURER_KEYS),
+                        p.property(&MPN_KEYS),
+                        p.value.to_string(),
+                        p.footprint.name.clone(),
+                        p.mount().to_string(),
+                        String::new(),
+                    ],
+                );
+            }
+        }
     }
     out
 }
@@ -89,30 +160,31 @@ fn mm4(v: Coord) -> String {
     format!("{:.4}", v as f64 / 1e6)
 }
 
-/// The component positions: designator, value, footprint, the footprint origin in board
+/// The component positions laid out for `preset`: the footprint origin in board
 /// coordinates (mm, as in the Gerber files), the rotation (degrees counterclockwise, as
 /// placed) and the side.
-pub fn positions(project: &Project) -> String {
+/// * Generic: `Designator, Value, Footprint, Mid X, Mid Y, Rotation, Layer`.
+/// * JLCPCB: `Designator, Mid X, Mid Y, Layer, Rotation`.
+/// * PCBWay: `Designator, Footprint, Mid X, Mid Y, Layer, Rotation, Comment` (the value).
+pub fn positions(project: &Project, preset: AssemblyPreset) -> String {
     let mut out = String::new();
-    row(&mut out, ["Designator", "Value", "Footprint", "Mid X", "Mid Y", "Rotation", "Layer"].map(String::from));
+    let head: &[&str] = match preset {
+        AssemblyPreset::Generic => &["Designator", "Value", "Footprint", "Mid X", "Mid Y", "Rotation", "Layer"],
+        AssemblyPreset::Jlcpcb => &["Designator", "Mid X", "Mid Y", "Layer", "Rotation"],
+        AssemblyPreset::Pcbway => &["Designator", "Footprint", "Mid X", "Mid Y", "Layer", "Rotation", "Comment"],
+    };
+    row(&mut out, head.iter().map(|h| h.to_string()));
     for p in placed(project) {
-        let side = match p.inst.side {
-            Side::Top => "Top",
-            Side::Bottom => "Bottom",
-        };
+        let (x, y) = (mm4(p.inst.pos.x), mm4(p.inst.pos.y));
         let rotation = format!("{:.2}", p.inst.rotation.degrees());
-        row(
-            &mut out,
-            [
-                p.refdes.to_string(),
-                p.value.to_string(),
-                p.footprint.to_string(),
-                mm4(p.inst.pos.x),
-                mm4(p.inst.pos.y),
-                rotation,
-                side.to_string(),
-            ],
-        );
+        let (refdes, value, footprint, side) =
+            (p.refdes.to_string(), p.value.to_string(), p.footprint.name.clone(), p.side().to_string());
+        let fields = match preset {
+            AssemblyPreset::Generic => vec![refdes, value, footprint, x, y, rotation, side],
+            AssemblyPreset::Jlcpcb => vec![refdes, x, y, side, rotation],
+            AssemblyPreset::Pcbway => vec![refdes, footprint, x, y, side, rotation, value],
+        };
+        row(&mut out, fields);
     }
     out
 }

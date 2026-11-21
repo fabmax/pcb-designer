@@ -362,7 +362,12 @@ the current design of each area with the gotchas a change needs to know, the pla
 - **Assembly** (`assembly.rs`): `-bom.csv` (lines grouped by value, footprint and all
   properties; designators naturally sorted and joined; a column per property key used)
   and `-positions.csv` (footprint origin in board mm as in the Gerbers, rotation as
-  placed, Top/Bottom). Board parts and "do not populate" components (`Component::dnp`,
+  placed, Top/Bottom), laid out by the board's `AssemblyPreset` (Board setup →
+  Assembly files, `Command::SetAssemblyPreset`, part of `Setup`; MCP `export_gerber
+  {assembly}` sets it undoably, the CLI's `--assembly` only for that export): Generic
+  (a column per property key), JLCPCB (LCSC number from `LCSC` / `LCSC Part #` /
+  `JLCPCB Part #`, any case) and PCBWay (`Manufacturer`, `MPN`, SMD/THT from plated
+  holes). Board parts and "do not populate" components (`Component::dnp`,
   imported from KiCad's `(dnp yes)`) are left out; DNP only touches assembly, the
   board keeps their pads. Views draw them faded (`Painter::fade` on the item's
   instances, its fields too) with a `sch_dnp` cross over the symbol body. CRLF and quoted fields, as the
@@ -1376,8 +1381,9 @@ defers.
   symbols on import and export.
 
 **Board**
-- Fabrication outputs: fab/courtyard Gerbers, Protel file extensions, BOM and position
-  column presets per assembly service, dielectric layers and impedance in the stack-up,
+- Fabrication outputs: fab/courtyard Gerbers, Protel file extensions, JLCPCB's rotation
+  offsets (their library turns some packages differently: a per-part offset in the
+  position file), more assembly services, dielectric layers and impedance in the stack-up,
   assembly variants (several fitted/not-fitted sets per board; "do not populate" is one
   flag today), IPC-D-356
   netlist,

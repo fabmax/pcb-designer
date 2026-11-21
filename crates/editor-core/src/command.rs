@@ -214,6 +214,10 @@ pub enum Command {
     SetStackup {
         stackup: Stackup,
     },
+    /// Lay the BOM and position files out for an assembly service.
+    SetAssemblyPreset {
+        preset: AssemblyPreset,
+    },
     /// Replace the electrical rules check's settings (severities, pin conflict matrix,
     /// exclusions).
     SetErcSettings {
@@ -355,6 +359,7 @@ impl Command {
             Command::SetDesignRules { .. } => "Edit design rules".into(),
             Command::SetErcSettings { .. } => "Edit electrical rules check settings".into(),
             Command::SetStackup { .. } => "Edit board stack-up".into(),
+            Command::SetAssemblyPreset { .. } => "Change assembly files preset".into(),
             Command::SetDrcSettings { .. } => "Edit design rules check settings".into(),
             Command::SetSimulation { .. } => "Edit simulation setup".into(),
             Command::SetTitleBlock { .. } => "Edit title block".into(),
@@ -620,6 +625,12 @@ impl Command {
                 }
                 let mut setup = Setup::of(tx.project());
                 setup.stackup = stackup;
+                tx.set_setup(setup);
+                Ok(())
+            }
+            Command::SetAssemblyPreset { preset } => {
+                let mut setup = Setup::of(tx.project());
+                setup.assembly = preset;
                 tx.set_setup(setup);
                 Ok(())
             }

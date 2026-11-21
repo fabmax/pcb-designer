@@ -4,7 +4,8 @@
 use std::path::PathBuf;
 
 use model::{
-    BoardLayer, DesignRules, DrcSettings, ErcSettings, Object, ObjectId, Project, Sheet, SimDevice, Simulation, Stackup,
+    AssemblyPreset, BoardLayer, DesignRules, DrcSettings, ErcSettings, Object, ObjectId, Project, Sheet, SimDevice,
+    Simulation, Stackup,
 };
 
 use crate::CommandError;
@@ -56,6 +57,7 @@ pub struct Setup {
     pub drc: DrcSettings,
     pub simulation: Simulation,
     pub stackup: Stackup,
+    pub assembly: AssemblyPreset,
 }
 
 impl Setup {
@@ -67,6 +69,7 @@ impl Setup {
             drc: project.board.drc.clone(),
             simulation: project.schematic.simulation.clone(),
             stackup: project.board.stackup.clone(),
+            assembly: project.board.assembly,
         }
     }
 
@@ -77,6 +80,7 @@ impl Setup {
         project.board.drc = self.drc.clone();
         project.schematic.simulation = self.simulation.clone();
         project.board.stackup = self.stackup.clone();
+        project.board.assembly = self.assembly;
     }
 }
 

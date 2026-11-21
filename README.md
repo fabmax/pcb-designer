@@ -23,11 +23,16 @@ value, footprint and properties such as an MPN) and component positions
 (`Demo-positions.csv`: board mm, rotation, side) into `output/assembly/`; board parts
 (mounting holes, logos) are left out, and so are components marked **Do not populate**
 in Properties (their pads stay on the board; the schematic crosses them out and both
-editors draw them faded).
+editors draw them faded). Board setup → Assembly files lays both out for an assembly
+service: **Generic** (a column per property), **JLCPCB** (`Comment, Designator,
+Footprint, LCSC Part #`, the number from an `LCSC` property; positions `Designator, Mid
+X, Mid Y, Layer, Rotation`) or **PCBWay** (manufacturer and part number from
+`Manufacturer` and `MPN`, SMD or THT; positions with the value as comment).
 Zones are refilled and the design rules checked first; violations are reported but don't
 stop the export. Solder mask openings and paste come from the pads (Board setup: mask
 expansion, paste margin). The job file carries the board's stack-up (Board setup →
-Stack-up: thickness, copper in µm or oz, surface finish, mask and silkscreen colours). Without a window: `pcb-designer export-gerber PROJECT_DIR`.
+Stack-up: thickness, copper in µm or oz, surface finish, mask and silkscreen colours).
+Without a window: `pcb-designer export-gerber PROJECT_DIR [--assembly jlcpcb]`.
 The `output` folder is generated, so you may want it in `.gitignore`.
 
 The Project panel lists the files under Outputs › Gerber and Outputs › Assembly (marked
@@ -345,7 +350,8 @@ Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `search_kicad`, `import_kicad`, `download_kicad_libraries`, `import_kicad_project`, `list_objects`, `get_objects`, `get_component`,
 `get_netlist` (nets, buses and their members, schematic and ERC problems), `get_routing`,
 `run_drc`, `exclude_findings` (exclude or include ERC/DRC findings by key, with a
-comment), `set_check_settings` (severities and the pin conflict matrix), `measure_clearance`, `export_gerber`, `execute` (any editor command, as one undo step, e.g.
+comment), `set_check_settings` (severities and the pin conflict matrix), `measure_clearance`, `export_gerber` (its `assembly` picks the BOM and position
+layout), `execute` (any editor command, as one undo step, e.g.
 `add_text` on a sheet or a board layer), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board,
 the last Gerber export, a simulation's plot or the whole window), `simulate` (runs an
 analysis and answers its values: an operating point's voltages, currents and powers, or
