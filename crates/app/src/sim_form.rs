@@ -360,8 +360,7 @@ impl ComponentForm {
     pub fn ui(&mut self, ui: &mut egui::Ui, project: &Project, c: &Component) -> Option<Component> {
         let part = project.library.parts.get(c.part)?;
         let mut new = c.clone();
-        ui.add_space(8.0);
-        ui.label(RichText::new("Simulation").strong());
+        fields::section(ui, "Simulation", None);
         let Some(model) = &part.sim else {
             hint(ui, "No model: edit the part to add one. Left out of simulations, with a warning.");
             return None;
@@ -370,8 +369,10 @@ impl ComponentForm {
             hint(ui, "Not simulated (the part's model says so).");
             return None;
         }
-        ui.checkbox(&mut new.sim.exclude, "Exclude from simulation")
-            .on_hover_text("Left out of the netlist, as if it weren't there");
+        fields::grid(ui, ("sim_exclude", c.id), |ui| {
+            fields::check_row(ui, "Exclude", &mut new.sim.exclude)
+                .on_hover_text("Left out of the netlist, as if it weren't there");
+        });
         match &model.device {
             SimDevice::VoltageSource | SimDevice::CurrentSource => {
                 let unit = if model.device == SimDevice::VoltageSource { "V" } else { "A" };

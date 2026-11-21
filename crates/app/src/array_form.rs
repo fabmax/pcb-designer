@@ -113,7 +113,12 @@ impl ArrayForm {
     ) -> Option<bool> {
         let mut outcome = None;
         let noun = if self.pins { "pin" } else { "pad" };
-        crate::fields::heading(ui, &format!("{} array", if self.pins { "Pin" } else { "Pad" }), &format!("of {what}"));
+        crate::fields::subject(
+            ui,
+            &format!("{} array", if self.pins { "Pin" } else { "Pad" }),
+            &format!("of {what}"),
+            None,
+        );
         self.fields.begin_frame();
         if !self.pins {
             ui.horizontal_wrapped(|ui| {

@@ -3691,13 +3691,14 @@ impl PcbApp {
         }
         ui.add_space(4.0);
         // These scroll themselves.
+        // One label column per panel (`fields::form_scope`).
         if matches!(panel, Panel::Messages | Panel::Nets | Panel::Activity) {
-            self.panel_ui(ui, panel);
+            crate::fields::form_scope(ui, panel, |ui| self.panel_ui(ui, panel));
         } else {
             egui::ScrollArea::vertical()
                 .id_salt(("dock", group))
                 .auto_shrink([false, false])
-                .show(ui, |ui| self.panel_ui(ui, panel));
+                .show(ui, |ui| crate::fields::form_scope(ui, panel, |ui| self.panel_ui(ui, panel)));
         }
         hide
     }

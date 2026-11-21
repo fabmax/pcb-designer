@@ -125,21 +125,16 @@ impl Properties {
     }
 
     fn point(&mut self, ui: &mut egui::Ui, p: Point) -> Option<Point> {
-        let mut out = None;
-        ui.horizontal(|ui| {
-            let x = self.length(ui, p.x, f64::MIN);
-            let y = self.length(ui, p.y, f64::MIN);
-            if x.is_some() || y.is_some() {
-                out = Some(Point::new(x.unwrap_or(p.x), y.unwrap_or(p.y)));
-            }
-        });
-        out
+        crate::fields::pair(ui, |ui, w| {
+            let x = crate::fields::sized(ui, w, |ui| self.length(ui, p.x, f64::MIN));
+            let y = crate::fields::sized(ui, w, |ui| self.length(ui, p.y, f64::MIN));
+            (x.is_some() || y.is_some()).then(|| Point::new(x.unwrap_or(p.x), y.unwrap_or(p.y)))
+        })
     }
 
     /// A sheet's drawing page: size, orientation, custom dimensions.
     fn page(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, mut sh: Sheet) {
-        ui.add_space(10.0);
-        heading(ui, "Page", "");
+        crate::fields::section(ui, "Page", None);
         let page = sh.page;
         grid(ui, |ui| {
             label(ui, "Size");
@@ -151,7 +146,7 @@ impl Properties {
                     PageSize::Custom { w: d.w, h: d.h }
                 }
             };
-            egui::ComboBox::from_id_salt("page_size").selected_text(size.label()).show_ui(ui, |ui| {
+            crate::fields::combo_box(ui, "page_size").selected_text(size.label()).show_ui(ui, |ui| {
                 ui.selectable_value(&mut size, PageSize::None, PageSize::None.label());
                 for p in PageSize::NAMED {
                     ui.selectable_value(&mut size, p, p.label());
@@ -183,7 +178,7 @@ impl Properties {
                     label(ui, "Orientation");
                     let mut portrait = sh.page.portrait;
                     let text = if portrait { "Portrait" } else { "Landscape" };
-                    egui::ComboBox::from_id_salt("page_orientation").selected_text(text).show_ui(ui, |ui| {
+                    crate::fields::combo_box(ui, "page_orientation").selected_text(text).show_ui(ui, |ui| {
                         ui.selectable_value(&mut portrait, false, "Landscape");
                         ui.selectable_value(&mut portrait, true, "Portrait");
                     });
@@ -199,8 +194,7 @@ impl Properties {
 
     /// The project's title block (the same on every sheet). `target` keys the text fields.
     fn title_block(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, target: ObjectId) {
-        ui.add_space(10.0);
-        heading(ui, "Title block", "all sheets");
+        crate::fields::section_note(ui, "Title block", "all sheets");
         let mut tb = cx.doc.project().schematic.title_block();
         let mut changed = false;
         grid(ui, |ui| {
@@ -218,13 +212,7 @@ impl Properties {
                 ui.end_row();
             }
             // Soft-wrapped here; only its line breaks start lines in the frame.
-            // Top aligned with the field's first line (the grid centres rows).
-            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                // A one-line field is `interact_size.y` tall with its line centred.
-                let line = ui.text_style_height(&egui::TextStyle::Body);
-                ui.add_space(((ui.spacing().interact_size.y - line) / 2.0).max(0.0));
-                ui.add(egui::Label::new(RichText::new("Comment").color(theme::text_dim())).extend());
-            });
+            crate::fields::label_top(ui, "Comment");
             if let Some(v) = self.multiline(ui, target, "Comment", &tb.comment.clone()) {
                 tb.comment = v;
                 changed = true;
@@ -318,7 +306,12 @@ impl Properties {
                 });
             }
             Object::PowerFlag(mut f) => {
-                heading(ui, "Power flag", "");
+                crate::fields::subject(
+                    ui,
+                    "Power flag",
+                    "",
+                    Some("Its net counts as powered: power inputs and inputs on it are driven."),
+                );
                 grid(ui, |ui| {
                     row(ui, "Position", fmt_point(f.pos));
                     label(ui, "Rotation");
@@ -331,7 +324,6 @@ impl Properties {
                     ui.end_row();
                     net_rows(ui, cx.doc, id);
                 });
-                crate::fields::hint(ui, "Its net counts as powered: power inputs and inputs on it are driven.");
             }
             Object::Junction(j) => {
                 heading(ui, "Junction", "");
@@ -352,7 +344,7 @@ impl Properties {
                     ui.end_row();
                     label(ui, "Kind");
                     let mut kind = l.kind;
-                    egui::ComboBox::from_id_salt("label_kind").selected_text(kind.label()).show_ui(ui, |ui| {
+                    crate::fields::combo_box(ui, "label_kind").selected_text(kind.label()).show_ui(ui, |ui| {
                         for k in LabelKind::ALL {
                             ui.selectable_value(&mut kind, k, k.label());
                         }
@@ -365,7 +357,7 @@ impl Properties {
                     if l.kind.has_shape() {
                         label(ui, "Shape");
                         let mut shape = l.shape;
-                        egui::ComboBox::from_id_salt("label_shape").selected_text(shape.label()).show_ui(ui, |ui| {
+                        crate::fields::combo_box(ui, "label_shape").selected_text(shape.label()).show_ui(ui, |ui| {
                             for s in LabelShape::ALL {
                                 ui.selectable_value(&mut shape, s, s.label());
                             }
@@ -484,7 +476,12 @@ impl Properties {
             }
             Object::Zone(mut z) => {
                 let rules = cx.doc.project().board.rules.clone();
-                heading(ui, "Copper zone", if z.net.is_empty() { "no net" } else { &z.net });
+                crate::fields::subject(
+                    ui,
+                    "Copper zone",
+                    if z.net.is_empty() { "no net" } else { &z.net },
+                    Some("An empty net makes isolated copper: it keeps the clearance to all pads and tracks."),
+                );
                 grid(ui, |ui| {
                     label(ui, "Net");
                     if let Some(net) = self.text(ui, id, "net", &z.net) {
@@ -500,14 +497,14 @@ impl Properties {
                     ui.end_row();
                     label(ui, "Priority");
                     let mut prio = z.priority;
-                    if ui.add(egui::DragValue::new(&mut prio).range(0..=100)).changed() {
+                    if crate::fields::fill(ui, egui::DragValue::new(&mut prio).range(0..=100)).changed() {
                         z.priority = prio;
                         self.update(cx, Object::Zone(z.clone()), true);
                     }
                     ui.end_row();
                     label(ui, "Pads");
                     let mut connection = z.connection;
-                    egui::ComboBox::from_id_salt("zone_connection").selected_text(connection.label()).show_ui(
+                    crate::fields::combo_box(ui, "zone_connection").selected_text(connection.label()).show_ui(
                         ui,
                         |ui| {
                             for c in ZoneConnection::ALL {
@@ -552,7 +549,7 @@ impl Properties {
                         IslandRemoval::BelowArea(_) => "Below an area",
                     };
                     let mut islands = z.islands;
-                    egui::ComboBox::from_id_salt("zone_islands").selected_text(names(islands)).show_ui(ui, |ui| {
+                    crate::fields::combo_box(ui, "zone_islands").selected_text(names(islands)).show_ui(ui, |ui| {
                         ui.selectable_value(&mut islands, IslandRemoval::Always, "Always");
                         ui.selectable_value(&mut islands, IslandRemoval::Never, "Never");
                         let below = match z.islands {
@@ -581,14 +578,16 @@ impl Properties {
                         row(ui, "Holes", z.holes.len().to_string());
                     }
                 });
-                ui.add_space(6.0);
-                crate::fields::hint(
-                    ui,
-                    "An empty net makes isolated copper: it keeps the clearance to all pads and tracks.",
-                );
             }
             Object::Keepout(mut k) => {
-                heading(ui, "Keepout", "");
+                crate::fields::subject(
+                    ui,
+                    "Keepout",
+                    "",
+                    Some(
+                        "Zone fills leave the area out; DRC reports tracks, vias, pads and footprints (courtyards) in it.",
+                    ),
+                );
                 grid(ui, |ui| {
                     label(ui, "Layers");
                     let mut all = k.layers.is_empty();
@@ -638,11 +637,6 @@ impl Properties {
                         row(ui, "Holes", k.holes.len().to_string());
                     }
                 });
-                ui.add_space(6.0);
-                crate::fields::hint(
-                    ui,
-                    "Zone fills leave the area out; DRC reports tracks, vias, pads and footprints (courtyards) in it.",
-                );
             }
             Object::BoardGraphic(g) => {
                 heading(ui, "Graphic", "");
@@ -664,7 +658,7 @@ impl Properties {
                     row(ui, "Text", f.text.text.replace("${REF}", &refdes).replace("${VALUE}", &value));
                     label(ui, "Layer");
                     let mut layer = f.layer;
-                    egui::ComboBox::from_id_salt("field_layer").selected_text(format!("{layer:?}")).show_ui(ui, |ui| {
+                    crate::fields::combo_box(ui, "field_layer").selected_text(format!("{layer:?}")).show_ui(ui, |ui| {
                         ui.selectable_value(&mut layer, FootprintLayer::Silkscreen, "Silkscreen");
                         ui.selectable_value(&mut layer, FootprintLayer::Fabrication, "Fabrication");
                     });
@@ -854,7 +848,7 @@ impl Properties {
             for mut field in fields {
                 label(ui, &format!("{} text", field.label()));
                 let mut visible = !field.hidden;
-                if ui.checkbox(&mut visible, "visible").changed() {
+                if ui.checkbox(&mut visible, "").on_hover_text("Shown on the canvas").changed() {
                     field.hidden = !visible;
                     self.update(cx, Object::SymbolField(field), false);
                 }
@@ -872,7 +866,7 @@ impl Properties {
     fn variant_combo(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, c: &Component, part: &Part, on_board: bool) {
         let current = part.variant(c.variant).map_or("?".to_string(), |v| v.name.clone());
         let mut variant = c.variant;
-        egui::ComboBox::from_id_salt("variant").selected_text(current).show_ui(ui, |ui| {
+        crate::fields::combo_box(ui, "variant").selected_text(current).show_ui(ui, |ui| {
             for v in part.variants.iter().filter(|v| !on_board || v.footprint.is_some()) {
                 ui.selectable_value(&mut variant, v.id, &v.name);
             }
@@ -914,7 +908,7 @@ impl Properties {
             ui.end_row();
             label(ui, "Side");
             let mut side = f.side;
-            egui::ComboBox::from_id_salt("side").selected_text(format!("{side:?}")).show_ui(ui, |ui| {
+            crate::fields::combo_box(ui, "side").selected_text(format!("{side:?}")).show_ui(ui, |ui| {
                 ui.selectable_value(&mut side, Side::Top, "Top");
                 ui.selectable_value(&mut side, Side::Bottom, "Bottom");
             });
@@ -955,7 +949,7 @@ impl Properties {
                 let layer = if field.layer == FootprintLayer::Fabrication { " (fab)" } else { "" };
                 label(ui, &format!("{} text{layer}", field.label()));
                 let mut visible = !field.hidden;
-                if ui.checkbox(&mut visible, "visible").changed() {
+                if ui.checkbox(&mut visible, "").on_hover_text("Shown on the canvas").changed() {
                     field.hidden = !visible;
                     self.update(cx, Object::FootprintField(field), false);
                 }
@@ -968,28 +962,16 @@ impl Properties {
     }
 }
 
+/// The selected object's subject line.
 fn heading(ui: &mut egui::Ui, title: &str, subtitle: &str) {
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(title).strong().size(16.0));
-        if !subtitle.is_empty() {
-            ui.label(RichText::new(subtitle).color(theme::text_dim()));
-        }
-    });
+    crate::fields::subject(ui, title, subtitle, None);
 }
 
 fn grid(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
-    egui::Grid::new(ui.next_auto_id()).num_columns(2).spacing([12.0, 6.0]).show(ui, add);
+    crate::fields::grid(ui, ui.next_auto_id(), add);
 }
 
-fn label(ui: &mut egui::Ui, text: &str) {
-    ui.label(RichText::new(text).color(theme::text_dim()));
-}
-
-fn row(ui: &mut egui::Ui, k: &str, v: String) {
-    label(ui, k);
-    ui.label(v);
-    ui.end_row();
-}
+use crate::fields::{label, row};
 
 fn fmt_point(p: Point) -> String {
     units::fmt_point(p)
@@ -997,7 +979,7 @@ fn fmt_point(p: Point) -> String {
 
 fn rotation_combo(ui: &mut egui::Ui, salt: &str, current: Angle) -> Option<Angle> {
     let mut deg = current.degrees();
-    egui::ComboBox::from_id_salt(salt).selected_text(format!("{deg:.0}°")).show_ui(ui, |ui| {
+    crate::fields::combo_box(ui, salt).selected_text(format!("{deg:.0}°")).show_ui(ui, |ui| {
         for d in [0.0, 90.0, 180.0, 270.0] {
             ui.selectable_value(&mut deg, d, format!("{d:.0}°"));
         }
@@ -1015,7 +997,7 @@ fn copper_layer_combo(ui: &mut egui::Ui, project: &Project, current: LayerId) ->
 
 fn copper_layer_combo_salt(ui: &mut egui::Ui, project: &Project, current: LayerId, salt: &str) -> Option<LayerId> {
     let mut layer = current;
-    egui::ComboBox::from_id_salt(salt).selected_text(layer_name(project, current)).show_ui(ui, |ui| {
+    crate::fields::combo_box(ui, salt).selected_text(layer_name(project, current)).show_ui(ui, |ui| {
         for l in project.board.copper_layers() {
             ui.selectable_value(&mut layer, l.id, &l.name);
         }
@@ -1108,23 +1090,20 @@ fn pin_table(ui: &mut egui::Ui, doc: &Document, symbol: Option<Id>, component: I
     }
     pins.sort_by(|a, b| natural_cmp(&a.1, &b.1).then_with(|| natural_cmp(a.0, b.0)));
     ui.add_space(6.0);
-    egui::CollapsingHeader::new(RichText::new(format!("Pins ({})", pins.len())).strong()).default_open(false).show(
-        ui,
-        |ui| {
-            egui::Grid::new("pins").num_columns(3).striped(true).spacing([12.0, 2.0]).show(ui, |ui| {
-                label(ui, "Pin");
-                label(ui, "Pad");
-                label(ui, "Net");
+    crate::fields::collapsing(ui, &format!("Pins ({})", pins.len()), "pins", |ui| {
+        egui::Grid::new("pins").num_columns(3).striped(true).spacing([12.0, 2.0]).show(ui, |ui| {
+            label(ui, "Pin");
+            label(ui, "Pad");
+            label(ui, "Net");
+            ui.end_row();
+            for (pin, pads, net) in pins {
+                ui.monospace(pin);
+                ui.monospace(pads);
+                ui.monospace(net);
                 ui.end_row();
-                for (pin, pads, net) in pins {
-                    ui.monospace(pin);
-                    ui.monospace(pads);
-                    ui.monospace(net);
-                    ui.end_row();
-                }
-            });
-        },
-    );
+            }
+        });
+    });
 }
 
 fn simple_pin_table(ui: &mut egui::Ui, pins: &[(String, Vec<String>)]) {
@@ -1132,21 +1111,18 @@ fn simple_pin_table(ui: &mut egui::Ui, pins: &[(String, Vec<String>)]) {
         return;
     }
     ui.add_space(6.0);
-    egui::CollapsingHeader::new(RichText::new(format!("Pins ({})", pins.len())).strong()).default_open(false).show(
-        ui,
-        |ui| {
-            egui::Grid::new("pins").num_columns(2).striped(true).spacing([12.0, 2.0]).show(ui, |ui| {
-                label(ui, "Pin");
-                label(ui, "Pad");
+    crate::fields::collapsing(ui, &format!("Pins ({})", pins.len()), "pins", |ui| {
+        egui::Grid::new("pins").num_columns(2).striped(true).spacing([12.0, 2.0]).show(ui, |ui| {
+            label(ui, "Pin");
+            label(ui, "Pad");
+            ui.end_row();
+            for (pin, pads) in pins {
+                ui.monospace(pin);
+                ui.monospace(pads.join(", "));
                 ui.end_row();
-                for (pin, pads) in pins {
-                    ui.monospace(pin);
-                    ui.monospace(pads.join(", "));
-                    ui.end_row();
-                }
-            });
-        },
-    );
+            }
+        });
+    });
 }
 
 fn multiple(ui: &mut egui::Ui, ids: &[ObjectId]) {
@@ -1189,8 +1165,14 @@ fn exclude_many(ui: &mut egui::Ui, cx: &mut Ctx, ids: &[ObjectId]) {
         }
     }
     let mut all = comps.iter().all(|c| c.sim.exclude);
-    ui.add_space(6.0);
-    if ui.checkbox(&mut all, "Exclude from simulation").changed() {
+    crate::fields::section(ui, "Simulation", None);
+    let mut changed = false;
+    grid(ui, |ui| {
+        changed = crate::fields::check_row(ui, "Exclude", &mut all)
+            .on_hover_text("Left out of the netlist, as if they weren't there")
+            .changed();
+    });
+    if changed {
         let objects = comps
             .into_iter()
             .map(|mut c| {

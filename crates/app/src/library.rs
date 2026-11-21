@@ -235,7 +235,7 @@ impl LibraryEditor {
 
     /// The library summary (Overview panel).
     pub fn overview_ui(&mut self, ui: &mut egui::Ui) {
-        fields::heading(ui, "Library", "");
+        fields::subject(ui, "Library", "", None);
         let lib = self.lib.library();
         let (np, ns, nf) = (lib.parts.len(), lib.symbols.len(), lib.footprints.len());
         let issues = lib.validate();
@@ -1084,12 +1084,12 @@ impl ItemEditor<'_> {
                     self.pads(ui, item, &many);
                 }
                 many => {
-                    fields::heading(ui, &format!("{} elements", many.len()), "");
+                    fields::subject(ui, &format!("{} elements", many.len()), "", None);
                     hint(ui, "R rotate · X mirror · Del delete · drag to move");
                 }
             },
             Open::Part(_) => {
-                fields::heading(ui, "Part", "");
+                fields::subject(ui, "Part", "", None);
                 hint(ui, "Edit units, footprint variants and the pin-pad mapping in the form.");
             }
         }
@@ -1103,7 +1103,7 @@ impl ItemEditor<'_> {
         let Some(mut content) = self.tab.view.content().cloned() else { return };
         let Content::Footprint(fp) = &mut content else { return };
         let rules = self.lib.doc.project().board.rules.clone();
-        fields::heading(ui, &format!("{} pads", elems.len()), "");
+        fields::subject(ui, &format!("{} pads", elems.len()), "", None);
         let mut pads: Vec<Pad> =
             elems.iter().filter_map(|e| if let Elem::Pad(id) = e { fp.pads.get(*id).cloned() } else { None }).collect();
         let mut changed = None;
@@ -1144,7 +1144,7 @@ impl ItemEditor<'_> {
             .collect();
         match content {
             Content::Symbol(mut s) => {
-                fields::heading(ui, "Symbol", "");
+                fields::subject(ui, "Symbol", "", None);
                 grid(ui, "sym_summary", |ui| {
                     label(ui, "Name");
                     if let Some(n) = self.tab.fields.text(ui, ("sym_name", s.id), &s.name) {
@@ -1163,7 +1163,7 @@ impl ItemEditor<'_> {
                 });
             }
             Content::Footprint(mut f) => {
-                fields::heading(ui, "Footprint", "");
+                fields::subject(ui, "Footprint", "", None);
                 grid(ui, "fp_summary", |ui| {
                     label(ui, "Name");
                     if let Some(n) = self.tab.fields.text(ui, ("fp_name", f.id), &f.name) {
@@ -1206,7 +1206,7 @@ impl ItemEditor<'_> {
 
     fn tool_settings(&mut self, ui: &mut egui::Ui, item: Item) {
         let tool = self.tab.placer.tool;
-        fields::heading(ui, tool.label(), "new elements");
+        fields::subject(ui, tool.label(), "new elements", None);
         let s = &mut self.tab.placer.settings;
         let f = &mut self.tab.fields;
         grid(ui, "tool_settings", |ui| match tool {
@@ -1301,7 +1301,7 @@ impl ItemEditor<'_> {
         match (&mut content, e) {
             (Content::Symbol(s), Elem::Pin(id)) => {
                 let Some(pin) = s.pins.get_mut(id) else { return };
-                fields::heading(ui, "Pin", &pin.name);
+                fields::subject(ui, "Pin", &pin.name, None);
                 grid(ui, "pin", |ui| {
                     label(ui, "Name");
                     if let Some(n) = f.text(ui, ("pin_name", id), &pin.name) {
@@ -1346,7 +1346,7 @@ impl ItemEditor<'_> {
             }
             (Content::Footprint(fp), Elem::Pad(id)) => {
                 let Some(pad) = fp.pads.get_mut(id) else { return };
-                fields::heading(ui, "Pad", &pad.name);
+                fields::subject(ui, "Pad", &pad.name, None);
                 grid(ui, "pad", |ui| {
                     label(ui, "Name");
                     if let Some(n) = f.text(ui, ("pad_name", id), &pad.name) {
@@ -1390,12 +1390,12 @@ impl ItemEditor<'_> {
             }
             (Content::Symbol(s), Elem::Graphic(i)) => {
                 let Some(g) = s.graphics.get_mut(i) else { return };
-                fields::heading(ui, shape_name(g), "");
+                fields::subject(ui, shape_name(g), "", None);
                 grid(ui, "graphic", |ui| changed = shape_fields(ui, f, g));
             }
             (Content::Footprint(fp), Elem::Graphic(i)) => {
                 let Some(g) = fp.graphics.get_mut(i) else { return };
-                fields::heading(ui, shape_name(&g.shape), "");
+                fields::subject(ui, shape_name(&g.shape), "", None);
                 grid(ui, "graphic", |ui| {
                     label(ui, "Layer");
                     if let Some(l) = layer_combo(ui, "g_layer", g.layer) {
@@ -1413,12 +1413,12 @@ impl ItemEditor<'_> {
             }
             (Content::Symbol(s), Elem::Text(i)) => {
                 let Some(t) = s.texts.get_mut(i) else { return };
-                fields::heading(ui, "Text", "");
+                fields::subject(ui, "Text", "", None);
                 grid(ui, "text", |ui| changed = text_fields(ui, f, i, t));
             }
             (Content::Footprint(fp), Elem::Text(i)) => {
                 let Some(t) = fp.texts.get_mut(i) else { return };
-                fields::heading(ui, "Text", "");
+                fields::subject(ui, "Text", "", None);
                 grid(ui, "text", |ui| {
                     label(ui, "Layer");
                     if let Some(l) = layer_combo(ui, "t_layer", t.layer) {

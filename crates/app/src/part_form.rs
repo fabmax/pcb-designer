@@ -134,7 +134,7 @@ impl PartForm {
         self.fields.begin_frame();
         ui.set_max_width(ui.available_width().min(760.0));
 
-        fields::heading(ui, &part.name, "Part");
+        fields::subject(ui, &part.name, "Part", None);
         ui.add_space(6.0);
         let categories = fields::categories(lib.library(), false);
         egui::Grid::new(("part_fields", id)).num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {

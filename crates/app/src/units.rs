@@ -95,7 +95,8 @@ pub fn drag(ui: &mut egui::Ui, value: Coord, min: Coord, max: Coord) -> (egui::R
     let mut v = u.value(value);
     // About 0.05 mm per point of dragging, whatever the unit.
     let speed = 50_000.0 / u.nm();
-    let r = ui.add(
+    let r = crate::fields::fill(
+        ui,
         egui::DragValue::new(&mut v)
             .speed(speed)
             .range(u.value(min)..=u.value(max))

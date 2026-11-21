@@ -147,6 +147,11 @@ impl Fields {
         v
     }
 
+    /// [`length`](Self::length) `width` points wide (NaN: its own width).
+    fn length_sized(&mut self, ui: &mut egui::Ui, value: Coord, min: f64, width: f32) -> Option<Coord> {
+        sized(ui, width, |ui| self.length(ui, value, min))
+    }
+
     pub fn number(
         &mut self,
         ui: &mut egui::Ui,
@@ -155,66 +160,295 @@ impl Fields {
         speed: f64,
     ) -> Option<f64> {
         let mut v = value;
-        let r = ui.add(egui::DragValue::new(&mut v).speed(speed).range(range).max_decimals(3));
+        let r = fill(ui, egui::DragValue::new(&mut v).speed(speed).range(range).max_decimals(3));
         self.active |= r.dragged() || r.has_focus();
         r.changed().then_some(v)
     }
 
     pub fn point(&mut self, ui: &mut egui::Ui, p: Point) -> Option<Point> {
-        let mut out = None;
-        ui.horizontal(|ui| {
-            let x = self.length(ui, p.x, f64::MIN);
-            let y = self.length(ui, p.y, f64::MIN);
-            if x.is_some() || y.is_some() {
-                out = Some(Point::new(x.unwrap_or(p.x), y.unwrap_or(p.y)));
-            }
-        });
-        out
+        pair(ui, |ui, w| {
+            let x = self.length_sized(ui, p.x, f64::MIN, w);
+            let y = self.length_sized(ui, p.y, f64::MIN, w);
+            (x.is_some() || y.is_some()).then(|| Point::new(x.unwrap_or(p.x), y.unwrap_or(p.y)))
+        })
     }
 
     pub fn size(&mut self, ui: &mut egui::Ui, s: Size) -> Option<Size> {
-        let mut out = None;
-        ui.horizontal(|ui| {
-            let w = self.length(ui, s.w, 0.01);
-            let h = self.length(ui, s.h, 0.01);
-            if w.is_some() || h.is_some() {
-                out = Some(Size { w: w.unwrap_or(s.w), h: h.unwrap_or(s.h) });
-            }
-        });
-        out
+        pair(ui, |ui, half| {
+            let w = self.length_sized(ui, s.w, 0.01, half);
+            let h = self.length_sized(ui, s.h, 0.01, half);
+            (w.is_some() || h.is_some()).then(|| Size { w: w.unwrap_or(s.w), h: h.unwrap_or(s.h) })
+        })
     }
 }
 
-pub fn heading(ui: &mut egui::Ui, title: &str, subtitle: &str) {
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(title).strong().size(16.0));
+/// Size of a section title (bold).
+const SECTION_SIZE: f32 = 14.0;
+/// Size of the subject line (the selection, the tool).
+const SUBJECT_SIZE: f32 = 16.0;
+/// Most of a panel's width its label column takes.
+const LABEL_SHARE: f32 = 0.45;
+
+/// The form layout of the panel being drawn: one label column for all its grids.
+struct Scope {
+    /// Label column width (from the last frame's widest label; 0: not known yet).
+    width: f32,
+    /// Widest label this frame.
+    widest: f32,
+    cap: f32,
+}
+
+thread_local! {
+    static SCOPE: std::cell::RefCell<Option<Scope>> = const { std::cell::RefCell::new(None) };
+    /// Inside a [`grid`]: value widgets fill the value column.
+    static IN_GRID: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Draw a panel (or dialog) whose grids share one label column: as wide as its widest
+/// label, at most [`LABEL_SHARE`] of the width (longer labels wrap).
+pub fn form_scope<R>(
+    ui: &mut egui::Ui,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    let key = egui::Id::unique(("form_scope", salt));
+    let last: Option<f32> = ui.data(|d| d.get_temp(key));
+    let cap = (ui.available_width() * LABEL_SHARE).max(60.0);
+    let outer = SCOPE.replace(Some(Scope { width: last.unwrap_or(0.0).min(cap), widest: 0.0, cap }));
+    let r = add(ui);
+    let scope = SCOPE.replace(outer).expect("set above");
+    let widest = scope.widest.min(scope.cap).ceil();
+    if last != Some(widest) {
+        ui.data_mut(|d| d.insert_temp(key, widest));
+        ui.ctx().request_repaint();
+    }
+    r
+}
+
+/// The selection or tool a panel is about (Properties, Tool settings): larger than
+/// section titles, with a dim `subtitle` and help behind an ⓘ.
+pub fn subject(ui: &mut egui::Ui, title: &str, subtitle: &str, info: Option<&str>) {
+    ui.horizontal_wrapped(|ui| {
+        theme::bold_label(ui, title, SUBJECT_SIZE, ui.visuals().strong_text_color());
         if !subtitle.is_empty() {
             ui.label(RichText::new(subtitle).color(theme::text_dim()));
+        }
+        if let Some(t) = info {
+            info_button(ui, t);
+        }
+    });
+    ui.add_space(4.0);
+}
+
+/// Room for a [`subject`] line drawn after what follows it ([`draw_subject`]), when
+/// that decides its help.
+pub fn reserve_subject(ui: &mut egui::Ui) -> egui::Rect {
+    let h = SUBJECT_SIZE.max(ui.spacing().interact_size.y);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), h), egui::Sense::hover());
+    ui.add_space(4.0 + ui.spacing().item_spacing.y);
+    rect
+}
+
+/// The [`subject`] line in the room [`reserve_subject`] kept.
+pub fn draw_subject(ui: &mut egui::Ui, rect: egui::Rect, title: &str, info: Option<&str>) {
+    let layout = egui::Layout::left_to_right(egui::Align::Center);
+    ui.scope_builder(egui::UiBuilder::new().max_rect(rect).layout(layout), |ui| {
+        theme::bold_label(ui, title, SUBJECT_SIZE, ui.visuals().strong_text_color());
+        if let Some(t) = info {
+            info_button(ui, t);
         }
     });
 }
 
-pub fn grid(ui: &mut egui::Ui, salt: &str, add: impl FnOnce(&mut egui::Ui)) {
+/// A section title, with help behind an ⓘ.
+pub fn section(ui: &mut egui::Ui, title: &str, info: Option<&str>) {
+    ui.add_space(10.0);
+    ui.horizontal(|ui| {
+        theme::bold_label(ui, title, SECTION_SIZE, ui.visuals().strong_text_color());
+        if let Some(t) = info {
+            info_button(ui, t);
+        }
+    });
+    ui.add_space(2.0);
+}
+
+/// A section title with a dim note after it ("Sheet  /sub", "Title block  all sheets").
+pub fn section_note(ui: &mut egui::Ui, title: &str, note: &str) {
+    ui.add_space(10.0);
+    ui.horizontal(|ui| {
+        theme::bold_label(ui, title, SECTION_SIZE, ui.visuals().strong_text_color());
+        if !note.is_empty() {
+            ui.label(RichText::new(note).color(theme::text_dim()));
+        }
+    });
+    ui.add_space(2.0);
+}
+
+/// An ⓘ showing `text` while hovered; a click keeps it open until a click elsewhere.
+pub fn info_button(ui: &mut egui::Ui, text: &str) {
+    use crate::icons::{self, Icon};
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
+    let id = r.id.with("info");
+    let open = egui::Popup::is_id_open(ui.ctx(), id);
+    let color = if open || r.hovered() { ui.visuals().strong_text_color() } else { theme::text_dim() };
+    icons::paint(ui.painter(), rect.shrink(1.0), Icon::Info, color);
+    let show = |ui: &mut egui::Ui| {
+        ui.set_max_width(280.0);
+        ui.label(text);
+    };
+    let r = if open { r } else { r.on_hover_ui(show) };
+    egui::Popup::menu(&r).id(id).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(show);
+}
+
+/// A two-column form: labels ([`label`]) and values, rows ended with `ui.end_row()`.
+/// Values fill their column ([`value_width`]).
+pub fn grid(ui: &mut egui::Ui, salt: impl std::hash::Hash + std::fmt::Debug, add: impl FnOnce(&mut egui::Ui)) {
+    let outer = IN_GRID.replace(true);
     egui::Grid::new(salt).num_columns(2).spacing([12.0, 6.0]).show(ui, add);
+    IN_GRID.set(outer);
 }
 
+/// Width a value widget takes: its column's in a [`grid`] (`None` elsewhere: its own).
+pub fn value_width(ui: &egui::Ui) -> Option<f32> {
+    IN_GRID.get().then(|| ui.available_width())
+}
+
+/// Add `widget` as wide as the value column in a [`grid`] (else at its own size).
+pub fn fill(ui: &mut egui::Ui, widget: impl egui::Widget) -> egui::Response {
+    match value_width(ui) {
+        Some(w) => ui.add_sized([w, ui.spacing().interact_size.y], widget),
+        None => ui.add(widget),
+    }
+}
+
+/// A combo box filling the value column in a [`grid`].
+pub fn combo_box(ui: &egui::Ui, salt: impl std::hash::Hash + std::fmt::Debug) -> egui::ComboBox<'static> {
+    let c = egui::ComboBox::from_id_salt(salt);
+    match value_width(ui) {
+        Some(w) => c.width(w),
+        None => c,
+    }
+}
+
+/// Two values side by side, splitting the value column.
+pub fn pair<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui, f32) -> R) -> R {
+    let gap = ui.spacing().item_spacing.x;
+    let half = value_width(ui).map_or(f32::NAN, |w| ((w - gap) / 2.0).floor());
+    ui.horizontal(|ui| {
+        let outer = IN_GRID.replace(false);
+        let r = add(ui, half);
+        IN_GRID.set(outer);
+        r
+    })
+    .inner
+}
+
+/// Value widgets in `add` fill `width` points ([`pair`]'s halves; NaN: their own width).
+pub fn sized<R>(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    if width.is_nan() {
+        return add(ui);
+    }
+    ui.allocate_ui(egui::vec2(width, ui.spacing().interact_size.y), |ui| {
+        ui.set_width(width);
+        let outer = IN_GRID.replace(true);
+        let r = add(ui);
+        IN_GRID.set(outer);
+        r
+    })
+    .inner
+}
+
+/// A label in a [`grid`]'s first column: dim, as wide as the panel's label column,
+/// wrapped when longer.
 pub fn label(ui: &mut egui::Ui, text: &str) {
-    ui.label(RichText::new(text).color(theme::text_dim()));
+    label_at(ui, text, false);
 }
 
+/// A [`label`] at the top of its row (beside a multi-line field), aligned with the
+/// field's first line.
+pub fn label_top(ui: &mut egui::Ui, text: &str) {
+    label_at(ui, text, true);
+}
+
+fn label_at(ui: &mut egui::Ui, text: &str, top: bool) {
+    let color = theme::text_dim();
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let natural = ui.painter().layout_no_wrap(text.to_string(), font.clone(), color).size().x;
+    let width = SCOPE.with_borrow_mut(|s| match s {
+        Some(s) => {
+            s.widest = s.widest.max(natural);
+            if s.width > 0.0 { s.width } else { natural.min(s.cap) }
+        }
+        None => natural,
+    });
+    let galley = ui.painter().layout(text.to_string(), font, color, width.max(1.0));
+    let line = ui.spacing().interact_size.y;
+    let h = galley.size().y.max(line);
+    let size = egui::vec2(width, h);
+    let (rect, _) = if top {
+        ui.allocate_ui_with_layout(size, egui::Layout::top_down(egui::Align::Min), |ui| {
+            ui.allocate_exact_size(size, egui::Sense::hover())
+        })
+        .inner
+    } else {
+        ui.allocate_exact_size(size, egui::Sense::hover())
+    };
+    // One line is centred like a field's text; more lines start at the top.
+    let y = if top {
+        rect.top() + ((line - galley.size().y) / 2.0).max(0.0)
+    } else {
+        rect.center().y - galley.size().y / 2.0
+    };
+    ui.painter().galley(egui::pos2(rect.left(), y), galley, color);
+}
+
+/// A collapsible section (long lists): its header looks like a [`section`] title.
+pub fn collapsing(
+    ui: &mut egui::Ui,
+    title: &str,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    add: impl FnOnce(&mut egui::Ui),
+) {
+    ui.add_space(10.0);
+    let id = ui.make_persistent_id(salt);
+    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false)
+        .show_header(ui, |ui| theme::bold_label(ui, title, SECTION_SIZE, ui.visuals().strong_text_color()))
+        .body(add);
+}
+
+/// A read-only row.
 pub fn row(ui: &mut egui::Ui, k: &str, v: String) {
     label(ui, k);
     ui.label(v);
     ui.end_row();
 }
 
+/// A row of a check box (the label on the left).
+pub fn check_row(ui: &mut egui::Ui, k: &str, value: &mut bool) -> egui::Response {
+    label(ui, k);
+    let r = ui.checkbox(value, "");
+    ui.end_row();
+    r
+}
+
+/// A one-line hint, dim.
 pub fn hint(ui: &mut egui::Ui, text: &str) {
     ui.label(RichText::new(text).color(theme::text_dim()));
 }
 
+/// A row of choice buttons (selectable labels), tight enough for the value column.
+pub fn choices<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        ui.spacing_mut().button_padding.x = 7.0;
+        add(ui)
+    })
+    .inner
+}
+
 /// Left / center / right buttons for a text alignment.
 pub fn halign_row(ui: &mut egui::Ui, align: &mut HAlign) {
-    ui.horizontal(|ui| {
+    choices(ui, |ui| {
         ui.selectable_value(align, HAlign::Left, "Left");
         ui.selectable_value(align, HAlign::Center, "Center");
         ui.selectable_value(align, HAlign::Right, "Right");
@@ -229,7 +463,7 @@ pub fn rotation_combo(ui: &mut egui::Ui, salt: &str, current: Angle, names: [&st
         _ => format!("{d:.1}°"),
     };
     let mut out = None;
-    egui::ComboBox::from_id_salt(salt).selected_text(name(deg)).show_ui(ui, |ui| {
+    combo_box(ui, salt).selected_text(name(deg)).show_ui(ui, |ui| {
         for (q, n) in names.iter().enumerate() {
             let d = q as f64 * 90.0;
             if ui.selectable_label((d - deg).abs() < 1e-9, *n).clicked() && (d - deg).abs() > 1e-9 {
@@ -335,7 +569,7 @@ pub fn combo<T: PartialEq + Clone>(
 ) -> Option<T> {
     let text = options.iter().find(|(v, _)| v == current).map_or("—".to_string(), |(_, n)| n.clone());
     let mut out = None;
-    egui::ComboBox::from_id_salt(salt).selected_text(text).show_ui(ui, |ui| {
+    combo_box(ui, salt).selected_text(text).show_ui(ui, |ui| {
         for (v, n) in options {
             if ui.selectable_label(v == current, n).clicked() && v != current {
                 out = Some(v.clone());
@@ -386,7 +620,7 @@ pub fn corner_rows(
     ui.end_row();
     if *corners != Corners::Free {
         label(ui, "First leg");
-        ui.horizontal(|ui| {
+        choices(ui, |ui| {
             let (first, second) = corners.postures();
             ui.selectable_value(bend, Bend::Auto, "Auto")
                 .on_hover_text("Follows the way the cursor leaves the start point; / flips it");

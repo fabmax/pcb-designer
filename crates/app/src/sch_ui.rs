@@ -5,7 +5,7 @@ use view::Document;
 use view::bend::Corners;
 use view::sch_tools::{POWER_NAMES, SchPlacer, SchTool};
 
-use crate::fields::{self, grid, hint, label, row};
+use crate::fields::{self, grid, label, row};
 use crate::icons::Icon;
 use crate::keymap::{Action, Keymap};
 use crate::toolbar::{self, ToolButton};
@@ -100,43 +100,41 @@ pub fn toolbar(ui: &mut egui::Ui, canvas: egui::Rect, sch: &SchPlacer, keymap: &
 /// Settings of the active tool.
 pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
     let tool = sch.tool();
-    fields::heading(ui, &format!("{} tool", tool.label()), "");
-    ui.add_space(4.0);
+    // The subject line goes on top, drawn last: it shows the help the tool sets below.
+    let header = fields::reserve_subject(ui);
+    let mut help: Option<String> = None;
     let s = &mut sch.settings;
     match tool {
         SchTool::Select => {}
-        SchTool::Probe => hint(
-            ui,
-            "Click a wire, label or junction to plot its net's voltage, drag from one net to another for \
+        SchTool::Probe => {
+            help = Some(
+                ("Click a wire, label or junction to plot its net's voltage, drag from one net to another for \
              the voltage between them, click the body of a pin to plot the current into it, Alt-click a \
              part for its power. Clicking a probed one removes it. Probes go to the analysis the \
-             Simulation panel shows if it's a sweep, else to the first transient, AC or DC sweep.",
-        ),
+             Simulation panel shows if it's a sweep, else to the first transient, AC or DC sweep.")
+                    .to_string(),
+            )
+        }
         SchTool::Sheet => {
             let name = sch.new_sheet.as_deref().unwrap_or_default();
-            hint(
-                ui,
-                &format!(
-                    "Click to place the symbol of sheet \"{name}\" (its top left corner). Its size can be changed in Properties."
-                ),
-            );
+            help = Some(format!(
+                "Click to place the symbol of sheet \"{name}\" (its top left corner). Its size can be changed in Properties."
+            ));
         }
         SchTool::Wire => {
             grid(ui, "sch_tool", |ui| fields::corner_rows(ui, &mut s.corners, &mut s.bend, Corners::WIRE));
-            ui.add_space(6.0);
-            hint(
-                ui,
-                "Wires end automatically on pins, wires, labels and junctions. / switches the corner, \
-                 Shift+Space the corner style.",
+            help = Some(
+                ("Wires end automatically on pins, wires, labels and junctions. / switches the corner, \
+                 Shift+Space the corner style.")
+                    .to_string(),
             );
         }
         SchTool::Bus => {
             grid(ui, "sch_tool", |ui| fields::corner_rows(ui, &mut s.corners, &mut s.bend, Corners::WIRE));
-            ui.add_space(6.0);
-            hint(
-                ui,
-                "A new bus without a name asks for one when you finish it; the name becomes a label on \
-                 the bus: D[0..7], {SDA SCL} or I2C{SDA SCL} (signals I2C.SDA, I2C.SCL).",
+            help = Some(
+                ("A new bus without a name asks for one when you finish it; the name becomes a label on \
+                 the bus: D[0..7], {SDA SCL} or I2C{SDA SCL} (signals I2C.SDA, I2C.SCL).")
+                    .to_string(),
             );
         }
         SchTool::BusEntry => {
@@ -147,10 +145,9 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 }
                 ui.end_row();
             });
-            ui.add_space(6.0);
-            hint(
-                ui,
-                "Click on a bus. Wiring an unnamed net to the entry asks which of the bus's signals it is. R rotates.",
+            help = Some(
+                "Click on a bus. Wiring an unnamed net to the entry asks which of the bus's signals it is. R rotates."
+                    .into(),
             );
         }
         SchTool::Text => {
@@ -169,8 +166,10 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 }
                 ui.end_row();
             });
-            ui.add_space(6.0);
-            hint(ui, "Click where the text goes and type. Shift+Enter starts a new line, Enter finishes. R rotates.");
+            help = Some(
+                ("Click where the text goes and type. Shift+Enter starts a new line, Enter finishes. R rotates.")
+                    .to_string(),
+            );
         }
         SchTool::Label => {
             grid(ui, "sch_tool", |ui| {
@@ -186,7 +185,7 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 ui.end_row();
                 if s.label_kind.has_shape() {
                     label(ui, "Shape");
-                    egui::ComboBox::from_id_salt("label_shape").selected_text(s.shape.label()).show_ui(ui, |ui| {
+                    fields::combo_box(ui, "label_shape").selected_text(s.shape.label()).show_ui(ui, |ui| {
                         for shape in LabelShape::ALL {
                             ui.selectable_value(&mut s.shape, shape, shape.label());
                         }
@@ -199,10 +198,8 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 }
                 ui.end_row();
             });
-            ui.add_space(6.0);
-            hint(
-                ui,
-                match s.label_kind {
+            help = Some(
+                (match s.label_kind {
                     LabelKind::Local | LabelKind::Power => {
                         "Same-named labels on this sheet are connected; the net is named /NAME. A trailing \
                          number counts up. On a bus, use a bus name like D[0..7]."
@@ -211,7 +208,8 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                     LabelKind::Hierarchical => {
                         "Connects to the same-named pin of this sheet's symbol on the parent sheet."
                     }
-                },
+                })
+                .to_string(),
             );
         }
         SchTool::Power => {
@@ -245,18 +243,20 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 ui.end_row();
             });
         }
-        SchTool::Junction => hint(ui, "Connects crossing wires. T-connections and pins don't need one."),
-        SchTool::NoConnect => hint(
-            ui,
-            "Click a pin end that stays unconnected on purpose: it is no longer reported as unconnected. \
-             The flag moves and is deleted with its symbol.",
-        ),
+        SchTool::Junction => help = Some("Connects crossing wires. T-connections and pins don't need one.".into()),
+        SchTool::NoConnect => {
+            help = Some(
+                ("Click a pin end that stays unconnected on purpose: it is no longer reported as unconnected. \
+             The flag moves and is deleted with its symbol.")
+                    .to_string(),
+            )
+        }
         SchTool::PowerFlag => {
-            hint(
-                ui,
-                "Click a wire or pin whose net is powered from outside the schematic (a connector, a supply): \
+            help = Some(
+                ("Click a wire or pin whose net is powered from outside the schematic (a connector, a supply): \
                  its power inputs and inputs count as driven. On a pin end, the flag moves and is deleted with \
-                 its symbol.",
+                 its symbol.")
+                    .to_string(),
             );
             grid(ui, "sch_tool", |ui| {
                 label(ui, "Rotation");
@@ -289,12 +289,10 @@ pub fn settings(ui: &mut egui::Ui, sch: &mut SchPlacer, doc: &Document) {
                 ui.checkbox(&mut s.mirror, "");
                 ui.end_row();
             });
-            ui.add_space(6.0);
-            hint(ui, "Each click places a part; multi-unit parts place their units one after another.");
+            help = Some("Each click places a part; multi-unit parts place their units one after another.".into());
         }
     }
-    ui.add_space(6.0);
-    hint(ui, "Esc ends the tool.");
+    fields::draw_subject(ui, header, &format!("{} tool", tool.label()), help.as_deref());
 }
 
 /// Four buttons showing the bus entry directions. Returns a newly picked one.

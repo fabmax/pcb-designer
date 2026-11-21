@@ -112,7 +112,7 @@ pub fn toolbar(
 fn layer_combo(ui: &mut egui::Ui, salt: &str, layer: &mut LayerId, doc: &Document) -> egui::Response {
     let board = &doc.project().board;
     let name = |id: LayerId| board.layers.iter().find(|l| l.id == id).map_or(format!("{id:?}"), |l| l.name.clone());
-    egui::ComboBox::from_id_salt(salt)
+    fields::combo_box(ui, salt)
         .selected_text(name(*layer))
         .show_ui(ui, |ui| {
             for l in board.copper_layers() {
@@ -125,8 +125,9 @@ fn layer_combo(ui: &mut egui::Ui, salt: &str, layer: &mut LayerId, doc: &Documen
 /// Settings of the active tool.
 pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
     let tool = pcb.tool();
-    fields::heading(ui, &format!("{} tool", tool.label()), "");
-    ui.add_space(4.0);
+    // The subject line goes on top, drawn last: it shows the help the tool sets below.
+    let header = fields::reserve_subject(ui);
+    let mut help: Option<String> = None;
     let rules = doc.project().board.rules.clone();
     let s = &mut pcb.settings;
     match tool {
@@ -158,11 +159,11 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                     });
                     ui.end_row();
                 }
-            });
-            ui.checkbox(&mut s.allow_violations, "Allow violations").on_hover_text(
-                "Add tracks and vias that break the clearance, keepout or board edge rules \
+                fields::check_row(ui, "Allow violations", &mut s.allow_violations).on_hover_text(
+                    "Add tracks and vias that break the clearance, keepout or board edge rules \
                      (Shift+click does it once); DRC flags them",
-            );
+                );
+            });
             let classes = !rules.net_classes.is_empty();
             if s.width.is_some() {
                 let text = if classes { "Use the net class width" } else { "Use the design rule width" };
@@ -172,11 +173,10 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
             } else if classes {
                 hint(ui, "Tracks take the width of their net's class.");
             }
-            ui.add_space(6.0);
-            hint(
-                ui,
-                "Tracks start and end on pad centers, vias and track ends. The net being routed is highlighted. \
-                 The Edit menu's Round track corners rounds the selected tracks with the corner radius.",
+            help = Some(
+                ("Tracks start and end on pad centers, vias and track ends. The net being routed is highlighted. \
+                 The Edit menu's Round track corners rounds the selected tracks with the corner radius.")
+                    .to_string(),
             );
         }
         PcbTool::Via => {
@@ -196,20 +196,16 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                     layer_combo(ui, "via_to", &mut s.via_span[1], doc);
                     ui.end_row();
                 }
-            });
-            ui.checkbox(&mut s.allow_violations, "Allow violations").on_hover_text(
-                "Place vias that break the clearance, keepout or board edge rules \
+                fields::check_row(ui, "Allow violations", &mut s.allow_violations).on_hover_text(
+                    "Place vias that break the clearance, keepout or board edge rules \
                      (Shift+click does it once); DRC flags them",
-            );
-            ui.add_space(6.0);
-            hint(
-                ui,
-                if layers > 2 {
+                );
+            });
+            help = Some((if layers > 2 {
                     "Vias join the layers from–to (blind or buried), or all layers (through). Sizes come from the design rules."
                 } else {
                     "Through vias connect all copper layers. Sizes come from the design rules."
-                },
-            );
+                }).to_string());
         }
         PcbTool::Text => {
             grid(ui, "pcb_tool", |ui| {
@@ -218,7 +214,7 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 let name = |id: LayerId| {
                     board.layers.iter().find(|l| l.id == id).map_or(format!("{id:?}"), |l| l.name.clone())
                 };
-                egui::ComboBox::from_id_salt("pcb_text_layer").selected_text(name(s.text_layer)).show_ui(ui, |ui| {
+                fields::combo_box(ui, "pcb_text_layer").selected_text(name(s.text_layer)).show_ui(ui, |ui| {
                     for l in board.layers.iter().filter(|l| l.id != LayerId::OUTLINE) {
                         ui.selectable_value(&mut s.text_layer, l.id, &l.name);
                     }
@@ -242,14 +238,15 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 }
                 ui.end_row();
             });
-            ui.add_space(6.0);
-            hint(
-                ui,
-                "Click where the text goes and type. Shift+Enter starts a new line, Enter finishes. R rotates, \
-                 F moves it to the other side. Texts on copper have no net.",
+            help = Some(
+                ("Click where the text goes and type. Shift+Enter starts a new line, Enter finishes. R rotates, \
+                 F moves it to the other side. Texts on copper have no net.")
+                    .to_string(),
             );
         }
-        PcbTool::Outline => hint(ui, "Click two corners. The outline is a graphic on the Board Outline layer."),
+        PcbTool::Outline => {
+            help = Some("Click two corners. The outline is a graphic on the Board Outline layer.".into())
+        }
         PcbTool::Place => {
             let Some(part) = pcb.placing.and_then(|p| doc.project().library.parts.get(p)) else { return };
             grid(ui, "pcb_tool", |ui| {
@@ -261,17 +258,13 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 }
                 ui.end_row();
                 label(ui, "Side");
-                egui::ComboBox::from_id_salt("pcb_place_side").selected_text(format!("{:?}", s.side)).show_ui(
-                    ui,
-                    |ui| {
-                        ui.selectable_value(&mut s.side, Side::Top, "Top");
-                        ui.selectable_value(&mut s.side, Side::Bottom, "Bottom");
-                    },
-                );
+                fields::combo_box(ui, "pcb_place_side").selected_text(format!("{:?}", s.side)).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut s.side, Side::Top, "Top");
+                    ui.selectable_value(&mut s.side, Side::Bottom, "Bottom");
+                });
                 ui.end_row();
             });
-            ui.add_space(6.0);
-            hint(ui, "A board part has no symbol: it lives on the board only, and its pads have no net.");
+            help = Some("A board part has no symbol: it lives on the board only, and its pads have no net.".into());
         }
         PcbTool::Measure => {
             let mut toggle = false;
@@ -294,10 +287,8 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
             if toggle {
                 pcb.toggle_clearance();
             }
-            ui.add_space(6.0);
-            hint(
-                ui,
-                if pcb.settings.clearance {
+            help = Some(
+                (if pcb.settings.clearance {
                     "Click two objects: copper on the active layer, a drill hole or the board edge. The gap \
                      between their edges shows with the clearance the design rules ask for (red when it's \
                      less). E switches to points, Esc clears."
@@ -305,7 +296,8 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                     "Click a start point, then an end point. Ends snap to pad and via centres (from anywhere \
                      inside them), track ends and outline corners, else to the grid; hold Alt for a free \
                      point. The next click starts a new measurement, E measures clearances, Esc clears."
-                },
+                })
+                .to_string(),
             );
         }
         PcbTool::Cutout => {
@@ -314,12 +306,11 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 layer_combo(ui, "pcb_tool_layer", &mut s.layer, doc);
                 ui.end_row();
             });
-            ui.add_space(6.0);
-            hint(
-                ui,
-                "Start inside a zone or keepout on the active layer and click the cutout's corners. Inside, \
+            help = Some(
+                ("Start inside a zone or keepout on the active layer and click the cutout's corners. Inside, \
                  it becomes a hole (merged with holes it overlaps); across the edge, it trims the outline. \
-                 A cut that would split the area in two is refused.",
+                 A cut that would split the area in two is refused.")
+                    .to_string(),
             );
         }
         PcbTool::Zone => {
@@ -329,7 +320,7 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 ui.end_row();
                 label(ui, "Net");
                 let text = if s.zone_net.is_empty() { "From the first corner" } else { s.zone_net.as_str() };
-                egui::ComboBox::from_id_salt("zone_net").selected_text(text).show_ui(ui, |ui| {
+                fields::combo_box(ui, "zone_net").selected_text(text).show_ui(ui, |ui| {
                     ui.selectable_value(&mut s.zone_net, String::new(), "From the first corner");
                     for n in &doc.copper().nets {
                         ui.selectable_value(&mut s.zone_net, n.clone(), n);
@@ -340,12 +331,11 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 row(ui, "Thermal gap", units::fmt(rules.thermal_gap));
                 row(ui, "Spoke width", units::fmt(rules.thermal_spoke));
             });
-            ui.add_space(6.0);
-            hint(
-                ui,
-                "Zones fill their outline (inside the board) with copper, keeping the clearance to other nets. \
+            help = Some(
+                ("Zones fill their outline (inside the board) with copper, keeping the clearance to other nets. \
                  Pads of the zone's net connect through thermal spokes. Islands without the net are removed. \
-                 Properties change how pads connect, the thermal sizes and which islands stay.",
+                 Properties change how pads connect, the thermal sizes and which islands stay.")
+                    .to_string(),
             );
         }
         PcbTool::Keepout => {
@@ -359,16 +349,14 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                     ui.end_row();
                 }
             });
-            ui.add_space(6.0);
-            hint(
-                ui,
-                "A keepout forbids tracks, vias, pads and zone fills inside it; change what it forbids in \
-                 Properties. Zone fills leave it out, DRC reports the rest.",
+            help = Some(
+                ("A keepout forbids tracks, vias, pads and zone fills inside it; change what it forbids in \
+                 Properties. Zone fills leave it out, DRC reports the rest.")
+                    .to_string(),
             );
         }
     }
-    ui.add_space(6.0);
-    hint(ui, "Esc ends the tool.");
+    fields::draw_subject(ui, header, &format!("{} tool", tool.label()), help.as_deref());
 }
 
 const LAYER_COUNTS: &[u16] = &[2, 4, 6, 8];
@@ -382,7 +370,7 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
         let mut command = None;
         grid(ui, "board_setup", |ui| {
             label(ui, "Copper layers");
-            egui::ComboBox::from_id_salt("copper_layers").selected_text(count.to_string()).show_ui(ui, |ui| {
+            fields::combo_box(ui, "copper_layers").selected_text(count.to_string()).show_ui(ui, |ui| {
                 for &n in LAYER_COUNTS {
                     if ui.selectable_label(n == count, n.to_string()).clicked() && n != count {
                         command = Some(Command::SetCopperLayers { count: n });
@@ -467,7 +455,7 @@ fn net_classes(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<Strin
                     }
                 });
             });
-            grid(ui, &format!("net_class_{i}"), |ui| {
+            grid(ui, format!("net_class_{i}"), |ui| {
                 for (k, (name, value)) in [
                     ("Clearance", &mut class.clearance),
                     ("Track width", &mut class.track_width),
