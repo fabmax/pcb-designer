@@ -151,6 +151,11 @@ impl Scene {
         &mut self.layers[id as usize].desc
     }
 
+    /// The instances of a layer in draw order (freed slots are [`Instance::EMPTY`]).
+    pub fn instances(&self, id: LayerId) -> &[Instance] {
+        &self.layers[id as usize].instances
+    }
+
     /// Which layers should be drawn at the given zoom.
     pub fn visible_layers(&self, zoom: f64) -> Vec<bool> {
         self.layers.iter().map(|l| l.desc.visible && zoom >= l.desc.min_zoom as f64).collect()

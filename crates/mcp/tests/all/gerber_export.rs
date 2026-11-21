@@ -46,6 +46,13 @@ fn exports_into_the_project_folder() {
     let text = std::fs::read_to_string(dir.join("output/assembly").join(bom["name"].as_str().unwrap())).unwrap();
     assert!(text.starts_with("Comment,Designator,Footprint,LCSC Part #"), "{text}");
 
+    // The schematic as a PDF: a page per sheet.
+    let v = ask(&mut host, Request::ExportSchematicPdf).unwrap();
+    assert_eq!(v["pages"], serde_json::json!(["/", "/Indicator", "/Testbench"]), "{v}");
+    let pdf = std::fs::read(v["file"].as_str().unwrap()).unwrap();
+    assert!(pdf.starts_with(b"%PDF-") && pdf.ends_with(b"%%EOF\n"));
+    assert_eq!(pdf.windows(10).filter(|w| w == b"/Type /Pag").count(), 4, "the tree and three pages");
+
     // The export, read back and rendered (all files, or some).
     for layers in [None, Some(vec!["Top Copper".to_string(), "Plated Drill".into()])] {
         let (tx, mut rx) = tokio::sync::oneshot::channel();

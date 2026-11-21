@@ -9,6 +9,7 @@
 //!                     [--panel NAME]... [--script STEPS]
 //!        pcb-designer --mcp-stdio [PROJECT_DIR | --demo]
 //!        pcb-designer export-gerber PROJECT_DIR [--assembly generic|jlcpcb|pcbway]
+//!        pcb-designer export-schematic-pdf PROJECT_DIR
 //!        pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR
 //!        pcb-designer simulate PROJECT_DIR [--analysis NAME] [--csv FILE] [--netlist]
 //!
@@ -17,6 +18,9 @@
 //! window, listing design rule violations as warnings. `--assembly` lays the assembly
 //! files out for a service for this export (the project's preset otherwise; it isn't
 //! saved).
+//!
+//! `export-schematic-pdf` writes the schematic as `PROJECT_DIR/output/<name>-schematic.pdf`
+//! (a page per sheet).
 //!
 //! `import-kicad` imports a KiCad project (schematic and board) and saves it as a project
 //! folder, printing the import report. A `.kicad_pro` given to the app opens its import
@@ -126,6 +130,23 @@ fn main() -> eframe::Result {
         if let Err(e) = export_gerber(dir.as_ref(), preset) {
             eprintln!("pcb-designer: {e}");
             std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if std::env::args().nth(1).as_deref() == Some("export-schematic-pdf") {
+        let Some(dir) = std::env::args().nth(2) else {
+            eprintln!("usage: pcb-designer export-schematic-pdf PROJECT_DIR");
+            std::process::exit(2);
+        };
+        let pdf = view::Document::open(std::path::Path::new(&dir))
+            .map_err(|e| format!("cannot open {dir}: {e}"))
+            .and_then(|mut doc| doc.export_schematic_pdf());
+        match pdf {
+            Ok(file) => println!("{}", file.display()),
+            Err(e) => {
+                eprintln!("pcb-designer: {e}");
+                std::process::exit(1);
+            }
         }
         return Ok(());
     }

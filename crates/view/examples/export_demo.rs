@@ -1,4 +1,4 @@
-//! Save the demo project into a folder and export its Gerber files:
+//! Save the demo project into a folder and export its Gerber files and schematic PDF:
 //! `cargo run -p view --example export_demo -- DIR`. Development aid.
 
 fn main() {
@@ -10,4 +10,5 @@ fn main() {
         println!("{} ({})", export.dir.join(&f.name).display(), f.label);
     }
     println!("{} design rule warnings", export.warnings.len());
+    println!("{}", doc.export_schematic_pdf().expect("pdf").display());
 }

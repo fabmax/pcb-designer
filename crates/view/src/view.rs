@@ -558,6 +558,22 @@ impl View {
         self.scene.set_item(CONNECTIVITY_ITEM, out);
     }
 
+    /// Only the junction dots of `c` (a print: no unconnected pin rings, no findings).
+    pub fn set_junctions(&mut self, c: &editor_core::connectivity::Connectivity) {
+        let Layers::Sch(l) = &self.layers else { return };
+        let dots = c.dots.iter().filter(|d| Some(d.0) == self.id.sheet());
+        let out: Vec<_> = dots
+            .map(|&(_, p)| (l.wires, Instance::circle(mmf(p), to_mm(JUNCTION_RADIUS) as f32, pal().sch_junction)))
+            .collect();
+        self.scene.set_item(CONNECTIVITY_ITEM, out);
+    }
+
+    /// The instances of the drawing, back to front, without the overlays (hover,
+    /// selection): what a print shows.
+    pub fn drawing(&self) -> Vec<Instance> {
+        self.user_layers().flat_map(|l| self.scene.instances(l).iter().copied()).collect()
+    }
+
     /// Show a simulation's probes and values (schematic sheets; see
     /// [`crate::sim_overlay`]).
     pub fn set_sim(&mut self, project: &Project, c: &editor_core::connectivity::Connectivity, o: &SimOverlay) {

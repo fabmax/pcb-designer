@@ -377,6 +377,19 @@ the current design of each area with the gotchas a change needs to know, the pla
   never mirrors text). Glyphs are placed relative to the anchor in f32 and offset in nm:
   board coordinates are too large for f32 at nm precision.
 - Checked against PyGerber renders (in a throwaway venv); no files are committed.
+- **Schematic PDF** (`gerber::pdf`, `view::print`): our own PDF writer (like the zip
+  writer; flate2 for the content streams) draws render `Instance`s as paths: capsules
+  as round-capped strokes, rings as strokes between their radii, rects with Bézier
+  corners under a `cm` rotation, arcs in quarter-turn Béziers. Runs of triangles of one
+  colour (text, polygon fills) become one path with every triangle turned
+  counterclockwise: shared edges cancel, so no anti-aliasing seams. Alpha goes through
+  an ExtGState per value. `view::print` builds a fresh `View` per sheet (depth first)
+  under `style::with_palette(&LIGHT)`, a thread-local override so the app's theme and
+  parallel tests aren't touched, with only junction dots of the connectivity
+  (`View::set_junctions`: no unconnected rings, findings or overlays) and the user layers
+  (`View::drawing`). A sheet without page gets its drawing's bounds and a margin.
+  `Document::export_schematic_pdf`, File menu, MCP `export_schematic_pdf`, CLI
+  `export-schematic-pdf`. Checked with PDFKit renders (no PDF tools in the repo).
 - **Reader** (`gerber::reader`): Gerber X2 / RS-274X and Excellon into primitives in nm
   (circles, round lines, rotated round rects, polygons; arcs become segments). Macros
   are evaluated (primitives 1, 4, 5, 20, 21; expressions, `$n=`), LR/LS apply, trailing
@@ -1355,8 +1368,10 @@ defers.
   bus aliases; directive labels (net class flags); stored sheet pin positions (laid out by name); reused
   sheets are duplicated (no reuse here); bus entries of unusual sizes.
 - Drawing frames: custom KiCad drawing sheets (`.kicad_wks`; the default frame is used),
-  an "update the date on save" option, text variables in schematic texts, printing and
-  PDF export of the pages.
+  an "update the date on save" option, text variables in schematic texts, printing.
+- Schematic PDF: selectable and searchable text (an embedded TrueType font instead of
+  outlines), sheet symbols linking to their page, a black-and-white option, the board
+  as PDF (assembly drawings).
 - After sheets: hierarchical bus pins (bus-named hierarchical labels are drawn as pins
   but don't connect), ERC of pin directions across sheet pins.
 - KiCad's "unfold bus".

@@ -20,6 +20,7 @@ pub enum Action {
     Save,
     SaveAs,
     ExportGerber,
+    ExportSchematicPdf,
     Undo,
     Redo,
     Cut,
@@ -104,6 +105,7 @@ impl Action {
         Action::Save,
         Action::SaveAs,
         Action::ExportGerber,
+        Action::ExportSchematicPdf,
         Action::Undo,
         Action::Redo,
         Action::Cut,
@@ -180,6 +182,7 @@ impl Action {
             Action::Save => "Save",
             Action::SaveAs => "Save as",
             Action::ExportGerber => "Export Gerber files",
+            Action::ExportSchematicPdf => "Export schematic PDF",
             Action::Undo => "Undo",
             Action::Redo => "Redo",
             Action::Cut => "Cut",
@@ -600,6 +603,7 @@ mod tests {
             Action::ShowSimNetlist,
             Action::ShowSimPlot,
             Action::ToggleSimValues,
+            Action::ExportSchematicPdf,
         ];
         for a in Action::ALL.iter().filter(|a| !unbound.contains(a)) {
             assert!(!map.shortcuts(*a).is_empty(), "{a:?} has no default shortcut");

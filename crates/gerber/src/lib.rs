@@ -8,6 +8,7 @@ mod bridge;
 pub mod excellon;
 pub mod job;
 pub mod layers;
+pub mod pdf;
 pub mod reader;
 pub mod writer;
 mod zip;
@@ -79,7 +80,7 @@ pub fn design_hash(project: &Project) -> String {
 }
 
 /// File name stem: the project name with only file-name-safe characters.
-fn stem(project: &Project) -> String {
+pub fn stem(project: &Project) -> String {
     let s: String = project
         .name
         .chars()

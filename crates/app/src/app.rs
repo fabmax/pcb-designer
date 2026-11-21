@@ -1224,6 +1224,18 @@ impl PcbApp {
         }
     }
 
+    /// Write the schematic as a PDF into the project's output folder (saving a new
+    /// project first).
+    fn export_schematic_pdf(&mut self) {
+        if self.doc().path.is_none() && !self.save(false) {
+            return;
+        }
+        match self.doc_mut().export_schematic_pdf() {
+            Ok(file) => self.set_status(format!("Exported the schematic to {}", file.display())),
+            Err(e) => self.set_status(format!("PDF export failed: {e}")),
+        }
+    }
+
     /// Scan the export folder again, and reload the Gerber tab if it is open.
     fn refresh_outputs(&mut self) {
         let dir = self.doc().path.clone();
@@ -2546,6 +2558,7 @@ impl PcbApp {
                 return;
             }
             Action::ExportGerber => return self.export_gerber(),
+            Action::ExportSchematicPdf => return self.export_schematic_pdf(),
             Action::RoundCorners => return self.round_corners(),
             Action::ConvertToPolygon => return self.convert_to_polygon(),
             Action::MoveToSheet => return self.move_to_sheet(),
@@ -2659,7 +2672,9 @@ impl PcbApp {
     fn lib_action(&mut self, tab: u64, action: Action) -> bool {
         let Some(key) = self.lib_of_tab(tab).map(|l| l.key) else { return false };
         match action {
-            Action::New | Action::Open | Action::Settings | Action::ExportGerber => return false,
+            Action::New | Action::Open | Action::Settings | Action::ExportGerber | Action::ExportSchematicPdf => {
+                return false;
+            }
             Action::Save | Action::SaveAs => {
                 self.save_library(key, action == Action::SaveAs);
                 return true;
@@ -2719,9 +2734,13 @@ impl PcbApp {
             Action::ToolText => tool_msg(&mut l, Tool::Text),
             Action::ToolMeasure => tool_msg(&mut l, Tool::Measure),
             Action::Cut | Action::Copy | Action::Paste | Action::Duplicate => None,
-            Action::New | Action::Open | Action::Save | Action::SaveAs | Action::Settings | Action::ExportGerber => {
-                None
-            }
+            Action::New
+            | Action::Open
+            | Action::Save
+            | Action::SaveAs
+            | Action::Settings
+            | Action::ExportGerber
+            | Action::ExportSchematicPdf => None,
             Action::SchWire
             | Action::SchBus
             | Action::SchBusEntry

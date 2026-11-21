@@ -33,6 +33,11 @@ stop the export. Solder mask openings and paste come from the pads (Board setup:
 expansion, paste margin). The job file carries the board's stack-up (Board setup →
 Stack-up: thickness, copper in µm or oz, surface finish, mask and silkscreen colours).
 Without a window: `pcb-designer export-gerber PROJECT_DIR [--assembly jlcpcb]`.
+
+**File → Export schematic PDF** writes `output/<name>-schematic.pdf`: a page per sheet
+(root first, each followed by its sub-sheets) the size of its page, with frame and title
+block, in the light colours, bookmarked by sheet path. Text is drawn as outlines (not
+selectable). Without a window: `pcb-designer export-schematic-pdf PROJECT_DIR`.
 The `output` folder is generated, so you may want it in `.gitignore`.
 
 The Project panel lists the files under Outputs › Gerber and Outputs › Assembly (marked
@@ -351,7 +356,7 @@ Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `get_netlist` (nets, buses and their members, schematic and ERC problems), `get_routing`,
 `run_drc`, `exclude_findings` (exclude or include ERC/DRC findings by key, with a
 comment), `set_check_settings` (severities and the pin conflict matrix), `measure_clearance`, `export_gerber` (its `assembly` picks the BOM and position
-layout), `execute` (any editor command, as one undo step, e.g.
+layout), `export_schematic_pdf`, `execute` (any editor command, as one undo step, e.g.
 `add_text` on a sheet or a board layer), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board,
 the last Gerber export, a simulation's plot or the whole window), `simulate` (runs an
 analysis and answers its values: an operating point's voltages, currents and powers, or

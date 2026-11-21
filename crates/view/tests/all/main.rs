@@ -15,6 +15,7 @@ mod part_editor;
 mod part_preview;
 mod part_tools;
 mod pcb_tools;
+mod print;
 mod probe;
 mod sch_tools;
 mod sheets;

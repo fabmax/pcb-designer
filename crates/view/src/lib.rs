@@ -22,6 +22,7 @@ pub mod library_doc;
 pub mod list_nav;
 pub mod measure;
 pub mod pcb_tools;
+pub mod print;
 pub mod probe;
 pub mod project_libs;
 pub mod sch_tools;

@@ -285,6 +285,20 @@ impl Document {
         Ok(GerberExport { dir: gerber::gerber_dir(&dir), manifest, warnings })
     }
 
+    /// Write the schematic as a PDF (a page per sheet, see [`crate::print`]) to
+    /// `<project>/output/<name>-schematic.pdf`. Returns its path; an unsaved project has
+    /// no folder for it.
+    pub fn export_schematic_pdf(&mut self) -> Result<std::path::PathBuf, String> {
+        let dir = self.path.clone().ok_or("save the project first: the PDF goes into its output folder")?;
+        self.update_connectivity(false);
+        let pdf = crate::print::schematic_pdf(self.editor.project(), &self.connectivity);
+        let out = dir.join("output");
+        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        let file = out.join(format!("{}-schematic.pdf", gerber::stem(self.editor.project())));
+        std::fs::write(&file, pdf).map_err(|e| e.to_string())?;
+        Ok(file)
+    }
+
     /// The last design rule check (it may be outdated: compare the revision).
     pub fn drc(&self) -> Option<&DrcReport> {
         self.drc.as_ref()

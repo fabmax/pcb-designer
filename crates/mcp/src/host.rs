@@ -69,6 +69,8 @@ pub enum Request {
         b: editor_core::clearance::Feature,
     },
     /// Gerber and drill files into the project folder.
+    /// The schematic as a PDF into the project's output folder.
+    ExportSchematicPdf,
     ExportGerber {
         /// Lay the BOM and position files out for this service (and keep it as the
         /// board's preset).
@@ -209,6 +211,7 @@ impl Request {
             Request::Drc { .. } => "run the design rule check".into(),
             Request::MeasureClearance { .. } => "measure a clearance".into(),
             Request::ExportGerber { .. } => "export Gerber files".into(),
+            Request::ExportSchematicPdf => "export the schematic as PDF".into(),
             Request::Execute { commands } => match &commands[..] {
                 [one] => one.get("command").and_then(Value::as_str).unwrap_or("command").replace('_', " "),
                 many => format!("{} commands", many.len()),
@@ -605,6 +608,18 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
                 "a_name": editor_core::clearance::name(project, copper, a),
                 "b_name": editor_core::clearance::name(project, copper, b),
             })
+        }
+        Request::ExportSchematicPdf => {
+            let file = host.document_mut().export_schematic_pdf()?;
+            let project = host.document().project();
+            let pages: Vec<String> = view::print::sheets_in_order(project)
+                .into_iter()
+                .map(|id| match project.schematic.sheet_path(id) {
+                    p if p.is_empty() => "/".to_string(),
+                    p => p,
+                })
+                .collect();
+            json!({ "file": file, "pages": pages })
         }
         Request::ExportGerber { assembly } => {
             if let Some(preset) = assembly

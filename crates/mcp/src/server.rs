@@ -663,6 +663,14 @@ impl PcbTools {
         self.call(Request::ExportGerber { assembly: p.assembly }).await
     }
 
+    #[tool(description = "Export the schematic as a PDF into <project folder>/output/<name>-schematic.pdf: \
+        a page per sheet (root first, each followed by its sub-sheets), the size of its page, \
+        with frame and title block, in the light colours, bookmarked by sheet path. Text is \
+        drawn as outlines. Fails when the project was never saved.")]
+    async fn export_schematic_pdf(&self) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::ExportSchematicPdf).await
+    }
+
     #[tool(description = "Execute editing commands (the same ones the GUI uses) as a single undo \
         step, all-or-nothing. Returns the changed object ids and the created objects.")]
     async fn execute(&self, Parameters(p): Parameters<ExecuteParams>) -> Result<CallToolResult, ErrorData> {

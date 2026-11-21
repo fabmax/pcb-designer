@@ -255,8 +255,25 @@ pub fn theme() -> Theme {
     }
 }
 
+thread_local! {
+    /// A palette that wins over the theme on this thread ([`with_palette`]).
+    static OVERRIDE: std::cell::Cell<Option<&'static Palette>> = const { std::cell::Cell::new(None) };
+}
+
+/// Draw with `palette` in `f` (on this thread only: the app's theme and other threads
+/// keep theirs), e.g. a print in the light palette from the dark theme.
+pub fn with_palette<R>(palette: &'static Palette, f: impl FnOnce() -> R) -> R {
+    let outer = OVERRIDE.replace(Some(palette));
+    let r = f();
+    OVERRIDE.set(outer);
+    r
+}
+
 /// The active palette.
 pub fn pal() -> &'static Palette {
+    if let Some(p) = OVERRIDE.get() {
+        return p;
+    }
     match theme() {
         Theme::Dark => &DARK,
         Theme::Light => &LIGHT,

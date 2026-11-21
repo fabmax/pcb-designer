@@ -190,6 +190,7 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
         action(save_as, Action::SaveAs, true),
         Entry::Separator,
         action("Export Gerber files", Action::ExportGerber, true),
+        action("Export schematic PDF", Action::ExportSchematicPdf, true),
     ];
     if !s.native {
         file.extend([Entry::Separator, item("Quit", Cmd::Quit)]);
