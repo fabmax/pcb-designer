@@ -174,65 +174,61 @@ fn vs_prim(@builtin(vertex_index) vi: u32, inst: InstanceIn) -> PrimOut {
 @fragment
 fn fs_prim(in: PrimOut) -> @location(0) vec4<f32> {
     var d = 0.0;
-    switch in.kind & 0xffu {
-        case KIND_CAPSULE: {
-            let u = in.local.x - clamp(in.local.x, 0.0, in.params.x);
-            d = length(vec2<f32>(u, in.local.y)) - in.params.y;
+    // An if chain, not a switch: Direct3D's FXC refuses the HLSL naga makes of switch
+    // cases ending in `discard` (no break: "fall-throughs are not allowed").
+    let kind = in.kind & 0xffu;
+    if (kind == KIND_CAPSULE) {
+        let u = in.local.x - clamp(in.local.x, 0.0, in.params.x);
+        d = length(vec2<f32>(u, in.local.y)) - in.params.y;
+    } else if (kind == KIND_CIRCLE) {
+        let l = length(in.local);
+        d = l - in.params.x;
+        if (in.params.y > 0.0) {
+            d = max(d, in.params.y - l);
         }
-        case KIND_CIRCLE: {
-            let l = length(in.local);
-            d = l - in.params.x;
-            if (in.params.y > 0.0) {
-                d = max(d, in.params.y - l);
+    } else if (kind == KIND_RECT) {
+        let cr = in.params.z;
+        let q = abs(in.local) - in.params.xy + vec2<f32>(cr);
+        d = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - cr;
+    } else if (kind == KIND_ARC) {
+        var p = in.local;
+        p.x = abs(p.x);
+        let sc = in.params.xy;
+        let ra = in.params.z;
+        if (sc.y * p.x > sc.x * p.y) {
+            d = length(p - sc * ra);
+        } else {
+            d = abs(length(p) - ra);
+        }
+        d = d - in.params.w;
+    } else if (kind == KIND_TRIANGLE) {
+        // Signed distance to each edge line (positive outside). Outer edges give the
+        // anti-aliased distance; inner edges cut hard at the pixel center.
+        let v = array<vec2<f32>, 3>(vec2<f32>(0.0), in.params.xy, in.params.zw);
+        let ccw = (v[1].x * v[2].y - v[1].y * v[2].x) >= 0.0;
+        d = -1e30;
+        for (var i = 0u; i < 3u; i++) {
+            let a = v[i];
+            let e = v[(i + 1u) % 3u] - a;
+            let l = length(e);
+            if (l < 1e-12) {
+                continue;
+            }
+            var s = (e.x * (in.local.y - a.y) - e.y * (in.local.x - a.x)) / l;
+            if (ccw) {
+                s = -s;
+            }
+            if ((in.kind & (256u << i)) != 0u) {
+                d = max(d, s);
+            } else if (s > 0.0) {
+                discard;
             }
         }
-        case KIND_RECT: {
-            let cr = in.params.z;
-            let q = abs(in.local) - in.params.xy + vec2<f32>(cr);
-            d = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - cr;
+        if (d < -1e29) {
+            d = -1.0;
         }
-        case KIND_ARC: {
-            var p = in.local;
-            p.x = abs(p.x);
-            let sc = in.params.xy;
-            let ra = in.params.z;
-            if (sc.y * p.x > sc.x * p.y) {
-                d = length(p - sc * ra);
-            } else {
-                d = abs(length(p) - ra);
-            }
-            d = d - in.params.w;
-        }
-        case KIND_TRIANGLE: {
-            // Signed distance to each edge line (positive outside). Outer edges give the
-            // anti-aliased distance; inner edges cut hard at the pixel center.
-            let v = array<vec2<f32>, 3>(vec2<f32>(0.0), in.params.xy, in.params.zw);
-            let ccw = (v[1].x * v[2].y - v[1].y * v[2].x) >= 0.0;
-            d = -1e30;
-            for (var i = 0u; i < 3u; i++) {
-                let a = v[i];
-                let e = v[(i + 1u) % 3u] - a;
-                let l = length(e);
-                if (l < 1e-12) {
-                    continue;
-                }
-                var s = (e.x * (in.local.y - a.y) - e.y * (in.local.x - a.x)) / l;
-                if (ccw) {
-                    s = -s;
-                }
-                if ((in.kind & (256u << i)) != 0u) {
-                    d = max(d, s);
-                } else if (s > 0.0) {
-                    discard;
-                }
-            }
-            if (d < -1e29) {
-                d = -1.0;
-            }
-        }
-        default: {
-            discard;
-        }
+    } else {
+        discard;
     }
     let coverage = clamp(0.5 - d / view.px, 0.0, 1.0);
     if (coverage <= 0.0) {

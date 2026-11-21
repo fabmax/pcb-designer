@@ -165,9 +165,8 @@ fn read_binary(plot: &mut Plot, data: &[u8], at: usize, points: usize) -> Result
 }
 
 fn read_ascii(plot: &mut Plot, data: &[u8], mut at: usize, points: usize) -> Result<usize, SimError> {
-    let n = plot.vectors.len();
     for _ in 0..points {
-        for k in 0..n {
+        for (k, vector) in plot.vectors.iter_mut().enumerate() {
             let Some((text, next)) = line(data, at) else {
                 return Ok(at);
             };
@@ -181,8 +180,8 @@ fn read_ascii(plot: &mut Plot, data: &[u8], mut at: usize, points: usize) -> Res
                 .ok_or_else(|| bad(format!("bad value line {text:?}")))?;
             let (re, im) = value.split_once(',').unwrap_or((value, "0"));
             let num = |s: &str| s.parse::<f64>().map_err(|_| bad(format!("bad number {s:?}")));
-            plot.vectors[k].re.push(num(re)?);
-            if let Some(v) = &mut plot.vectors[k].im {
+            vector.re.push(num(re)?);
+            if let Some(v) = &mut vector.im {
                 v.push(num(im)?);
             }
         }

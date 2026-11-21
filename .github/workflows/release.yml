@@ -23,7 +23,7 @@ jobs:
           - { name: windows-x86_64, os: windows-latest }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - if: runner.os == 'Linux'
         uses: ./.github/actions/linux-deps

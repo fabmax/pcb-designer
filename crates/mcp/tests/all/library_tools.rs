@@ -249,7 +249,7 @@ fn libraries_belong_to_the_project() {
     );
 
     // Save as: the project follows the file.
-    let other = dir.path().join("libs/Other.pcblib");
+    let other = dir.path().join("libs").join("Other.pcblib");
     std::fs::create_dir_all(other.parent().unwrap()).unwrap();
     lib(&mut host, LibraryRequest::Save { library: "Mine".into(), path: Some(other.clone()) }).unwrap();
     assert_eq!(host.doc.project().libraries, std::slice::from_ref(&other));

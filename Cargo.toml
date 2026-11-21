@@ -9,7 +9,6 @@ license = "MIT"
 
 [workspace.dependencies]
 render = { path = "crates/render" }
-spike = { path = "crates/spike" }
 model = { path = "crates/model" }
 editor-core = { path = "crates/editor-core" }
 view = { path = "crates/view" }
