@@ -48,7 +48,7 @@ rmcp = { version = "3.9", default-features = false, features = ["server", "macro
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
 tokio-util = "0.7"
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
-base64 = "0.22"
+base64 = "0.23"
 env_logger = "0.11"
 ureq = "3"
 flate2 = "1"
