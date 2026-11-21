@@ -368,12 +368,12 @@ fn route_posture_follows_the_cursor_on_screen() {
     t.set_tool(PcbTool::Route);
     t.settings.corners = view::bend::Corners::Deg45;
     let a = Point::mm(0.0, 0.0);
-    // A point is 0.1 mm. The cursor goes off diagonally; snapped to a coarse grid it
+    // A point is 25 µm (40 points: 1 mm). The cursor goes off diagonally; snapped to a coarse grid it
     // would still read as straight right.
-    t.steer(Point::mm(0.02, 0.01), 1e5);
+    t.steer(Point::mm(0.02, 0.01), 2.5e4);
     t.hover(&mut doc, Some((a, a)), mm(0.3));
     t.click(&mut doc).unwrap();
-    t.steer(Point::mm(0.9, 0.8), 1e5);
+    t.steer(Point::mm(0.9, 0.8), 2.5e4);
     let b = Point::mm(5.0, 2.0);
     t.hover(&mut doc, Some((b, b)), mm(0.3));
     let ghosts = t.ghosts(&doc);

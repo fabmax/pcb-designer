@@ -97,17 +97,17 @@ pub fn segments(a: Point, b: Point, corners: Corners, second: bool) -> Vec<(Poin
     pts.windows(2).map(|w| (w[0], w[1], None)).collect()
 }
 
-/// How far (screen points) the cursor goes from where the leg started before its
-/// direction decides the posture: far enough for the angle to mean something, and
-/// independent of the grid (its first snap step said little when zoomed in, and was
-/// one pixel of jitter when zoomed out).
-pub const DECIDE: f64 = 10.0;
-/// Back within this many points of where the leg started: the next move decides again.
-pub const REARM: f64 = 4.0;
+/// How far (screen points: logical, so the same size on HiDPI screens) the cursor goes
+/// from where the leg started before its direction decides the posture: far enough for
+/// the angle to mean something, and independent of the grid (its first snap step said
+/// little when zoomed in, and was one pixel of jitter when zoomed out). Back within it,
+/// the decision is cleared: the next way out decides again.
+pub const DECIDE: f64 = 40.0;
 
 /// The automatic posture of the leg being drawn. It is decided when the cursor first
-/// leaves where the leg started, by the direction it goes, and stays until the cursor
-/// comes back there. [`Posture::flip`] overrides it until the next leg.
+/// leaves where the leg started (by [`DECIDE`] points), by the direction it goes, and
+/// stays until the cursor comes back within that distance. [`Posture::flip`] overrides
+/// it until the next leg.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Posture {
     /// The second posture is chosen.
@@ -144,11 +144,11 @@ impl Posture {
         let origin = *self.origin.get_or_insert(cursor);
         let (dx, dy) = ((cursor.x - origin.x).abs() as f64, (cursor.y - origin.y).abs() as f64);
         let distance = dx.hypot(dy) / pixel.max(f64::MIN_POSITIVE);
-        if distance < REARM {
+        if distance < DECIDE {
             self.armed = true;
             return;
         }
-        if !self.armed || self.pinned || distance < DECIDE {
+        if !self.armed || self.pinned {
             return;
         }
         self.second = match corners {
@@ -200,8 +200,8 @@ mod tests {
         assert_eq!(path(a, Point::mm(0.0, 5.0), Corners::Deg90, false).len(), 2);
     }
 
-    /// A screen point of 0.1 mm.
-    const PX: f64 = 100_000.0;
+    /// A screen point of 25 µm: DECIDE (40 points) is 1 mm.
+    const PX: f64 = 25_000.0;
 
     fn at(x: f64, y: f64) -> Point {
         Point::mm(x, y)
@@ -218,8 +218,8 @@ mod tests {
         // Later moves don't change it...
         p.track(at(10.0, 2.0), PX, Corners::Deg90);
         assert!(p.second(Bend::Auto));
-        // ...until the cursor comes back near where the leg started.
-        p.track(at(0.2, 0.1), PX, Corners::Deg90);
+        // ...until the cursor comes back within DECIDE points of where the leg started.
+        p.track(at(0.6, 0.6), PX, Corners::Deg90);
         p.track(at(1.5, 0.0), PX, Corners::Deg90);
         assert!(!p.second(Bend::Auto));
         // A flip holds until the next leg.
@@ -250,7 +250,7 @@ mod tests {
 
     #[test]
     fn the_distance_is_measured_on_screen() {
-        // 1 mm is 10 points at PX, 1 point zoomed far out: not far enough to decide.
+        // 1 mm is 40 points at PX, 4 zoomed far out: not far enough to decide.
         let mut p = Posture::default();
         p.track(at(0.0, 0.0), PX * 10.0, Corners::Deg90);
         p.track(at(0.0, 1.0), PX * 10.0, Corners::Deg90);

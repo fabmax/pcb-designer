@@ -754,14 +754,15 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   returns a `SchPrompt` for unnamed buses and entry signals.
 - `bend`: corner styles (`Corners`: wires 90°/45°/free, tracks 45°/90°/arc 45°/arc
   90°), the two-leg `path`, `segments` (arc styles round the corner with
-  `fillet(…, None)`: `AddTrack.mids`), and `Posture`: the first leg follows the way the raw cursor leaves where it was
-  at the leg's click, decided once it's `DECIDE` (10) screen points away (45°: diagonal
-  when more than 22.5° off the axis), held until it's back within `REARM` (4) points.
-  The app feeds the raw cursor and the zoom to the placers' `steer` every frame, also
-  before a leg (the click's position is the origin); the snapped cursor said little
-  (one grid step zoomed in, pixel jitter zoomed out). `/` flips it until the next leg (or swaps a
-  fixed `Bend`). Placers call `Posture::start` on every leg click, so a flip before the
-  first click is lost.
+  `fillet(…, None)`: `AddTrack.mids`), and `Posture`: the first leg follows the way
+  the raw cursor leaves where it was at the leg's click, decided once it's `DECIDE`
+  (40) screen points away (45°: diagonal when more than 22.5° off the axis), held until
+  it's back within those 40 points (which clears it). Points are logical, so the
+  distance is the same on HiDPI screens. The app feeds the raw cursor and the zoom to
+  the placers' `steer` every frame, also before a leg (the click's position is the
+  origin); the snapped cursor said little (one grid step zoomed in, pixel jitter zoomed
+  out). `/` flips it until the next leg (or swaps a fixed `Bend`). Placers call
+  `Posture::start` on every leg click, so a flip before the first click is lost.
 - `measure`: the measure tool's state (`Measure`: click, live end, click pins, next
   click starts anew, Esc clears) and snapping (`snap`: nearest object point within the
   pixel tolerance, else the grid point; Alt free). Object points: `board_points` (pad and
