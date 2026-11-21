@@ -17,7 +17,7 @@ use sim::{Attempt, Level, Outcome, Session};
 use view::Document;
 use view::sim_overlay::{ProbeTarget, SimOverlay};
 
-use crate::fields::{grid, hint, label};
+use crate::fields::{fill, grid, hint, label};
 use crate::icons::{self, Icon};
 use crate::theme;
 
@@ -620,7 +620,7 @@ impl SimPanel {
                 self.value_row(ui, (id, "start"), "Start", start, "Hz");
                 self.value_row(ui, (id, "stop"), "Stop", stop, "Hz");
                 label(ui, "Points per decade");
-                ui.add(egui::DragValue::new(points_per_decade).range(1..=10_000).speed(1.0));
+                fill(ui, egui::DragValue::new(points_per_decade).range(1..=10_000).speed(1.0));
                 ui.end_row();
             }),
             AnalysisKind::Dc { source, start, stop, step } => {
@@ -722,7 +722,7 @@ impl SimPanel {
                     self.value_row(ui, (id, "step_start"), "From", start, unit);
                     self.value_row(ui, (id, "step_stop"), "To", stop, unit);
                     label(ui, "Per decade");
-                    ui.add(egui::DragValue::new(points_per_decade).range(1..=100).speed(0.1));
+                    fill(ui, egui::DragValue::new(points_per_decade).range(1..=100).speed(0.1));
                     ui.end_row();
                 }
             }

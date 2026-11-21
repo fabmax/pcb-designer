@@ -161,7 +161,7 @@ impl ArrayForm {
     fn rows_ui(&mut self, ui: &mut egui::Ui) {
         let count = |ui: &mut egui::Ui, label: &str, v: &mut usize| {
             crate::fields::label(ui, label);
-            ui.add(egui::DragValue::new(v).range(1..=1000).speed(0.1));
+            crate::fields::fill(ui, egui::DragValue::new(v).range(1..=1000).speed(0.1));
             ui.end_row();
         };
         let length = |f: &mut Fields, ui: &mut egui::Ui, label: &str, v: &mut Coord| {
