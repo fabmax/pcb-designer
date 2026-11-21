@@ -38,12 +38,9 @@ impl Properties {
         let mut cx = Ctx { doc, message };
         match selection {
             [] => {
-                ui.label(RichText::new("Nothing selected").color(theme::text_dim()));
-                ui.add_space(4.0);
-                ui.label(
-                    RichText::new("Click an object to see and edit its properties; drag a box to select several.")
-                        .color(theme::text_dim())
-                        .small(),
+                crate::fields::hint(
+                    ui,
+                    "Nothing selected. Click an object to see and edit its properties; drag a box to select several.",
                 );
             }
             [id] => self.single(ui, &mut cx, *id),
@@ -527,7 +524,10 @@ impl Properties {
                         label(ui, name);
                         ui.horizontal(|ui| {
                             let current = *field(&mut z);
-                            if let Some(v) = self.length(ui, current.unwrap_or(rule), min) {
+                            // Room for the "Rule" button or label after the field.
+                            let w = ui.available_width() - 52.0;
+                            let v = crate::fields::sized(ui, w, |ui| self.length(ui, current.unwrap_or(rule), min));
+                            if let Some(v) = v {
                                 *field(&mut z) = Some(v);
                                 self.update(cx, Object::Zone(z.clone()), true);
                             }

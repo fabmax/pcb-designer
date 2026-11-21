@@ -348,6 +348,8 @@ pub fn sized<R>(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui) -
     if width.is_nan() {
         return add(ui);
     }
+    // A grid's first frame doesn't know its column widths yet.
+    let width = width.max(ui.spacing().interact_size.x);
     ui.allocate_ui(egui::vec2(width, ui.spacing().interact_size.y), |ui| {
         ui.set_width(width);
         let outer = IN_GRID.replace(true);

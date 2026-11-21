@@ -363,6 +363,15 @@ const LAYER_COUNTS: &[u16] = &[2, 4, 6, 8];
 
 /// Layer stack and design rules (Board setup panel).
 pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<String>) {
+    fields::section(
+        ui,
+        "Design rules",
+        Some(
+            "Applies to the whole board, from any tab. Removing an inner layer needs it to be empty. Pads \
+             open the solder mask, grown by the mask expansion (vias stay covered); SMD pads get paste, \
+             grown by the paste margin (negative shrinks).",
+        ),
+    );
     {
         let board = &doc.project().board;
         let count = board.copper_layers().count() as u16;
@@ -417,25 +426,42 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
             *message = Some(e.to_string());
         }
     }
-    ui.add_space(6.0);
-    hint(
-        ui,
-        "Applies to the whole board, from any tab. Removing an inner layer needs it to be empty. \
-         Pads open the solder mask, grown by the mask expansion (vias stay covered); SMD pads get paste, \
-         grown by the paste margin (negative shrinks).",
-    );
-    ui.add_space(12.0);
     net_classes(ui, doc, message);
-    ui.add_space(12.0);
     crate::checks_ui::drc_severities(ui, doc, message);
+    // The rules and severities; layers and net classes are the design's.
+    let board = &doc.project().board;
+    let rules = DesignRules { net_classes: board.rules.net_classes.clone(), ..DesignRules::default() };
+    let drc = DrcSettings { severities: Default::default(), ..board.drc.clone() };
+    let defaults = rules == board.rules && drc == board.drc;
+    ui.add_space(12.0);
+    let reset = ui
+        .add_enabled(!defaults, egui::Button::new("Reset to defaults"))
+        .on_hover_text("The design rules and check severities (not the layers or net classes)");
+    if reset.clicked() {
+        let group = Some(new_group());
+        for cmd in [Command::SetDesignRules { rules }, Command::SetDrcSettings { drc }] {
+            if let Err(e) = doc.execute_grouped(cmd, group) {
+                *message = Some(e.to_string());
+            }
+        }
+        doc.close_group();
+    }
 }
 
 /// The net classes: a card per class with its sizes (empty: the board's) and nets.
 fn net_classes(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<String>) {
     let mut rules = doc.project().board.rules.clone();
     let nets: Vec<String> = doc.connectivity().netlist().map(|n| n.name.clone()).collect();
-    ui.label(RichText::new("Net classes").strong());
-    ui.add_space(2.0);
+    fields::section(
+        ui,
+        "Net classes",
+        Some(
+            "Nets by name or by a pattern (* any characters, ? one), separated by commas; a name beats a \
+             pattern, else the first class matching wins. Other nets are in the Default class (the design \
+             rules above). Between two classes the larger clearance applies. The Nets panel's context menu \
+             puts a net into a class.",
+        ),
+    );
     let mut changed = false;
     let mut active = false;
     let mut remove = None;
@@ -467,7 +493,10 @@ fn net_classes(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<Strin
                 {
                     label(ui, name);
                     ui.horizontal(|ui| {
-                        let (r, v) = units::drag(ui, value.unwrap_or(board[k]), mm(0.05), mm(20.0));
+                        // Room for the reset button or "default" after the field.
+                        let w = ui.available_width() - 56.0;
+                        let (r, v) =
+                            fields::sized(ui, w, |ui| units::drag(ui, value.unwrap_or(board[k]), mm(0.05), mm(20.0)));
                         if let Some(v) = v {
                             *value = Some(v);
                             changed = true;
@@ -524,14 +553,6 @@ fn net_classes(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<Strin
     if !active && ui.data_mut(|d| d.remove_temp::<u64>(key)).is_some() {
         doc.close_group();
     }
-    ui.add_space(2.0);
-    hint(
-        ui,
-        "Nets by name or by a pattern (* any characters, ? one), separated by commas; a name beats a \
-         pattern, else the first class matching wins. Other nets are in the Default class (the values \
-         above). Between two classes the larger clearance applies. The Nets panel's context menu \
-         puts a net into a class.",
-    );
 }
 
 /// A text field that hands back its text when editing ends (Enter or focus lost) with a

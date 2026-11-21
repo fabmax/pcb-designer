@@ -7,7 +7,7 @@ use egui::{RichText, Sense, vec2};
 use model::*;
 use view::Document;
 
-use crate::fields::{grid, hint, label};
+use crate::fields::{grid, label};
 use crate::theme;
 
 /// The colour of a severity.
@@ -38,7 +38,7 @@ pub fn icon(ui: &mut egui::Ui, s: Severity, excluded: bool) {
 
 fn severity_combo(ui: &mut egui::Ui, salt: &str, current: Severity) -> Option<Severity> {
     let mut out = None;
-    egui::ComboBox::from_id_salt(salt).width(70.0).selected_text(current.label()).show_ui(ui, |ui| {
+    crate::fields::combo_box(ui, salt).selected_text(current.label()).show_ui(ui, |ui| {
         for s in Severity::ALL {
             if ui.selectable_label(s == current, s.label()).clicked() && s != current {
                 out = Some(s);
@@ -73,8 +73,14 @@ fn short(k: PinKind) -> &'static str {
 pub fn schematic_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<String>) {
     let mut erc = doc.project().schematic.erc.clone();
     let before = erc.clone();
-    ui.label(RichText::new("Electrical rules").strong());
-    ui.add_space(2.0);
+    crate::fields::section(
+        ui,
+        "Electrical rules",
+        Some(
+            "The defaults follow KiCad. Ignored rules aren't reported; excluded findings (right-click one \
+             in Messages) stay listed apart.",
+        ),
+    );
     grid(ui, "erc_rules", |ui| {
         for rule in ErcRule::ALL {
             label(ui, rule.label());
@@ -86,28 +92,24 @@ pub fn schematic_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Opti
             ui.end_row();
         }
     });
-    ui.add_space(10.0);
-    ui.label(RichText::new("Pin conflict matrix").strong());
-    hint(ui, "What two pin kinds on one net are: click a cell to go from OK to warning to error.");
-    ui.add_space(4.0);
+    crate::fields::section(
+        ui,
+        "Pin conflict matrix",
+        Some("What two pin kinds on one net are: click a cell to go from OK to warning to error."),
+    );
     matrix(ui, &mut erc);
-    ui.add_space(6.0);
-    ui.horizontal(|ui| {
-        let defaults = erc.severities.is_empty() && erc.matrix.is_empty();
-        if ui.add_enabled(!defaults, egui::Button::new("Reset to defaults")).clicked() {
-            erc.severities.clear();
-            erc.matrix.clear();
-        }
-    });
+    ui.add_space(12.0);
+    let defaults = erc.severities.is_empty() && erc.matrix.is_empty();
+    let reset = ui
+        .add_enabled(!defaults, egui::Button::new("Reset to defaults"))
+        .on_hover_text("The rules' severities and the matrix (not the excluded findings)");
+    if reset.clicked() {
+        erc.severities.clear();
+        erc.matrix.clear();
+    }
     if erc != before {
         run(doc, Command::SetErcSettings { erc }, message);
     }
-    ui.add_space(6.0);
-    hint(
-        ui,
-        "The defaults follow KiCad. Ignored rules aren't reported; excluded findings (right-click one in \
-         Messages) stay listed apart.",
-    );
 }
 
 /// The lower triangle of the matrix, cells cycling OK → warning → error.
@@ -174,8 +176,7 @@ fn matrix(ui: &mut egui::Ui, erc: &mut ErcSettings) {
 pub fn drc_severities(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<String>) {
     let mut drc = doc.project().board.drc.clone();
     let before = drc.clone();
-    ui.label(RichText::new("Design rule check").strong());
-    ui.add_space(2.0);
+    crate::fields::section(ui, "Design rule check", None);
     grid(ui, "drc_rules", |ui| {
         for kind in ViolationKind::ALL {
             label(ui, kind.label());
