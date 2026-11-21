@@ -55,6 +55,23 @@ pub struct Document {
     text_edit: Option<(EditSite, TextEdit, render::Color)>,
     /// What the sheets show of a simulation.
     sim: SimOverlay,
+    /// Tracks the router pushed aside for the leg being routed.
+    route_preview: Option<RoutePreview>,
+}
+
+/// A route leg's pushed tracks, shown as real edits in an undo group of their own: retracted
+/// before the next step (the router works on the board as it was) and kept by a click.
+struct RoutePreview {
+    group: u64,
+    /// The copper before the edits (what the router works with).
+    base: BoardConnectivity,
+    /// The revision `base` was taken at.
+    base_revision: u64,
+    /// The revision after our last own step: anything else changing the document since
+    /// makes this state stale.
+    revision: u64,
+    /// The edits are in the project now.
+    applied: bool,
 }
 
 /// Result of the last design rule check.
@@ -104,6 +121,7 @@ impl Document {
             read_only: None,
             text_edit: None,
             sim: SimOverlay::default(),
+            route_preview: None,
         };
         doc.update_connectivity(false);
         doc
@@ -263,6 +281,113 @@ impl Document {
     ) -> Option<route_check::Clash> {
         self.update_connectivity(false);
         route_check::check(self.editor.project(), &self.copper, probes, net, ends)
+    }
+
+    /// The route preview, if nothing but its own steps changed the document since.
+    fn live_preview(&mut self) -> Option<&mut RoutePreview> {
+        let revision = self.revision;
+        if self.route_preview.as_ref().is_some_and(|p| p.revision != revision) {
+            self.route_preview = None;
+        }
+        self.route_preview.as_mut()
+    }
+
+    /// The board connectivity the router works with: before a route preview's edits.
+    pub fn route_copper(&mut self) -> &BoardConnectivity {
+        if self.live_preview().is_some() {
+            return &self.route_preview.as_ref().expect("live").base;
+        }
+        self.current_copper()
+    }
+
+    /// The project and the router's board connectivity (call
+    /// [`route_copper`](Self::route_copper) first to bring it up to date).
+    pub fn route_base(&self) -> (&Project, &BoardConnectivity) {
+        let copper = self.route_preview.as_ref().map_or(&self.copper, |p| &p.base);
+        (self.editor.project(), copper)
+    }
+
+    /// The revision the router's board is at (a route preview's own steps don't count).
+    pub fn route_revision(&mut self) -> u64 {
+        match self.live_preview() {
+            Some(p) => p.base_revision,
+            None => self.revision,
+        }
+    }
+
+    /// Take a route preview's edits out of the project (the router works on the board as
+    /// it was); the preview's base stays for the next step.
+    pub fn clear_route_preview(&mut self) {
+        let Some(p) = self.live_preview() else { return };
+        if !p.applied {
+            return;
+        }
+        p.applied = false;
+        let group = p.group;
+        if self.editor.history().open_group() == Some(group) {
+            self.retract(group);
+        }
+        if let Some(p) = self.route_preview.as_mut() {
+            p.revision = self.revision;
+        }
+    }
+
+    /// Show `commands` (the router's pushes) as a route preview, replacing the last one.
+    pub fn set_route_preview(&mut self, commands: Vec<Command>) -> Result<(), String> {
+        self.clear_route_preview();
+        if self.live_preview().is_none() {
+            let base = self.current_copper().clone();
+            let revision = self.revision;
+            self.route_preview = Some(RoutePreview {
+                group: crate::interaction::new_group(),
+                base,
+                base_revision: revision,
+                revision,
+                applied: false,
+            });
+        }
+        let group = self.route_preview.as_ref().expect("made above").group;
+        for (i, c) in commands.into_iter().enumerate() {
+            if let Err(e) = self.execute_grouped(c, Some(group)) {
+                if i > 0 {
+                    self.retract(group);
+                }
+                if let Some(p) = self.route_preview.as_mut() {
+                    p.revision = self.revision;
+                }
+                return Err(e.to_string());
+            }
+            if let Some(p) = self.route_preview.as_mut() {
+                p.applied = true;
+            }
+        }
+        if let Some(p) = self.route_preview.as_mut() {
+            p.revision = self.revision;
+        }
+        Ok(())
+    }
+
+    /// Run `command` (the leg) with the route preview's edits as one undo step, and end
+    /// the preview.
+    pub fn commit_route(&mut self, command: Command) -> Result<ChangeSet, CommandError> {
+        let group = self.live_preview().filter(|p| p.applied).map(|p| p.group);
+        let result = self.execute_grouped(command, group);
+        if group.is_some() {
+            if result.is_ok() {
+                self.close_group();
+                self.route_preview = None;
+            } else {
+                self.drop_route_preview();
+            }
+        }
+        self.route_preview = None;
+        result
+    }
+
+    /// End a route preview, taking its edits out.
+    pub fn drop_route_preview(&mut self) {
+        self.clear_route_preview();
+        self.route_preview = None;
     }
 
     /// Run the design rule check on the current board and mark the violations.
@@ -432,6 +557,7 @@ impl Document {
     }
 
     pub fn save_as(&mut self, dir: impl AsRef<Path>) -> Result<(), FileError> {
+        self.drop_route_preview();
         save_project(self.editor.project(), dir.as_ref())?;
         self.path = Some(dir.as_ref().to_path_buf());
         self.editor.mark_saved();
@@ -504,6 +630,9 @@ impl Document {
     }
 
     pub fn execute_grouped(&mut self, command: Command, group: Option<u64>) -> Result<ChangeSet, CommandError> {
+        if self.route_preview.as_ref().is_some_and(|p| Some(p.group) != group) {
+            self.drop_route_preview();
+        }
         if let Some(why) = &self.read_only {
             return Err(CommandError::Forbidden(why.clone()));
         }
@@ -576,6 +705,7 @@ impl Document {
     }
 
     pub fn undo(&mut self) -> Option<ChangeSet> {
+        self.drop_route_preview();
         let changes = self.editor.undo()?;
         self.changed(&changes);
         Some(changes)
@@ -589,6 +719,7 @@ impl Document {
     }
 
     pub fn redo(&mut self) -> Option<ChangeSet> {
+        self.drop_route_preview();
         let changes = self.editor.redo()?;
         self.changed(&changes);
         Some(changes)

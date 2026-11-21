@@ -4827,6 +4827,10 @@ impl TreeBehavior<'_> {
         {
             switch_sheet(self.sch, doc, s);
         }
+        // Pushed tracks shown while routing are only kept while the route goes on.
+        if kind == ViewKind::Board && !self.pcb.wants_route_preview() {
+            doc.drop_route_preview();
+        }
         let pane = self.panes.get(view);
         // The text being edited takes presses on it; a press elsewhere commits it.
         let pointer = response.hover_pos().map(|p| {
@@ -5576,7 +5580,10 @@ impl eframe::App for PcbApp {
 
         // Junction dots and unconnected pins follow the schematic.
         // Drags in the Project Library's editors count: they change the project.
-        let busy = self.panes.iter().any(|p| !p.it.is_idle()) || self.project.tabs.iter().any(ItemTab::busy);
+        // So does routing with shove: every step edits the board.
+        let busy = self.panes.iter().any(|p| !p.it.is_idle())
+            || self.project.tabs.iter().any(ItemTab::busy)
+            || self.pcb.wants_route_preview();
         if self.project.lib.doc.update_connectivity(busy) {
             self.probe_key = None;
             ctx.request_repaint();

@@ -288,23 +288,57 @@ the current design of each area with the gotchas a change needs to know, the pla
   it too); the route tool only rechecks when its inputs or the document revision change
   (`ClashKey`).
 - **Router** (`router`, plan in [routing-plan.md](routing-plan.md)): `RouteMode`
-  (Highlight, Walkaround; a `PcbSettings` field, Shift+R cycles it). `hull::Hull`: a
-  convex counterclockwise polygon, the obstacle's points grown by an octagon of
-  clearance + half width + `SLACK` (10 nm), so edges run at 45° multiples round round
-  and axis-aligned copper (rotated pads give other angles); a path chord per hull for
-  arcs; keepouts are their outline's convex hull. `walk::walk` replaces the path's first
-  crossing of a hull by its outline from the entry to the *last* exit, always turning
-  one way (`EPS` 5 nm: a path along an edge isn't inside), up to 64 times; ending
-  inside a hull stops where it goes in, starting in one gives just the start.
+  (Highlight, Shove (default), Walkaround; a `PcbSettings` field, Shift+R cycles it),
+  `route` dispatches. `hull::Hull`: a convex counterclockwise polygon, the obstacle's
+  points grown by an octagon of clearance + half width + `SLACK` (10 nm), so edges run at
+  45° multiples round round and axis-aligned copper (rotated pads give other angles); a
+  path chord per hull for arcs; keepouts are their outline's convex hull.
+  `walk::walk` replaces the path's first crossing of a hull by its outline from the
+  entry to the *last* exit, always turning one way, up to 64 times; ending inside a hull
+  stops where it goes in, starting in one gives just the start. Gotcha: overlapping
+  hulls put path corners exactly on or inside another hull's outline: the entry is
+  searched back to the last corner not inside (`inside`: more than 0.5 nm), and an exit
+  or entry at a corner on the outline takes the nearest edge (`nearest_edge`).
   `walkaround` gathers hulls from `query` (5 mm round the leg, more if a walk leaves
   that), walks both ways, checks each exactly with `route_check` and cuts it to the
   longest clean start (binary search to 1 µm: the board edge and approximations), and
   takes the one that reaches, then the shorter. ~0.2 ms per walk on the 10k stress
   board. Obstacles and their clearances are exactly `route_check`'s (same islands at
-  the ends, net classes). In the Route tool (`PcbPlacer::routed`), the walked path is
-  the ghost and what a click adds (straight segments; the leg's own, arcs included, if
-  the walk didn't change it); stopping short shows a marker and a click adds up to
-  there and goes on from it. Shift routes straight as in Highlight mode.
+  the ends, net classes; `check_with` leaves out copper a filter says).
+- **Shove** (`router::shove`): the head first walks round what can't move
+  (`lay(…, fixed_only)`: pads, vias, locked tracks, arcs, keepouts; checks skip movable
+  tracks), then `shove::shove` pushes. `line::Line`: the chain of straight tracks of one
+  width on one layer between joints (pads or vias containing the end, ends with ≠ 1
+  other track end exactly there, arcs, a width change), with its tracks in order; fixed
+  if a track is locked or it's an arc. Engine: a stack of pushers (the head, pushed
+  lines); a pusher's *nearest* hit (exact `Geo::distance` below clearance −
+  `TOLERANCE` 5 nm, as walked lines sit at the hull) is walked round the pusher's
+  segment hulls both ways, the shorter one clear of fixed copper, the head, keepouts and
+  the edge wins, and it's pushed with the pusher on top of the stack (its own pushes
+  settle first, then the pusher is checked again). Pushing a fixed line, a pad, a via or
+  one of the pusher's own pushers (`pushes_back`: no ping-pong) fails. Limits: 1000
+  pops and `SHOVE_TIME` (40 ms) for the whole call; on failure a binary search (20 µm)
+  finds the longest head that pushes clear. Lines keep their end points. Pure: every
+  step starts from the board as it is, so pushed tracks spring back. Costs: a push
+  ~0.1 ms; 40 nested lines ~10–28 ms (each re-pushed ~5×). `Command::SetTrackPaths`
+  lays a chain along a new path (ids kept in order, extra segments copy the first
+  track, left-overs deleted). `locked` on `Track` / `Via` (Properties, KiCad import;
+  not serialized when false).
+- **Route tool and the router**: in Shove and Walk around (`PcbPlacer::routed`, Shift
+  forces Highlight) the router's path is the ghost and what a click adds (straight
+  segments; the leg's own, arcs included, if unchanged); stopping short shows a marker
+  and a click adds up to there and goes on. Shove's pushes are real edits, a *route
+  preview* in `Document` (`set_route_preview` / `clear_route_preview` /
+  `commit_route` / `drop_route_preview`): an undo group retracted before each step,
+  with the board connectivity from before the edits kept (`route_copper`,
+  `route_base`, `route_revision` for cache keys), so snapping and routing never see the
+  pushes; the click runs the leg in the same group (one undo step). Gotchas: any other
+  command, undo, redo or save drops (retracts) the preview first; anything else
+  changing the document (revision) makes its state stale; the app drops it every frame
+  the tool doesn't want one (`wants_route_preview`) and counts routing as busy
+  (connectivity deferred on large boards). MCP `route {layer, points, width, mode}`
+  does the same in one step and returns the path, `reached`, `blocked` and the pushed
+  chains.
 - **Vias** have a span `from`..`to` (copper layers, top one first; `AddVia { span }`,
   `None` through). `Via::is_through` / `kind` (Through, Blind, Buried); `via_layers` is
   every copper layer between. Arcs: `fillet::fillet` rounds a corner with a tangent

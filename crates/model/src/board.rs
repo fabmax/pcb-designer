@@ -167,11 +167,14 @@ pub struct Track {
     /// A point on the arc between `a` and `b` (as in KiCad); `None`: straight.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mid: Option<Point>,
+    /// Never pushed aside by the router (it can still be moved by hand).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
 }
 
 impl Track {
     pub fn straight(layer: LayerId, a: Point, b: Point, width: Coord) -> Track {
-        Track { id: Id::new(), layer, a, b, width, mid: None }
+        Track { id: Id::new(), layer, a, b, width, mid: None, locked: false }
     }
 
     /// Move the ends to `a` and `b`. An arc keeps its bulge: the mid point's offset from
@@ -279,6 +282,9 @@ pub struct Via {
     /// Copper span (through vias: top to bottom).
     pub from: LayerId,
     pub to: LayerId,
+    /// Never pushed aside by the router (it can still be moved by hand).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
 }
 
 impl Via {

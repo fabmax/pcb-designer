@@ -283,6 +283,7 @@ fn routing_keeps_clearance_to_other_nets() {
     let (j1, j2) = (pad(&doc, fj, "1"), pad(&doc, fj, "2"));
     let mut t = PcbPlacer::default();
     t.set_tool(PcbTool::Route);
+    t.settings.route_mode = view::pcb_tools::RouteMode::Highlight;
     t.settings.corners = view::bend::Corners::Deg90;
     t.hover(&mut doc, Some((j1, j1)), mm(0.3));
     t.click(&mut doc).unwrap();
@@ -428,4 +429,50 @@ fn walk_around_mode_routes_round_copper_and_stops_short() {
     assert!(!t.click(&mut doc).unwrap(), "the route goes on");
     let ends: Vec<Point> = doc.project().board.tracks.iter().map(|t| t.b).collect();
     assert!(ends.contains(&stop));
+}
+
+#[test]
+fn shove_mode_pushes_tracks_live_and_commits_one_undo_step() {
+    let mut doc = Document::new(Project::new("T"));
+    let wall = Track::straight(LayerId::TOP_COPPER, Point::mm(0.0, 0.0), Point::mm(20.0, 0.0), mm(0.25));
+    doc.execute(Command::Insert { objects: vec![Object::Track(wall.clone())] }).unwrap();
+    let original: Vec<Track> = doc.project().board.tracks.iter().cloned().collect();
+    let mut t = PcbPlacer::default();
+    t.set_tool(PcbTool::Route);
+    assert_eq!(t.settings.route_mode, view::pcb_tools::RouteMode::Shove, "the default");
+    let (a, b) = (Point::mm(10.0, -5.0), Point::mm(10.0, 1.0));
+    t.hover(&mut doc, Some((a, a)), mm(0.0));
+    t.click(&mut doc).unwrap();
+    assert!(t.wants_route_preview());
+    // The wall bulges round the head's end, live.
+    t.hover(&mut doc, Some((b, b)), mm(0.0));
+    assert!(doc.project().board.tracks.len() > 1, "pushed: {:?}", doc.project().board.tracks);
+    assert!(doc.project().board.tracks.iter().any(|t| t.a.y > mm(1.0) || t.b.y > mm(1.0)));
+    // Back below it: it springs back.
+    let low = Point::mm(10.0, -2.0);
+    t.hover(&mut doc, Some((low, low)), mm(0.0));
+    assert_eq!(doc.project().board.tracks.iter().cloned().collect::<Vec<_>>(), original);
+    // Up again and click: the leg and the pushed wall, as one undo step.
+    t.hover(&mut doc, Some((b, b)), mm(0.0));
+    let pushed = doc.project().board.tracks.len();
+    t.click(&mut doc).unwrap();
+    assert_eq!(doc.project().board.tracks.len(), pushed + 1);
+    assert!(!t.wants_route_preview() || t.clash().is_none());
+    doc.undo();
+    assert_eq!(doc.project().board.tracks.iter().cloned().collect::<Vec<_>>(), original);
+    // A preview left behind (Esc) is dropped, never kept.
+    doc.redo();
+    doc.undo();
+    t.escape();
+    t.hover(&mut doc, Some((a, a)), mm(0.0));
+    t.click(&mut doc).unwrap();
+    t.hover(&mut doc, Some((b, b)), mm(0.0));
+    assert!(doc.project().board.tracks.len() > 1);
+    t.escape();
+    assert!(!t.wants_route_preview());
+    doc.drop_route_preview();
+    assert_eq!(doc.project().board.tracks.iter().cloned().collect::<Vec<_>>(), original);
+    // Nothing of it kept: one undo takes back the wall itself.
+    doc.undo();
+    assert!(doc.project().board.tracks.is_empty());
 }

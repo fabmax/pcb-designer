@@ -10,6 +10,15 @@ use crate::CommandError;
 use crate::clip::{Clip, ClipContent};
 use crate::transaction::{Setup, Transaction};
 
+/// A chain of tracks and the path it is to follow ([`Command::SetTrackPaths`]).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TrackPath {
+    /// The tracks in order along the chain.
+    pub tracks: Vec<Id>,
+    /// Its new corners, from end to end.
+    pub path: Vec<Point>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "command", rename_all = "snake_case")]
 pub enum Command {
@@ -182,6 +191,13 @@ pub enum Command {
         #[serde(default)]
         mids: Vec<Option<Point>>,
     },
+    /// Lay chains of straight tracks along new paths (what the router's shove does): each
+    /// path's tracks, in order along the chain, become the segments of `path`. Ids are
+    /// kept in order; extra segments are new tracks like the first, left-over tracks are
+    /// deleted. Layer, width and lock stay the first track's.
+    SetTrackPaths {
+        paths: Vec<TrackPath>,
+    },
     /// Cut `outline` out of a zone or keepout (`id`). Inside it, it becomes a hole (merged
     /// with holes it overlaps); across the edge, it trims the outline. Refused if it
     /// misses the area, would remove all of it or split it into pieces.
@@ -352,6 +368,7 @@ impl Command {
             Command::AddSheet { name, .. } => format!("Add sheet {name}"),
             Command::SetComponent { .. } => "Edit component".into(),
             Command::AddTrack { .. } => "Add track".into(),
+            Command::SetTrackPaths { paths } => format!("Reroute {} track chain(s)", paths.len()),
             Command::AddVia { .. } => "Add via".into(),
             Command::RoundCorners { .. } => "Round corners".into(),
             Command::AddCutout { .. } => "Add cutout".into(),
@@ -556,6 +573,52 @@ impl Command {
                 }
                 Ok(())
             }
+            Command::SetTrackPaths { paths } => {
+                for TrackPath { tracks, path } in paths {
+                    let path: Vec<Point> = path.iter().copied().fold(Vec::new(), |mut v, p| {
+                        if v.last() != Some(&p) {
+                            v.push(p);
+                        }
+                        v
+                    });
+                    if path.len() < 2 {
+                        return Err(CommandError::Invalid("a track path needs two distinct points".into()));
+                    }
+                    let Some(&first) = tracks.first() else {
+                        return Err(CommandError::Invalid("a track path needs tracks".into()));
+                    };
+                    let template = tx
+                        .project()
+                        .board
+                        .tracks
+                        .get(first)
+                        .cloned()
+                        .ok_or(CommandError::NotFound(ObjectId::Track(first)))?;
+                    for (i, w) in path.windows(2).enumerate() {
+                        match tracks.get(i) {
+                            Some(&id) => {
+                                let mut t = tx
+                                    .project()
+                                    .board
+                                    .tracks
+                                    .get(id)
+                                    .cloned()
+                                    .ok_or(CommandError::NotFound(ObjectId::Track(id)))?;
+                                (t.a, t.b, t.mid) = (w[0], w[1], None);
+                                tx.replace(Object::Track(t))?;
+                            }
+                            None => {
+                                let t = Track { id: Id::new(), a: w[0], b: w[1], mid: None, ..template.clone() };
+                                tx.insert(Object::Track(t))?;
+                            }
+                        }
+                    }
+                    for &id in tracks.iter().skip(path.len() - 1) {
+                        tx.remove(ObjectId::Track(id))?;
+                    }
+                }
+                Ok(())
+            }
             Command::AddCutout { id, outline } => tx.update(id, |o| {
                 let (outer, holes) = match o {
                     Object::Zone(z) => (&mut z.outline, &mut z.holes),
@@ -669,6 +732,7 @@ impl Command {
                     drill: drill.unwrap_or(rules.via_drill),
                     from,
                     to,
+                    locked: false,
                 };
                 if via.drill >= via.diameter {
                     return Err(CommandError::Invalid("via drill must be smaller than its diameter".into()));

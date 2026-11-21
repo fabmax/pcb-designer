@@ -70,7 +70,7 @@ pub enum Action {
     MeasureClearance,
     PcbText,
     PcbNextLayer,
-    /// Cycle the Route tool's mode (highlight collisions, walk around).
+    /// Cycle the Route tool's mode (highlight collisions, shove, walk around).
     NextRouteMode,
     PcbFindPart,
     Settings,
@@ -237,7 +237,7 @@ impl Action {
             Action::PcbNextLayer => {
                 "Next copper layer; adds a via while routing, Shift even where it breaks a rule (PCB)"
             }
-            Action::NextRouteMode => "Next routing mode: highlight collisions, walk around (PCB)",
+            Action::NextRouteMode => "Next routing mode: highlight collisions, shove, walk around (PCB)",
             Action::PcbFindPart => "Find a board part to place (PCB)",
             Action::Settings => "Settings",
             Action::PanelProject => "Show/hide Project panel",

@@ -356,7 +356,7 @@ Tools: `get_project`, `list_library_parts`, `import_parts`, `update_parts`,
 `search_kicad`, `import_kicad`, `download_kicad_libraries`, `import_kicad_project`, `list_objects`, `get_objects`, `get_component`,
 `get_netlist` (nets, buses and their members, schematic and ERC problems), `get_routing`,
 `run_drc`, `exclude_findings` (exclude or include ERC/DRC findings by key, with a
-comment), `set_check_settings` (severities and the pin conflict matrix), `measure_clearance`, `export_gerber` (its `assembly` picks the BOM and position
+comment), `set_check_settings` (severities and the pin conflict matrix), `measure_clearance`, `route` (a track laid by the router: shove, walkaround or highlight; returns what it pushed), `export_gerber` (its `assembly` picks the BOM and position
 layout), `export_schematic_pdf`, `execute` (any editor command, as one undo step, e.g.
 `add_text` on a sheet or a board layer), `undo`, `redo`, `get_selection`, `set_selection`, `screenshot` (a schematic sheet, the board,
 the last Gerber export, a simulation's plot or the whole window), `simulate` (runs an

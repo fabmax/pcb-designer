@@ -135,15 +135,15 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
         PcbTool::Route => {
             grid(ui, "pcb_tool", |ui| {
                 label(ui, "Mode");
-                ui.horizontal(|ui| {
-                    for &m in view::pcb_tools::RouteMode::ALL {
-                        let short = match m {
-                            view::pcb_tools::RouteMode::Highlight => "Highlight",
-                            view::pcb_tools::RouteMode::Walkaround => "Walk around",
-                        };
-                        ui.selectable_value(&mut s.route_mode, m, short).on_hover_text(m.label());
-                    }
-                });
+                fields::combo_box(ui, "pcb_route_mode")
+                    .selected_text(s.route_mode.label())
+                    .show_ui(ui, |ui| {
+                        for &m in view::pcb_tools::RouteMode::ALL {
+                            ui.selectable_value(&mut s.route_mode, m, m.label());
+                        }
+                    })
+                    .response
+                    .on_hover_text("What to do about other nets' copper in the way (Shift+R)");
                 ui.end_row();
                 label(ui, "Layer");
                 layer_combo(ui, "pcb_tool_layer", &mut s.layer, doc);

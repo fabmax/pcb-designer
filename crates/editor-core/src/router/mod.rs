@@ -3,11 +3,13 @@
 //! project and its board connectivity and says where the leg goes; the Route tool adds it.
 
 pub mod hull;
+pub mod line;
+pub mod shove;
 pub mod walk;
 
 use model::*;
 
-use crate::copper::{BoardConnectivity, CopperItem, layer_bit};
+use crate::copper::{BoardConnectivity, Copper, CopperItem, layer_bit};
 use crate::route_check::{self, Clash, Probe};
 use hull::Hull;
 
@@ -16,22 +18,27 @@ use hull::Hull;
 const SLACK: Coord = 10;
 
 /// How the Route tool deals with copper in the way.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum RouteMode {
     /// Show the clash and refuse the click.
-    #[default]
     Highlight,
+    /// Push other nets' tracks aside (going round what can't move).
+    #[default]
+    Shove,
     /// Go round obstacles.
     Walkaround,
 }
 
 impl RouteMode {
-    pub const ALL: &[RouteMode] = &[RouteMode::Highlight, RouteMode::Walkaround];
+    pub const ALL: &[RouteMode] = &[RouteMode::Highlight, RouteMode::Shove, RouteMode::Walkaround];
 
     pub fn label(self) -> &'static str {
         match self {
             RouteMode::Highlight => "Highlight collisions",
+            RouteMode::Shove => "Shove",
             RouteMode::Walkaround => "Walk around",
         }
     }
@@ -51,6 +58,63 @@ pub struct Routed {
     pub reached: bool,
     /// What the straight leg runs into, when it stops short.
     pub blocked: Option<Clash>,
+    /// Lines pushed aside (Shove).
+    pub pushed: Vec<shove::Pushed>,
+}
+
+/// The leg along `points` laid in `mode` (Shove or Walkaround; Highlight takes it as it
+/// is): see [`walkaround`] and [`shove`].
+pub fn route(
+    project: &Project,
+    copper: &BoardConnectivity,
+    mode: RouteMode,
+    layer: LayerId,
+    width: Coord,
+    net: Option<&str>,
+    points: &[Point],
+) -> Routed {
+    match mode {
+        RouteMode::Highlight => Routed { points: points.to_vec(), reached: true, blocked: None, pushed: Vec::new() },
+        RouteMode::Walkaround => walkaround(project, copper, layer, width, net, points),
+        RouteMode::Shove => shove(project, copper, layer, width, net, points),
+    }
+}
+
+/// The leg along `points` walked round what can't be pushed (pads, vias, locked tracks,
+/// arcs, keepouts), pushing the tracks in its way aside. Where they can't give way, the
+/// leg stops at the furthest point that works.
+pub fn shove(
+    project: &Project,
+    copper: &BoardConnectivity,
+    layer: LayerId,
+    width: Coord,
+    net: Option<&str>,
+    points: &[Point],
+) -> Routed {
+    let walked = lay(project, copper, layer, width, net, points, true);
+    // A frame or two at most, the search for where to stop included.
+    let deadline = std::time::Instant::now() + SHOVE_TIME;
+    let attempt = |path: &[Point]| shove::shove(project, copper, &shove::Head { layer, width, net, path, deadline });
+    let blocked = match attempt(&walked.points) {
+        Ok(pushed) => return Routed { pushed, ..walked },
+        Err(shove::Blocked(c)) => c,
+    };
+    // The longest start of the leg that pushes clear, to 20 µm.
+    let (mut lo, mut hi) = (0.0, walk::length(&walked.points));
+    let mut best = Vec::new();
+    while hi - lo > 20_000.0 && std::time::Instant::now() < deadline {
+        let mid = (lo + hi) / 2.0;
+        match attempt(&prefix(&walked.points, mid)) {
+            Ok(pushed) => {
+                lo = mid;
+                best = pushed;
+            }
+            Err(_) => hi = mid,
+        }
+    }
+    let points = prefix(&walked.points, lo);
+    let pushed = if points.len() < 2 { Vec::new() } else { best };
+    Routed { points, reached: false, blocked: Some(blocked), pushed }
 }
 
 /// The leg along `points` (its first point is where it starts, the last the pointer) of
@@ -65,11 +129,33 @@ pub fn walkaround(
     net: Option<&str>,
     points: &[Point],
 ) -> Routed {
+    lay(project, copper, layer, width, net, points, false)
+}
+
+/// Can the router push this copper aside (a straight, unlocked track)?
+fn movable(project: &Project, c: &Copper) -> bool {
+    match c.item {
+        CopperItem::Track(id) => project.board.tracks.get(id).is_some_and(|t| !t.locked && t.mid.is_none()),
+        _ => false,
+    }
+}
+
+/// [`walkaround`], round everything or (`fixed_only`) only what can't be pushed aside.
+fn lay(
+    project: &Project,
+    copper: &BoardConnectivity,
+    layer: LayerId,
+    width: Coord,
+    net: Option<&str>,
+    points: &[Point],
+    fixed_only: bool,
+) -> Routed {
     let (Some(&start), Some(&target)) = (points.first(), points.last()) else {
-        return Routed { points: Vec::new(), reached: false, blocked: None };
+        return Routed { points: Vec::new(), reached: false, blocked: None, pushed: Vec::new() };
     };
     let ends = [(layer, start), (layer, target)];
-    let obstacles = Obstacles::new(project, copper, layer, width, net, &ends);
+    let skip = |c: &Copper| fixed_only && movable(project, c);
+    let obstacles = Obstacles::new(project, copper, layer, width, net, &ends, &skip);
 
     // Hulls of what's near the leg; more if the walk goes further.
     let mut region = bounds(points).grow(DETOUR);
@@ -89,7 +175,7 @@ pub fn walkaround(
     // edge isn't one); the one getting furthest wins, then the shorter.
     let mut best: Option<(Vec<Point>, bool)> = None;
     for w in walks {
-        let (path, ok) = checked(project, copper, layer, width, net, start, w.path);
+        let (path, ok) = checked(project, copper, layer, width, net, start, w.path, &skip);
         let reached = w.reached && ok;
         let better = match &best {
             None => true,
@@ -108,9 +194,12 @@ pub fn walkaround(
         }
     }
     let (points_out, reached) = best.expect("two walks");
-    let blocked = (!reached).then(|| check(project, copper, layer, width, net, start, points)).flatten();
-    Routed { points: points_out, reached, blocked }
+    let blocked = (!reached).then(|| check(project, copper, layer, width, net, start, points, &skip)).flatten();
+    Routed { points: points_out, reached, blocked, pushed: Vec::new() }
 }
+
+/// The longest a shove may take, stopping short included.
+const SHOVE_TIME: std::time::Duration = std::time::Duration::from_millis(40);
 
 /// How far round an obstacle a walk is expected to go (nm): hulls are gathered this far
 /// around the leg at first.
@@ -118,6 +207,7 @@ const DETOUR: Coord = 5_000_000;
 
 /// The copper (and keepouts) a leg must keep clear of.
 struct Obstacles<'a> {
+    skip: &'a dyn Fn(&Copper) -> bool,
     project: &'a Project,
     copper: &'a BoardConnectivity,
     layer: LayerId,
@@ -139,6 +229,7 @@ impl<'a> Obstacles<'a> {
         width: Coord,
         net: Option<&str>,
         ends: &[(LayerId, Point)],
+        skip: &'a dyn Fn(&Copper) -> bool,
     ) -> Self {
         let rules = &project.board.rules;
         let clearances = copper.clearances(rules);
@@ -156,7 +247,7 @@ impl<'a> Obstacles<'a> {
             .collect();
         let half = width / 2;
         let reach = clearances.max.max(net_clearance) + half + SLACK;
-        Obstacles { project, copper, layer, half, net, net_clearance, clearances, islands, reach }
+        Obstacles { skip, project, copper, layer, half, net, net_clearance, clearances, islands, reach }
     }
 
     /// Hulls of everything whose copper is within `region`.
@@ -168,6 +259,7 @@ impl<'a> Obstacles<'a> {
                 || matches!(c.item, CopperItem::Zone { .. })
                 || self.islands.contains(&c.island)
                 || (self.net.is_some() && c.net == self.net)
+                || (self.skip)(c)
             {
                 continue;
             }
@@ -187,7 +279,8 @@ impl<'a> Obstacles<'a> {
     }
 }
 
-/// The first rule the track along `path` breaks.
+/// The first rule the track along `path` breaks (`skip`: copper left out).
+#[allow(clippy::too_many_arguments)]
 fn check(
     project: &Project,
     copper: &BoardConnectivity,
@@ -196,14 +289,16 @@ fn check(
     net: Option<&str>,
     start: Point,
     path: &[Point],
+    skip: &dyn Fn(&Copper) -> bool,
 ) -> Option<Clash> {
     let probes: Vec<Probe> =
         path.windows(2).map(|w| Probe::Track { layer, a: w[0], b: w[1], mid: None, width }).collect();
     let end = *path.last()?;
-    route_check::check(project, copper, &probes, net, &[(layer, start), (layer, end)])
+    route_check::check_with(project, copper, &probes, net, &[(layer, start), (layer, end)], skip)
 }
 
 /// `path`, or the longest start of it that breaks no rule (and whether it's all of it).
+#[allow(clippy::too_many_arguments)]
 fn checked(
     project: &Project,
     copper: &BoardConnectivity,
@@ -212,15 +307,16 @@ fn checked(
     net: Option<&str>,
     start: Point,
     path: Vec<Point>,
+    skip: &dyn Fn(&Copper) -> bool,
 ) -> (Vec<Point>, bool) {
-    if check(project, copper, layer, width, net, start, &path).is_none() {
+    if check(project, copper, layer, width, net, start, &path, skip).is_none() {
         return (path, true);
     }
     // Binary search on the length, to a micrometre.
     let (mut lo, mut hi) = (0.0, walk::length(&path));
     while hi - lo > 1000.0 {
         let mid = (lo + hi) / 2.0;
-        if check(project, copper, layer, width, net, start, &prefix(&path, mid)).is_none() {
+        if check(project, copper, layer, width, net, start, &prefix(&path, mid), skip).is_none() {
             lo = mid;
         } else {
             hi = mid;

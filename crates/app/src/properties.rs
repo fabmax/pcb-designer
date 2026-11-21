@@ -428,6 +428,11 @@ impl Properties {
                         row(ui, "Angle", format!("{:.1}°", sweep.abs()));
                     }
                     row(ui, "Length", units::fmt(t.length().round() as Coord));
+                    label(ui, "Locked");
+                    if ui.checkbox(&mut t.locked, "").on_hover_text("The router never pushes it aside").changed() {
+                        self.update(cx, Object::Track(t.clone()), false);
+                    }
+                    ui.end_row();
                     copper_net_row(ui, cx.doc, CopperItem::Track(t.id));
                 });
             }
@@ -469,6 +474,11 @@ impl Properties {
                         }
                         row(ui, "Kind", v.kind().to_string());
                     }
+                    label(ui, "Locked");
+                    if ui.checkbox(&mut v.locked, "").on_hover_text("The router never pushes it aside").changed() {
+                        self.update(cx, Object::Via(v.clone()), false);
+                    }
+                    ui.end_row();
                     copper_net_row(ui, cx.doc, CopperItem::Via(v.id));
                 });
             }

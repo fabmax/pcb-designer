@@ -63,6 +63,13 @@ pub enum Request {
     },
     /// Change ERC and DRC severities and pin conflict matrix cells.
     SetCheckSettings(CheckSettings),
+    /// A track laid by the router (pushing or going round what's in the way).
+    Route {
+        layer: LayerId,
+        points: Vec<Point>,
+        width: Option<Coord>,
+        mode: editor_core::router::RouteMode,
+    },
     /// The gap between two board features.
     MeasureClearance {
         a: editor_core::clearance::Feature,
@@ -210,6 +217,7 @@ impl Request {
             Request::Routing => "read routing state".into(),
             Request::Drc { .. } => "run the design rule check".into(),
             Request::MeasureClearance { .. } => "measure a clearance".into(),
+            Request::Route { .. } => "route a track".into(),
             Request::ExportGerber { .. } => "export Gerber files".into(),
             Request::ExportSchematicPdf => "export the schematic as PDF".into(),
             Request::Execute { commands } => match &commands[..] {
@@ -593,6 +601,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
                 "truncated": v.len() > limit,
             })
         }
+        Request::Route { layer, points, width, mode } => route(host.document_mut(), layer, points, width, mode)?,
         Request::MeasureClearance { a, b } => {
             let doc = host.document_mut();
             doc.update_connectivity(false);
@@ -755,6 +764,45 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
         }
     };
     Ok(Reply::Json(json))
+}
+
+/// A track along `points` laid by the router in `mode`, with what it pushed, as one undo
+/// step.
+fn route(
+    doc: &mut Document,
+    layer: LayerId,
+    points: Vec<Point>,
+    width: Option<Coord>,
+    mode: editor_core::router::RouteMode,
+) -> Result<Value, String> {
+    use editor_core::command::TrackPath;
+    let &start = points.first().ok_or("no points given")?;
+    if points.len() < 2 {
+        return Err("a track needs two points".into());
+    }
+    let copper = doc.current_copper();
+    let net = copper.at(start, layer).and_then(|c| copper.net_of(c.item)).map(str::to_string);
+    let width = width.unwrap_or_else(|| doc.project().board.rules.for_net(net.as_deref()).track_width);
+    let (project, copper) = (doc.project(), doc.copper());
+    let routed = editor_core::router::route(project, copper, mode, layer, width, net.as_deref(), &points);
+    if routed.points.len() < 2 {
+        let why = routed.blocked.map_or("no room".to_string(), |c| c.message);
+        return Err(format!("no track added: {why}"));
+    }
+    let mut commands =
+        vec![Command::AddTrack { layer, points: routed.points.clone(), width: Some(width), mids: Vec::new() }];
+    let paths: Vec<TrackPath> =
+        routed.pushed.iter().map(|p| TrackPath { tracks: p.line.tracks.clone(), path: p.path.clone() }).collect();
+    let pushed: Vec<Value> = routed.pushed.iter().map(|p| json!({ "tracks": p.line.tracks, "path": p.path })).collect();
+    if !paths.is_empty() {
+        commands.push(Command::SetTrackPaths { paths });
+    }
+    let mut out = execute(doc, commands)?;
+    out["path"] = json!(routed.points);
+    out["reached"] = json!(routed.reached);
+    out["blocked"] = json!(routed.blocked.map(|c| json!({ "at": c.at, "message": c.message })));
+    out["pushed"] = json!(pushed);
+    Ok(out)
 }
 
 /// Run commands as one undo step. If any fails, the earlier ones are undone.

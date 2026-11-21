@@ -7,6 +7,7 @@ mod gerber_export;
 mod kicad_headless;
 mod kicad_project;
 mod library_tools;
+mod routing;
 mod sheets_clip;
 mod simulation;
 mod stdio;

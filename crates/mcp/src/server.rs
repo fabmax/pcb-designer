@@ -52,7 +52,8 @@ Typical workflow:
    (e.g. from a datasheet): create_library (or open_library), edit_library to add the symbol, \
    footprints and part, render_library_item to check them, save_library, then import_parts.
 3. execute commands (place_part, add_wire, add_label, add_track, move, rotate, ...). Several \
-   commands in one call form a single undo step and are applied all-or-nothing.
+   commands in one call form a single undo step and are applied all-or-nothing. route lays a \
+   track like the GUI's router (pushing other nets' tracks aside).
 4. screenshot the schematic or board to check the result visually.
 
 Sheets: the schematic is a tree of sheets (get_project lists their paths, e.g. /Power). \
@@ -257,6 +258,20 @@ pub struct ExportParams {
     /// "pcbway". Omitted: the board's preset (Board setup).
     #[serde(default)]
     pub assembly: Option<model::AssemblyPreset>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RouteParams {
+    /// Copper layer id (0 is the top copper layer).
+    pub layer: model::LayerId,
+    /// Corners of the track as wanted, in nm, from where it starts (a pad centre, track
+    /// end or via) to where it should end.
+    pub points: Vec<model::Point>,
+    /// Track width in nm; default: the net class's (or the design rules') width.
+    pub width: Option<model::Coord>,
+    /// shove (default): push other nets' tracks aside, going round pads, vias, locked
+    /// tracks, arcs and keepouts; walkaround: go round everything; highlight: as given.
+    pub mode: Option<editor_core::router::RouteMode>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -638,6 +653,18 @@ impl PcbTools {
     async fn run_drc(&self, Parameters(p): Parameters<DrcParams>) -> Result<CallToolResult, ErrorData> {
         self.call(Request::Drc { limit: p.limit.unwrap_or(200), include_excluded: p.include_excluded.unwrap_or(false) })
             .await
+    }
+
+    #[tool(description = "Route a track as the GUI's Route tool does: from points[0] along the \
+        given corners, laid by the router. mode shove (default) pushes other nets' unlocked \
+        straight tracks aside (they keep their ends and ids; locked tracks, arcs, pads, vias, \
+        keepouts and the board edge don't move, the track goes round them); walkaround goes \
+        round all of it; highlight adds it as given. Where no way is found the track stops \
+        short: reached is false and blocked says why. Returns the path laid, the pushed track \
+        chains with their new paths, and the changes (one undo step).")]
+    async fn route(&self, Parameters(p): Parameters<RouteParams>) -> Result<CallToolResult, ErrorData> {
+        let mode = p.mode.unwrap_or_default();
+        self.call(Request::Route { layer: p.layer, points: p.points, width: p.width, mode }).await
     }
 
     #[tool(description = "Measure the gap between two things on the board: a pad {type: pad, \

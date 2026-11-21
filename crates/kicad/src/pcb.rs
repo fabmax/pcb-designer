@@ -89,7 +89,8 @@ pub fn import(path: &Path, report: &mut Report) -> Result<PcbImport, String> {
                 };
                 let width = item.child("width").and_then(|w| w.num(0)).map_or(250_000, nm);
                 let mid = if item.head() == "arc" { child_point(item, "mid", true) } else { None };
-                out.tracks.push(Track { id: ids.of(item), layer, a, b, width, mid });
+                let locked = item.flag("locked");
+                out.tracks.push(Track { id: ids.of(item), layer, a, b, width, mid, locked });
             }
             "via" => {
                 let Some(pos) = child_point(item, "at", true) else { continue };
@@ -109,6 +110,7 @@ pub fn import(path: &Path, report: &mut Report) -> Result<PcbImport, String> {
                     drill: item.child("drill").and_then(|s| s.num(0)).map_or(300_000, nm),
                     from,
                     to,
+                    locked: item.flag("locked"),
                 });
             }
             "zone" => zone(item, &layers, &mut ids, &mut out, report),

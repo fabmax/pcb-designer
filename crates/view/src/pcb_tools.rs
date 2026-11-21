@@ -3,6 +3,7 @@
 //! Independent of the GUI toolkit.
 
 use editor_core::Command;
+use editor_core::command::TrackPath;
 use editor_core::copper::{CopperItem, layer_bit};
 use editor_core::route_check::{Clash, Probe};
 pub use editor_core::router::RouteMode;
@@ -239,8 +240,9 @@ pub struct PcbPlacer {
 }
 
 /// The inputs of a clash check: document revision, tool, net, layer, width, the leg's
-/// segments (or the via position), the via span and whether the router lays the leg.
-type ClashKey = (u64, PcbTool, Option<String>, LayerId, Coord, Vec<(Point, Point, Option<Point>)>, [LayerId; 2], bool);
+/// segments (or the via position), the via span and how the leg is laid.
+type ClashKey =
+    (u64, PcbTool, Option<String>, LayerId, Coord, Vec<(Point, Point, Option<Point>)>, [LayerId; 2], RouteMode);
 
 impl Default for PcbPlacer {
     fn default() -> Self {
@@ -281,7 +283,7 @@ pub fn snap_to_copper(
     layer: LayerId,
     tol: Coord,
 ) -> (Point, Option<CopperItem>) {
-    let copper = doc.current_copper();
+    let copper = doc.route_copper();
     if let Some((p, c)) = copper.nearest_anchor(raw, layer, tol) {
         return (p, Some(c.item));
     }
@@ -487,16 +489,16 @@ impl PcbPlacer {
             (PcbTool::Route, Some(start)) => self.leg(start, p),
             _ => vec![(p, p, None)],
         };
-        let walking = self.walking();
+        let mode = self.mode();
         let key = (
-            doc.revision,
+            doc.route_revision(),
             self.tool,
             self.net.clone(),
             layer,
             self.width(doc),
             segments,
             self.settings.via_span,
-            walking,
+            mode,
         );
         if self.checked.as_ref() == Some(&key) {
             return;
@@ -504,14 +506,36 @@ impl PcbPlacer {
         self.checked = Some(key);
         self.clash = None;
         self.routed = None;
+        // The router works on the board without the last step's pushes.
+        doc.clear_route_preview();
         match self.tool {
-            PcbTool::Route if walking => {
+            PcbTool::Route if mode != RouteMode::Highlight => {
                 let Some(start) = self.start else { return };
                 let width = self.width(doc);
                 let points = chord_points(start, &self.leg(start, p));
-                doc.current_copper();
-                let (project, copper) = (doc.project(), doc.copper());
-                self.routed = Some(router::walkaround(project, copper, layer, width, self.net.as_deref(), &points));
+                doc.route_copper();
+                let (project, copper) = doc.route_base();
+                let routed = router::route(project, copper, mode, layer, width, self.net.as_deref(), &points);
+                let paths: Vec<TrackPath> = routed
+                    .pushed
+                    .iter()
+                    .map(|p| TrackPath { tracks: p.line.tracks.clone(), path: p.path.clone() })
+                    .collect();
+                let shown = if paths.is_empty() {
+                    Ok(())
+                } else {
+                    doc.set_route_preview(vec![Command::SetTrackPaths { paths }])
+                };
+                self.routed = Some(match shown {
+                    Ok(()) => routed,
+                    // Not expected: the router's pushes are valid commands.
+                    Err(message) => Routed {
+                        points: vec![start],
+                        reached: false,
+                        blocked: Some(Clash { at: start, message }),
+                        pushed: Vec::new(),
+                    },
+                });
             }
             PcbTool::Route => {
                 let Some(start) = self.start else { return };
@@ -547,9 +571,16 @@ impl PcbPlacer {
         }
     }
 
-    /// The router lays the leg (Walk around mode, Shift not held).
-    fn walking(&self) -> bool {
-        self.settings.route_mode == RouteMode::Walkaround && !self.force
+    /// How the leg is laid now: the mode, or Highlight while Shift is held (straight
+    /// through).
+    fn mode(&self) -> RouteMode {
+        if self.force { RouteMode::Highlight } else { self.settings.route_mode }
+    }
+
+    /// A route leg is being shoved: the document holds its pushes as a preview. Else the
+    /// app drops any (see [`Document::drop_route_preview`]).
+    pub fn wants_route_preview(&self) -> bool {
+        self.tool == PcbTool::Route && self.start.is_some() && self.mode() == RouteMode::Shove
     }
 
     /// What the leg to `p` adds: the router's path (straight segments; the leg's own
@@ -557,7 +588,7 @@ impl PcbPlacer {
     fn route_segments(&self, start: Point, p: Point) -> Vec<(Point, Point, Option<Point>)> {
         let leg = self.leg(start, p);
         match &self.routed {
-            Some(r) if self.walking() && r.points != chord_points(start, &leg) => {
+            Some(r) if self.mode() != RouteMode::Highlight && r.points != chord_points(start, &leg) => {
                 r.points.windows(2).map(|w| (w[0], w[1], None)).collect()
             }
             _ => leg,
@@ -566,7 +597,7 @@ impl PcbPlacer {
 
     /// Where the router stopped short of the pointer (Walk around mode).
     pub fn stopped_short(&self) -> Option<&Routed> {
-        self.routed.as_ref().filter(|r| self.walking() && !r.reached)
+        self.routed.as_ref().filter(|r| self.mode() != RouteMode::Highlight && !r.reached)
     }
 
     /// Refuse a click that breaks a rule (unless allowed or forced).
@@ -651,7 +682,7 @@ impl PcbPlacer {
                 let Some(start) = self.start else {
                     self.start = Some(p);
                     self.posture.start();
-                    let copper = doc.current_copper();
+                    let copper = doc.route_copper();
                     self.net = copper.at(p, layer).and_then(|c| copper.net_of(c.item)).map(str::to_string);
                     return Ok(false);
                 };
@@ -666,11 +697,12 @@ impl PcbPlacer {
                     return Err(why.map_or("No room for a track here".into(), |c| format!("No room: {}", c.message)));
                 };
                 let p = end;
-                let ends = doc.current_copper().at(p, layer).is_some();
+                let ends = doc.route_copper().at(p, layer).is_some();
                 let points = std::iter::once(start).chain(segs.iter().map(|s| s.1)).collect();
                 let mids = segs.iter().map(|s| s.2).collect();
                 let width = Some(self.width(doc));
-                doc.execute(Command::AddTrack { layer, points, width, mids }).map_err(|e| e.to_string())?;
+                // With the tracks it pushed (the preview), as one undo step.
+                doc.commit_route(Command::AddTrack { layer, points, width, mids }).map_err(|e| e.to_string())?;
                 self.posture.start();
                 self.clash = None;
                 self.checked = None;

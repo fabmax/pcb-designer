@@ -25,36 +25,64 @@ pub fn walk(path: &[Point], hulls: &[Hull], ccw: bool) -> Walk {
     for _ in 0..MAX_STEPS {
         let Some((k, h)) = first_crossing(&path, hulls) else { return Walk { path, reached: true } };
         let hull = &hulls[h];
-        if hull.contains(path[0], EPS) {
+        // Where it goes in: on segment k, or earlier if k starts inside (a corner of
+        // another hull's outline can lie inside this one).
+        let Some(j) = (0..=k).rev().find(|&j| !inside(hull, path[j])) else {
             return Walk { path: vec![path[0]], reached: false };
-        }
-        // Where it goes in (on the hull's outline, else just inside it).
-        let crossing = |a: Point, b: Point| hull.crossing(a, b, 0.0).or_else(|| hull.crossing(a, b, EPS));
-        let Some(c_in) = crossing(path[k], path[k + 1]) else { return stop(path, k, hull) };
-        let entry = Hull::at(path[k], path[k + 1], c_in.t_in);
-        let Some(edge_in) = c_in.edge_in else { return stop(path, k, hull) };
-        // Where it last comes out.
-        let last = (k..path.len() - 1).rev().find_map(|m| crossing(path[m], path[m + 1]).map(|c| (m, c)));
-        let Some((m, c_out)) = last else { return stop(path, k, hull) };
-        let Some(edge_out) = c_out.edge_out else {
+        };
+        let (entry, edge_in) = match hull.crossing(path[j], path[j + 1], 0.0) {
+            Some(c) if c.edge_in.is_some() => (Hull::at(path[j], path[j + 1], c.t_in), c.edge_in.expect("some")),
+            // It starts on the outline.
+            _ => (path[j], nearest_edge(hull, path[j])),
+        };
+        if inside(hull, *path.last().expect("a path")) {
             // Ends inside: stop where it goes in.
-            path.truncate(k + 1);
+            path.truncate(j + 1);
             path.push(entry);
             return Walk { path: simplify(path), reached: false };
+        }
+        // Where it last comes out.
+        let m = (j..path.len() - 1)
+            .rev()
+            .find(|&m| hull.crossing(path[m], path[m + 1], 0.0).is_some() || inside(hull, path[m]))
+            .unwrap_or(j);
+        let (exit, edge_out) = match hull.crossing(path[m], path[m + 1], 0.0) {
+            Some(c) if c.edge_out.is_some() => (Hull::at(path[m], path[m + 1], c.t_out), c.edge_out.expect("some")),
+            // It leaves at the segment's end, on the outline.
+            _ => (path[m + 1], nearest_edge(hull, path[m + 1])),
         };
-        let exit = Hull::at(path[m], path[m + 1], c_out.t_out);
-        let mut next: Vec<Point> = path[..=k].to_vec();
+        let mut next: Vec<Point> = path[..=j].to_vec();
         next.push(entry);
         next.extend(round(hull, entry, edge_in, exit, edge_out, ccw));
         next.push(exit);
         next.extend_from_slice(&path[m + 1..]);
-        path = simplify(next);
+        let next = simplify(next);
+        if next == path {
+            break; // no progress
+        }
+        path = next;
     }
     // Too many: stop at the first hull still crossed.
     match first_crossing(&path, hulls) {
         Some((k, h)) => stop(path, k, &hulls[h]),
         None => Walk { path, reached: true },
     }
+}
+
+/// Inside the hull (more than half a nanometre), not on its outline.
+fn inside(hull: &Hull, p: Point) -> bool {
+    hull.contains(p, 0.5)
+}
+
+/// The edge of `hull` that `p` (on or near its outline) is closest to.
+fn nearest_edge(hull: &Hull, p: Point) -> usize {
+    let n = hull.points.len();
+    (0..n)
+        .min_by(|&i, &j| {
+            let d = |i: usize| crate::copper::point_seg_dist(p, hull.points[i], hull.points[(i + 1) % n]);
+            d(i).total_cmp(&d(j))
+        })
+        .unwrap_or(0)
 }
 
 /// The first segment crossing a hull, and the hull it crosses first along it.

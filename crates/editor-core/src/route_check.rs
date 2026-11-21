@@ -4,7 +4,7 @@
 
 use model::*;
 
-use crate::copper::{BoardConnectivity, CopperItem, Geo, LayerMask, RegionIndex, layer_bit, track_geo};
+use crate::copper::{BoardConnectivity, Copper, CopperItem, Geo, LayerMask, RegionIndex, layer_bit, track_geo};
 
 /// Copper the route or via tool would add.
 #[derive(Clone, Debug, PartialEq)]
@@ -50,6 +50,19 @@ pub fn check(
     net: Option<&str>,
     ends: &[(LayerId, Point)],
 ) -> Option<Clash> {
+    check_with(project, copper, probes, net, ends, &|_| false)
+}
+
+/// [`check`], leaving out the copper `skip` says (the router's movable tracks; all of it
+/// for just the keepouts and the board edge).
+pub fn check_with(
+    project: &Project,
+    copper: &BoardConnectivity,
+    probes: &[Probe],
+    net: Option<&str>,
+    ends: &[(LayerId, Point)],
+    skip: &dyn Fn(&Copper) -> bool,
+) -> Option<Clash> {
     let board = &project.board;
     let clear = copper.clearances(&board.rules);
     let net_rules = board.rules.for_net(net);
@@ -75,6 +88,7 @@ pub fn check(
                 || matches!(c.item, CopperItem::Zone { .. })
                 || islands.contains(&c.island)
                 || (net.is_some() && c.net == net)
+                || skip(c)
             {
                 continue;
             }

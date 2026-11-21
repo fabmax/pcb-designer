@@ -200,12 +200,14 @@ Built as described in PLAN.md ("Router"): an R-tree in `BoardConnectivity` (one 
 layers, filtered by mask) instead of a separate world, hulls, `walkaround`, the mode
 setting (Shift+R) and stopping short. Lines moved to R2, where shoving needs them.
 
-### R2: Shove tracks
+### R2: Shove tracks (done)
 
-`locked` on tracks and vias (Properties, MCP, KiCad import). `Line`s (chains of one
-net's straight tracks between joints, with their ids). The shove engine for lines (vias are fixed obstacles for now), the optimizer's basics
-(merge, drop zero-length and loops), `AddTrack.mode`, the replay preview, one undo group
-per click, MCP `mode`. Shove becomes the default mode.
+Built as described in PLAN.md ("Shove", "Route tool and the router"). Differences from
+the plan above: the router runs in `Document` (it needs the board connectivity) and its
+result is ordinary commands (`AddTrack` + `SetTrackPaths`), not a `mode` on `AddTrack`;
+MCP has a `route` tool instead of `add_track.mode`; the head walks round what can't be
+pushed before shoving (KiCad's "walk around solids" in shove mode). The preview shows
+the head as a ghost and only the pushes as edits.
 
 ### R3: Shove vias
 
@@ -218,9 +220,11 @@ The Select tool's track segment and via drags shove (`Move.shove`).
 
 ### R5: Polish
 
-The optimizer's corner shortcuts, arc corner styles while shoving, the status text
-naming what blocked the route, performance on dense boards (time limit tuned with
-`edit_bench`).
+The optimizer's corner shortcuts (pushed lines keep the hull's shape: vertical walls and
+chamfers round the head, never smoothed back), arc corner styles while shoving, the
+status text naming what blocked the route, performance on deep cascades (each line is
+re-pushed ~5× today: push a pusher's hits in one walk, or order the stack by distance),
+an index of pushed lines.
 
 ## Later
 
