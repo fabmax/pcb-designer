@@ -358,3 +358,28 @@ fn routes_and_vias_take_their_net_class_sizes() {
     assert_eq!(widths.iter().filter(|&&w| w == mm(0.6)).count(), widths.len() - 1, "{widths:?}");
     assert!(widths.contains(&doc.project().board.rules.track_width));
 }
+
+/// The first leg follows the way the raw cursor leaves the start on screen, not the
+/// first grid point it snaps to.
+#[test]
+fn route_posture_follows_the_cursor_on_screen() {
+    let mut doc = Document::new(Project::new("T"));
+    let mut t = PcbPlacer::default();
+    t.set_tool(PcbTool::Route);
+    t.settings.corners = view::bend::Corners::Deg45;
+    let a = Point::mm(0.0, 0.0);
+    // A point is 0.1 mm. The cursor goes off diagonally; snapped to a coarse grid it
+    // would still read as straight right.
+    t.steer(Point::mm(0.02, 0.01), 1e5);
+    t.hover(&mut doc, Some((a, a)), mm(0.3));
+    t.click(&mut doc).unwrap();
+    t.steer(Point::mm(0.9, 0.8), 1e5);
+    let b = Point::mm(5.0, 2.0);
+    t.hover(&mut doc, Some((b, b)), mm(0.3));
+    let ghosts = t.ghosts(&doc);
+    let first = ghosts.iter().find_map(|g| match g {
+        PcbGhost::Track { a, b, .. } => Some((*a, *b)),
+        _ => None,
+    });
+    assert_eq!(first, Some((a, Point::mm(2.0, 2.0))), "diagonal first: {ghosts:?}");
+}

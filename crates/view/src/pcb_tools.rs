@@ -530,6 +530,12 @@ impl PcbPlacer {
         }
     }
 
+    /// The raw (unsnapped) cursor, `pixel` nm a screen point: decides which leg of a
+    /// track comes first (automatic posture).
+    pub fn steer(&mut self, raw: Point, pixel: f64) {
+        self.posture.track(raw, pixel, self.settings.corners);
+    }
+
     /// Track the cursor: `raw` position and grid-snapped position. Routing snaps to
     /// copper within `tol` (a few pixels).
     pub fn hover(&mut self, doc: &mut Document, p: Option<(Point, Point)>, tol: Coord) {
@@ -547,9 +553,6 @@ impl PcbPlacer {
             PcbTool::Route => {
                 let (q, item) = snap_to_copper(doc, raw, snapped, self.settings.layer, tol);
                 self.cursor = Some(q);
-                if let Some(start) = self.start {
-                    self.posture.track(start, q, self.settings.corners);
-                }
                 self.on_copper = item.is_some();
             }
             PcbTool::Measure if self.settings.clearance => {

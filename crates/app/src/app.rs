@@ -4645,8 +4645,10 @@ impl TreeBehavior<'_> {
             }
         } else if sheet.is_some() && self.sch.is_placing() {
             if tools_here {
+                let pixel = 1e6 / pane.canvas.camera.zoom;
                 let world = response.hover_pos().map(|p| {
                     let [x, y] = pane.canvas.screen_to_world(p);
+                    self.sch.steer(Point::mm(x, y), pixel);
                     pane.it.snap(Point::mm(x, y))
                 });
                 self.sch.hover(doc, world);
@@ -4669,6 +4671,9 @@ impl TreeBehavior<'_> {
                 (raw, pane.it.snap(raw))
             });
             let tol = (8.0 / pane.canvas.camera.zoom * 1e6) as Coord;
+            if let Some((raw, _)) = world {
+                self.pcb.steer(raw, 1e6 / pane.canvas.camera.zoom);
+            }
             (self.pcb.free, self.pcb.force) = ui.input(|i| (i.modifiers.alt, i.modifiers.shift));
             self.pcb.hover(doc, world, tol);
             if world.is_some()

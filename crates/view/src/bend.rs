@@ -1,6 +1,6 @@
 //! How wires, buses and tracks bend while drawn: corner styles, the path between two
 //! clicks, and the posture (which leg comes first), chosen automatically from the way the
-//! cursor leaves the start point.
+//! cursor leaves the start point (on screen, unsnapped: [`Posture::track`]).
 
 use model::*;
 
@@ -97,42 +97,60 @@ pub fn segments(a: Point, b: Point, corners: Corners, second: bool) -> Vec<(Poin
     pts.windows(2).map(|w| (w[0], w[1], None)).collect()
 }
 
+/// How far (screen points) the cursor goes from where the leg started before its
+/// direction decides the posture: far enough for the angle to mean something, and
+/// independent of the grid (its first snap step said little when zoomed in, and was
+/// one pixel of jitter when zoomed out).
+pub const DECIDE: f64 = 10.0;
+/// Back within this many points of where the leg started: the next move decides again.
+pub const REARM: f64 = 4.0;
+
 /// The automatic posture of the leg being drawn. It is decided when the cursor first
-/// leaves the start point, by the direction it goes, and stays until the cursor comes
-/// back to the start point. [`Posture::flip`] overrides it until the next leg.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// leaves where the leg started, by the direction it goes, and stays until the cursor
+/// comes back there. [`Posture::flip`] overrides it until the next leg.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Posture {
     /// The second posture is chosen.
     second: bool,
-    /// The next move away from the start decides.
+    /// The next move away from the origin decides.
     armed: bool,
     /// Flipped by hand: kept until the next leg.
     pinned: bool,
+    /// The raw cursor when the leg started (the last one tracked before
+    /// [`start`](Self::start)).
+    origin: Option<Point>,
+    /// The raw cursor tracked last.
+    last: Option<Point>,
 }
 
 impl Default for Posture {
     fn default() -> Self {
-        Posture { second: false, armed: true, pinned: false }
+        Posture { second: false, armed: true, pinned: false, origin: None, last: None }
     }
 }
 
 impl Posture {
-    /// A new leg starts: the next move decides again.
+    /// A new leg starts (a click) where the cursor is: the next move decides again.
     pub fn start(&mut self) {
         self.armed = true;
         self.pinned = false;
+        self.origin = self.last;
     }
 
-    /// The cursor moved to `cursor` while drawing a leg from `start`.
-    pub fn track(&mut self, start: Point, cursor: Point, corners: Corners) {
-        if cursor == start {
+    /// The raw (unsnapped) cursor moved to `cursor`; `pixel` is the length of a screen
+    /// point (nm). Track it also before a leg starts: the click's position is its origin.
+    pub fn track(&mut self, cursor: Point, pixel: f64, corners: Corners) {
+        self.last = Some(cursor);
+        let origin = *self.origin.get_or_insert(cursor);
+        let (dx, dy) = ((cursor.x - origin.x).abs() as f64, (cursor.y - origin.y).abs() as f64);
+        let distance = dx.hypot(dy) / pixel.max(f64::MIN_POSITIVE);
+        if distance < REARM {
             self.armed = true;
             return;
         }
-        if !self.armed || self.pinned {
+        if !self.armed || self.pinned || distance < DECIDE {
             return;
         }
-        let (dx, dy) = ((cursor.x - start.x).abs() as f64, (cursor.y - start.y).abs() as f64);
         self.second = match corners {
             Corners::Deg90 | Corners::Arc90 => dy > dx,
             // Leaving at a steep angle (more than 22.5° off the axis) starts diagonally.
@@ -182,39 +200,62 @@ mod tests {
         assert_eq!(path(a, Point::mm(0.0, 5.0), Corners::Deg90, false).len(), 2);
     }
 
+    /// A screen point of 0.1 mm.
+    const PX: f64 = 100_000.0;
+
+    fn at(x: f64, y: f64) -> Point {
+        Point::mm(x, y)
+    }
+
     #[test]
     fn posture_follows_the_first_move_until_back_at_the_start() {
-        let s = Point::ZERO;
         let mut p = Posture::default();
-        p.track(s, Point::mm(0.0, 1.27), Corners::Deg90);
+        p.track(at(0.0, 0.0), PX, Corners::Deg90);
+        // Less than DECIDE points: undecided (a sideways wobble doesn't count yet).
+        p.track(at(0.5, 0.1), PX, Corners::Deg90);
+        p.track(at(0.1, 1.5), PX, Corners::Deg90);
         assert!(p.second(Bend::Auto), "left upwards: vertical first");
         // Later moves don't change it...
-        p.track(s, Point::mm(10.0, 2.0), Corners::Deg90);
+        p.track(at(10.0, 2.0), PX, Corners::Deg90);
         assert!(p.second(Bend::Auto));
-        // ...until the cursor comes back to the start.
-        p.track(s, s, Corners::Deg90);
-        p.track(s, Point::mm(1.27, 0.0), Corners::Deg90);
+        // ...until the cursor comes back near where the leg started.
+        p.track(at(0.2, 0.1), PX, Corners::Deg90);
+        p.track(at(1.5, 0.0), PX, Corners::Deg90);
         assert!(!p.second(Bend::Auto));
         // A flip holds until the next leg.
         p.flip();
-        p.track(s, s, Corners::Deg90);
-        p.track(s, Point::mm(1.27, 0.0), Corners::Deg90);
+        p.track(at(0.0, 0.0), PX, Corners::Deg90);
+        p.track(at(1.5, 0.0), PX, Corners::Deg90);
         assert!(p.second(Bend::Auto));
+        // The next leg starts where the cursor is at the click, even when the next
+        // position seen is already far away (a quick move).
+        p.track(at(5.0, 5.0), PX, Corners::Deg90);
         p.start();
-        p.track(s, Point::mm(1.27, 0.0), Corners::Deg90);
+        p.track(at(6.5, 5.1), PX, Corners::Deg90);
         assert!(!p.second(Bend::Auto));
         assert!(p.second(Bend::Second) && !p.second(Bend::First));
     }
 
     #[test]
     fn diagonal_first_when_leaving_steeply() {
-        let s = Point::ZERO;
         let mut p = Posture::default();
-        p.track(s, Point::mm(1.0, 0.2), Corners::Deg45);
+        p.track(at(0.0, 0.0), PX, Corners::Deg45);
+        p.track(at(1.0, 0.2), PX, Corners::Deg45);
         assert!(!p.second(Bend::Auto));
         let mut p = Posture::default();
-        p.track(s, Point::mm(1.0, 0.9), Corners::Deg45);
+        p.track(at(0.0, 0.0), PX, Corners::Deg45);
+        p.track(at(1.0, 0.9), PX, Corners::Deg45);
         assert!(p.second(Bend::Auto));
+    }
+
+    #[test]
+    fn the_distance_is_measured_on_screen() {
+        // 1 mm is 10 points at PX, 1 point zoomed far out: not far enough to decide.
+        let mut p = Posture::default();
+        p.track(at(0.0, 0.0), PX * 10.0, Corners::Deg90);
+        p.track(at(0.0, 1.0), PX * 10.0, Corners::Deg90);
+        p.track(at(30.0, 1.0), PX * 10.0, Corners::Deg90);
+        assert!(!p.second(Bend::Auto), "decided by the move 30 points to the right");
     }
 
     #[test]

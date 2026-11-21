@@ -123,7 +123,10 @@ fn wire_chain_continues_in_free_space_and_ends_on_double_click() {
     let placed = t.click(&mut doc, Point::mm(5.08, 0.0)).unwrap();
     assert!(placed.finished);
     // Posture: leaving the start upwards draws vertical first, / flips it for this leg.
+    // (decided by the raw cursor on screen: here a point is 0.1 mm)
+    t.steer(Point::mm(20.3, 0.05), 1e5);
     t.click(&mut doc, Point::mm(20.32, 0.0)).unwrap();
+    t.steer(Point::mm(20.4, 1.3), 1e5);
     t.hover(&mut doc, Some(Point::mm(20.32, 1.27)));
     t.hover(&mut doc, Some(Point::mm(25.4, 5.08)));
     assert_eq!(t.ghosts()[0], SchGhost::Wire(Point::mm(20.32, 0.0), Point::mm(20.32, 5.08)));

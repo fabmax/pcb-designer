@@ -523,15 +523,18 @@ impl SchPlacer {
         true
     }
 
+    /// The raw (unsnapped) cursor, `pixel` nm a screen point: decides which leg of a
+    /// wire or bus comes first (automatic posture).
+    pub fn steer(&mut self, raw: Point, pixel: f64) {
+        self.posture.track(raw, pixel, self.settings.corners);
+    }
+
     /// Track the (snapped) cursor.
     pub fn hover(&mut self, doc: &mut Document, p: Option<Point>) {
         // No "Text" ghost over the text being typed.
         let p = p.filter(|_| self.tool != SchTool::Text || doc.text_edit().is_none());
         if p != self.cursor {
             self.cursor = p;
-            if let (Some(start), Some(p)) = (self.start, p) {
-                self.posture.track(start, p, self.settings.corners);
-            }
             let sheet = self.sheet_in(doc.project());
             self.on_target = match self.tool {
                 SchTool::Wire => p.is_some_and(|p| doc.connects(sheet, p)),
