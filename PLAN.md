@@ -18,7 +18,7 @@ the current design of each area with the gotchas a change needs to know, the pla
 | MCP | In the app (Streamable HTTP on 127.0.0.1, opt-in) and headless over stdio. Every tool goes through editor-core commands |
 | Simulation | ngspice: the shared library when found (live traces), else a process per run; see [simulation-plan.md](simulation-plan.md) |
 | Platforms | macOS first. macOS-only chrome (native menu, title strip) is `cfg`'d; Windows/Linux keep the egui menu bar and system title bar |
-| CI | GitHub Actions. `ci.yml`: fmt and clippy (`-D warnings`, without the frozen `spike`) on Linux, on the latest stable Rust (update locally with `rustup update` when its new lints fire), `cargo test --workspace` on macOS, Linux and Windows (`--no-fail-fast`) for pushes to main and pull requests, with ngspice and libngspice installed on macOS (Homebrew) and Linux (apt; Mesa's software Vulkan for offscreen rendering), so the simulation tests run there; Windows has no ngspice (they skip). `release.yml` (manual, or a `v*` tag, which also publishes a GitHub Release): the ad-hoc signed `.app` for Apple Silicon (`bundle-macos.sh`), and the bare binary for Linux and Windows x86_64. Linux system packages are in `.github/actions/linux-deps`. Tests that need a GPU adapter skip without one |
+| CI | GitHub Actions. `ci.yml`: fmt and clippy (`-D warnings`) on Linux, on the latest stable Rust (update locally with `rustup update` when its new lints fire), `cargo test --workspace` on macOS, Linux and Windows (`--no-fail-fast`) for pushes to main and pull requests, with ngspice and libngspice installed on macOS (Homebrew) and Linux (apt; Mesa's software Vulkan for offscreen rendering), so the simulation tests run there; Windows has no ngspice (they skip). `release.yml` (manual, or a `v*` tag, which also publishes a GitHub Release): the ad-hoc signed `.app` for Apple Silicon (`bundle-macos.sh`), and the bare binary for Linux and Windows x86_64. Linux system packages are in `.github/actions/linux-deps`. Tests that need a GPU adapter skip without one |
 
 ## Model and files (`model`)
 
@@ -1256,7 +1256,6 @@ Budget: about 10k footprints at 60 fps, an edit → board → GPU update within 
 
 | Measurement (10k components unless noted) | Result |
 |---|---|
-| Live sync per schematic edit (spike, 600 random edits) | p50 2.5 ms, max 3.6 ms |
 | Schematic connectivity, full rebuild | ~13 ms |
 | Board copper connectivity (20k pads) | ~6 ms |
 | Zone fill + connectivity + render, whole-board zone | 0.10 s (2k) / 0.54 s (10k) |
@@ -1268,8 +1267,8 @@ Budget: about 10k footprints at 60 fps, an edit → board → GPU update within 
 | Both canvases animated, ~3 M primitives (stroke font era) | 90–170 fps uncapped |
 | GPU frame, 10k board at 3200×2000 offscreen: TrueType texts (~2.9 M instances) / stroke font (0.6 M) | 3.9 ms / 1.1–1.4 ms |
 
-Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`),
-`sync_bench` (`spike`) and `--stress N`.
+Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`) and
+`--stress N`.
 
 ## Next milestones
 

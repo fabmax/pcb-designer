@@ -21,9 +21,8 @@ Each change (a milestone or a refinement) runs through these steps:
    `main.rs`. Run one file with `cargo test -p view --test all sheets::`. (Every test
    binary costs link time and, on macOS, a first-launch check of a second or more;
    `view/tests/theme.rs` stays separate because it switches the global palette.)
-3. Make it green: `cargo test --workspace`, `cargo clippy --workspace --all-targets
-   --exclude spike` with zero warnings (the frozen `spike` isn't kept up with new lints),
-   and `cargo fmt`. GitHub Actions runs the same on macOS, Linux and
+3. Make it green: `cargo test --workspace`, `cargo clippy --workspace --all-targets` with
+   zero warnings, and `cargo fmt`. GitHub Actions runs the same on macOS, Linux and
    Windows once main is pushed (`.github/workflows/ci.yml`); keep code portable.
 4. For anything visible, look at it in a real-window screenshot (see below): both themes,
    and `--side-by-side` when layout is involved.
@@ -64,7 +63,6 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), `sim` on
 - `kicad`: imports KiCad symbols and footprints.
 - `app`: the egui shell (binary `pcb-designer`). It holds tabs (egui_tiles), panels,
   menus, settings, keymap, chrome theme and floating tool bars.
-- `spike`: frozen milestone-0 benchmarks. Leave it alone.
 
 ## Invariants
 
