@@ -113,7 +113,9 @@ impl Fields {
         let mut out = None;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
-            let width = (ui.available_width() - 34.0).min(240.0);
+            // The menu button after the field; in a grid the two fill the value column.
+            let cap = if value_width(ui).is_some() { f32::INFINITY } else { 240.0 };
+            let width = (ui.available_width() - 34.0).min(cap);
             out = self.text_sized(ui, salt, current, width);
             ui.add_enabled_ui(!suggestions.is_empty(), |ui| {
                 ui.menu_button("▼", |ui| {

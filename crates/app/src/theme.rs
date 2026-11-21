@@ -106,7 +106,8 @@ fn floating_contents<R>(
         .inner_margin(Margin { left: PAD, right: PAD, top: 14, bottom: PAD })
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing = spacing;
-            add_contents(ui)
+            // Its form rows share one label column, like a panel's.
+            crate::fields::form_scope(ui, ("window", title), add_contents)
         })
         .inner
 }

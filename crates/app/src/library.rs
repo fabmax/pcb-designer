@@ -1143,7 +1143,7 @@ impl ItemEditor<'_> {
             .collect();
         match content {
             Content::Symbol(mut s) => {
-                fields::subject(ui, "Symbol", "", None);
+                fields::subject(ui, "Symbol", "", Some(Self::REF_VALUE_HELP));
                 grid(ui, "sym_summary", |ui| {
                     label(ui, "Name");
                     if let Some(n) = self.tab.fields.text(ui, ("sym_name", s.id), &s.name) {
@@ -1162,7 +1162,7 @@ impl ItemEditor<'_> {
                 });
             }
             Content::Footprint(mut f) => {
-                fields::subject(ui, "Footprint", "", None);
+                fields::subject(ui, "Footprint", "", Some(Self::REF_VALUE_HELP));
                 grid(ui, "fp_summary", |ui| {
                     label(ui, "Name");
                     if let Some(n) = self.tab.fields.text(ui, ("fp_name", f.id), &f.name) {
@@ -1187,21 +1187,21 @@ impl ItemEditor<'_> {
                 });
             }
         }
-        ui.add_space(8.0);
+        fields::section(ui, "Used by", None);
         if users.is_empty() {
-            hint(ui, "Not used by any part yet.");
+            hint(ui, "No part yet.");
             if ui.button("Create a part with it").clicked() {
                 self.create_part(item);
             }
         } else {
-            label(ui, "Used by");
             for u in users {
                 ui.label(u);
             }
         }
-        ui.add_space(8.0);
-        hint(ui, "Texts ${REF} and ${VALUE} show the component's reference and value.");
     }
+
+    /// Help of the symbol and footprint summaries.
+    const REF_VALUE_HELP: &str = "Texts ${REF} and ${VALUE} show the component's reference and value.";
 
     fn tool_settings(&mut self, ui: &mut egui::Ui, item: Item) {
         let tool = self.tab.placer.tool;

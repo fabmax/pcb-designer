@@ -798,7 +798,7 @@ impl KicadImport {
         // Arrows and Enter in the field move and add in the results.
         let field_keys = nav_list::field_keys(ui, search_id());
         let field = egui::TextEdit::singleline(&mut self.query).id(search_id());
-        ui.add(field.hint_text(hint_text).desired_width(f32::INFINITY));
+        crate::fields::search_field(ui, field.hint_text(hint_text));
         let key = (self.query.clone(), self.kind);
         if self.results_for.as_ref() != Some(&key) {
             let q = self.query.trim().to_string();
@@ -907,7 +907,7 @@ impl KicadImport {
     }
 
     fn picks_ui(&mut self, ui: &mut egui::Ui) {
-        ui.label(RichText::new("To import").strong());
+        crate::fields::section(ui, "To import", None);
         if self.picks.is_empty() && self.footprints.is_empty() {
             hint(ui, "Add symbols (they become parts, a variant per checked footprint) or lone footprints.");
             return;

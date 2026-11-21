@@ -118,10 +118,7 @@ pub fn model_section(ui: &mut egui::Ui, f: &mut Fields, new_param: &mut String, 
             d => d.label().to_string(),
         },
     };
-    ui.horizontal(|ui| {
-        ui.label(RichText::new("Simulation").strong());
-        ui.label(RichText::new(format!("· {summary}")).color(theme::text_dim()));
-    });
+    fields::section_note(ui, "Simulation", &summary);
     if part.is_board_part() {
         hint(ui, "Board part: not in the schematic, so not simulated.");
         return;

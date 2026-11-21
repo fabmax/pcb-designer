@@ -172,8 +172,7 @@ impl PartForm {
         }
 
         // ---- Units
-        ui.add_space(12.0);
-        ui.label(RichText::new("Symbol units").strong());
+        fields::section(ui, "Symbol units", None);
         hint(ui, "One symbol per unit (several units: e.g. the four gates of a 74HC00).");
         let lib_ref = lib.library();
         let symbols: Vec<(Id, String)> = {
@@ -233,12 +232,13 @@ impl PartForm {
         }
 
         // ---- Variants
-        ui.add_space(12.0);
-        ui.label(RichText::new("Footprint variants").strong());
-        hint(
+        fields::section(
             ui,
-            "Each variant is a footprint with its own pin-pad mapping (e.g. 0603 / 0805). \
-             A variant without footprint keeps its components off the board.",
+            "Footprint variants",
+            Some(
+                "Each variant is a footprint with its own pin-pad mapping (e.g. 0603 / 0805). A variant \
+                 without footprint keeps its components off the board.",
+            ),
         );
         // Footprint choices of a variant: none, or one of the library's.
         // Board parts always have a footprint.
@@ -299,12 +299,10 @@ impl PartForm {
         }
 
         // ---- Simulation
-        ui.add_space(12.0);
         crate::sim_form::model_section(ui, &mut self.fields, &mut self.new_sim_param, lib_ref, &mut part);
 
         // ---- Properties
-        ui.add_space(12.0);
-        ui.label(RichText::new("Properties").strong());
+        fields::section(ui, "Properties", None);
         hint(ui, "Free key/value data copied to components (manufacturer, MPN, datasheet, …).");
         let mut remove_prop = None;
         egui::Grid::new(("props", id)).num_columns(3).spacing([12.0, 6.0]).show(ui, |ui| {
