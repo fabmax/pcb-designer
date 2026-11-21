@@ -75,8 +75,6 @@ pub struct Agent {
     server: Option<(McpServer, Receiver<Call>)>,
     pub port: u16,
     pub offscreen: Option<Offscreen>,
-    pub calls: usize,
-    pub last: Option<(String, Instant)>,
     pub error: Option<String>,
     /// Calls of this session, oldest first.
     pub activity: std::collections::VecDeque<ActivityEntry>,
@@ -84,7 +82,7 @@ pub struct Agent {
 
 impl Agent {
     pub fn new(port: u16) -> Self {
-        Agent { server: None, port, offscreen: None, calls: 0, last: None, error: None, activity: Default::default() }
+        Agent { server: None, port, offscreen: None, error: None, activity: Default::default() }
     }
 
     pub fn is_running(&self) -> bool {
@@ -131,13 +129,9 @@ impl Agent {
         let offscreen = &mut self.offscreen;
         let mut host = AppHost { ctx, doc, panes, libraries, offscreen, kicad, jobs: &mut jobs, sim, engine };
         while let Ok(call) = rx.try_recv() {
-            self.calls += 1;
             let description = call.request.describe();
             log::info!("MCP: {description}");
             let debug = format!("{:#?}", call.request);
-            if call.request.modifies() {
-                self.last = Some((description.clone(), Instant::now()));
-            }
             let revision = host.doc.revision;
             let outcome = mcp::handle(call, &mut host);
             let undo = (host.doc.revision != revision)

@@ -1150,7 +1150,9 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   request name (snake case of the `Request` variant, not always the tool's name), its
   `describe`, the `Debug` arguments and `mcp::Outcome` (`handle` returns it: the result
   text, truncated, the error, or `Deferred` for calls the app answers later), plus the
-  undo step when the revision changed. Session only.
+  undo step when the revision changed. Session only. While the server is off the panel
+  has a Start button (and the error of a failed start); while it's on, its bar button
+  has a green dot (`Badge::Live`, tooltip with the URL; the status bar shows nothing).
 - **Properties** (`properties.rs`): a symbol and a footprint both have the component's
   Footprint variant combo (`variant_combo`); on the board it leaves out "no footprint"
   variants, which would delete the selected footprint. Text fields keep their typed

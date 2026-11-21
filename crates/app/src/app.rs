@@ -3485,8 +3485,13 @@ impl PcbApp {
                 let mut group_ui = |ui: &mut egui::Ui, group: DockGroup, zones: &mut Vec<DropZone>| {
                     let mut buttons = Vec::new();
                     for &panel in self.settings.dock.panels(group) {
-                        let badge = (panel == Panel::Messages && !self.settings.dock.is_open(panel))
-                            .then_some((self.unseen.new, self.unseen.total));
+                        let badge = match panel {
+                            Panel::Messages if !self.settings.dock.is_open(panel) => {
+                                Some(Badge::Problems { new: self.unseen.new, total: self.unseen.total })
+                            }
+                            Panel::Activity => self.agent.url().map(Badge::Live),
+                            _ => None,
+                        };
                         let open = self.settings.dock.is_open(panel);
                         let r = dock_button(ui, panel, open, badge, &self.keymap, dragging == Some(panel));
                         if r.clicked() {
@@ -3848,8 +3853,18 @@ impl PcbApp {
                 }
             }
             Panel::Activity => {
-                if crate::activity_ui::ui(ui, &self.agent.activity, self.agent.is_running()) {
-                    self.agent.activity.clear();
+                match crate::activity_ui::ui(
+                    ui,
+                    &self.agent.activity,
+                    self.agent.is_running(),
+                    self.agent.error.as_deref(),
+                ) {
+                    Some(crate::activity_ui::Act::Clear) => self.agent.activity.clear(),
+                    Some(crate::activity_ui::Act::Start) => {
+                        self.agent.port = self.mcp_port.unwrap_or(self.settings.mcp.port);
+                        self.agent.start(ui.ctx());
+                    }
+                    None => {}
                 }
                 ui.ctx().request_repaint_after(Duration::from_secs(1));
             }
@@ -4135,22 +4150,6 @@ impl PcbApp {
                     }
                     ui.separator();
                 }
-                if let Some(url) = self.agent.url() {
-                    let recent = self.agent.last.as_ref().filter(|(_, t)| t.elapsed() < Duration::from_secs(4));
-                    let text = match recent {
-                        Some((what, _)) => format!("Agent: {what}"),
-                        None => "MCP".to_string(),
-                    };
-                    let tip = format!("{url}\n{} requests", self.agent.calls);
-                    ui.label(RichText::new(text).color(theme::success())).on_hover_text(&tip);
-                    // Right-to-left layout: the dot ends up left of the text.
-                    let (dot, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                    ui.painter().circle_filled(dot.center(), 3.5, theme::success());
-                    if recent.is_some() {
-                        ui.ctx().request_repaint_after(Duration::from_millis(500));
-                    }
-                    ui.separator();
-                }
                 if has_editor {
                     ui.label(
                         RichText::new("Drag: move · Box: select · Middle/right drag: pan · Wheel: zoom · V: fit")
@@ -4273,13 +4272,20 @@ const DOCK_BAR: f32 = 44.0;
 /// The size of a tool window button in the dock bars.
 const DOCK_BUTTON: f32 = 36.0;
 
-/// A panel's bar button: its icon, accent-tinted while the panel is open. `badge` is
-/// (new, total) problems: a count bubble for new ones, a dot if only old ones remain.
+/// A mark on a panel's bar button.
+enum Badge {
+    /// Problems: a count bubble for new ones, a dot if only old ones remain.
+    Problems { new: usize, total: usize },
+    /// A server is on (the MCP server, its URL): a green dot.
+    Live(String),
+}
+
+/// A panel's bar button: its icon, accent-tinted while the panel is open, and its badge.
 fn dock_button(
     ui: &mut egui::Ui,
     panel: Panel,
     open: bool,
-    badge: Option<(usize, usize)>,
+    badge: Option<Badge>,
     keymap: &Keymap,
     dragged: bool,
 ) -> egui::Response {
@@ -4296,8 +4302,10 @@ fn dock_button(
     }
     let color = if open { theme::accent() } else { ui.visuals().text_color() };
     icons::paint(painter, rect.shrink(6.0), panel.icon(), color);
-    match badge {
-        Some((new, _)) if new > 0 => {
+    let mut tip = panel.title().to_string();
+    match &badge {
+        Some(Badge::Problems { new, .. }) if *new > 0 => {
+            let new = *new;
             let text = if new > 99 { "99+".to_string() } else { new.to_string() };
             let font = egui::FontId::proportional(9.5);
             let galley = painter.layout_no_wrap(text, font, egui::Color32::BLACK);
@@ -4307,8 +4315,12 @@ fn dock_button(
             painter.rect_filled(bubble, 7.0, theme::warn());
             painter.galley(bubble.center() - galley.size() / 2.0, galley, egui::Color32::BLACK);
         }
-        Some((_, total)) if total > 0 => {
+        Some(Badge::Problems { total, .. }) if *total > 0 => {
             painter.circle_filled(rect.right_top() + egui::vec2(-5.0, 5.0), 3.5, theme::warn());
+        }
+        Some(Badge::Live(url)) => {
+            painter.circle_filled(rect.right_top() + egui::vec2(-5.0, 5.0), 3.5, theme::success());
+            tip = format!("{tip} (MCP server on: {url})");
         }
         _ => {}
     }
@@ -4319,11 +4331,9 @@ fn dock_button(
             .map(|s| s.to_egui())
             .unwrap_or(egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F35)),
     );
-    let tip = if keymap.shortcuts(panel.action()).is_empty() {
-        panel.title().to_string()
-    } else {
-        format!("{}  {shortcut}", panel.title())
-    };
+    if !keymap.shortcuts(panel.action()).is_empty() {
+        tip = format!("{tip}  {shortcut}");
+    }
     r.on_hover_text(tip)
 }
 

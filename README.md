@@ -354,7 +354,8 @@ with node and device names and problems) and `save_project`. Sheets are added, r
 re-parents a sheet) while `duplicate` copies objects in one step and `add_cutout` cuts into a zone or keepout; `get_project` lists their paths, and wherever
 a sheet is asked for (`sheet`, `parent`), an id, a name or a path like `/Power/Regulator`
 works. Agent edits go through the same commands as the
-GUI, so they can be undone with ⌘Z, and the status bar shows what the agent just did.
+GUI, so they can be undone with ⌘Z, and the Agent activity panel lists what the agent did
+(its button has a green dot while the server is on; the panel starts it when it's off).
 
 Library tools let an agent make parts nobody has, e.g. from a datasheet: `list_libraries`,
 `create_library`, `open_library`, `remove_library`, `get_library_items`, `edit_library`
