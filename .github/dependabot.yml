@@ -1,0 +1,27 @@
+# Weekly dependency updates as pull requests (CI runs on them). Crates that must move
+# together come in one pull request: egui's family with the wgpu and winit it is built
+# on. Other minor and patch updates are grouped too; major updates come one by one.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      egui:
+        patterns: ["egui*", "eframe", "wgpu", "winit", "muda"]
+      rust-minor:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "Deps"
+
+  - package-ecosystem: github-actions
+    directories: ["/", "/.github/actions/*"]
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "CI"
