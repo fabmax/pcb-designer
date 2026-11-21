@@ -3576,7 +3576,7 @@ impl PcbApp {
         }
         let rect = egui::Rect::from_center_size(pos, egui::vec2(DOCK_BUTTON, DOCK_BUTTON));
         painter.rect_filled(rect, 6.0, theme::accent().gamma_multiply(0.35));
-        icons::paint(&painter, rect.shrink(6.0), panel.icon(), theme::accent());
+        icons::paint(&painter, rect.shrink(DOCK_ICON_INSET), panel.icon(), theme::accent());
         ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
     }
 
@@ -4268,9 +4268,12 @@ fn ask_save(question: &str) -> rfd::MessageDialogResult {
 }
 
 /// Width of the panel button bars (points).
-const DOCK_BAR: f32 = 44.0;
-/// The size of a tool window button in the dock bars.
-const DOCK_BUTTON: f32 = 36.0;
+const DOCK_BAR: f32 = 40.0;
+/// The size of a tool window button in the dock bars: a 24 pt icon, [`DOCK_ICON_INSET`]
+/// around it.
+const DOCK_BUTTON: f32 = 32.0;
+/// Space between a dock button's edge and its icon.
+const DOCK_ICON_INSET: f32 = 4.0;
 
 /// A mark on a panel's bar button.
 enum Badge {
@@ -4301,7 +4304,7 @@ fn dock_button(
         painter.rect_filled(rect, 6.0, ui.visuals().widgets.hovered.weak_bg_fill);
     }
     let color = if open { theme::accent() } else { ui.visuals().text_color() };
-    icons::paint(painter, rect.shrink(6.0), panel.icon(), color);
+    icons::paint(painter, rect.shrink(DOCK_ICON_INSET), panel.icon(), color);
     let mut tip = panel.title().to_string();
     match &badge {
         Some(Badge::Problems { new, .. }) if *new > 0 => {

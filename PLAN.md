@@ -1076,9 +1076,10 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   `Deferred::Action` after the tiles are drawn.
 - **Floating tool bars** (`toolbar.rs`, icons in `icons.rs`) are drawn after the
   canvas and sense click-and-drag, so presses never reach the canvas. View buttons
-  (layers, grid/units/snap, fit) sit at the bottom left. Buttons are 36 pt with 24 pt icons, the
-  size of the side bars' buttons (`toolbar::BUTTON`, `DOCK_BUTTON`); the header and
-  view buttons follow `BUTTON`.
+  (layers, grid/units/snap, fit) sit at the bottom left. Buttons show 24 pt icons 4 pt inside
+  their fill, like the side bars' buttons: a dock button is 32 pt (`DOCK_BUTTON`, bar
+  40 pt), a tool bar button 34 pt (`toolbar::BUTTON`, its fill 1 pt inside so
+  neighbours' fills don't touch); the header and view buttons follow `BUTTON`.
 - **Icons** (`icons.rs`) are SVG files: generic ones copied from Tabler
   (`crates/app/icons/tabler/`, MIT, with its licence), electronics ones our own in
   Tabler's style (`crates/app/icons/`: 24×24 viewBox, stroke 2, round caps and joins).

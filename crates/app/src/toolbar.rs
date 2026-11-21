@@ -21,8 +21,9 @@ use crate::keymap::{Action, Keymap};
 use crate::theme;
 use crate::units::{self, GridKind, Unit};
 
-/// Button size (points), with 24 pt icons: as the side bars' buttons (`DOCK_BUTTON`).
-const BUTTON: f32 = 36.0;
+/// Button size (points): a 24 pt icon 4 pt inside its fill, which is 1 pt inside the
+/// button (so neighbours' fills don't touch): the side bars' buttons' look.
+const BUTTON: f32 = 34.0;
 /// Padding of a group around its buttons.
 const PAD: f32 = 3.0;
 /// Distance from the canvas edges.
@@ -94,7 +95,7 @@ fn icon_button(ui: &Ui, painter: &egui::Painter, r: Rect, id: Id, icon: Icon, ac
         (Color32::TRANSPARENT, v.text_color())
     };
     painter.rect_filled(r.shrink(1.0), CornerRadius::same(6), fill);
-    icons::paint(painter, r.shrink(6.0), icon, color);
+    icons::paint(painter, r.shrink(5.0), icon, color);
     response
 }
 
