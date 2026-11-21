@@ -117,7 +117,7 @@ impl Panel {
             Panel::Overview => Icon::Info,
             Panel::Nets => Icon::Nets,
             Panel::Parts => Icon::Part,
-            Panel::Activity => Icon::Activity,
+            Panel::Activity => Icon::Agent,
             Panel::Simulation => Icon::Simulation,
         }
     }

@@ -71,7 +71,7 @@ icons! {
     BoardSetup => "board-setup",
     SchematicSetup => "schematic-setup",
     Nets => "nets",
-    Activity => "tabler/activity",
+    Agent => "tabler/bot-id",
     Simulation => "tabler/wave-sine",
     Probe => "probe",
     /// Run and stop a simulation.
