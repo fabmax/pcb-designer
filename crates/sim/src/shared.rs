@@ -396,6 +396,18 @@ impl Libngspice {
     }
 }
 
+/// ngspice ended itself during a run: its errors, if any, else that it exited.
+fn exited(sink: Sink) -> SimError {
+    let errors: Vec<String> =
+        error_lines(&sink.stderr).into_iter().filter(|l| !l.contains("no circuit loaded")).collect();
+    let mut message = errors.join("\n");
+    if !message.is_empty() {
+        message.push('\n');
+    }
+    message.push_str("ngspice exited (it starts again for the next run)");
+    SimError::Failed { message, log: format!("{}{}", sink.stdout, sink.stderr) }
+}
+
 /// The XSPICE code models beside a library: `lib/ngspice/*.cm` (Homebrew, Linux,
 /// Spice64), KiCad's `PlugIns/sim/ngspice` (macOS).
 fn code_models(library: &Path) -> Vec<PathBuf> {
@@ -434,6 +446,10 @@ impl Backend for Libngspice {
         // Errors ngspice continues after ("Error on line …" of a line it then drops)
         // fail neither here nor in a process.
         let not_parsed = SINK.lock().expect("sink").as_ref().is_some_and(|s| s.stderr.contains("circuit not parsed"));
+        // ngspice asked to exit (a `quit`, or it gave up): initialised again next run.
+        if EXITED.load(Ordering::SeqCst) {
+            return Err(exited(take()));
+        }
         if loaded != 0 || not_parsed {
             self.command("remcirc");
             return Err(failed(take(), "ngspice couldn't read the netlist"));
@@ -461,7 +477,7 @@ impl Backend for Libngspice {
         self.command("remcirc");
         let sink = take();
         if EXITED.load(Ordering::SeqCst) {
-            return Err(failed(sink, "ngspice exited"));
+            return Err(exited(sink));
         }
         let log = format!("{}{}", sink.stdout, sink.stderr);
         let plots: Vec<Plot> = match std::fs::read(&raw_path) {

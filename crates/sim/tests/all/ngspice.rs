@@ -256,7 +256,8 @@ fn crystal_and_sources_run() {
     b.source("VSource", sine, 1.0, &["IN", "GND"]);
     b.place("Crystal", "16MHz", &["IN", "X"]);
     b.place("Resistor", "50", &["X", "GND"]);
-    let pwl = Waveform::Pwl { points: vec![(0.0, 0.0), (1e-6, 1e-3), (2e-6, 0.0)], repeat: true };
+    // Repeating, from 0.2 mA (a current source's repeat is split for ngspice < 46).
+    let pwl = Waveform::Pwl { points: vec![(0.0, 0.2e-3), (1e-6, 1e-3), (2e-6, 0.2e-3)], repeat: true };
     b.source("ISource", pwl, 0.0, &["GND", "P"]);
     b.place("Resistor", "1k", &["P", "GND"]);
     let exp = Waveform::Exp { v1: 0.0, v2: 1.0, delay1: 0.0, tau1: 1e-7, delay2: 1e-6, tau2: 1e-7 };
@@ -273,7 +274,11 @@ fn crystal_and_sources_run() {
     let r = ok(&b, &tran).unwrap();
     let t = r.scale().unwrap();
     // 1 mA into 1 kΩ at the PWL's peak (current flows from + through the source to −).
-    assert!(near(r.voltage("P").unwrap().at(t, 1e-6).unwrap(), 1.0, 0.01));
+    let p = r.voltage("P").unwrap();
+    assert!(near(p.at(t, 0.0).unwrap(), 0.2, 0.01));
+    assert!(near(p.at(t, 1e-6).unwrap(), 1.0, 0.01));
+    // Repeated: 2.5 µs is 0.5 µs into the second period.
+    assert!(near(p.at(t, 2.5e-6).unwrap(), 0.6, 0.01), "{}", p.at(t, 2.5e-6).unwrap());
     assert!(near(r.voltage("E").unwrap().at(t, 0.9e-6).unwrap(), 1.0, 0.01));
 }
 
@@ -368,7 +373,8 @@ fn the_library_streams_and_stops() {
         {
             break f.clone();
         }
-        assert!(t.elapsed().as_secs() < 10, "no live points");
+        // Other tests' library runs go first (one at a time per process).
+        assert!(t.elapsed().as_secs() < 60, "no live points");
         std::thread::sleep(std::time::Duration::from_millis(20));
     };
     assert_eq!(live.range, Some((0.0, 100.0)));
@@ -378,11 +384,12 @@ fn the_library_streams_and_stops() {
     let p = s.progress().unwrap();
     assert!((0.0..0.5).contains(&p), "{p}");
     s.stop();
+    let t = std::time::Instant::now();
     let outcome = loop {
         if let Some(o) = s.poll() {
             break o;
         }
-        assert!(t.elapsed().as_secs() < 20, "didn't stop");
+        assert!(t.elapsed().as_secs() < 10, "didn't stop");
         std::thread::sleep(std::time::Duration::from_millis(5));
     };
     assert_eq!(outcome, sim::Outcome::Done);
@@ -394,25 +401,18 @@ fn the_library_streams_and_stops() {
     assert!(s.live(a.id).is_none());
 }
 
-/// ngspice giving up (on macOS it can't allocate a run's vectors) doesn't take the app
-/// down, and the next run works. Where the allocation succeeds (Linux overcommits) the
-/// run goes on and is stopped instead.
+/// ngspice asking to exit (a `quit`: what it does when it gives up, e.g. when it can't
+/// allocate a run's vectors) doesn't take the app down, and the next run works.
 #[test]
-fn the_library_recovers_when_ngspice_gives_up() {
+fn the_library_recovers_when_ngspice_exits() {
     let Some(lib) = library() else { return };
+    let quit = "* quit\nV1 a 0 1\nR1 a 0 1k\n.op\n.control\nquit\n.endc\n.end\n";
+    let r = lib.run(quit, &Cancel::default(), &sim::Live::default());
+    assert!(matches!(&r, Err(SimError::Failed { message, .. }) if message.contains("exited")), "{r:?}");
     let mut b = Bench::new();
     b.dc(5.0, "IN", "GND");
     b.place("Resistor", "1k", &["IN", "OUT"]);
     b.place("Resistor", "4k", &["OUT", "GND"]);
-    let huge = b.analysis(AnalysisKind::Tran { stop: 10.0, step: Some(1e-12), start: 0.0, max_step: Some(1e-12) });
-    let cancel = Cancel::default();
-    let c = cancel.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(10));
-        c.cancel();
-    });
-    let r = sim::simulate(b.project(), &b.conn(), &huge, &lib, &cancel);
-    assert!(matches!(r, Err(SimError::Failed { .. } | SimError::Cancelled) | Ok(_)), "{r:?}");
     let a = op(&mut b);
     let r = sim::simulate(b.project(), &b.conn(), &a, &lib, &Cancel::default()).unwrap();
     assert!(near(r.op_voltage("OUT").unwrap(), 4.0, 1e-6));

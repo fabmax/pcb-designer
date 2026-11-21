@@ -439,6 +439,27 @@ impl Builder<'_> {
                 let sub_name = models.subckt(sub);
                 format!("{name} {n} {sub_name}{extra}")
             }
+            SimDevice::CurrentSource
+                if let Some(source @ Source { waveform: Waveform::Pwl { points, repeat: true }, .. }) =
+                    c.sim.source.as_ref() =>
+            {
+                // ngspice before 46 has no `r=` on current sources (voltage sources always
+                // had it): the I element keeps the DC and AC parts (its name, DC sweeps), a
+                // hidden repeating V of the PWL less its start drives a G of gain 1 beside it.
+                want(2)?;
+                let start = source.waveform.initial();
+                let dc = Source { waveform: Waveform::Dc { value: start }, ..source.clone() };
+                let shifted: Vec<(f64, f64)> = points.iter().map(|&(t, v)| (t, v - start)).collect();
+                let pwl = Source { waveform: Waveform::Pwl { points: shifted, repeat: true }, ac: 0.0, ac_phase: 0.0 };
+                let control = self.unique_device(&format!("V{name}_PWL"));
+                let node = self.unique_node(&format!("{}_pwl", name.to_ascii_lowercase()));
+                let gain = self.unique_device(&format!("G{name}_PWL"));
+                format!(
+                    "{name} {n} {}\n{control} {node} 0 {}\n{gain} {n} {node} 0 1",
+                    source_spec(Some(&dc))?,
+                    source_spec(Some(&pwl))?
+                )
+            }
             SimDevice::VoltageSource | SimDevice::CurrentSource => {
                 want(2)?;
                 format!("{name} {n} {}", source_spec(c.sim.source.as_ref())?)

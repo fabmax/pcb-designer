@@ -467,8 +467,13 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   progress. Init: `set ngbehavior=ltpsa`; without its spinit (a library looks in a
   compiled-in folder, Homebrew's isn't found) it has no code models and POLY sources of
   vendor op amps fail, so `codemodel` loads them from `lib/ngspice` beside it.
-  `ControlledExit` (e.g. it can't allocate a run's vectors) sets a flag; the next run
-  calls `ngSpice_Init` again.
+  `ControlledExit` (a `quit`, or it gave up: e.g. it can't allocate a run's vectors on
+  macOS; Linux overcommits and runs on) sets a flag, the run fails with "ngspice
+  exited", and the next run calls `ngSpice_Init` again.
+- **Versions:** Ubuntu ships ngspice 45 (CI tests it), Homebrew 47. Before 46 current
+  sources have no `r=` (PWL repeat), so a repeating PWL current source is netlisted as
+  the I element with its DC and AC parts, plus a hidden repeating V of the PWL less its
+  start driving a G of gain 1 beside it.
 - **Engine** (`sim::Engine`, from `EngineSettings`: both paths and `process_only`):
   `backend(analysis)` is the library, but parameter sweeps get the process (parallel);
   `Backend::parallel` false makes a session run steps on one worker. A configured path
@@ -649,7 +654,8 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   amps, regulators, transistors, NAND, zener, crystal, DC sweep, errors, cancel, the
   demo) run by every backend found, which must agree (same vectors and values), and
   skip with a note when none is; library-only ones stream and stop, recover after
-  ngspice gives up, and serialise runs from threads. The KiCad demo comparison also
+  ngspice exits (a `.control` `quit`), and serialise runs from threads (they queue:
+  tests waiting for the library allow for the others' runs). The KiCad demo comparison also
   runs our netlists through the library. `tests/all/bench.rs` builds circuits
   by labelling pin ends. `tests/all/plot.rs` covers scales, ticks, decimation and AC
   traces on a made-up result. `tests/all/session.rs` drives the session with a fake backend
@@ -1409,7 +1415,10 @@ defers.
 
 **Other**
 - Simulation: see [simulation-plan.md](simulation-plan.md).
-- Releases: ngspice bundled (libngspice and its code models; Homebrew's dylib needs only
-  system libraries), a universal (x86_64 + arm64) macOS app, Developer ID signing and
+- Releases: ngspice built from source and linked statically (a pinned version, the
+  `cmake` crate on its CMake build, unused features off: OSDI, RF, PSS, FFTW, sound
+  files, OpenMP, X11; unused device models patched out of its list; XSPICE kept for
+  POLY): no library search, install or bundling. About 730k lines of C, 464k of them
+  device models we mostly don't use. A universal (x86_64 + arm64) macOS app, Developer ID signing and
   notarization, a Windows installer and a Linux AppImage; ngspice on Windows CI.
 - Documentation / manual. E.g. some github pages template (just-the-docs or something similar)

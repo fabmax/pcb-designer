@@ -281,8 +281,14 @@ backends. See "Built so far" and PLAN.md.
 
 ## Later
 
-- Bundling ngspice with release builds (macOS dylib signing, Windows DLL, Linux: the
-  distribution's package).
+- ngspice built from source and linked statically instead of found installed (see
+  PLAN.md, Later: Releases).
+- Our own simulation engine in Rust beside ngspice, chosen in Settings: modified nodal
+  analysis, Newton–Raphson, trapezoidal/Gear integration, a sparse solver; R, C, L,
+  sources, diode, BJT, MOS level 1 first. A port of ngspice isn't realistic (~730k
+  lines of C; the subset we use is 100–150k, and matching its convergence behaviour
+  and the quirks vendor models rely on is the hard part), so it would be simpler and
+  less compatible: ngspice stays for vendor models and KiCad projects.
 - Streaming for sweeps and processes, the library for sweeps, crash isolation of the
   library (see PLAN.md, Later).
 - Source symbols that show the selected waveform (sine, square, ramp glyph), which needs
