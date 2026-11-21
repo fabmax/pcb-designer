@@ -1197,7 +1197,37 @@ fn draw_symbol(project: &Project, inst: &SymbolInstance, l: &SchLayers, p: &mut 
     let variant = component.and_then(|c| part.and_then(|part| part.variant(c.variant)));
     let footprint = component.and_then(|c| project.library.footprint_of(c.part, c.variant));
     let pads = variant.zip(footprint);
+    let start = p.out.len();
     draw_symbol_graphics(sym, inst.unit, &inst.transform(), refdes, value, pads, false, l, p);
+    if component.is_some_and(|c| c.dnp) {
+        p.fade(start);
+        // A cross over the body, as KiCad marks it.
+        let t = inst.transform();
+        if let Some(b) = Rect::union_all(sym.graphics.iter().map(|g| g.transformed(&t).bounds())) {
+            let w = WIRE_WIDTH * 2;
+            let saved = p.bounds;
+            p.line(l.body, b.min, b.max, w, pal().sch_dnp);
+            p.line(l.body, Point::new(b.min.x, b.max.y), Point::new(b.max.x, b.min.y), w, pal().sch_dnp);
+            p.bounds = saved;
+        }
+    }
+}
+
+/// Alpha of a "do not populate" component's drawing.
+const DNP_ALPHA: f32 = 0.35;
+
+impl Painter {
+    /// Fade what was drawn since `start` (a "do not populate" component).
+    fn fade(&mut self, start: usize) {
+        for (_, inst) in &mut self.out[start..] {
+            let a = inst.color.0[3];
+            inst.color.0[3] = (a as f32 * DNP_ALPHA).round() as u8;
+        }
+    }
+}
+
+fn is_dnp(project: &Project, component: Id) -> bool {
+    project.schematic.components.get(component).is_some_and(|c| c.dnp)
 }
 
 /// The displayed reference of a symbol's component (`U1-A` for units).
@@ -1217,7 +1247,11 @@ fn draw_symbol_field(project: &Project, field: &SymbolField, l: &SchLayers, p: &
     }
     let (refdes, value) = symbol_refdes(project, inst);
     let text = field.text.transformed(&inst.transform()).upright();
+    let start = p.out.len();
     p.text(l.text, &text, pal().sch_text, &|s| substitute(s, &refdes, &value), true);
+    if is_dnp(project, inst.component) {
+        p.fade(start);
+    }
     true
 }
 
@@ -1483,7 +1517,11 @@ fn draw_footprint(project: &Project, inst: &FootprintInstance, l: &BoardLayers, 
     let Some(fp) = footprint_of_instance(project, inst) else { return };
     let component = project.schematic.components.get(inst.component);
     let (refdes, value) = component.map_or(("?", ""), |c| (c.refdes.as_str(), c.value.as_str()));
+    let start = p.out.len();
     draw_footprint_at(project, fp, &inst.transform(), inst.side, refdes, value, false, l, p);
+    if component.is_some_and(|c| c.dnp) {
+        p.fade(start);
+    }
 }
 
 /// A footprint's reference or value text; nothing if hidden.
@@ -1497,7 +1535,11 @@ fn draw_field(project: &Project, field: &FootprintField, l: &BoardLayers, p: &mu
     let layer = field.board_layer(inst.side);
     let Some(&rl) = l.map.get(&layer) else { return false };
     let text = field.text.transformed(&inst.transform()).upright();
+    let start = p.out.len();
     p.text(rl, &text, board_layer_color(layer), &|s| substitute(s, refdes, value), true);
+    if is_dnp(project, inst.component) {
+        p.fade(start);
+    }
     true
 }
 

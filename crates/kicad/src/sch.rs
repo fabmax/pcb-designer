@@ -33,6 +33,8 @@ pub struct SchComponent {
     pub on_board: bool,
     /// KiCad's "exclude from simulation".
     pub exclude_from_sim: bool,
+    /// KiCad's "do not populate".
+    pub dnp: bool,
     pub properties: BTreeMap<String, String>,
 }
 
@@ -506,9 +508,6 @@ impl Loader<'_> {
                 if item.child("in_bom").and_then(|n| n.arg(0)) == Some("no") {
                     properties.insert("In BOM".into(), "no".into());
                 }
-                if item.child("dnp").and_then(|n| n.arg(0)) == Some("yes") {
-                    properties.insert("DNP".into(), "yes".into());
-                }
                 let footprint = props.get("Footprint").map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
                 self.out.components.push(SchComponent {
                     id: kid(&["kicad-component", &reference]),
@@ -518,6 +517,7 @@ impl Loader<'_> {
                     footprint,
                     on_board: item.child("on_board").and_then(|n| n.arg(0)) != Some("no"),
                     exclude_from_sim: item.child("exclude_from_sim").and_then(|n| n.arg(0)) == Some("yes"),
+                    dnp: item.child("dnp").and_then(|n| n.arg(0)) == Some("yes"),
                     properties,
                 });
                 self.out.symbols.entry(lib_id.clone()).or_insert(sym);

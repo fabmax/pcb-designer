@@ -21,7 +21,9 @@ span, e.g. `Demo-front-in1.drl`) and a Gerber job file (`Demo-job.gbrjob`) into
 attributes. For assembly it writes a bill of materials (`Demo-bom.csv`: grouped by
 value, footprint and properties such as an MPN) and component positions
 (`Demo-positions.csv`: board mm, rotation, side) into `output/assembly/`; board parts
-(mounting holes, logos) are left out.
+(mounting holes, logos) are left out, and so are components marked **Do not populate**
+in Properties (their pads stay on the board; the schematic crosses them out and both
+editors draw them faded).
 Zones are refilled and the design rules checked first; violations are reported but don't
 stop the export. Solder mask openings and paste come from the pads (Board setup: mask
 expansion, paste margin). Without a window: `pcb-designer export-gerber PROJECT_DIR`.

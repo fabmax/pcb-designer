@@ -2,7 +2,8 @@
 //! as CSV in the column layout assembly services take (JLCPCB, PCBWay).
 //!
 //! Only placed footprints of schematic components count: board parts (mounting holes,
-//! logos) aren't assembled, and components without a footprint aren't on the board.
+//! logos) and "do not populate" components aren't assembled, and components without a
+//! footprint aren't on the board.
 
 use std::collections::BTreeMap;
 
@@ -26,7 +27,7 @@ fn placed(project: &Project) -> Vec<Placed<'_>> {
         .filter_map(|inst| {
             let c = project.schematic.components.get(inst.component)?;
             let part = project.library.parts.get(c.part)?;
-            if part.is_board_part() {
+            if part.is_board_part() || c.dnp {
                 return None;
             }
             let fp = footprint_of_instance(project, inst)?;

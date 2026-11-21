@@ -225,6 +225,7 @@ fn assemble(name: &str, dir: &Path, mut sch: SchImport, pcb: PcbImport, report: 
             refdes: c.refdes.clone(),
             value,
             properties,
+            dnp: c.dnp,
         });
     }
     for sym in sch.symbols.values() {
@@ -288,6 +289,7 @@ fn assemble(name: &str, dir: &Path, mut sch: SchImport, pcb: PcbImport, report: 
             refdes,
             value: f.value.clone(),
             properties: BTreeMap::new(),
+            dnp: false,
         });
     }
 

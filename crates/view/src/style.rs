@@ -53,6 +53,8 @@ pub struct Palette {
     pub sch_junction: Color,
     /// No-connect flags (blue, as in KiCad).
     pub sch_no_connect: Color,
+    /// The cross over a "do not populate" symbol.
+    pub sch_dnp: Color,
     /// Bus wires and bus entries.
     pub sch_bus: Color,
     /// The drawing frame (border, zone grid, title block) and the paper's edge.
@@ -126,6 +128,7 @@ pub static DARK: Palette = Palette {
     sch_text: Color::rgb(0x9f, 0xb4, 0xff),
     sch_junction: Color::rgb(0x5f, 0xd3, 0xa0),
     sch_no_connect: Color::rgb(0x70, 0x9c, 0xf2),
+    sch_dnp: Color::rgb(0xe8, 0x5a, 0x5a),
     sch_bus: Color::rgb(0x7c, 0x8a, 0xff),
     sch_frame: Color::rgb(0xa0, 0x78, 0x7c),
     sch_page: Color::rgb(0x34, 0x38, 0x42),
@@ -191,6 +194,7 @@ pub static LIGHT: Palette = Palette {
     sch_text: Color::rgb(0x1a, 0x3a, 0xb0),
     sch_junction: Color::rgb(0x0f, 0x7a, 0x4a),
     sch_no_connect: Color::rgb(0x1f, 0x4c, 0xc4),
+    sch_dnp: Color::rgb(0xd0, 0x30, 0x30),
     sch_bus: Color::rgb(0x22, 0x30, 0xa0),
     sch_frame: Color::rgb(0x9a, 0x3c, 0x44),
     sch_page: Color::rgb(0xd2, 0xd0, 0xc8),

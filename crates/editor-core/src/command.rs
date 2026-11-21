@@ -1383,6 +1383,7 @@ fn new_component(
         refdes,
         value: value.unwrap_or_else(|| part.default_value.clone()),
         properties: Default::default(),
+        dnp: false,
     })
 }
 

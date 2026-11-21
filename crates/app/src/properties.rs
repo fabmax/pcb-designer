@@ -46,6 +46,7 @@ impl Properties {
             [id] => self.single(ui, &mut cx, *id),
             ids => {
                 multiple(ui, ids);
+                dnp_many(ui, &mut cx, ids);
                 exclude_many(ui, &mut cx, ids);
             }
         }
@@ -823,6 +824,7 @@ impl Properties {
             label(ui, "Footprint");
             self.variant_combo(ui, cx, &c, &part, false);
             ui.end_row();
+            self.dnp_row(ui, cx, &c);
             label(ui, "Position");
             if let Some(p) = self.point(ui, s.pos) {
                 s.pos = p;
@@ -859,6 +861,14 @@ impl Properties {
             self.update(cx, Object::Component(new), false);
         }
         pin_table(ui, cx.doc, Some(s.id), c.id);
+    }
+
+    /// "Do not populate": left out of the BOM and the position file.
+    fn dnp_row(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, c: &Component) {
+        let mut dnp = c.dnp;
+        if crate::fields::check_row(ui, "Do not populate", &mut dnp).on_hover_text(DNP_TIP).changed() {
+            self.update(cx, Object::Component(Component { dnp, ..c.clone() }), false);
+        }
     }
 
     /// The component's footprint variant. `on_board`: only variants with a footprint (on
@@ -906,6 +916,9 @@ impl Properties {
             label(ui, "Footprint");
             self.variant_combo(ui, cx, &c, &part, true);
             ui.end_row();
+            if !part.is_board_part() {
+                self.dnp_row(ui, cx, &c);
+            }
             label(ui, "Side");
             let mut side = f.side;
             crate::fields::combo_box(ui, "side").selected_text(format!("{side:?}")).show_ui(ui, |ui| {
@@ -1141,6 +1154,48 @@ fn multiple(ui: &mut egui::Ui, ids: &[ObjectId]) {
     });
     ui.add_space(6.0);
     ui.label(RichText::new("R rotate · X mirror · F flip · Del delete").color(theme::text_dim()));
+}
+
+const DNP_TIP: &str = "On the board (pads, copper) but not assembled: left out of the BOM and the position file";
+
+/// "Do not populate" for the components of several selected symbols and footprints
+/// (board parts aside): ticked when all are; one command sets them all.
+fn dnp_many(ui: &mut egui::Ui, cx: &mut Ctx, ids: &[ObjectId]) {
+    let p = cx.doc.project();
+    let mut comps: Vec<Component> = Vec::new();
+    for id in ids {
+        let component = match id {
+            ObjectId::Symbol(s) => p.schematic.symbols.get(*s).map(|s| s.component),
+            ObjectId::Footprint(f) => p.board.footprints.get(*f).map(|f| f.component),
+            _ => None,
+        };
+        let Some(c) = component.and_then(|c| p.schematic.components.get(c)) else { continue };
+        let board_part = p.library.parts.get(c.part).is_some_and(|part| part.is_board_part());
+        if !board_part && !comps.iter().any(|x| x.id == c.id) {
+            comps.push(c.clone());
+        }
+    }
+    if comps.is_empty() {
+        return;
+    }
+    let mut all = comps.iter().all(|c| c.dnp);
+    crate::fields::section(ui, "Assembly", None);
+    let mut changed = false;
+    grid(ui, |ui| {
+        changed = crate::fields::check_row(ui, "Do not populate", &mut all).on_hover_text(DNP_TIP).changed();
+    });
+    if changed {
+        let objects = comps
+            .into_iter()
+            .map(|mut c| {
+                c.dnp = all;
+                Object::Component(c)
+            })
+            .collect();
+        if let Err(e) = cx.doc.execute(Command::Update { objects }) {
+            *cx.message = Some(e.to_string());
+        }
+    }
 }
 
 /// "Exclude from simulation" for several selected symbols (all of them simulated):

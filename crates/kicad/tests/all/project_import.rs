@@ -34,6 +34,9 @@ fn hierarchical_routed_project() {
         p.schematic.sheets.get(s).unwrap().name.clone()
     };
     assert_eq!((sheet_of("R1"), sheet_of("R2"), sheet_of("R3")), ("amp".into(), "amp2".into(), "Schematic".into()));
+    // KiCad's "do not populate" (R3 only).
+    let dnp = |r: &str| p.schematic.component_by_refdes(r).unwrap().dnp;
+    assert!(dnp("R3") && !dnp("R1") && !dnp("R2"));
     assert!(report.contains("wires to them were stretched"), "{report}");
 
     // Pages: each sheet file's paper; the content is shifted onto it.

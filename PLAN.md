@@ -359,7 +359,10 @@ the current design of each area with the gotchas a change needs to know, the pla
 - **Assembly** (`assembly.rs`): `-bom.csv` (lines grouped by value, footprint and all
   properties; designators naturally sorted and joined; a column per property key used)
   and `-positions.csv` (footprint origin in board mm as in the Gerbers, rotation as
-  placed, Top/Bottom). Board parts are left out. CRLF and quoted fields, as the
+  placed, Top/Bottom). Board parts and "do not populate" components (`Component::dnp`,
+  imported from KiCad's `(dnp yes)`) are left out; DNP only touches assembly, the
+  board keeps their pads. Views draw them faded (`Painter::fade` on the item's
+  instances, its fields too) with a `sch_dnp` cross over the symbol body. CRLF and quoted fields, as the
   assembly services' importers expect.
 - Text is written as regions, one per glyph outline (`font::text_shapes`, holes
   bridged like zone fills), mirrored around its anchor on bottom layers (the editor
@@ -1372,7 +1375,8 @@ defers.
 **Board**
 - Fabrication outputs: fab/courtyard Gerbers, Protel file extensions, a board stack-up
   (thickness, copper weight, finish) for the job file (1.6 mm fixed today), BOM and
-  position column presets per assembly service, a "do not populate" flag, IPC-D-356
+  position column presets per assembly service, assembly variants (several
+  fitted/not-fitted sets per board; "do not populate" is one flag today), IPC-D-356
   netlist,
   silkscreen clipped at mask openings, mirrored bottom text in the editor; in the viewer:
   the mask area from the outline's contour (bounding box today), true clear polarity,

@@ -1,7 +1,8 @@
 //! Gerber export of the demo board through the document.
 
+use editor_core::Command;
 use gerber::{ExportError, FileKind, design_hash, read_manifest};
-use model::{LayerId, Project};
+use model::{LayerId, Object, Project};
 use view::Document;
 use view::demo::demo_project;
 
@@ -497,4 +498,31 @@ fn quantity(line: &str) -> usize {
         None => &line[line.find(',').unwrap() + 1..],
     };
     rest.split(',').nth(2).unwrap().parse().unwrap()
+}
+
+/// "Do not populate" components stay on the board but out of the assembly files.
+#[test]
+fn dnp_components_are_left_out_of_the_assembly_files() {
+    let mut doc = Document::new(view::demo::demo_project());
+    let mut r1 = doc.project().schematic.component_by_refdes("R1").unwrap().clone();
+    r1.dnp = true;
+    doc.execute(Command::Update { objects: vec![Object::Component(r1)] }).unwrap();
+    let files = gerber::generate_assembly(doc.project());
+    for f in &files {
+        assert!(
+            !f.content.lines().any(|l| l.starts_with("R1,") || l.contains("\"R1,") || l.contains(",R1,")),
+            "{}",
+            f.content
+        );
+    }
+    let positions = &files.iter().find(|f| f.kind == FileKind::Positions).unwrap().content;
+    assert!(positions.lines().any(|l| l.starts_with("R2,")), "the others stay\n{positions}");
+    // Its pads are still on the board.
+    assert!(
+        doc.project()
+            .board
+            .footprints
+            .iter()
+            .any(|f| f.component == doc.project().schematic.component_by_refdes("R1").unwrap().id)
+    );
 }

@@ -295,7 +295,7 @@
 	(wire (pts (xy 120 57.15) (xy 130 57.15)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000117"))
 	(wire (pts (xy 130 57.15) (xy 130 61.19)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000118"))
 	(wire (pts (xy 130 68.81) (xy 130 72)) (stroke (width 0) (type default)) (uuid "20000000-0000-4000-8000-000000000119"))
-	(symbol (lib_id "Device:R") (at 130 65 0) (unit 1) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no) (uuid "20000000-0000-4000-8000-000000000120")
+	(symbol (lib_id "Device:R") (at 130 65 0) (unit 1) (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp yes) (uuid "20000000-0000-4000-8000-000000000120")
 		(property "Reference" "R3" (at 132 65 0) (effects (font (size 1.27 1.27))))
 		(property "Value" "1k" (at 132 67 0) (effects (font (size 1.27 1.27))))
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 130 65 0) (effects (font (size 1.27 1.27)) (hide yes)))

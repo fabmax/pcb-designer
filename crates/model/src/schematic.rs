@@ -246,6 +246,10 @@ pub struct Component {
     /// Simulation settings: parameter overrides, exclusion, a source's waveform.
     #[serde(default, skip_serializing_if = "crate::simulation::ComponentSim::is_default")]
     pub sim: crate::simulation::ComponentSim,
+    /// Do not populate: on the board (pads, copper, silkscreen) but not assembled, so
+    /// left out of the BOM and the position file.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dnp: bool,
 }
 
 /// Placement of one unit of a component on a sheet.
