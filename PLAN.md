@@ -1307,6 +1307,16 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
   `theme::bold_label`) and, for non-modal resizable ones, `theme::window` (same frame
   and title bar, a × button, opens centred; Settings, KiCad import). Bus prompts are `name_prompt.rs`.
+- **Native file dialogs** (`file_dialog.rs`) never block the frame. A blocking
+  `rfd::FileDialog` runs a nested event loop inside winit's event handler, and on macOS
+  the save panel can deliver an event winit queued meanwhile: winit aborts ("tried to
+  handle event while another event is currently being handled"). So `Dialog<T>` opens
+  `rfd::AsyncFileDialog` (a sheet on macOS) and its owner polls it each frame; `T` says
+  what to do with the path (`Chosen` in the app). A save that needs a dialog (an
+  unsaved project, Save As) takes a `Then`: what the save interrupted (an export,
+  opening another project, quitting) runs again once it saved. Alerts
+  (`rfd::MessageDialog`) stay blocking: they run in the modal panel run loop mode,
+  which winit's queued events don't run in.
 - **GPU canvases** (`canvas.rs`): each `Canvas` takes a unique id and its own `GpuScene`
   in `CanvasResources`; dropping the canvas queues the id and the next `prepare` frees
   the scene. Gotcha: a new canvas only receives the scene's incremental uploads, so it

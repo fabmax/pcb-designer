@@ -109,6 +109,8 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), `sim` on
   `response.interact(…)` afterwards puts it on top and its buttons stop working.
 - **GPU canvases** are paint callbacks that egui can't clip. Rounded corners are masked
   afterwards (`theme::round_corners`).
+- **File dialogs:** never call a blocking `rfd::FileDialog` (it can crash winit on
+  macOS); use `file_dialog::Dialog` (PLAN.md, "Native file dialogs").
 - **egui 0.37 deprecations:** use `Id::unique` / `IdSalt` instead of `Id::new`, and
   `ui.scope_id()` instead of `ui.id()`.
 

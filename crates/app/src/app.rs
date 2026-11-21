@@ -13,6 +13,8 @@ use egui::{RichText, WidgetText};
 use egui_tiles::{Behavior, Container, SimplificationOptions, Tile, TileId, Tiles, Tree, UiResponse};
 use model::*;
 use view::item::Item;
+
+use crate::file_dialog::{Dialog, Kind};
 use view::pcb_tools::{PcbPlacer, PcbSettings, PcbTool};
 use view::sch_tools::{SchPlacer, SchSettings, SchTool};
 
@@ -242,6 +244,23 @@ fn open_of_ref(item: ItemRef) -> Open {
     }
 }
 
+/// Runs after a save that waited for a file dialog: what the save interrupted (an
+/// export, closing, opening another project).
+type Then = Box<dyn FnOnce(&mut PcbApp)>;
+
+/// What to do with the path a file dialog answers.
+enum Chosen {
+    OpenProject,
+    ImportKicadProject,
+    SaveProject(Option<Then>),
+    NewLibrary,
+    AddLibrary,
+    SaveLibrary(u64, Option<Then>),
+    SaveBuiltinCopy(u64, Option<Then>),
+    /// Point the missing library file at the chosen one.
+    LocateLibrary(PathBuf),
+}
+
 /// Work the tab tree asks for while it is drawn (when it can't borrow all of
 /// `PcbApp`), done right after.
 enum Deferred {
@@ -362,6 +381,9 @@ pub struct PcbApp {
     gerber: GerberPane,
     /// What the tab tree asked for while it was drawn.
     deferred: Vec<Deferred>,
+    /// The open file dialog (they don't block the frame, see `file_dialog`).
+    file_dialog: Dialog<Chosen>,
+    egui_ctx: egui::Context,
     /// Counts item tab uses ([`ItemTab::used`]).
     tab_clock: u64,
     /// The Messages panel's tab, and whether the panel was open last frame.
@@ -442,6 +464,8 @@ impl PcbApp {
             last_sheet: root.sheet(),
             focus: Focus::Project,
             deferred: Vec::new(),
+            file_dialog: Dialog::default(),
+            egui_ctx: cc.egui_ctx.clone(),
             tab_clock: 0,
             message_tab: messages::Category::default(),
             messages_open: false,
@@ -1006,30 +1030,32 @@ impl PcbApp {
         self.follow_visible_tabs();
     }
 
-    /// Ask to save unsaved changes. Returns false if the user cancelled.
-    fn confirm_discard(&mut self) -> bool {
+    /// Ask to save unsaved changes. Returns whether to go on now: false if the user
+    /// cancelled, or when the project is saved through a file dialog first (`retry`
+    /// runs once it is).
+    fn confirm_discard(&mut self, retry: impl FnOnce(&mut Self) + 'static) -> bool {
         if !self.doc().is_modified() {
             return true;
         }
         match ask_save(&format!("Save changes to \"{}\"?", self.doc().project().name)) {
-            rfd::MessageDialogResult::Yes => self.save(false),
+            rfd::MessageDialogResult::Yes => self.save(false, Some(Box::new(retry))),
             rfd::MessageDialogResult::No => true,
             _ => false,
         }
     }
 
     fn new_document(&mut self) {
-        if self.confirm_discard() {
+        if self.confirm_discard(Self::new_document) {
             self.replace_document(Document::new(Project::new("Untitled")));
         }
     }
 
     fn open(&mut self) {
-        if !self.confirm_discard() {
+        if !self.confirm_discard(Self::open) {
             return;
         }
-        let Some(dir) = rfd::FileDialog::new().set_title("Open project folder").pick_folder() else { return };
-        self.open_path(&dir);
+        let dialog = rfd::AsyncFileDialog::new().set_title("Open project folder");
+        self.show_file_dialog(dialog, Kind::PickFolder, Chosen::OpenProject);
     }
 
     /// Open a project folder (after unsaved changes were dealt with).
@@ -1046,18 +1072,17 @@ impl PcbApp {
 
     /// File → Import KiCad project: the result opens as a new, unsaved project.
     fn import_kicad_project(&mut self) {
-        if !self.confirm_discard() {
+        if !self.confirm_discard(Self::import_kicad_project) {
             return;
         }
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Import KiCad project")
-            .add_filter("KiCad project", &["kicad_pro"])
-            .pick_file()
-        else {
-            return;
-        };
-        match kicad::import_project(&path) {
-            Ok(import) => self.open_import(&path, import),
+        let dialog =
+            rfd::AsyncFileDialog::new().set_title("Import KiCad project").add_filter("KiCad project", &["kicad_pro"]);
+        self.show_file_dialog(dialog, Kind::PickFile, Chosen::ImportKicadProject);
+    }
+
+    fn import_kicad_file(&mut self, path: &std::path::Path) {
+        match kicad::import_project(path) {
+            Ok(import) => self.open_import(path, import),
             Err(e) => self.set_status(format!("KiCad import failed: {e}")),
         }
     }
@@ -1071,8 +1096,8 @@ impl PcbApp {
 
     /// An agent's project import: replaces the project unless the user cancels.
     fn agent_replace_project(&mut self, import: kicad::ProjectImport) -> Result<serde_json::Value, String> {
-        if !self.confirm_discard() {
-            return Err("the user kept the open project (it has unsaved changes)".into());
+        if !self.confirm_discard(|_| {}) {
+            return Err("the user kept the open project (it has unsaved changes, or saves it first)".into());
         }
         let reply = mcp::host::project_import_reply(&import.report);
         let name = import.project.name.clone();
@@ -1176,22 +1201,29 @@ impl PcbApp {
         self.probe_key = None;
     }
 
-    /// Save (or Save As when `choose` or the document has no folder yet).
-    fn save(&mut self, choose: bool) -> bool {
-        let path = match (&self.doc().path, choose) {
-            (Some(p), false) => p.clone(),
+    /// Save (or Save As when `choose` or the document has no folder yet). Returns
+    /// whether it saved right away. Save As asks for the folder in a file dialog and
+    /// saves once it's answered, then runs `then` (what the save interrupted).
+    fn save(&mut self, choose: bool, then: Option<Then>) -> bool {
+        match (&self.doc().path, choose) {
+            (Some(p), false) => {
+                let path = p.clone();
+                self.save_to(&path)
+            }
             _ => {
                 let name = format!("{}.pcbproj", self.doc().project().name);
-                match rfd::FileDialog::new().set_title("Save project folder").set_file_name(name).save_file() {
-                    Some(p) => p,
-                    None => return false,
-                }
+                let dialog = rfd::AsyncFileDialog::new().set_title("Save project folder").set_file_name(name);
+                self.show_file_dialog(dialog, Kind::Save, Chosen::SaveProject(then));
+                false
             }
-        };
-        match self.doc_mut().save_as(&path) {
+        }
+    }
+
+    fn save_to(&mut self, path: &std::path::Path) -> bool {
+        match self.doc_mut().save_as(path) {
             Ok(()) => {
                 self.set_status(format!("Saved {}", path.display()));
-                self.remember_project(&path);
+                self.remember_project(path);
                 self.save_workspace();
                 true
             }
@@ -1205,7 +1237,7 @@ impl PcbApp {
     /// Export the Gerber and drill files into the project folder (saving a new project
     /// first). Design rule violations are reported in Messages but don't stop it.
     fn export_gerber(&mut self) {
-        if self.doc().path.is_none() && !self.save(false) {
+        if self.doc().path.is_none() && !self.save(false, Some(Box::new(Self::export_gerber))) {
             return;
         }
         match self.doc_mut().export_gerber() {
@@ -1227,7 +1259,7 @@ impl PcbApp {
     /// Write the schematic as a PDF into the project's output folder (saving a new
     /// project first).
     fn export_schematic_pdf(&mut self) {
-        if self.doc().path.is_none() && !self.save(false) {
+        if self.doc().path.is_none() && !self.save(false, Some(Box::new(Self::export_schematic_pdf))) {
             return;
         }
         match self.doc_mut().export_schematic_pdf() {
@@ -1236,6 +1268,30 @@ impl PcbApp {
                 self.set_status(format!("Exported the schematic to {}", file.display()));
             }
             Err(e) => self.set_status(format!("PDF export failed: {e}")),
+        }
+    }
+
+    fn show_file_dialog(&mut self, dialog: rfd::AsyncFileDialog, kind: Kind, then: Chosen) {
+        if !self.file_dialog.open(&self.egui_ctx, dialog, kind, then) {
+            self.set_status("Another file dialog is still open");
+        }
+    }
+
+    /// Carry out what a file dialog was for, once it is answered (and not cancelled).
+    fn file_dialog_answer(&mut self) {
+        let Some((chosen, Some(path))) = self.file_dialog.poll() else { return };
+        let then = match chosen {
+            Chosen::OpenProject => return self.open_path(&path),
+            Chosen::ImportKicadProject => return self.import_kicad_file(&path),
+            Chosen::NewLibrary => return self.create_library(&path),
+            Chosen::AddLibrary => return self.add_library_file(&project_libs::absolute(&path), true),
+            Chosen::LocateLibrary(from) => return self.relink_library(from, &path),
+            Chosen::SaveProject(then) => then.filter(|_| self.save_to(&path)),
+            Chosen::SaveLibrary(key, then) => then.filter(|_| self.save_library_to(key, &path)),
+            Chosen::SaveBuiltinCopy(key, then) => then.filter(|_| self.save_builtin_copy(key, &path)),
+        };
+        if let Some(then) = then {
+            then(self);
         }
     }
 
@@ -1607,8 +1663,8 @@ impl PcbApp {
     }
 
     /// A file dialog for library files, starting in the project folder.
-    fn library_dialog(&self, title: &str) -> rfd::FileDialog {
-        let dialog = rfd::FileDialog::new().set_title(title).add_filter("PCB library", &["pcblib"]);
+    fn library_dialog(&self, title: &str) -> rfd::AsyncFileDialog {
+        let dialog = rfd::AsyncFileDialog::new().set_title(title).add_filter("PCB library", &["pcblib"]);
         match &self.doc().path {
             Some(dir) => dialog.set_directory(dir),
             None => dialog,
@@ -1617,12 +1673,14 @@ impl PcbApp {
 
     /// New library: choose its file right away, then it is added to the project.
     fn new_library(&mut self) {
-        let Some(path) = self.library_dialog("New library").set_file_name("New library.pcblib").save_file() else {
-            return;
-        };
+        let dialog = self.library_dialog("New library").set_file_name("New library.pcblib");
+        self.show_file_dialog(dialog, Kind::Save, Chosen::NewLibrary);
+    }
+
+    fn create_library(&mut self, path: &std::path::Path) {
         let name = path.file_stem().map_or("New library".into(), |s| s.to_string_lossy().into_owned());
         let mut lib = LibraryDoc::new(Library::new(name));
-        match lib.save_as(&path) {
+        match lib.save_as(path) {
             Ok(()) => {
                 self.add_to_project(lib, true);
             }
@@ -1632,37 +1690,44 @@ impl PcbApp {
 
     /// Add an existing library file to the project.
     fn open_library(&mut self) {
-        let Some(path) = self.library_dialog("Add library").pick_file() else { return };
-        self.add_library_file(&project_libs::absolute(&path), true);
+        let dialog = self.library_dialog("Add library");
+        self.show_file_dialog(dialog, Kind::PickFile, Chosen::AddLibrary);
     }
 
-    fn save_library(&mut self, key: u64, choose: bool) -> bool {
+    /// Save a library (Save As when `choose` or it has no file yet). Returns whether it
+    /// saved right away; otherwise it saves once the file dialog is answered, and runs
+    /// `then` after that.
+    fn save_library(&mut self, key: u64, choose: bool, then: Option<Then>) -> bool {
         if key == PROJECT_LIB {
-            return self.save(choose);
+            return self.save(choose, then);
         }
         let Some(l) = self.libraries.by_key(key) else { return false };
         if l.is_builtin() {
-            return self.save_builtin_copy(key);
+            let dialog = self.library_dialog("Save a copy of the built-in library").set_file_name("Parts.pcblib");
+            self.show_file_dialog(dialog, Kind::Save, Chosen::SaveBuiltinCopy(key, then));
+            return false;
         }
-        let old = l.lib.path.clone();
-        let path = match (old.clone(), choose) {
-            (Some(p), false) => p,
+        match (l.lib.path.clone(), choose) {
+            (Some(path), false) => self.save_library_to(key, &path),
             _ => {
                 let name = format!("{}.pcblib", l.lib.name());
-                match self.library_dialog("Save library").set_file_name(name).save_file() {
-                    Some(p) => p,
-                    None => return false,
-                }
+                let dialog = self.library_dialog("Save library").set_file_name(name);
+                self.show_file_dialog(dialog, Kind::Save, Chosen::SaveLibrary(key, then));
+                false
             }
-        };
+        }
+    }
+
+    fn save_library_to(&mut self, key: u64, path: &std::path::Path) -> bool {
         let Some(l) = self.lib(key) else { return false };
-        if let Err(e) = l.lib.save_as(&path) {
+        let old = l.lib.path.clone();
+        if let Err(e) = l.lib.save_as(path) {
             self.set_status(format!("Save failed: {e}"));
             return false;
         }
         self.set_status(format!("Saved library {}", path.display()));
         // The project follows the file (a new file, or a library that wasn't in it yet).
-        if let Some(command) = project_libs::after_save(&self.doc().project().libraries, old.as_deref(), &path)
+        if let Some(command) = project_libs::after_save(&self.doc().project().libraries, old.as_deref(), path)
             && let Err(e) = self.doc_mut().execute(command)
         {
             self.set_status(e.to_string());
@@ -1673,22 +1738,18 @@ impl PcbApp {
 
     /// The built-in library is read-only; "save" makes a copy of it (a library of its
     /// own) and adds that to the project.
-    fn save_builtin_copy(&mut self, key: u64) -> bool {
-        let Some(path) =
-            self.library_dialog("Save a copy of the built-in library").set_file_name("Parts.pcblib").save_file()
-        else {
-            return false;
-        };
+    fn save_builtin_copy(&mut self, key: u64, path: &std::path::Path) -> bool {
         let Some(l) = self.lib(key) else { return false };
-        let mut copy = project_libs::copy_for(l.lib.library(), &path);
-        if let Err(e) = copy.save_as(&path) {
+        let mut copy = project_libs::copy_for(l.lib.library(), path);
+        if let Err(e) = copy.save_as(path) {
             self.set_status(format!("Save failed: {e}"));
             return false;
         }
         self.add_to_project(copy, true).is_some()
     }
 
-    fn confirm_discard_library(&mut self, key: u64) -> bool {
+    /// Ask to save a library's changes; like [`Self::confirm_discard`].
+    fn confirm_discard_library(&mut self, key: u64, retry: impl FnOnce(&mut Self) + 'static) -> bool {
         if key == PROJECT_LIB {
             return true;
         }
@@ -1697,7 +1758,7 @@ impl PcbApp {
             return true;
         }
         match ask_save(&format!("Save changes to library \"{}\"?", l.lib.name())) {
-            rfd::MessageDialogResult::Yes => self.save_library(key, false),
+            rfd::MessageDialogResult::Yes => self.save_library(key, false, Some(Box::new(retry))),
             rfd::MessageDialogResult::No => true,
             _ => false,
         }
@@ -1706,7 +1767,7 @@ impl PcbApp {
     /// Close a library outside the project (Project panel), asking about its changes:
     /// its tabs close and it is unloaded.
     fn close_library(&mut self, key: u64) {
-        if key == PROJECT_LIB || !self.confirm_discard_library(key) {
+        if key == PROJECT_LIB || !self.confirm_discard_library(key, move |a| a.close_library(key)) {
             return;
         }
         self.close_lib_tabs(key);
@@ -1720,7 +1781,7 @@ impl PcbApp {
 
     /// Remove a library from the project (asking about unsaved changes first).
     fn remove_library(&mut self, key: u64) {
-        if !self.confirm_discard_library(key) {
+        if !self.confirm_discard_library(key, move |a| a.remove_library(key)) {
             return;
         }
         let Some(l) = self.libraries.by_key(key) else { return };
@@ -1745,8 +1806,12 @@ impl PcbApp {
     /// Point a library file that could not be loaded at another file.
     fn locate_missing_library(&mut self, from: PathBuf) {
         let title = format!("Locate {}", from.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned()));
-        let Some(to) = self.library_dialog(&title).pick_file() else { return };
-        let to = project_libs::absolute(&to);
+        let dialog = self.library_dialog(&title);
+        self.show_file_dialog(dialog, Kind::PickFile, Chosen::LocateLibrary(from));
+    }
+
+    fn relink_library(&mut self, from: PathBuf, to: &std::path::Path) {
+        let to = project_libs::absolute(to);
         let lib = match LibraryDoc::open(&to) {
             Ok(lib) => lib,
             Err(e) => return self.set_status(format!("Could not open library: {e}")),
@@ -2553,11 +2618,11 @@ impl PcbApp {
             }
             Action::Open => return self.open(),
             Action::Save => {
-                self.save(false);
+                self.save(false, None);
                 return;
             }
             Action::SaveAs => {
-                self.save(true);
+                self.save(true, None);
                 return;
             }
             Action::ExportGerber => return self.export_gerber(),
@@ -2679,7 +2744,7 @@ impl PcbApp {
                 return false;
             }
             Action::Save | Action::SaveAs => {
-                self.save_library(key, action == Action::SaveAs);
+                self.save_library(key, action == Action::SaveAs, None);
                 return true;
             }
             _ => {}
@@ -2861,7 +2926,8 @@ impl PcbApp {
         match cmd {
             Cmd::Action(a) => self.run_action(a),
             Cmd::OpenRecent(p) => {
-                if self.confirm_discard() {
+                let retry = p.clone();
+                if self.confirm_discard(move |a| a.open_path(&retry)) {
                     self.open_path(&p);
                 }
             }
@@ -2870,7 +2936,7 @@ impl PcbApp {
                 self.save_settings();
             }
             Cmd::OpenDemo => {
-                if self.confirm_discard() {
+                if self.confirm_discard(|a| a.replace_document(demo_document())) {
                     self.replace_document(demo_document());
                 }
             }
@@ -3254,14 +3320,14 @@ impl PcbApp {
                 }
             }
             Act::SaveProject => {
-                self.save(false);
+                self.save(false, None);
             }
             Act::ExportGerber => self.export_gerber(),
             Act::ExportSchematicPdf => self.export_schematic_pdf(),
             Act::OpenGerber(file) => self.open_gerber(file),
             Act::DeleteOutputs => self.delete_outputs(),
             Act::SaveProjectAs => {
-                self.save(true);
+                self.save(true, None);
             }
             Act::OpenFile(path) => {
                 if let Err(e) = project_panel::open_file(&path) {
@@ -3279,10 +3345,10 @@ impl PcbApp {
             Act::OpenItem(key, open) => _ = self.open_item(key, open, false, true),
             Act::PreviewItem(key, open) => _ = self.open_item(key, open, true, false),
             Act::SaveLibrary(key) => {
-                self.save_library(key, false);
+                self.save_library(key, false, None);
             }
             Act::SaveLibraryAs(key) => {
-                self.save_library(key, true);
+                self.save_library(key, true, None);
             }
             Act::CloseLibrary(key) => self.close_library(key),
             Act::RemoveLibrary(key) => self.remove_library(key),
@@ -4209,11 +4275,13 @@ impl PcbApp {
             return;
         }
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-        if !self.confirm_discard() {
+        // After a save through a file dialog, closing starts over.
+        let close = |a: &mut Self| a.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        if !self.confirm_discard(close) {
             return;
         }
         for key in modified_libs {
-            if !self.confirm_discard_library(key) {
+            if !self.confirm_discard_library(key, close) {
                 return;
             }
         }
@@ -5161,6 +5229,7 @@ impl eframe::App for PcbApp {
         self.sync_tool_memory();
         self.sync_libraries();
         self.handle_close(&ctx);
+        self.file_dialog_answer();
         // The name dialog takes the keys while it is open.
         self.paste_text = ctx.input(|i| {
             i.events.iter().find_map(|e| if let egui::Event::Paste(t) = e { Some(t.clone()) } else { None })
@@ -5315,7 +5384,7 @@ impl eframe::App for PcbApp {
         }
         let save_copy = self.libraries.iter_mut().find_map(|l| std::mem::take(&mut l.save_copy).then_some(l.key));
         if let Some(key) = save_copy {
-            self.save_library(key, true);
+            self.save_library(key, true, None);
         }
 
         // Agent requests are answered between user interactions.

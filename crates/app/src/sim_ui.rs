@@ -52,6 +52,8 @@ pub struct SimPanel {
     window_log: bool,
     /// The current netlist of the shown analysis: (revision, analysis, text).
     netlist: Option<(u64, Id, String)>,
+    /// Export CSV: the file dialog, with the CSV text to write.
+    pub csv_dialog: crate::file_dialog::Dialog<String>,
     /// The plots' views, per analysis.
     pub plots: std::collections::HashMap<Id, crate::plot_ui::PlotState>,
     /// AC plots leave out the phase.

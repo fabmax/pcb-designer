@@ -17,6 +17,7 @@ use sim::plot::{self, Axis, PlotData, Scale, Signal};
 use view::Document;
 use view::sim_overlay::ProbeTarget;
 
+use crate::file_dialog::Kind;
 use crate::sim_ui::SimPanel;
 use crate::theme;
 
@@ -144,6 +145,11 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
     // The tab has the canvas background, like the schematic; the chart sets itself off
     // from it (see `chart_bg`).
     ui.painter().rect_filled(ui.max_rect(), 0.0, theme::color(view::style::pal().background));
+    if let Some((csv, Some(path))) = panel.csv_dialog.poll()
+        && let Err(e) = std::fs::write(&path, csv)
+    {
+        log::warn!("can't write {}: {e}", path.display());
+    }
     let setup = &doc.project().schematic.simulation;
     let Some(analysis) = panel.current(setup).cloned() else {
         centered_hint(ui, "Add an analysis in the Simulation panel (⌘2) to plot it.");
@@ -272,7 +278,12 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     }
     let (_, data, named) = state.data.clone().expect("built above");
     if export {
-        export_csv(&data, &state.hidden, &analysis.name);
+        let dialog = rfd::AsyncFileDialog::new()
+            .set_title("Export CSV")
+            .set_file_name(format!("{}.csv", analysis.name))
+            .add_filter("CSV", &["csv"]);
+        let csv = plot::csv(&data, &state.hidden);
+        panel.csv_dialog.open(ui.ctx(), dialog, Kind::Save, csv);
     }
 
     // Plot above, readout table below (at most 40 % of the height).
@@ -921,20 +932,6 @@ fn op_table(
         });
     });
     hover
-}
-
-fn export_csv(data: &PlotData, hidden: &HashSet<String>, name: &str) {
-    let Some(path) = rfd::FileDialog::new()
-        .set_title("Export CSV")
-        .set_file_name(format!("{name}.csv"))
-        .add_filter("CSV", &["csv"])
-        .save_file()
-    else {
-        return;
-    };
-    if let Err(e) = std::fs::write(&path, plot::csv(data, hidden)) {
-        log::warn!("can't write {}: {e}", path.display());
-    }
 }
 
 #[cfg(test)]

@@ -11,6 +11,7 @@ use egui::{Color32, FontId, Key, RichText, TextFormat, Ui};
 use serde::{Deserialize, Serialize};
 use view::style::{LayerColor, Theme};
 
+use crate::file_dialog::{Dialog, Kind};
 use crate::keymap::{Action, Keymap};
 use crate::settings::{Settings, UI_SCALES};
 use crate::theme;
@@ -235,6 +236,16 @@ pub struct SettingsWindow {
     ngspice_lib_text: Option<String>,
     /// What was found for the simulation settings (the settings it was for, the text).
     ngspice_found: Option<(sim::EngineSettings, Result<String, String>)>,
+    /// A Choose… file dialog, for this path.
+    dialog: Dialog<PathField>,
+}
+
+/// The paths chosen in a file dialog.
+#[derive(Clone, Copy)]
+enum PathField {
+    Kicad,
+    Ngspice,
+    NgspiceLibrary,
 }
 
 fn search_id() -> egui::Id {
@@ -258,6 +269,26 @@ impl SettingsWindow {
         agent: &AgentStatus,
     ) -> Changes {
         let mut changes = Changes::default();
+        if let Some((field, Some(path))) = self.dialog.poll() {
+            match field {
+                PathField::Kicad => {
+                    settings.kicad_dir = Some(path);
+                    self.kicad_text = None;
+                    changes.kicad_dir = true;
+                }
+                PathField::Ngspice => {
+                    settings.ngspice = Some(path);
+                    self.ngspice_text = None;
+                    changes.ngspice = true;
+                }
+                PathField::NgspiceLibrary => {
+                    settings.ngspice_library = Some(path);
+                    self.ngspice_lib_text = None;
+                    changes.ngspice = true;
+                }
+            }
+            changes.save = true;
+        }
         let mut open = self.open;
         let size = settings.settings_window.size.unwrap_or([MIN_SIZE[0], 600.0]);
         let keymap_rows: Vec<(String, String)> = Action::ALL
@@ -602,13 +633,9 @@ impl SettingsWindow {
             if !r.has_focus() {
                 self.kicad_text = None;
             }
-            if ui.button("Choose…").clicked()
-                && let Some(dir) = rfd::FileDialog::new().set_title("KiCad library folder").pick_folder()
-            {
-                settings.kicad_dir = Some(dir);
-                self.kicad_text = None;
-                changes.kicad_dir = true;
-                changes.save = true;
+            if ui.button("Choose…").clicked() {
+                let dialog = rfd::AsyncFileDialog::new().set_title("KiCad library folder");
+                self.dialog.open(ui.ctx(), dialog, Kind::PickFolder, PathField::Kicad);
             }
         });
         reset(ui, rows, || {
@@ -638,7 +665,9 @@ impl SettingsWindow {
             }
         });
         let help = "Empty: found on PATH and in the usual install folders (Homebrew, /usr/bin, Program Files).";
-        if let Some(path) = path_row(ui, rows, "ngspice", help, &settings.ngspice, &mut self.ngspice_text) {
+        let (text, dialog) = (&mut self.ngspice_text, &mut self.dialog);
+        let choose = (dialog, PathField::Ngspice);
+        if let Some(path) = path_row(ui, rows, "ngspice", help, &settings.ngspice, text, choose) {
             settings.ngspice = path;
             changes.ngspice = true;
             changes.save = true;
@@ -647,7 +676,8 @@ impl SettingsWindow {
             let help = "libngspice (ngspice.dll on Windows). Empty: the usual install folders (Homebrew, \
                         /usr/lib, Program Files\\Spice64, KiCad's).";
             let (label, text) = ("ngspice library", &mut self.ngspice_lib_text);
-            if let Some(path) = path_row(ui, rows, label, help, &settings.ngspice_library, text) {
+            let choose = (&mut self.dialog, PathField::NgspiceLibrary);
+            if let Some(path) = path_row(ui, rows, label, help, &settings.ngspice_library, text, choose) {
                 settings.ngspice_library = path;
                 changes.ngspice = true;
                 changes.save = true;
@@ -700,8 +730,9 @@ impl SettingsWindow {
     }
 }
 
-/// A file path row: typed (applied when the field loses focus) or chosen. Returns the
-/// new path when it changed (`None` inside: empty, found automatically).
+/// A file path row: typed (applied when the field loses focus) or chosen in `choose`'s
+/// file dialog (applied when it is answered). Returns the typed path when it changed
+/// (`None` inside: empty, found automatically).
 fn path_row(
     ui: &mut Ui,
     rows: &mut Rows,
@@ -709,6 +740,7 @@ fn path_row(
     help: &str,
     path: &Option<std::path::PathBuf>,
     typing: &mut Option<String>,
+    (dialog, field): (&mut Dialog<PathField>, PathField),
 ) -> Option<Option<std::path::PathBuf>> {
     let shown = path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
     let mut out = None;
@@ -721,11 +753,8 @@ fn path_row(
         if !r.has_focus() {
             *typing = None;
         }
-        if ui.button("Choose…").clicked()
-            && let Some(file) = rfd::FileDialog::new().set_title(label).pick_file()
-        {
-            *typing = None;
-            out = Some(Some(file));
+        if ui.button("Choose…").clicked() {
+            dialog.open(ui.ctx(), rfd::AsyncFileDialog::new().set_title(label), Kind::PickFile, field);
         }
     });
     out

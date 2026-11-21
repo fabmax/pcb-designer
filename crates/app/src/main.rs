@@ -52,6 +52,7 @@ mod clipboard;
 mod color_edit;
 mod dock;
 mod fields;
+mod file_dialog;
 mod icons;
 mod item_tabs;
 mod keymap;

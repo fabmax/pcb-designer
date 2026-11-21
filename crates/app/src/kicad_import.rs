@@ -198,6 +198,8 @@ pub struct KicadImport {
     /// Scroll the "To import" list to this item next frame (just added).
     reveal: Option<Reveal>,
     previews: Previews,
+    /// Add folder…: the file dialog.
+    dialog: crate::file_dialog::Dialog<()>,
 }
 
 /// An item of the "To import" list to scroll into view.
@@ -235,6 +237,7 @@ impl KicadImport {
             selected: None,
             reveal: None,
             previews: Previews::default(),
+            dialog: Default::default(),
         }
     }
 
@@ -612,6 +615,10 @@ impl KicadImport {
             }
             return None;
         }
+        if let Some(((), Some(dir))) = self.dialog.poll() {
+            self.extra.push(dir);
+            self.rescan();
+        }
         let mut open = self.open;
         let action =
             theme::window(ctx, "Import KiCad parts", &mut open, [980.0, 780.0], |ui| self.contents(ui, libraries));
@@ -633,10 +640,9 @@ impl KicadImport {
                 .button("Add folder…")
                 .on_hover_text("A KiCad symbols or footprints folder, or a single library")
                 .clicked()
-                && let Some(dir) = rfd::FileDialog::new().set_title("KiCad library folder").pick_folder()
             {
-                self.extra.push(dir);
-                self.rescan();
+                let dialog = rfd::AsyncFileDialog::new().set_title("KiCad library folder");
+                self.dialog.open(ui.ctx(), dialog, crate::file_dialog::Kind::PickFolder, ());
             }
             if ui.button("Rescan").clicked() {
                 self.rescan();
