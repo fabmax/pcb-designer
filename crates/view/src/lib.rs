@@ -12,6 +12,7 @@ pub mod clipboard;
 pub mod demo;
 pub mod document;
 mod draw;
+pub mod findings;
 pub mod frame;
 pub mod gerber_view;
 pub mod handles;

@@ -224,6 +224,12 @@ the current design of each area with the gotchas a change needs to know, the pla
   markers (`View::set_erc_markers`, View menu) and the live board shorts in Messages
   follow it too. An exclusion keeps the message it was made for, so one that matches
   nothing any more is shown as unused and can be removed.
+- **Hover tip** (`view::findings::at`, shown by the app's `findings_tip` after the
+  tooltip delay, Select tool idle only): the messages of what is drawn under the
+  pointer: markers (ERC only while shown) and unconnected-pin rings by distance, plus
+  findings listing the hovered object, and the hovered track's or via's flag (shorts
+  following the short rule's severity and exclusions, like Messages). The short's nets
+  come from a scan of the island's pads (hovered item only, so no index).
 - **Arc tracks** are a `Track` with `mid` (a point on the arc, KiCad's start/mid/end);
   `a`/`b` stay the ends, so anchors, ratsnest and routing don't know about arcs.
   `Track::arc()` gives the exact `Shape::Arc` (drawing, Gerber G02/G03 with exact ends),

@@ -4630,6 +4630,36 @@ fn device_tip(ui: &egui::Ui, d: &sim::report::Device, stale: bool) {
     });
 }
 
+/// The messages of the findings under the pointer (ERC, DRC, flagged copper), as a
+/// tooltip once the pointer rests for the tooltip delay.
+fn findings_tip(ui: &egui::Ui, found: &[view::findings::Finding]) {
+    if found.is_empty() {
+        return;
+    }
+    let (still, delay) = (ui.input(|i| i.pointer.time_since_last_movement()), ui.style().interaction.tooltip_delay);
+    if still < delay {
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f32(delay - still));
+        return;
+    }
+    egui::Tooltip::always_open(
+        ui.ctx().clone(),
+        ui.layer_id(),
+        egui::Id::unique("findings_tip"),
+        egui::PopupAnchor::Pointer,
+    )
+    .gap(14.0)
+    .show(|ui| {
+        ui.set_max_width(360.0);
+        for f in found {
+            let color = if f.severity == model::Severity::Error { theme::error() } else { theme::warn() };
+            ui.horizontal_wrapped(|ui| {
+                ui.label(egui::RichText::new("●").color(color));
+                ui.label(&f.message);
+            });
+        }
+    });
+}
+
 /// Make `sheet` the one the schematic tools work on, clearing their preview on the sheet
 /// they worked on before.
 fn switch_sheet(sch: &mut SchPlacer, doc: &mut Document, sheet: Id) {
@@ -4997,6 +5027,17 @@ impl TreeBehavior<'_> {
             }
             if let Some((r, crossing)) = pane.it.box_rect() {
                 canvas::draw_box(ui, &pane.canvas, response.rect, r, crossing);
+            }
+            if pane.it.is_idle()
+                && response.hovered()
+                && !on_edit
+                && !on_grip
+                && !ui.input(|i| i.pointer.any_down())
+                && let Some(p) = pointer
+            {
+                let tol = (4.0 / pane.canvas.camera.zoom * 1e6) as Coord;
+                let found = view::findings::at(doc, view, p, tol, pane.it.hover);
+                findings_tip(ui, &found);
             }
         }
         if on_edit && response.hovered() {
