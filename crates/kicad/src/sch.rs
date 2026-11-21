@@ -31,6 +31,8 @@ pub struct SchComponent {
     pub footprint: Option<String>,
     /// Not placed on the board (KiCad: "exclude from board").
     pub on_board: bool,
+    /// KiCad's "exclude from simulation".
+    pub exclude_from_sim: bool,
     pub properties: BTreeMap<String, String>,
 }
 
@@ -421,10 +423,20 @@ impl Loader<'_> {
             self.report.warn(format!("symbol {lib_id} is missing from the schematic's library cache; skipped"));
             return;
         };
-        let props: BTreeMap<String, String> = item
+        let mut props: BTreeMap<String, String> = item
             .children("property")
             .filter_map(|p| Some((p.arg(0)?.to_string(), p.arg(1).unwrap_or("").to_string())))
             .collect();
+        // `Sim.*` fields the instance doesn't override come from the library symbol (as
+        // in KiCad; its KiCad 5 `Spice_*` fields don't).
+        for p in lib_node.children("property") {
+            if let (Some(k), Some(v)) = (p.arg(0), p.arg(1))
+                && k.starts_with("Sim.")
+                && !props.contains_key(k)
+            {
+                props.insert(k.to_string(), v.to_string());
+            }
+        }
         let Some(at) = item.child("at") else { return };
         let pos = point(at.num(0).unwrap_or(0.0), at.num(1).unwrap_or(0.0), true);
         let mirror = item.child("mirror").and_then(|m| m.arg(0)).map(str::to_string);
@@ -505,6 +517,7 @@ impl Loader<'_> {
                     value: props.get("Value").cloned().unwrap_or_default(),
                     footprint,
                     on_board: item.child("on_board").and_then(|n| n.arg(0)) != Some("no"),
+                    exclude_from_sim: item.child("exclude_from_sim").and_then(|n| n.arg(0)) == Some("yes"),
                     properties,
                 });
                 self.out.symbols.entry(lib_id.clone()).or_insert(sym);

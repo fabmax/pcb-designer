@@ -14,6 +14,7 @@ pub mod preview;
 pub mod project;
 pub mod sch;
 pub mod sexpr;
+pub mod sim;
 pub mod symbol;
 
 pub use catalog::{Catalog, Error, Fit, default_paths};

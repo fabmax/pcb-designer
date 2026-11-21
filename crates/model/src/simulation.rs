@@ -133,8 +133,10 @@ pub enum SimDevice {
     /// Nodes: + then −. Current flows from + through the source to −.
     VoltageSource,
     CurrentSource,
-    /// One SPICE line, as written, with `${REF}` (the SPICE name), `${VALUE}` and
-    /// `${N1}`, `${N2}`, … for the nodes in `pins` order.
+    /// One SPICE line, as written, with `${REF}` (the reference), `${VALUE}` and
+    /// `${N1}`, `${N2}`, … for the nodes in `pins` order. A device letter right before
+    /// `${REF}` is left out when the reference starts with it (`V${REF}`: `V1` for V1,
+    /// `VIN1` for IN1).
     Spice {
         template: String,
     },

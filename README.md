@@ -213,7 +213,9 @@ on the canvas (View → ERC markers turns the schematic's off).
 Circuits simulate with [ngspice](https://ngspice.sourceforge.io/), which you install
 yourself (`brew install ngspice`, `apt install ngspice`, or the Windows download); it is
 found on `PATH` and the usual install places, or set its path in **Settings →
-Simulation**. What's planned next is in [simulation-plan.md](simulation-plan.md).
+Simulation**. It runs in its LTspice/PSpice compatibility mode (as in KiCad), so vendor
+models written for those simulators work. What's planned next is in
+[simulation-plan.md](simulation-plan.md).
 
 - **Simulation panel** (⌘2, or the **Simulation** menu): one tab per analysis
   (operating point, transient, AC, DC sweep; **+** adds one, right-click renames,
@@ -490,6 +492,13 @@ on conversions, and what wasn't imported (e.g. dimensions, title block, user-lay
 graphics). Parts come from the project itself, so no libraries are needed; they land in
 the Project Library. Projects from KiCad 5 or older (`.sch`) are refused: open and save
 them in a current KiCad first.
+
+Simulation settings come along: KiCad's simulation fields become part models and
+source waveforms (models from `Sim.Library` files are copied into the parts), and
+SPICE directive texts (`.tran`, `.ac`, `.dc`, `.op`, `.param`, `.include`, …) become
+the Simulation panel's analyses and extra lines. What has no equivalent (IBIS, XSPICE
+digital models, switches, transmission lines) is listed in the report and left out
+of the simulation.
 
 `pcb-designer PROJECT.kicad_pro` opens an import at startup.
 `pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR` imports without a window, saves

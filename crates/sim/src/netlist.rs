@@ -309,6 +309,11 @@ impl Builder<'_> {
             match self.device_line(c, model, &name, &nodes, models) {
                 Ok(line) => {
                     lines.extend(sense);
+                    // A SPICE line names its device itself.
+                    let name = match &model.device {
+                        SimDevice::Spice { .. } => line.split_whitespace().next().unwrap_or(&name).to_string(),
+                        _ => name,
+                    };
                     lines.push(line);
                     self.out.devices.insert(c.id, name);
                     self.out.pins.extend(pins);
@@ -439,7 +444,21 @@ impl Builder<'_> {
                 format!("{name} {n} {}", source_spec(c.sim.source.as_ref())?)
             }
             SimDevice::Spice { template } => {
-                let mut line = template.replace("${REF}", &sanitize(&c.refdes)).replace("${VALUE}", c.value.trim());
+                let r = sanitize(&c.refdes);
+                // `V${REF}` for V1 is `V1`: the letter is left out when the reference
+                // starts with it (as KiCad names devices).
+                let mut line = template.clone();
+                if let Some(at) = line.find("${REF}")
+                    && at > 0
+                    && line.is_char_boundary(at - 1)
+                    && let Some(letter) = line[at - 1..at].chars().next()
+                    && letter.is_ascii_alphabetic()
+                    && (at == 1 || !line[..at - 1].ends_with(|c: char| c.is_ascii_alphanumeric()))
+                    && r.chars().next().is_some_and(|c| c.eq_ignore_ascii_case(&letter))
+                {
+                    line.replace_range(at - 1..at, "");
+                }
+                let mut line = line.replace("${REF}", &r).replace("${VALUE}", c.value.trim());
                 for (k, node) in nodes.iter().enumerate().rev() {
                     line = line.replace(&format!("${{N{}}}", k + 1), node);
                 }

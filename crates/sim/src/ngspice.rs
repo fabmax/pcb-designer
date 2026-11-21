@@ -96,6 +96,9 @@ impl Backend for Ngspice {
         let cir = dir.path().join("circuit.cir");
         let raw_path = dir.path().join("out.raw");
         std::fs::write(&cir, netlist).map_err(SimError::io)?;
+        // LTspice and PSpice compatibility (as KiCad runs it): vendor models need it
+        // (`params:` subcircuits, their expressions). Read at start-up from the folder.
+        std::fs::write(dir.path().join(".spiceinit"), "set ngbehavior=ltpsa\n").map_err(SimError::io)?;
         let mut child = Command::new(&self.path)
             .arg("-b")
             .arg("-r")

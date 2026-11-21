@@ -40,7 +40,7 @@ What to avoid: SPICE syntax as the main interface (LTspice), simulations as sche
 objects (Qucs-S: clutters the drawing and the print), and a separate modal window (KiCad's
 simulator is its own frame; ours should be a tab that can sit beside the schematic).
 
-## Built so far (S1–S6)
+## Built so far (S1–S7)
 
 The engine and everything headless are built; their design and gotchas are in
 PLAN.md, "Simulation (`sim`)":
@@ -253,40 +253,27 @@ and warnings. Its badge counts like the others; it is empty until the first run.
 
 ## KiCad import
 
-KiCad keeps simulation data in symbol fields, which the import already carries into
-`Component::properties` (everything but Reference, Value, Footprint, Description,
-Datasheet). Mapping them:
-
-- `Sim.Device` (`R`, `C`, `L`, `D`, `NPN`, `PNP`, `NMOS`, …, `V`, `I`, `SUBCKT`, `SPICE`),
-  `Sim.Type` (`SIN`, `PULSE`, `PWL`, `DC`, …), `Sim.Params` (`dc=5 ampl=1 f=1k`),
-  `Sim.Pins` (`1=+ 2=-` or `1=A 2=K`) → the part's `SimModel` and the component's
-  `sim.source` / `sim.params`; `Sim.Enable=0` / `exclude_from_sim` → `sim.exclude`.
-- `Sim.Library` + `Sim.Name`: the file is read relative to the KiCad project and the
-  model or subcircuit embedded; missing files are reported.
-- Legacy (KiCad 5) `Spice_Primitive`, `Spice_Model`, `Spice_Node_Sequence` likewise.
-- R/C/L without fields are inferred from the reference prefix, as KiCad does.
-- KiCad's `Simulation_SPICE` symbols (VDC, VSIN, VPULSE, …) map to `VSource` /
-  `ISource` by `lib_id`, the waveform from `Sim.Type` / `Sim.Params`.
-- The `.kicad_sch` text items with SPICE directives (`.tran …`) become analyses and
-  `extra` lines.
-- Verified like the netlist import: with `KICAD_CLI` set, KiCad's simulation demo
-  projects netlisted by `kicad-cli sch export netlist --format spice` and by us give the
-  same results through ngspice (same operating point within tolerance).
+Built in S7 (design and gotchas in PLAN.md, "Libraries and KiCad"): `Sim.*` and KiCad
+5's `Spice_*` fields become part models (parts split where models differ) and component
+settings, inferred R/C/L/V/I as KiCad infers them, library models embedded, KiCad's
+SPICE directive texts become analyses, temperature and extra lines. KiCad's
+`Simulation_SPICE` symbols need no special case: their fields say what they are. Checked
+against `kicad-cli` on KiCad's simulation demos (same operating point on every device
+pin).
 
 ## Milestones
 
 Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1–S5 are done and
-give a usable simulator; S6–S8 make it comfortable, compatible and fast.
+give a usable simulator; S6–S8 make it comfortable, compatible and fast (S6 and S7 done).
 
 ### S6: Comfort (done)
 
 Probes between nets and of a part's power, measurements, supply suggestions, the
 tuner and parameter sweeps; see "Built so far" and PLAN.md.
 
-### S7: KiCad simulation import
+### S7: KiCad simulation import (done)
 
-- The mapping in "KiCad import" above, the `Simulation_SPICE` parts, directives, and the
-  `kicad-cli` comparison test.
+The mapping in "KiCad import" above, directives, and the `kicad-cli` comparison test.
 
 ### S8: Shared-library backend
 
@@ -323,6 +310,8 @@ tuner and parameter sweeps; see "Built so far" and PLAN.md.
   supported by the schematic today: every sheet is one instance).
 - Board-aware simulation (track resistance, parasitic capacitance from the layout).
 - KiCad export of simulation fields (with the KiCad project export).
+- KiCad import: IBIS, XSPICE, switches, transmission lines, `K` couplings,
+  potentiometers, the workbook's plotted signals (see PLAN.md, Later).
 
 ## Decisions taken
 

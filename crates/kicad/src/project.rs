@@ -17,6 +17,7 @@ use crate::common::kid;
 use crate::import::{connect, make_part};
 use crate::pcb::{self, PcbImport};
 use crate::sch::{self, SchImport};
+use crate::sim;
 
 /// What the import did not take over, for the user.
 #[derive(Clone, Debug, Default)]
@@ -91,7 +92,7 @@ pub fn import_project(pro: &Path) -> Result<ProjectImport, String> {
         ));
     }
     let pcb = if pcb_path.exists() { pcb::import(&pcb_path, &mut report)? } else { PcbImport::default() };
-    let mut project = assemble(&stem, sch, pcb, &mut report);
+    let mut project = assemble(&stem, dir, sch, pcb, &mut report);
     design_rules(&settings, &mut project.board.rules);
     check_settings(&settings, &mut project, &mut report);
     let issues = project.validate();
@@ -101,7 +102,7 @@ pub fn import_project(pro: &Path) -> Result<ProjectImport, String> {
     Ok(ProjectImport { project, report })
 }
 
-fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report) -> Project {
+fn assemble(name: &str, dir: &Path, mut sch: SchImport, pcb: PcbImport, report: &mut Report) -> Project {
     let mut p = Project::new(name);
     p.schematic.sheets = Store::default();
     for s in std::mem::take(&mut sch.sheets) {
@@ -140,16 +141,45 @@ fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report)
         }
     }
 
-    // Parts and components of the schematic.
+    // Parts and components of the schematic. Components of one symbol whose simulation
+    // models differ get parts of their own ("Q_NPN (Q2N2222)").
     let mut parts: BTreeMap<String, Part> = BTreeMap::new();
     let mut used_fps: Vec<bool> = vec![false; pcb.footprints.len()];
     let mut comp_of_fp: Vec<Option<Id>> = vec![None; pcb.footprints.len()];
+    let mut libs = sim::Libs::new(dir);
+    // (symbol, model) → part key; models of a symbol in the order met.
+    let mut part_keys: Vec<(String, Option<SimModel>, String)> = Vec::new();
     for c in &sch.components {
         let Some(sym) = sch.symbols.get(&c.lib_id) else { continue };
-        let part = parts.entry(c.lib_id.clone()).or_insert_with(|| {
+        let mapped = match sim::component(&c.properties, &c.value, &c.refdes, c.exclude_from_sim, sym, &mut libs) {
+            Ok(m) => m,
+            Err(e) => {
+                if !c.exclude_from_sim {
+                    report.warn(format!("{}: not simulated: {e}", c.refdes));
+                }
+                None
+            }
+        };
+        let model = mapped.as_ref().map(|m| m.model.clone());
+        let key = match part_keys.iter().find(|(l, m, _)| *l == c.lib_id && *m == model) {
+            Some((_, _, k)) => k.clone(),
+            None => {
+                let n = part_keys.iter().filter(|(l, _, _)| *l == c.lib_id).count();
+                let key = if n == 0 { c.lib_id.clone() } else { format!("{}#{}", c.lib_id, n + 1) };
+                part_keys.push((c.lib_id.clone(), model.clone(), key.clone()));
+                key
+            }
+        };
+        let part = parts.entry(key.clone()).or_insert_with(|| {
             let mut part = make_part(sym, &[]);
-            part.id = kid(&["kicad-part", &c.lib_id]);
+            part.id = kid(&["kicad-part", &key]);
             part.variants.clear();
+            if key != c.lib_id {
+                let tag = mapped.as_ref().map_or("", |m| m.tag.as_str());
+                let tag = if tag.is_empty() || tag.chars().count() > 24 { c.refdes.as_str() } else { tag };
+                part.name = format!("{} ({tag})", part.name);
+            }
+            part.sim = model.clone();
             part
         });
         let board_fp = fp_by_ref.get(c.refdes.as_str()).copied().filter(|&i| !used_fps[i] && c.on_board);
@@ -159,7 +189,7 @@ fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report)
                 comp_of_fp[i] = Some(c.id);
                 let def_id = def_of[i];
                 let def = &defs.iter().find(|(_, _, d)| d.id == def_id).unwrap().2;
-                let vid = kid(&["kicad-variant", &c.lib_id, &def_id.to_string()]);
+                let vid = kid(&["kicad-variant", &key, &def_id.to_string()]);
                 if !part.variants.iter().any(|v| v.id == vid) {
                     part.variants.push(PartVariant {
                         id: vid,
@@ -171,24 +201,30 @@ fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report)
                 vid
             }
             None => {
-                if c.on_board {
+                if c.on_board && !pcb.footprints.is_empty() {
                     report.warn(format!("{}: not on the board; imported without footprint", c.refdes));
                 }
-                let vid = kid(&["kicad-variant", &c.lib_id, ""]);
+                let vid = kid(&["kicad-variant", &key, ""]);
                 if !part.variants.iter().any(|v| v.id == vid) {
                     part.variants.push(PartVariant::no_footprint(vid));
                 }
                 vid
             }
         };
+        let (component_sim, value) = match mapped {
+            Some(m) => (m.sim, m.value.unwrap_or_else(|| c.value.clone())),
+            None => (ComponentSim { exclude: c.exclude_from_sim, ..Default::default() }, c.value.clone()),
+        };
+        let mut properties = c.properties.clone();
+        properties.retain(|k, _| !sim::is_sim_field(k));
         p.schematic.components.insert(Component {
-            sim: Default::default(),
+            sim: component_sim,
             id: c.id,
             part: part.id,
             variant,
             refdes: c.refdes.clone(),
-            value: c.value.clone(),
-            properties: c.properties.clone(),
+            value,
+            properties,
         });
     }
     for sym in sch.symbols.values() {
@@ -294,6 +330,7 @@ fn assemble(name: &str, mut sch: SchImport, pcb: PcbImport, report: &mut Report)
         p.schematic.texts.insert(t);
     }
     reattach_sheet_pins(&mut p, &sch.kicad_sheet_pins, report);
+    simulation_setup(&mut p, &mut libs, report);
 
     // The board.
     let rules = p.board.rules.clone();
@@ -600,5 +637,35 @@ fn design_rules(settings: &serde_json::Value, rules: &mut DesignRules) {
     }
     if rules.track_width < rules.min_track_width {
         rules.track_width = rules.min_track_width;
+    }
+}
+
+/// The setup from the schematic's SPICE directives: analyses, temperature, extra lines.
+fn simulation_setup(p: &mut Project, libs: &mut sim::Libs, report: &mut Report) {
+    let texts: Vec<String> =
+        p.schematic.texts.iter().map(|t| t.text.text.clone()).filter(|t| sim::is_directive(t)).collect();
+    if texts.is_empty() {
+        return;
+    }
+    // Sources by SPICE name: the reference, with the letter in front unless it starts so.
+    let mut sources: Vec<(String, Id)> = Vec::new();
+    for c in p.schematic.components.iter() {
+        let device = p.library.parts.get(c.part).and_then(|part| part.sim.as_ref()).map(|m| &m.device);
+        let letter = match device {
+            Some(SimDevice::VoltageSource) => 'V',
+            Some(SimDevice::CurrentSource) => 'I',
+            _ => continue,
+        };
+        let r = c.refdes.to_ascii_uppercase();
+        let name = if r.starts_with(letter) { r } else { format!("{letter}{r}") };
+        sources.push((name, c.id));
+    }
+    let source = |n: &str| sources.iter().find(|(s, _)| s.eq_ignore_ascii_case(n)).map(|(_, id)| *id);
+    let setup = sim::directives(&texts, &source, libs, report);
+    let sim = &mut p.schematic.simulation;
+    sim.analyses = setup.analyses;
+    sim.extra = setup.extra;
+    if let Some(t) = setup.temperature {
+        sim.temperature = t;
     }
 }

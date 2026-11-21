@@ -427,7 +427,9 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   keeps floating nodes solvable (it shows in the ninth digit). Model cards are parsed and
   rewritten (`ModelCard`), shared by name; component overrides make `NAME_DEVICE`;
   different texts under one name are renamed `_2`. VDMOS cards get three nodes, other
-  MOSFETs a bulk tied to the source. `value_number` finds the number of a value or a
+  MOSFETs a bulk tied to the source. A SPICE line (`SimDevice::Spice`) names its device
+  itself: a letter right before `${REF}` is dropped when the refdes starts with it
+  (`V${REF}` for `V1` is `V1`, as KiCad names devices), and `devices` holds that name. `value_number` finds the number of a value or a
   voltage inside a part number (`BZT52C3V3` → 3.3) for `${VALUE}` parameters. Current
   probes insert a 0 V `VSENSE_…` in series with the pin; an operating point does so on
   every pin of every device (cheap there, and a sweep keeps its few probes), so its
@@ -435,8 +437,10 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   (`DevicePin`: component, refdes, symbol, pin, key, outer node) for labels (`I(R1.1)`)
   and the device table. Supplies are `VSUPPLY_…` to
   ground. Problems carry the component's symbols for zooming.
-- **ngspice** (`sim::Ngspice`, a `Backend`): `-b -r out.raw circuit.cir` in a temp dir,
-  both pipes drained on threads, a `Cancel` polled every 5 ms kills it. Found from the
+- **ngspice** (`sim::Ngspice`, a `Backend`): `-b -r out.raw circuit.cir` in a temp dir
+  with a `.spiceinit` of `set ngbehavior=ltpsa` (LTspice/PSpice compatibility, as KiCad
+  runs it: vendor `params:` subcircuits fail without it; it must be set at start-up,
+  a `.control` in the netlist is too late), both pipes drained on threads, a `Cancel` polled every 5 ms kills it. Found from the
   `ngspice` setting, `NGSPICE`, `PATH`, then the usual install places. Exit status 1 with
   the reasons on stderr on netlist errors (`SimError::Failed`, log kept). Gotchas:
   ngspice writes plots last analysis first (reversed on read); an operating point has
@@ -869,10 +873,37 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
     the class; 7+: `netclass_assignments` by name, a string or in 9 a list, and
     `netclass_patterns`). KiCad net names are kept, so they match ours only where the
     import keeps the name (labelled nets).
+  - **Simulation** (`kicad::sim`): KiCad's `Sim.*` fields become the part's `SimModel`
+    and the component's `ComponentSim`, following KiCad's own rules (`eeschema/sim`):
+    only the instance's fields count, plus `Sim.*` the library symbol has and the
+    instance lacks (never the library's `Spice_*`); KiCad 5 `Spice_*` fields are
+    migrated first; R/C/L/V/I with two pins and no fields are inferred from the
+    reference and value; a V/I with type DC takes its level from the value; a value
+    that isn't a number makes an R/C/L behavioral (`r='expr'`). `Sim.Pins` maps symbol
+    pin numbers to KiCad's model pin names (`+ -`, `A K`, `C B E`, `D G S`, subcircuit
+    ports, or positions for numbered ones); without it, pins in sorted number order.
+    Parts of one symbol whose models differ are split (`Q_NPN (Q2N2222)`, ids from
+    `lib_id#2`). Library models (`Sim.Library` + `Sim.Name`, `${KICAD*_SYMBOL_DIR}` and
+    `${KIPRJMOD}` expanded, `.include`s inlined) are embedded: a `.model` card, or the
+    `.subckt` with the cards and subcircuits its lines name (`LibItems`, a token
+    match). Kinds without an equivalent become SPICE lines as KiCad writes them (AM,
+    SFFM, noise, random sources, behavioral R/C/L, E/F/G/H, KiCad's raw SPICE device);
+    a pin on several model ports (`3=3 3=4`) or a 4-pin MOSFET/BJT gets a wrapper
+    subcircuit beside the original (ngspice refuses some nested ones). IBIS, XSPICE,
+    switches, transmission lines and potentiometers are reported, not simulated.
+    Values in fields are SI (`M` mega; `1UF`, `1g`, `100uF;16V` read as KiCad does
+    them or better), directives SPICE (`spice_number`: `M` milli). Text items with a
+    known dot command (`is_directive`) give the analyses (`.op`, `.tran`, `.ac`
+    oct/lin as points per decade, `.dc` of a source), `.temp`, and the setup's extra
+    lines (`.include`/`.lib` inlined; `.control` blocks, `.probe`, `.save` dropped).
   - Tests (`kicad/tests/all/project_import.rs`): a hierarchical, routed fixture; with
     `KICAD_CLI` and `KICAD_TEMPLATE_DIR` set, every KiCad template is compared against
     `kicad-cli`: schematic nets (`sch export netlist`) and pad positions (`pcb export
-    ipcd356`, after removing its constant origin offset).
+    ipcd356`, after removing its constant origin offset). `sim_import.rs`: a fixture
+    with each field form; with `KICAD_CLI`, KiCad's simulation demos (pinned commit,
+    fetched sparse into `target/kicad-sim-demos` or `KICAD_SIM_DEMOS`) netlisted by
+    `kicad-cli` and by us must give every device pin the same operating point
+    (IBIS, the XSPICE counter and Q17, which `kicad-cli` can't netlist, are skipped).
 
 - **Built-in library** (`model::builtin`): a standard library of generic parts, the file
   `crates/model/library/builtin.pcblib` (4.7 MB of JSON), embedded and parsed once
@@ -1213,6 +1244,11 @@ Things decided to do later, by area. Remove an entry when it's done; add what a 
 defers.
 
 **Schematic**
+- KiCad simulation import gaps: IBIS (KIBIS) and XSPICE code models, switches,
+  transmission lines, coupled inductors (`K`), potentiometers; the workbook (`.wbk`:
+  plotted signals, cursors) and `.probe` / `.save` become no probes; `.control` scripts
+  are dropped; a subcircuit's instance parameters aren't passed through a pin-joining
+  wrapper; nested DC sweeps keep the first.
 - KiCad project export. Import gaps (counted in the import report today): schematic
   graphics, images, text boxes, tables and rule areas; text variables (`${TITLE}` etc. in
   texts stay as written; the frame shows the title block);
