@@ -230,16 +230,23 @@ what a route stopping short ran into. Deep cascades measured ~7.5 ms for 40 line
 ~4 pops per line, so the stack order and an index of pushed lines aren't needed yet
 (Later). Arc corner styles while shoving moved to Later.
 
+### R6: Smoothing (done)
+
+Walked and pushed paths are smoothed: runs of corners replaced by shorter octilinear
+connections where clear, then square corners cut at 45° (PLAN.md, "Smoothing").
+
+### R7: Hug and push
+
+When a shove fails, the head walks round the copper it was pushing when the cascade got
+stuck (hugs it) and shoves the rest; a few rounds before it stops short.
+
 ## Later
 
 - Diff pairs (routing and shoving them as pairs), length tuning (meanders).
 - Shoving arc tracks, and the Route tool's arc corner styles while shoving or walking
   round (the router lays straight segments).
-- Smoothing beyond square corners (KiCad's optimizer: merging segments, shortcuts
-  between any two corners).
 - An index of pushed lines (each check scans them all), if cascades get deeper.
 - MCP `move` shoving like a drag (a `shove` flag running `router::shove_moved`).
-- "Hug and push" / walking around in shove mode when a shove fails.
 - Shoving footprints' copper (moving parts out of the way), KiCad's "smart pads"
   (choosing a pad's exit direction).
 - Autorouting, which could build on the same world and walkaround.

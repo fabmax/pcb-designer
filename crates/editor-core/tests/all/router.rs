@@ -362,3 +362,22 @@ fn deep_cascade_timing() {
         eprintln!("{n} lines: {:?}, reached {}, pushed {}", t.elapsed(), r.reached, r.shoved.lines.len());
     }
 }
+
+#[test]
+fn walking_round_a_row_of_vias_is_one_detour() {
+    let mut ed = Editor::new(Project::new("T"));
+    for x in [8.0, 9.5, 11.0, 12.5] {
+        via(&mut ed, Point::mm(x, 0.0));
+    }
+    let copper = conn(ed.project());
+    let r = walkaround(ed.project(), &copper, L, W, None, &[Point::mm(0.0, 0.0), Point::mm(20.0, 0.0)]);
+    assert!(r.reached, "{r:?}");
+    clean(ed.project(), &copper, &r.points);
+    octilinear(&r.points);
+    // Up, along, down: no steps between the vias.
+    assert!(r.points.len() <= 6, "{:?}", r.points);
+    for w in r.points.windows(3) {
+        let (u, v) = (w[1] - w[0], w[2] - w[1]);
+        assert!(u.x as f64 * v.x as f64 + u.y as f64 * v.y as f64 > 0.0, "45° turns: {:?}", r.points);
+    }
+}

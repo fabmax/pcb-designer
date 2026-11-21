@@ -300,11 +300,21 @@ the current design of each area with the gotchas a change needs to know, the pla
   searched back to the last corner not inside (`inside`: more than 0.5 nm), and an exit
   or entry at a corner on the outline takes the nearest edge (`nearest_edge`).
   `walkaround` gathers hulls from `query` (5 mm round the leg, more if a walk leaves
-  that), walks both ways, checks each exactly with `route_check` and cuts it to the
+  that), walks both ways, smooths each walk (checked exactly with `route_check`),
+  checks each exactly with `route_check` and cuts it to the
   longest clean start (binary search to 1 µm: the board edge and approximations), and
   takes the one that reaches, then the shorter. ~0.2 ms per walk on the 10k stress
   board. Obstacles and their clearances are exactly `route_check`'s (same islands at
   the ends, net classes; `check_with` leaves out copper a filter says).
+- **Smoothing** (`router::smooth`): walked paths carry the hull outlines' corners
+  (steps round every obstacle, walls along a hull's sides). `smooth(path, clear)`
+  replaces runs of up to 8 corners by the shortest octilinear connection (one segment;
+  straight + diagonal either way round) when it saves 1 µm or a corner and `clear`
+  passes for the new segments, never turning sharper than 90° where it joins; then cuts
+  90° corners at 45° (whole shorter side, ½, ¼); up to 4 passes. Ends stay. A plain
+  dog-leg stays as it is (the other way round is no shorter), so the posture holds.
+  Used on the head's walks (both modes) and on pushed lines. Cost: ~+1.5 ms on a
+  40-line cascade.
 - **Shove** (`router::shove`): the head first walks round what can't move
   (`lay(…, fixed_only)`: pads, locked vias and tracks, arcs, keepouts; checks skip
   movable copper), then `shove::shove` pushes. `line::Line`: the chain of straight tracks of one
@@ -338,9 +348,8 @@ the current design of each area with the gotchas a change needs to know, the pla
   pops and `SHOVE_TIME` (40 ms) for the whole call; on failure a binary search (20 µm)
   finds the longest head that pushes clear. Lines keep their end points. Pure: every
   step starts from the board as it is, so pushed tracks spring back. Once settled, each
-  pushed line is smoothed (`smooth`): every 90° corner (where it ran into a hull's
-  side) is cut at 45°, the whole shorter side, half or a quarter of it, if the cut is
-  clear of everything (`hits` with no hits, the board limits). Costs (release): a push
+  pushed line is smoothed (`smooth::smooth`, checked by `Engine::clear`: `hits` with no
+  hits, the board limits). Costs (release): a push
   ~0.1 ms; a cascade through 40 lines at minimum pitch ~7.5 ms (~4 pops per line;
   `deep_cascade_timing`, an ignored test). `Command::SetTrackPaths`
   lays a chain along a new path (ids kept in order, extra segments copy the first

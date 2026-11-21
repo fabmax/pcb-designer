@@ -5,6 +5,7 @@
 pub mod hull;
 pub mod line;
 pub mod shove;
+pub mod smooth;
 pub mod walk;
 
 use model::*;
@@ -230,7 +231,10 @@ fn lay(
     // edge isn't one); the one getting furthest wins, then the shorter.
     let mut best: Option<(Vec<Point>, bool)> = None;
     for w in walks {
-        let (path, ok) = checked(project, copper, layer, width, net, start, w.path, &skip);
+        // Without the outline's steps where nothing needs them.
+        let clear = &mut |way: &[Point]| check(project, copper, layer, width, net, start, way, &skip).is_none();
+        let path = smooth::smooth(w.path, clear);
+        let (path, ok) = checked(project, copper, layer, width, net, start, path, &skip);
         let reached = w.reached && ok;
         let better = match &best {
             None => true,
