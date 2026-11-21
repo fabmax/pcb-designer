@@ -1255,13 +1255,16 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   longer labels wrap; a change repaints). In a grid (`IN_GRID`, a thread local) value
   widgets fill the value column: `fill`, `combo_box`, `units::drag`, `Fields::number`;
   `pair` splits it in halves, `sized` gives a field less room (a button after it). Use
-  these, not `egui::ComboBox` / `ui.add(DragValue)`, in grids. Text: `subject` (16 pt,
-  the selection or tool; Tool settings reserve it with `reserve_subject` and draw it
+  these, not `egui::ComboBox` / `ui.add(DragValue)`, in grids. Text: `subject` (a section
+  title with a dim subtitle: the selection or tool; Tool settings reserve it with `reserve_subject` and draw it
   last, since the tool sets its help), `section` (bold 14 pt, no space at the panel
   top), `collapsing` (long lists), `hint` (one line), `info_button` (help longer than
   a line: hover shows it, a click pins it), `check_row` (boolean: label left, bare
   box), `search_field` + `summary` (list panels). The Settings window keeps its own
-  wide layout (`Rows`), the part form its own field widths.
+  wide layout (`Rows`), the part form its own field widths. Panel titles, tab titles and
+  section titles share `theme::TITLE_SIZE`; panel title rows and the tab bar have the
+  `panel_header` shade (the dock paints it behind the row once it's laid out), the
+  active tab the panel's colour.
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
   `theme::bold_label`) and, for non-modal resizable ones, `theme::window` (same frame
   and title bar, a × button, opens centred; Settings, KiCad import). Bus prompts are `name_prompt.rs`.

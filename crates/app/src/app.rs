@@ -3630,15 +3630,22 @@ impl PcbApp {
                     };
                     for ((group, panel), rect) in shown.iter().copied().zip(rects) {
                         ui.painter().rect_filled(rect, theme::RADIUS, theme::panel());
+                        // The title row's shade, sized once the row is laid out.
+                        let header = ui.painter().add(egui::Shape::Noop);
                         let mut child = ui.new_child(
                             egui::UiBuilder::new()
                                 .max_rect(rect.shrink(8.0))
                                 .layout(egui::Layout::top_down(egui::Align::Min)),
                         );
                         child.set_clip_rect(rect.shrink(4.0));
-                        if self.panel_frame_ui(&mut child, group, panel) {
+                        let (hidden, title_bottom) = self.panel_frame_ui(&mut child, group, panel);
+                        if hidden {
                             hide = Some(group);
                         }
+                        let band = egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), title_bottom + 5.0));
+                        let r = theme::RADIUS;
+                        let corners = egui::CornerRadius { nw: r, ne: r, sw: 0, se: 0 };
+                        ui.painter().set(header, egui::Shape::rect_filled(band, corners, theme::panel_header()));
                     }
                     ui.advance_cursor_after_rect(all);
                 })
@@ -3654,16 +3661,17 @@ impl PcbApp {
         self.settings.dock.set_size(side, size);
     }
 
-    /// A panel's title bar and contents. Returns true if its hide button was clicked.
-    fn panel_frame_ui(&mut self, ui: &mut egui::Ui, group: DockGroup, panel: Panel) -> bool {
+    /// A panel's title bar and contents. Returns whether its hide button was clicked and
+    /// the bottom of the title row.
+    fn panel_frame_ui(&mut self, ui: &mut egui::Ui, group: DockGroup, panel: Panel) -> (bool, f32) {
         let mut hide = false;
         let mut header_act = None;
         // The Messages tabs sit in the title bar, or below it in a narrow panel.
         let message_tabs = (panel == Panel::Messages)
             .then(|| messages::status(&self.project.lib.doc, &mut self.libraries, self.sim.session.attempt()))
             .map(|status| (status, ui.available_width() >= messages::TABS_WIDTH + 120.0));
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(panel.title()).strong());
+        let title = ui.horizontal(|ui| {
+            theme::bold_label(ui, panel.title(), theme::TITLE_SIZE, ui.visuals().strong_text_color());
             if let Some((status, true)) = &message_tabs {
                 ui.add_space(8.0);
                 messages::tabs_ui(ui, &mut self.message_tab, status);
@@ -3685,11 +3693,13 @@ impl PcbApp {
         if let Some(act) = header_act {
             self.tree_act(act);
         }
+        let mut title_bottom = title.response.rect.bottom();
         if let Some((status, false)) = &message_tabs {
             ui.add_space(2.0);
-            ui.horizontal(|ui| messages::tabs_ui(ui, &mut self.message_tab, status));
+            title_bottom =
+                ui.horizontal(|ui| messages::tabs_ui(ui, &mut self.message_tab, status)).response.rect.bottom();
         }
-        ui.add_space(4.0);
+        ui.add_space(8.0);
         // These scroll themselves.
         // One label column per panel (`fields::form_scope`).
         if matches!(panel, Panel::Messages | Panel::Nets | Panel::Activity) {
@@ -3700,7 +3710,7 @@ impl PcbApp {
                 .auto_shrink([false, false])
                 .show(ui, |ui| crate::fields::form_scope(ui, panel, |ui| self.panel_ui(ui, panel)));
         }
-        hide
+        (hide, title_bottom)
     }
 
     /// The Parts panel, over the project's library, the loaded libraries (Built-in last)
@@ -4951,7 +4961,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
     }
 
     fn tab_bar_color(&self, _visuals: &egui::Visuals) -> egui::Color32 {
-        theme::panel()
+        theme::panel_header()
     }
 
     fn tab_bar_hline_stroke(&self, _visuals: &egui::Visuals) -> egui::Stroke {
@@ -4974,7 +4984,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         state: &egui_tiles::TabState,
     ) -> egui::Response {
         let text = self.tab_title_for_tile(tiles, tile_id);
-        let font_id = egui::TextStyle::Button.resolve(ui.style());
+        let font_id = egui::FontId::proportional(theme::TITLE_SIZE);
         let galley = text.into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, font_id);
         let margin = 10.0;
         let close = 14.0;
@@ -5011,8 +5021,9 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         }
         if ui.is_rect_visible(rect) && !state.is_being_dragged {
             let v = ui.visuals();
+            // The active tab in the content's colour, on the bar's title-row shade.
             let fill = if state.active {
-                v.widgets.inactive.weak_bg_fill
+                theme::panel()
             } else if response.hovered() {
                 v.widgets.inactive.weak_bg_fill.gamma_multiply(0.5)
             } else {

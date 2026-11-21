@@ -185,9 +185,9 @@ impl Fields {
 }
 
 /// Size of a section title (bold).
-const SECTION_SIZE: f32 = 14.0;
-/// Size of the subject line (the selection, the tool).
-const SUBJECT_SIZE: f32 = 16.0;
+const SECTION_SIZE: f32 = theme::TITLE_SIZE;
+/// Size of the subject line (the selection, the tool): a section title's.
+const SUBJECT_SIZE: f32 = SECTION_SIZE;
 /// Most of a panel's width its label column takes.
 const LABEL_SHARE: f32 = 0.45;
 
@@ -227,8 +227,8 @@ pub fn form_scope<R>(
     r
 }
 
-/// The selection or tool a panel is about (Properties, Tool settings): larger than
-/// section titles, with a dim `subtitle` and help behind an ⓘ.
+/// The selection or tool a panel is about (Properties, Tool settings): a section title
+/// with a dim `subtitle` and help behind an ⓘ.
 pub fn subject(ui: &mut egui::Ui, title: &str, subtitle: &str, info: Option<&str>) {
     ui.horizontal_wrapped(|ui| {
         theme::bold_label(ui, title, SUBJECT_SIZE, ui.visuals().strong_text_color());

@@ -22,6 +22,14 @@ pub fn panel() -> Color32 {
     if dark() { Color32::from_rgb(0x1e, 0x21, 0x27) } else { Color32::from_rgb(0xf2, 0xf2, 0xf4) }
 }
 
+/// The title row of a panel: a shade off the panel.
+pub fn panel_header() -> Color32 {
+    if dark() { Color32::from_rgb(0x25, 0x29, 0x30) } else { Color32::from_rgb(0xe9, 0xea, 0xee) }
+}
+
+/// Size of panel titles, tab titles and section titles.
+pub const TITLE_SIZE: f32 = 14.0;
+
 /// Tool bars and inset areas.
 pub fn panel_dark() -> Color32 {
     if dark() { Color32::from_rgb(0x17, 0x19, 0x1e) } else { Color32::from_rgb(0xe4, 0xe5, 0xe9) }
