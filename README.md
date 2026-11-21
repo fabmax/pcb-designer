@@ -57,7 +57,8 @@ in routing checks, zone fills and DRC. KiCad imports keep their net classes.
 While routing and placing vias, the design rules are checked: clearance to other nets'
 pads, tracks and vias, keepouts and the board outline. A track or via that breaks them is
 drawn in the warning colour with a marker where it clashes, the hint bar says why, and
-the click is refused, unless "Allow violations" is on in the tool settings. On boards
+the click is refused. Shift+click adds it anyway (Shift+L for the via while routing), and
+"Allow violations" in the tool settings always does; DRC then flags it. On boards
 with inner layers, vias can be blind or buried: From/To layers in the Via tool and in a
 via's properties, and "Via span" (through, or just the two layers) for the vias L adds.
 

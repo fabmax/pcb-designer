@@ -220,6 +220,9 @@ pub struct PcbPlacer {
     pub placing: Option<Id>,
     /// Snap nowhere (Alt held): set by the app before [`PcbPlacer::hover`].
     pub free: bool,
+    /// Add tracks and vias even where they break a rule, this once (Shift held): set by
+    /// the app like `free`. DRC flags what it adds.
+    pub force: bool,
     /// Automatic posture of the track leg being routed.
     posture: Posture,
     /// The rule the track leg or via at the cursor breaks.
@@ -251,6 +254,7 @@ impl Default for PcbPlacer {
             cut_into: None,
             placing: None,
             free: false,
+            force: false,
             posture: Posture::default(),
             clash: None,
             checked: None,
@@ -434,7 +438,7 @@ impl PcbPlacer {
                     layers: span_mask(doc.project(), span),
                 };
                 if let Some(c) = doc.route_clash(&[via], self.net.as_deref(), &[(cur, p)])
-                    && !self.settings.allow_violations
+                    && !self.allows_violations()
                 {
                     return Err(format!("No via here: {}", c.message));
                 }
@@ -444,6 +448,12 @@ impl PcbPlacer {
         }
         self.settings.layer = next;
         Ok(())
+    }
+
+    /// A click (or L) adds copper that breaks a rule: always (the setting) or this once
+    /// ([`PcbPlacer::force`]).
+    pub fn allows_violations(&self) -> bool {
+        self.settings.allow_violations || self.force
     }
 
     /// The rule the copper at the cursor would break (route leg or via).
@@ -510,10 +520,12 @@ impl PcbPlacer {
         }
     }
 
-    /// Refuse a click that breaks a rule (unless allowed).
+    /// Refuse a click that breaks a rule (unless allowed or forced).
     fn refuse(&self) -> Result<(), String> {
         match &self.clash {
-            Some(c) if !self.settings.allow_violations => Err(format!("Not added: {}", c.message)),
+            Some(c) if !self.allows_violations() => {
+                Err(format!("Not added: {} (Shift+click adds it anyway)", c.message))
+            }
             _ => Ok(()),
         }
     }

@@ -228,7 +228,9 @@ impl Action {
             Action::CreateArray => "Create array…",
             Action::MeasureClearance => "Measure clearances or points (PCB)",
             Action::PcbText => "Text tool (PCB)",
-            Action::PcbNextLayer => "Next copper layer; adds a via while routing (PCB)",
+            Action::PcbNextLayer => {
+                "Next copper layer; adds a via while routing, Shift even where it breaks a rule (PCB)"
+            }
             Action::PcbFindPart => "Find a board part to place (PCB)",
             Action::Settings => "Settings",
             Action::PanelProject => "Show/hide Project panel",
@@ -483,7 +485,7 @@ impl Default for Keymap {
             (Action::PcbKeepout, vec![S::key(Key::K)]),
             (Action::MeasureClearance, vec![S::key(Key::E)]),
             (Action::PcbText, vec![S::shift(Key::T)]),
-            (Action::PcbNextLayer, vec![S::key(Key::L)]),
+            (Action::PcbNextLayer, vec![S::key(Key::L), S::shift(Key::L)]),
             (Action::PcbFindPart, vec![S::key(Key::P)]),
             (Action::Settings, vec![S::cmd(Key::Comma)]),
             (Action::PanelProject, vec![S::cmd(Key::Num1)]),

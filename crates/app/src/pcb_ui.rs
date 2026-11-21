@@ -94,9 +94,12 @@ pub fn toolbar(
         }
     });
     match pcb.clash() {
-        Some(c) if !pcb.settings.allow_violations => {
-            toolbar::hint_in(ui, canvas, &format!("Can't add here: {}", c.message), crate::theme::warn())
-        }
+        Some(c) if !pcb.allows_violations() => toolbar::hint_in(
+            ui,
+            canvas,
+            &format!("Can't add here: {} · Shift+click adds it anyway", c.message),
+            crate::theme::warn(),
+        ),
         Some(c) => toolbar::hint_in(ui, canvas, &format!("Violation: {}", c.message), crate::theme::warn()),
         None if pcb.tool() == PcbTool::Measure && pcb.settings.clearance => {
             toolbar::hint(ui, canvas, view::measure::CLEARANCE_HINT)
@@ -156,8 +159,10 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                     ui.end_row();
                 }
             });
-            ui.checkbox(&mut s.allow_violations, "Allow violations")
-                .on_hover_text("Add tracks and vias that break the clearance, keepout or board edge rules");
+            ui.checkbox(&mut s.allow_violations, "Allow violations").on_hover_text(
+                "Add tracks and vias that break the clearance, keepout or board edge rules \
+                     (Shift+click does it once); DRC flags them",
+            );
             let classes = !rules.net_classes.is_empty();
             if s.width.is_some() {
                 let text = if classes { "Use the net class width" } else { "Use the design rule width" };
@@ -192,8 +197,10 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                     ui.end_row();
                 }
             });
-            ui.checkbox(&mut s.allow_violations, "Allow violations")
-                .on_hover_text("Place vias that break the clearance, keepout or board edge rules");
+            ui.checkbox(&mut s.allow_violations, "Allow violations").on_hover_text(
+                "Place vias that break the clearance, keepout or board edge rules \
+                     (Shift+click does it once); DRC flags them",
+            );
             ui.add_space(6.0);
             hint(
                 ui,

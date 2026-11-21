@@ -273,7 +273,10 @@ the current design of each area with the gotchas a change needs to know, the pla
   make room themselves), keepouts forbidding tracks / vias, and the board outline
   (clearance to the edge, inside). Copper at the leg's start is never a clash, nor at its
   end when the net isn't known yet (a route from free space takes the net it ends on).
-  `Clash.at` is the point of the probe nearest the problem (the marker). Linear over all
+  `Clash.at` is the point of the probe nearest the problem (the marker). A clash refuses
+  the click unless `PcbPlacer::allows_violations`: the "Allow violations" setting, or
+  `force` (Shift held, set by the app every frame like `free`; Shift+L is a second
+  binding of next layer so the via of a forced L goes through too). Linear over all
   copper per check; the route tool only rechecks when its inputs or the document
   revision change (`ClashKey`).
 - **Vias** have a span `from`..`to` (copper layers, top one first; `AddVia { span }`,
@@ -1373,9 +1376,6 @@ defers.
   (user layers in general), net ties, tuning patterns (their tracks are kept).
 - Autoplacement and autorouting.
 - Reintroduce optional kicad style single line vector font (instead of ttf)
-- Placing an invalid track (one that has rule violations) is currently completely blocked. This
-  can be a bit annoying. It should be possible to place it anyway. Not sure if right away
-  or with a warning popup, mod key or something like that
 
 **Libraries and parts**
 - Categories: a category field in the KiCad import window, dragging items onto a

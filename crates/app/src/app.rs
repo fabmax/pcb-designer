@@ -4643,7 +4643,7 @@ impl TreeBehavior<'_> {
                 (raw, pane.it.snap(raw))
             });
             let tol = (8.0 / pane.canvas.camera.zoom * 1e6) as Coord;
-            self.pcb.free = ui.input(|i| i.modifiers.alt);
+            (self.pcb.free, self.pcb.force) = ui.input(|i| (i.modifiers.alt, i.modifiers.shift));
             self.pcb.hover(doc, world, tol);
             if world.is_some()
                 && response.hovered()

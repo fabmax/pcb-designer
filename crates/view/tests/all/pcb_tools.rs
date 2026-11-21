@@ -119,18 +119,25 @@ fn outline_and_vias() {
     t.hover(&mut doc, Some((b, b)), mm(0.3));
     assert!(t.ghosts(&doc).iter().any(|g| matches!(g, PcbGhost::Via { bad: true, .. })));
     assert!(t.ghosts(&doc).iter().any(|g| matches!(g, PcbGhost::Clash(_))));
-    assert!(t.click(&mut doc).unwrap_err().contains("board edge"));
+    let refused = t.click(&mut doc).unwrap_err();
+    assert!(refused.contains("board edge") && refused.contains("Shift+click"), "{refused}");
     assert!(doc.project().board.vias.is_empty());
-    // Unless violations are allowed.
-    t.settings.allow_violations = true;
+    // Unless forced this once (Shift) …
+    t.force = true;
     t.click(&mut doc).unwrap();
     assert_eq!(doc.project().board.vias.len(), 1);
+    t.force = false;
+    assert!(t.click(&mut doc).is_err());
+    // … or violations are allowed.
+    t.settings.allow_violations = true;
+    t.click(&mut doc).unwrap();
+    assert_eq!(doc.project().board.vias.len(), 2);
     t.settings.allow_violations = false;
     let inside = Point::mm(10.0, 10.0);
     t.hover(&mut doc, Some((inside, inside)), mm(0.3));
     assert!(t.clash().is_none());
     t.click(&mut doc).unwrap();
-    assert_eq!(doc.project().board.vias.len(), 2);
+    assert_eq!(doc.project().board.vias.len(), 3);
     assert!(t.escape());
     assert_eq!(t.tool(), PcbTool::Select);
 }
