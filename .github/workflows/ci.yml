@@ -1,0 +1,49 @@
+# Tests on macOS, Linux and Windows for every push to main and every pull request;
+# formatting and clippy once (Linux). ngspice is installed where a package manager has it
+# (macOS, Linux), so the simulation tests run against the process and the shared library.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  lint:
+    name: fmt and clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: ./.github/actions/linux-deps
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - if: runner.os == 'Linux'
+        uses: ./.github/actions/linux-deps
+      - if: runner.os == 'macOS'
+        run: brew install ngspice libngspice
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace

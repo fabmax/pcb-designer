@@ -22,7 +22,8 @@ Each change (a milestone or a refinement) runs through these steps:
    binary costs link time and, on macOS, a first-launch check of a second or more;
    `view/tests/theme.rs` stays separate because it switches the global palette.)
 3. Make it green: `cargo test --workspace`, `cargo clippy --workspace --all-targets` with
-   zero warnings, and `cargo fmt`.
+   zero warnings, and `cargo fmt`. GitHub Actions runs the same on macOS, Linux and
+   Windows once main is pushed (`.github/workflows/ci.yml`); keep code portable.
 4. For anything visible, look at it in a real-window screenshot (see below): both themes,
    and `--side-by-side` when layout is involved.
 5. Update PLAN.md. It is a reference, not a changelog (the commit message says what

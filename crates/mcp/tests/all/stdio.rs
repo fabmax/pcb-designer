@@ -57,8 +57,13 @@ fn headless_session_edits_checks_and_saves() {
         );
         let drc = ok_json(call("run_drc", Value::Null).await);
         assert!(drc["count"].as_u64().unwrap() > 0);
-        let shot = call("screenshot", json!({ "target": "board", "width": 200, "height": 150 })).await;
-        assert!(matches!(shot.content.first(), Some(ContentBlock::Image(_))), "offscreen render");
+        // Without a GPU adapter (some CI runners) there's nothing to render with.
+        if render::offscreen::Offscreen::new().is_ok() {
+            let shot = call("screenshot", json!({ "target": "board", "width": 200, "height": 150 })).await;
+            assert!(matches!(shot.content.first(), Some(ContentBlock::Image(_))), "offscreen render");
+        } else {
+            eprintln!("no GPU adapter: screenshot skipped");
+        }
         ok_json(call("save_project", json!({ "path": saved_path.to_string_lossy() })).await);
         client.cancel().await.unwrap();
     });

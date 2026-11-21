@@ -186,6 +186,12 @@ files texts are filled regions.
 Many UI icons are [Tabler icons](https://tabler.io/icons) (MIT,
 `crates/app/icons/tabler/LICENSE`).
 
+Builds for macOS (Apple Silicon), Linux and Windows (x86_64) come from GitHub Actions:
+the **Release** workflow keeps them as workflow artifacts when run by hand, and a
+version tag (`v0.2.0`) publishes them as a GitHub Release. The macOS app is only
+ad-hoc signed: open it the first time with right-click → Open. Every push to `main`
+and every pull request runs the tests on all three (**CI**).
+
 On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.app`
 (`--install` copies it to /Applications). Run from the bundle, the app is named
 "PCB Designer" in the menu bar and Dock; run with `cargo run`, macOS uses the binary's

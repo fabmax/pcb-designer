@@ -18,6 +18,7 @@ the current design of each area with the gotchas a change needs to know, the pla
 | MCP | In the app (Streamable HTTP on 127.0.0.1, opt-in) and headless over stdio. Every tool goes through editor-core commands |
 | Simulation | ngspice: the shared library when found (live traces), else a process per run; see [simulation-plan.md](simulation-plan.md) |
 | Platforms | macOS first. macOS-only chrome (native menu, title strip) is `cfg`'d; Windows/Linux keep the egui menu bar and system title bar |
+| CI | GitHub Actions. `ci.yml`: fmt and clippy (`-D warnings`) on Linux, `cargo test --workspace` on macOS, Linux and Windows for pushes to main and pull requests, with ngspice and libngspice installed on macOS (Homebrew) and Linux (apt; Mesa's software Vulkan for offscreen rendering), so the simulation tests run there; Windows has no ngspice (they skip). `release.yml` (manual, or a `v*` tag, which also publishes a GitHub Release): the ad-hoc signed `.app` for Apple Silicon (`bundle-macos.sh`), and the bare binary for Linux and Windows x86_64. Linux system packages are in `.github/actions/linux-deps`. Tests that need a GPU adapter skip without one |
 
 ## Model and files (`model`)
 
@@ -1409,4 +1410,7 @@ defers.
 
 **Other**
 - Simulation: see [simulation-plan.md](simulation-plan.md).
+- Releases: ngspice bundled (libngspice and its code models; Homebrew's dylib needs only
+  system libraries), a universal (x86_64 + arm64) macOS app, Developer ID signing and
+  notarization, a Windows installer and a Linux AppImage; ngspice on Windows CI.
 - Documentation / manual. E.g. some github pages template (just-the-docs or something similar)
