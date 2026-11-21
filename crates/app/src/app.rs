@@ -3642,7 +3642,9 @@ impl PcbApp {
                         if hidden {
                             hide = Some(group);
                         }
-                        let band = egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), title_bottom + 5.0));
+                        // As tall as the tab bars, or more with the Messages tabs below the title.
+                        let bottom = (title_bottom + 5.0).max(rect.top() + theme::TITLE_ROW_HEIGHT);
+                        let band = egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), bottom));
                         let r = theme::RADIUS;
                         let corners = egui::CornerRadius { nw: r, ne: r, sw: 0, se: 0 };
                         ui.painter().set(header, egui::Shape::rect_filled(band, corners, theme::panel_header()));
@@ -4957,7 +4959,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
     }
 
     fn tab_bar_height(&self, _style: &egui::Style) -> f32 {
-        32.0
+        theme::TITLE_ROW_HEIGHT
     }
 
     fn tab_bar_color(&self, _visuals: &egui::Visuals) -> egui::Color32 {

@@ -27,6 +27,9 @@ pub fn panel_header() -> Color32 {
     if dark() { Color32::from_rgb(0x25, 0x29, 0x30) } else { Color32::from_rgb(0xe9, 0xea, 0xee) }
 }
 
+/// Height of a panel's title row (its shade) and of the tab bars.
+pub const TITLE_ROW_HEIGHT: f32 = 37.0;
+
 /// Size of panel titles, tab titles and section titles.
 pub const TITLE_SIZE: f32 = 14.0;
 

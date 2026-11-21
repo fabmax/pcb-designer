@@ -1263,7 +1263,8 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   box), `search_field` + `summary` (list panels). The Settings window keeps its own
   wide layout (`Rows`), the part form its own field widths. Panel titles, tab titles and
   section titles share `theme::TITLE_SIZE`; panel title rows and the tab bar have the
-  `panel_header` shade (the dock paints it behind the row once it's laid out), the
+  `panel_header` shade and `TITLE_ROW_HEIGHT` (the dock paints the shade behind the row
+  once it's laid out), the
   active tab the panel's colour.
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
   `theme::bold_label`) and, for non-modal resizable ones, `theme::window` (same frame
