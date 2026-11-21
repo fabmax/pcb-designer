@@ -381,3 +381,21 @@ fn walking_round_a_row_of_vias_is_one_detour() {
         assert!(u.x as f64 * v.x as f64 + u.y as f64 * v.y as f64 > 0.0, "45° turns: {:?}", r.points);
     }
 }
+
+#[test]
+fn hugs_a_track_that_cannot_give_way_and_pushes_the_rest() {
+    let mut ed = Editor::new(Project::new("T"));
+    // A short track pinned under a locked one: it can't be pushed up.
+    let pinned = ids(&mut ed, &[Point::mm(8.0, 0.0), Point::mm(12.0, 0.0)]);
+    let lock = Track { locked: true, ..Track::straight(L, Point::mm(5.0, 0.5), Point::mm(15.0, 0.5), W) };
+    ed.execute(Command::Insert { objects: vec![Object::Track(lock)] }).unwrap();
+    // Further along, a free track the head can push.
+    let free =
+        ids(&mut ed, &[Point::mm(15.0, -3.0), Point::mm(17.0, -0.6), Point::mm(19.0, -0.6), Point::mm(21.0, -3.0)]);
+    let copper = conn(ed.project());
+    let r = shove(ed.project(), &copper, L, W, None, &[Point::mm(0.0, -0.3), Point::mm(25.0, -0.3)]);
+    assert!(r.reached, "goes round the pinned track: {r:?}");
+    assert!(r.shoved.lines.iter().all(|p| p.line.tracks != pinned), "{r:?}");
+    assert!(r.shoved.lines.iter().any(|p| p.line.tracks == free), "pushes the free one: {r:?}");
+    apply_and_check(&mut ed, &r);
+}

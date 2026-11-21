@@ -94,15 +94,35 @@ pub fn shove(
     net: Option<&str>,
     points: &[Point],
 ) -> Routed {
-    let walked = lay(project, copper, layer, width, net, points, true);
     // A frame or two at most, the search for where to stop included.
     let deadline = std::time::Instant::now() + SHOVE_TIME;
     let attempt =
         |path: &[Point]| shove::shove(project, copper, &shove::Head { layer, width, net, path, via: None, deadline });
+    let walked = lay(project, copper, layer, width, net, points, true, &[]);
     let blocked = match attempt(&walked.points) {
         Ok(shoved) => return Routed { shoved, ..walked },
-        Err(shove::Blocked(c)) => c,
+        Err(stuck) => stuck,
     };
+    // Hug and push: walk round what the head pushed into the stuck cascade, push the rest.
+    let mut hug = blocked.hug.clone();
+    for _ in 0..HUGS {
+        if hug.is_empty() || std::time::Instant::now() > deadline {
+            break;
+        }
+        let round = lay(project, copper, layer, width, net, points, true, &hug);
+        match attempt(&round.points) {
+            Ok(shoved) if round.reached => return Routed { shoved, ..round },
+            Ok(_) => break,
+            Err(stuck) => {
+                let new: Vec<CopperItem> = stuck.hug.into_iter().filter(|i| !hug.contains(i)).collect();
+                if new.is_empty() {
+                    break;
+                }
+                hug.extend(new);
+            }
+        }
+    }
+    let blocked = blocked.clash;
     // The longest start of the leg that pushes clear, to 20 µm.
     let (mut lo, mut hi) = (0.0, walk::length(&walked.points));
     let mut best = shove::Shoved::default();
@@ -141,7 +161,7 @@ pub fn shove_via(
     let deadline = std::time::Instant::now() + SHOVE_TIME;
     let path = [pos];
     let head = shove::Head { layer, width: 0, net, path: &path, via: Some((diameter, layers)), deadline };
-    shove::shove(project, copper, &head).map_err(|b| b.0)
+    shove::shove(project, copper, &head).map_err(|s| s.clash)
 }
 
 /// What tracks and vias just moved (by a drag, `moved`) push aside. `copper` is the board
@@ -169,7 +189,7 @@ pub fn shove_moved(project: &Project, copper: &BoardConnectivity, moved: &[Objec
         }
     }
     let deadline = std::time::Instant::now() + SHOVE_TIME;
-    shove::shove_shapes(project, copper, shapes, net, islands, deadline).map_err(|b| b.0)
+    shove::shove_shapes(project, copper, shapes, net, islands, deadline).map_err(|s| s.clash)
 }
 
 /// The leg along `points` (its first point is where it starts, the last the pointer) of
@@ -184,7 +204,7 @@ pub fn walkaround(
     net: Option<&str>,
     points: &[Point],
 ) -> Routed {
-    lay(project, copper, layer, width, net, points, false)
+    lay(project, copper, layer, width, net, points, false, &[])
 }
 
 /// Can the router push this copper aside (a straight, unlocked track; an unlocked via)?
@@ -196,7 +216,9 @@ fn movable(project: &Project, c: &Copper) -> bool {
     }
 }
 
-/// [`walkaround`], round everything or (`fixed_only`) only what can't be pushed aside.
+/// [`walkaround`], round everything or (`fixed_only`) only what can't be pushed aside
+/// and the copper to `hug`.
+#[allow(clippy::too_many_arguments)]
 fn lay(
     project: &Project,
     copper: &BoardConnectivity,
@@ -205,12 +227,13 @@ fn lay(
     net: Option<&str>,
     points: &[Point],
     fixed_only: bool,
+    hug: &[CopperItem],
 ) -> Routed {
     let (Some(&start), Some(&target)) = (points.first(), points.last()) else {
         return Routed { points: Vec::new(), reached: false, blocked: None, shoved: Default::default() };
     };
     let ends = [(layer, start), (layer, target)];
-    let skip = |c: &Copper| fixed_only && movable(project, c);
+    let skip = |c: &Copper| fixed_only && movable(project, c) && !hug.contains(&c.item);
     let obstacles = Obstacles::new(project, copper, layer, width, net, &ends, &skip);
 
     // Hulls of what's near the leg; more if the walk goes further.
@@ -256,6 +279,9 @@ fn lay(
     let blocked = (!reached).then(|| check(project, copper, layer, width, net, start, points, &skip)).flatten();
     Routed { points: points_out, reached, blocked, shoved: Default::default() }
 }
+
+/// Most rounds of hugging what a shove got stuck on.
+const HUGS: usize = 4;
 
 /// The longest a shove may take, stopping short included.
 const SHOVE_TIME: std::time::Duration = std::time::Duration::from_millis(40);

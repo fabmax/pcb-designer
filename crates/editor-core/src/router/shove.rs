@@ -75,6 +75,15 @@ impl Shoved {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Blocked(pub Clash);
 
+/// Why a shove failed, and the copper the head was pushing when it got stuck: walking
+/// round that instead (hugging it) may let the rest be pushed.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Stuck {
+    pub clash: Clash,
+    /// Empty: the head itself ran into something.
+    pub hug: Vec<CopperItem>,
+}
+
 /// The head of a route: the track being added, and a via at its end.
 pub struct Head<'a> {
     pub layer: LayerId,
@@ -89,7 +98,7 @@ pub struct Head<'a> {
 
 /// Push what's in the head's way. `Err`: something that can't move is in the way (of
 /// the head or of something pushed).
-pub fn shove(project: &Project, copper: &BoardConnectivity, head: &Head) -> Result<Shoved, Blocked> {
+pub fn shove(project: &Project, copper: &BoardConnectivity, head: &Head) -> Result<Shoved, Stuck> {
     let rules = &project.board.rules;
     let net = head.net.and_then(|n| copper.net_index(n));
     let ends = [head.path.first(), head.path.last()];
@@ -121,7 +130,7 @@ pub fn shove_shapes(
     net: Option<&str>,
     islands: Vec<u32>,
     deadline: std::time::Instant,
-) -> Result<Shoved, Blocked> {
+) -> Result<Shoved, Stuck> {
     let at = shapes.first().map_or(Point::ZERO, |s| s.0.bounds().center());
     let clearance = project.board.rules.for_net(net).clearance;
     let net = net.and_then(|n| copper.net_index(n));
@@ -145,7 +154,7 @@ fn run(
     copper: &BoardConnectivity,
     head: HeadCopper,
     deadline: std::time::Instant,
-) -> Result<Shoved, Blocked> {
+) -> Result<Shoved, Stuck> {
     let mut e = Engine::new(project, copper, head, deadline);
     e.run()?;
     let mut pushed: Vec<usize> = e.moved.keys().copied().collect();
@@ -247,19 +256,53 @@ impl<'a> Engine<'a> {
         }
     }
 
-    fn run(&mut self) -> Result<(), Blocked> {
+    fn run(&mut self) -> Result<(), Stuck> {
         let mut stack = vec![Pusher::Head];
         let mut pops = 0;
         while let Some(p) = stack.pop() {
             pops += 1;
             if pops > MAX_PUSHES || std::time::Instant::now() > self.deadline {
-                let at = self.head_at;
-                return Err(Blocked(Clash { at, message: "too much to push aside".into() }));
+                let clash = Clash { at: self.head_at, message: "too much to push aside".into() };
+                return Err(Stuck { clash, hug: Vec::new() });
             }
-            // The nearest thing in the way first; its own pushes settle before the
-            // pusher is looked at again.
+            let mut hit = None;
+            if let Err(Blocked(clash)) = self.step(p, &mut stack, &mut hit) {
+                let hug = self.root(p, hit).map_or(Vec::new(), |r| self.items(r));
+                return Err(Stuck { clash, hug });
+            }
+        }
+        Ok(())
+    }
+
+    /// What the head pushed that (directly or not) pushed `p`, or `hit` if `p` is the head.
+    fn root(&self, p: Pusher, hit: Option<Pusher>) -> Option<Pusher> {
+        let mut at = p;
+        for _ in 0..=self.lines.len() + self.vias.len() {
+            match self.pushed_by.get(&at) {
+                Some(Pusher::Head) => return Some(at),
+                Some(&q) => at = q,
+                None => return if at == Pusher::Head { hit } else { None },
+            }
+        }
+        None
+    }
+
+    /// The copper of a line or via.
+    fn items(&self, p: Pusher) -> Vec<CopperItem> {
+        match p {
+            Pusher::Line(l) => self.lines[l].tracks.iter().map(|&t| CopperItem::Track(t)).collect(),
+            Pusher::Via(v) => vec![CopperItem::Via(self.vias[v].id)],
+            Pusher::Head => Vec::new(),
+        }
+    }
+
+    /// Push the nearest thing in `p`'s way (`hit_out`), with `p` back on the stack below
+    /// it: its own pushes settle before the pusher is looked at again.
+    fn step(&mut self, p: Pusher, stack: &mut Vec<Pusher>, hit_out: &mut Option<Pusher>) -> Result<(), Blocked> {
+        {
             let (shapes, clearance, net) = self.shapes(p);
-            let Some(&hit) = self.hits(&shapes, clearance, net, p)?.first() else { continue };
+            let Some(&hit) = self.hits(&shapes, clearance, net, p)?.first() else { return Ok(()) };
+            *hit_out = Some(hit);
             if self.pushes_back(p, hit) {
                 let at = shapes.first().map_or(Point::ZERO, |s| s.0.bounds().center());
                 return Err(Blocked(Clash { at, message: "copper pushed into itself".into() }));

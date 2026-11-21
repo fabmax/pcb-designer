@@ -336,6 +336,15 @@ the current design of each area with the gotchas a change needs to know, the pla
   the edge, then pushes; the tool adds it and the pushes in one undo group.
   `shove_shapes` is the engine with any head copper (shapes on layer masks, a net, the
   islands it belongs to).
+- **Hug and push** (`router::shove`): a failed shove returns `shove::Stuck { clash, hug
+  }`, `hug` being the copper of what the head pushed directly at the root of the stuck
+  cascade (`Engine::root` walks `pushed_by` up from the failing pusher; the head's own
+  hit if the head was pushing). The head is then laid again round the fixed copper
+  *and* everything hugged so far (`lay(…, hug)`), smoothed, and shoved; up to `HUGS`
+  (4) rounds while each adds new copper to hug, within the same 40 ms. Only a hug walk
+  that reaches is taken; otherwise the leg stops short on the first walk as before
+  (binary search). Gotcha: a line's ends never move, so a dangling track whose end lies
+  in the head's hull can't be pushed and gets hugged.
 - **Drag with shove**: `Document::drag_shove` (the app sets it each frame from the Route
   tool's mode: Shove only) makes a board drag of tracks and vias only
   (`ProjectTarget::edit`, `Move` in an undo group) run `Document::move_shoving`: the
