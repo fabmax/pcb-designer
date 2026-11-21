@@ -3,7 +3,7 @@
 //! Messages panel.
 
 use editor_core::Command;
-use egui::{RichText, Sense, vec2};
+use egui::{Sense, vec2};
 use model::*;
 use view::Document;
 
@@ -82,11 +82,10 @@ pub fn schematic_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Opti
         ),
     );
     grid(ui, "erc_rules", |ui| {
-        for rule in ErcRule::ALL {
+        // Pin conflicts are set in the matrix below.
+        for rule in ErcRule::ALL.into_iter().filter(|r| *r != ErcRule::PinConflict) {
             label(ui, rule.label());
-            if rule == ErcRule::PinConflict {
-                ui.label(RichText::new("matrix").color(theme::text_dim()));
-            } else if let Some(s) = severity_combo(ui, rule.code(), erc.severity(rule)) {
+            if let Some(s) = severity_combo(ui, rule.code(), erc.severity(rule)) {
                 erc.set_severity(rule, s);
             }
             ui.end_row();
