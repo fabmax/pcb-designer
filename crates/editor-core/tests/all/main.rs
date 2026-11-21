@@ -18,6 +18,7 @@ mod no_connect;
 mod outline;
 mod power_styles;
 mod project_libraries;
+mod router;
 mod routing;
 mod sheets;
 mod sheets_clip;

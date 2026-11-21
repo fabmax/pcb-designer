@@ -18,6 +18,7 @@ pub mod fillet;
 pub mod history;
 pub mod query;
 pub mod route_check;
+pub mod router;
 mod rubber_band;
 mod sync;
 mod track_band;

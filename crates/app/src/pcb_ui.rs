@@ -134,6 +134,17 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
         PcbTool::Select => {}
         PcbTool::Route => {
             grid(ui, "pcb_tool", |ui| {
+                label(ui, "Mode");
+                ui.horizontal(|ui| {
+                    for &m in view::pcb_tools::RouteMode::ALL {
+                        let short = match m {
+                            view::pcb_tools::RouteMode::Highlight => "Highlight",
+                            view::pcb_tools::RouteMode::Walkaround => "Walk around",
+                        };
+                        ui.selectable_value(&mut s.route_mode, m, short).on_hover_text(m.label());
+                    }
+                });
+                ui.end_row();
                 label(ui, "Layer");
                 layer_combo(ui, "pcb_tool_layer", &mut s.layer, doc);
                 ui.end_row();

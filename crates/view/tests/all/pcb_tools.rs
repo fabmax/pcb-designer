@@ -383,3 +383,49 @@ fn route_posture_follows_the_cursor_on_screen() {
     });
     assert_eq!(first, Some((a, Point::mm(2.0, 2.0))), "diagonal first: {ghosts:?}");
 }
+
+#[test]
+fn walk_around_mode_routes_round_copper_and_stops_short() {
+    let mut doc = Document::new(Project::new("T"));
+    let wall = Track::straight(LayerId::TOP_COPPER, Point::mm(10.0, -3.0), Point::mm(10.0, 3.0), mm(0.25));
+    let k = Keepout::new(
+        Vec::new(),
+        vec![Point::mm(28.0, -2.0), Point::mm(32.0, -2.0), Point::mm(32.0, 2.0), Point::mm(28.0, 2.0)],
+    );
+    doc.execute(Command::Insert { objects: vec![Object::Track(wall), Object::Keepout(k)] }).unwrap();
+    let mut t = PcbPlacer::default();
+    t.set_tool(PcbTool::Route);
+    t.settings.route_mode = view::pcb_tools::RouteMode::Walkaround;
+    let (a, b) = (Point::mm(0.0, 0.0), Point::mm(20.0, 0.0));
+    t.hover(&mut doc, Some((a, a)), mm(0.0));
+    t.click(&mut doc).unwrap();
+    t.hover(&mut doc, Some((b, b)), mm(0.0));
+    assert!(t.clash().is_none(), "nothing to refuse: {:?}", t.clash());
+    let ghosts = t.ghosts(&doc);
+    let legs = ghosts.iter().filter(|g| matches!(g, PcbGhost::Track { bad: false, .. })).count();
+    assert!(legs > 2, "round the wall: {ghosts:?}");
+    // Shift: straight through, as in Highlight mode.
+    t.force = true;
+    t.hover(&mut doc, Some((b, b)), mm(0.0));
+    assert!(t.clash().is_some());
+    t.force = false;
+    t.hover(&mut doc, Some((b, b)), mm(0.0));
+    t.click(&mut doc).unwrap();
+    assert_eq!(doc.project().board.tracks.len(), 1 + legs, "one track per corner");
+    let bad: Vec<_> = doc
+        .run_drc()
+        .violations
+        .iter()
+        .filter(|v| matches!(v.kind, ViolationKind::Clearance | ViolationKind::Short | ViolationKind::Keepout))
+        .map(|v| v.message.clone())
+        .collect();
+    assert!(bad.is_empty(), "{bad:?}");
+    // Into the keepout: stops short; a click adds up to there and goes on from it.
+    let c = Point::mm(30.0, 0.0);
+    t.hover(&mut doc, Some((c, c)), mm(0.0));
+    let stop = *t.stopped_short().expect("stops short").points.last().unwrap();
+    assert!(stop.x < mm(28.0), "{stop:?}");
+    assert!(!t.click(&mut doc).unwrap(), "the route goes on");
+    let ends: Vec<Point> = doc.project().board.tracks.iter().map(|t| t.b).collect();
+    assert!(ends.contains(&stop));
+}

@@ -70,6 +70,8 @@ pub enum Action {
     MeasureClearance,
     PcbText,
     PcbNextLayer,
+    /// Cycle the Route tool's mode (highlight collisions, walk around).
+    NextRouteMode,
     PcbFindPart,
     Settings,
     PanelProject,
@@ -155,6 +157,7 @@ impl Action {
         Action::MeasureClearance,
         Action::PcbText,
         Action::PcbNextLayer,
+        Action::NextRouteMode,
         Action::PcbFindPart,
         Action::Settings,
         Action::PanelProject,
@@ -234,6 +237,7 @@ impl Action {
             Action::PcbNextLayer => {
                 "Next copper layer; adds a via while routing, Shift even where it breaks a rule (PCB)"
             }
+            Action::NextRouteMode => "Next routing mode: highlight collisions, walk around (PCB)",
             Action::PcbFindPart => "Find a board part to place (PCB)",
             Action::Settings => "Settings",
             Action::PanelProject => "Show/hide Project panel",
@@ -286,6 +290,7 @@ impl Action {
             | Action::MeasureClearance
             | Action::PcbText
             | Action::PcbNextLayer
+            | Action::NextRouteMode
             | Action::PcbFindPart
             | Action::RoundCorners => Some(Context::Board),
             _ => None,
@@ -489,6 +494,7 @@ impl Default for Keymap {
             (Action::MeasureClearance, vec![S::key(Key::E)]),
             (Action::PcbText, vec![S::shift(Key::T)]),
             (Action::PcbNextLayer, vec![S::key(Key::L), S::shift(Key::L)]),
+            (Action::NextRouteMode, vec![S::shift(Key::R)]),
             (Action::PcbFindPart, vec![S::key(Key::P)]),
             (Action::Settings, vec![S::cmd(Key::Comma)]),
             (Action::PanelProject, vec![S::cmd(Key::Num1)]),

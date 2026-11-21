@@ -239,6 +239,26 @@ pub struct BoardConnectivity {
     pub fills: Vec<crate::zones::ZoneFill>,
     index: HashMap<CopperItem, usize>,
     net_index: HashMap<String, u32>,
+    /// Bounding boxes of `items`, built on the first [`BoardConnectivity::query`].
+    spatial: std::sync::OnceLock<rstar::RTree<Bounds>>,
+}
+
+/// An item's bounding box in [`BoardConnectivity::spatial`].
+#[derive(Clone, Debug, PartialEq)]
+struct Bounds {
+    item: usize,
+    env: rstar::AABB<[i64; 2]>,
+}
+
+impl rstar::RTreeObject for Bounds {
+    type Envelope = rstar::AABB<[i64; 2]>;
+    fn envelope(&self) -> Self::Envelope {
+        self.env
+    }
+}
+
+fn aabb(r: Rect) -> rstar::AABB<[i64; 2]> {
+    rstar::AABB::from_corners([r.min.x, r.min.y], [r.max.x, r.max.y])
 }
 
 impl BoardConnectivity {
@@ -475,11 +495,20 @@ impl BoardConnectivity {
         self.ratsnest.len()
     }
 
+    /// Copper whose bounding box intersects `r` (an R-tree, built on the first call).
+    pub fn query(&self, r: Rect) -> impl Iterator<Item = &Copper> {
+        let tree = self.spatial.get_or_init(|| {
+            rstar::RTree::bulk_load(
+                self.items.iter().enumerate().map(|(item, c)| Bounds { item, env: aabb(c.geo.bounds()) }).collect(),
+            )
+        });
+        tree.locate_in_envelope_intersecting(aabb(r)).map(|b| &self.items[b.item])
+    }
+
     /// The anchor (pad or via center, track end) on `layer` nearest to `p`, within `tol`.
     pub fn nearest_anchor(&self, p: Point, layer: LayerId, tol: Coord) -> Option<(Point, &Copper)> {
         let bit = layer_bit(layer);
-        self.items
-            .iter()
+        self.query(Rect::around(p, tol))
             .filter(|c| c.layers & bit != 0 && !matches!(c.item, CopperItem::Zone { .. }))
             .flat_map(|c| c.anchors.iter().map(move |&a| (a, c)))
             .map(|(a, c)| ((a - p).length(), a, c))
@@ -497,7 +526,7 @@ impl BoardConnectivity {
             CopperItem::Track(_) => 2,
             CopperItem::Zone { .. } => 3,
         };
-        self.items.iter().filter(|c| c.layers & bit != 0 && c.geo.contains(p)).min_by_key(|c| rank(c))
+        self.query(Rect::around(p, 0)).filter(|c| c.layers & bit != 0 && c.geo.contains(p)).min_by_key(|c| rank(c))
     }
 }
 

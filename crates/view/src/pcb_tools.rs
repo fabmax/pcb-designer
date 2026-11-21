@@ -5,6 +5,8 @@
 use editor_core::Command;
 use editor_core::copper::{CopperItem, layer_bit};
 use editor_core::route_check::{Clash, Probe};
+pub use editor_core::router::RouteMode;
+use editor_core::router::{self, Routed};
 use model::*;
 
 use crate::bend::{self, Posture};
@@ -62,7 +64,7 @@ impl PcbTool {
         match self {
             PcbTool::Select => "Click/box to select · drag to move · R rotate · F flip side · Del delete",
             PcbTool::Route => {
-                "Click a pad to start · click corners · ends on copper · L next layer (adds a via) · / corner · Shift+Space style · Esc done"
+                "Click a pad to start · click corners · ends on copper · L next layer (adds a via) · / corner · Shift+Space style · Shift+R mode · Esc done"
             }
             PcbTool::Via => "Click to place a via · Esc done",
             PcbTool::Outline => "Click two corners of the board outline · Esc done",
@@ -97,6 +99,8 @@ pub struct PcbSettings {
     pub bend: Bend,
     /// Radius of Edit → Round track corners.
     pub corner_radius: Coord,
+    /// What the Route tool does about copper in the way.
+    pub route_mode: RouteMode,
     /// Add tracks and vias that break the clearance, keepout or board edge rules
     /// (otherwise the click is refused).
     pub allow_violations: bool,
@@ -133,6 +137,7 @@ impl Default for PcbSettings {
             corners: Corners::Deg45,
             bend: Bend::Auto,
             corner_radius: 1_000_000,
+            route_mode: RouteMode::default(),
             allow_violations: false,
             via_pair: false,
             via_span: [LayerId::TOP_COPPER, LayerId::BOTTOM_COPPER],
@@ -229,11 +234,13 @@ pub struct PcbPlacer {
     clash: Option<Clash>,
     /// What [`PcbPlacer::clash`] was checked for (it's only checked again on changes).
     checked: Option<ClashKey>,
+    /// The leg as the router lays it (Walk around mode).
+    routed: Option<Routed>,
 }
 
 /// The inputs of a clash check: document revision, tool, net, layer, width, the leg's
-/// segments (or the via position) and the via span.
-type ClashKey = (u64, PcbTool, Option<String>, LayerId, Coord, Vec<(Point, Point, Option<Point>)>, [LayerId; 2]);
+/// segments (or the via position), the via span and whether the router lays the leg.
+type ClashKey = (u64, PcbTool, Option<String>, LayerId, Coord, Vec<(Point, Point, Option<Point>)>, [LayerId; 2], bool);
 
 impl Default for PcbPlacer {
     fn default() -> Self {
@@ -258,6 +265,7 @@ impl Default for PcbPlacer {
             posture: Posture::default(),
             clash: None,
             checked: None,
+            routed: None,
         }
     }
 }
@@ -479,13 +487,32 @@ impl PcbPlacer {
             (PcbTool::Route, Some(start)) => self.leg(start, p),
             _ => vec![(p, p, None)],
         };
-        let key = (doc.revision, self.tool, self.net.clone(), layer, self.width(doc), segments, self.settings.via_span);
+        let walking = self.walking();
+        let key = (
+            doc.revision,
+            self.tool,
+            self.net.clone(),
+            layer,
+            self.width(doc),
+            segments,
+            self.settings.via_span,
+            walking,
+        );
         if self.checked.as_ref() == Some(&key) {
             return;
         }
         self.checked = Some(key);
         self.clash = None;
+        self.routed = None;
         match self.tool {
+            PcbTool::Route if walking => {
+                let Some(start) = self.start else { return };
+                let width = self.width(doc);
+                let points = chord_points(start, &self.leg(start, p));
+                doc.current_copper();
+                let (project, copper) = (doc.project(), doc.copper());
+                self.routed = Some(router::walkaround(project, copper, layer, width, self.net.as_deref(), &points));
+            }
             PcbTool::Route => {
                 let Some(start) = self.start else { return };
                 let width = self.width(doc);
@@ -518,6 +545,28 @@ impl PcbPlacer {
             }
             _ => {}
         }
+    }
+
+    /// The router lays the leg (Walk around mode, Shift not held).
+    fn walking(&self) -> bool {
+        self.settings.route_mode == RouteMode::Walkaround && !self.force
+    }
+
+    /// What the leg to `p` adds: the router's path (straight segments; the leg's own
+    /// when the router left it as it was), else the leg.
+    fn route_segments(&self, start: Point, p: Point) -> Vec<(Point, Point, Option<Point>)> {
+        let leg = self.leg(start, p);
+        match &self.routed {
+            Some(r) if self.walking() && r.points != chord_points(start, &leg) => {
+                r.points.windows(2).map(|w| (w[0], w[1], None)).collect()
+            }
+            _ => leg,
+        }
+    }
+
+    /// Where the router stopped short of the pointer (Walk around mode).
+    pub fn stopped_short(&self) -> Option<&Routed> {
+        self.routed.as_ref().filter(|r| self.walking() && !r.reached)
     }
 
     /// Refuse a click that breaks a rule (unless allowed or forced).
@@ -611,8 +660,13 @@ impl PcbPlacer {
                     return Ok(true);
                 }
                 self.refuse()?;
+                let segs = self.route_segments(start, p);
+                let Some(&(_, end, _)) = segs.last() else {
+                    let why = self.routed.as_ref().and_then(|r| r.blocked.as_ref());
+                    return Err(why.map_or("No room for a track here".into(), |c| format!("No room: {}", c.message)));
+                };
+                let p = end;
                 let ends = doc.current_copper().at(p, layer).is_some();
-                let segs = self.leg(start, p);
                 let points = std::iter::once(start).chain(segs.iter().map(|s| s.1)).collect();
                 let mids = segs.iter().map(|s| s.2).collect();
                 let width = Some(self.width(doc));
@@ -620,6 +674,7 @@ impl PcbPlacer {
                 self.posture.start();
                 self.clash = None;
                 self.checked = None;
+                self.routed = None;
                 if ends {
                     self.start = None;
                     self.net = None;
@@ -762,7 +817,7 @@ impl PcbPlacer {
                 if let Some(start) = self.start {
                     let width = self.width(doc);
                     let bad = self.clash.is_some();
-                    g.extend(self.leg(start, p).into_iter().map(|(a, b, mid)| PcbGhost::Track {
+                    g.extend(self.route_segments(start, p).into_iter().map(|(a, b, mid)| PcbGhost::Track {
                         layer: s.layer,
                         a,
                         b,
@@ -805,6 +860,12 @@ impl PcbPlacer {
             }
         }
         g.extend(self.clash.as_ref().map(|c| PcbGhost::Clash(c.at)));
+        // Where the router stopped: the leg ends here.
+        if self.tool == PcbTool::Route
+            && let Some(r) = self.stopped_short()
+        {
+            g.extend(r.points.last().map(|&q| PcbGhost::Clash(q)));
+        }
         g
     }
 
@@ -842,6 +903,11 @@ pub fn cutout_target(project: &Project, p: Point, layer: LayerId) -> Option<Obje
 }
 
 /// Spans top to bottom.
+/// The corners of a leg (arcs as their chords), from its start.
+fn chord_points(start: Point, leg: &[(Point, Point, Option<Point>)]) -> Vec<Point> {
+    std::iter::once(start).chain(leg.iter().map(|s| s.1)).collect()
+}
+
 fn is_through(span: &[LayerId; 2]) -> bool {
     let (lo, hi) = (span[0].0.min(span[1].0), span[0].0.max(span[1].0));
     lo == LayerId::TOP_COPPER.0 && hi == LayerId::BOTTOM_COPPER.0

@@ -2363,6 +2363,13 @@ impl PcbApp {
                 }
                 return true;
             }
+            Action::NextRouteMode => {
+                let s = &mut self.pcb.settings;
+                s.route_mode = s.route_mode.next();
+                let label = s.route_mode.label();
+                self.set_status(format!("Routing: {label}"));
+                return true;
+            }
             Action::Cancel if self.pcb.is_placing() => {
                 self.pcb.escape();
                 return true;
@@ -2781,6 +2788,7 @@ impl PcbApp {
             | Action::MeasureClearance
             | Action::PcbText
             | Action::PcbNextLayer
+            | Action::NextRouteMode
             | Action::PanelProject
             | Action::PanelMessages
             | Action::PanelProperties
@@ -2933,7 +2941,8 @@ impl PcbApp {
             | Action::PcbCutout
             | Action::MeasureClearance
             | Action::PcbText
-            | Action::PcbNextLayer => None,
+            | Action::PcbNextLayer
+            | Action::NextRouteMode => None,
             Action::PanelProject
             | Action::PanelMessages
             | Action::PanelProperties

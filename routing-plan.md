@@ -54,8 +54,9 @@ hint bar):
 - **Shove** (the default from R2 on): other nets' tracks and vias move aside.
 - **Walk around**: the leg goes around obstacles; nothing moves.
 
-Shift (force) and "Allow violations" keep their meaning in every mode: route straight
-through, add it anyway, DRC flags it.
+Shift (force) routes straight through in every mode: the leg as drawn, added anyway,
+DRC flags it. "Allow violations" only matters in Highlight mode (the router never adds
+a violation).
 
 ### Shove, step by step
 
@@ -193,16 +194,16 @@ not the current one.
 
 ## Milestones
 
-### R1: Router world and walkaround
+### R1: Router world and walkaround (done)
 
-`router::world` (R-tree per layer, cached), hulls, lines, `walkaround`. `route_check` on
-the R-tree. The Walk around mode in the Route tool (no edits of other copper, so it's
-the low-risk first user-visible step), with the mode setting, the key and the
-head-stops-short behaviour.
+Built as described in PLAN.md ("Router"): an R-tree in `BoardConnectivity` (one for all
+layers, filtered by mask) instead of a separate world, hulls, `walkaround`, the mode
+setting (Shift+R) and stopping short. Lines moved to R2, where shoving needs them.
 
 ### R2: Shove tracks
 
-`locked` on tracks and vias (Properties, MCP, KiCad import). The shove engine for lines (vias are fixed obstacles for now), the optimizer's basics
+`locked` on tracks and vias (Properties, MCP, KiCad import). `Line`s (chains of one
+net's straight tracks between joints, with their ids). The shove engine for lines (vias are fixed obstacles for now), the optimizer's basics
 (merge, drop zero-length and loops), `AddTrack.mode`, the replay preview, one undo group
 per click, MCP `mode`. Shove becomes the default mode.
 

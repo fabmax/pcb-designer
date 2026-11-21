@@ -15,6 +15,7 @@ log.workspace = true
 rustc-hash.workspace = true
 delaunator.workspace = true
 i_overlay.workspace = true
+rstar.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -282,9 +282,29 @@ the current design of each area with the gotchas a change needs to know, the pla
   `Clash.at` is the point of the probe nearest the problem (the marker). A clash refuses
   the click unless `PcbPlacer::allows_violations`: the "Allow violations" setting, or
   `force` (Shift held, set by the app every frame like `free`; Shift+L is a second
-  binding of next layer so the via of a forced L goes through too). Linear over all
-  copper per check; the route tool only rechecks when its inputs or the document
-  revision change (`ClashKey`).
+  binding of next layer so the via of a forced L goes through too). Copper near a
+  probe comes from `BoardConnectivity::query`, an R-tree of item bounds built lazily on
+  the first query after a rebuild (~2 ms for 20k items; `at` and `nearest_anchor` use
+  it too); the route tool only rechecks when its inputs or the document revision change
+  (`ClashKey`).
+- **Router** (`router`, plan in [routing-plan.md](routing-plan.md)): `RouteMode`
+  (Highlight, Walkaround; a `PcbSettings` field, Shift+R cycles it). `hull::Hull`: a
+  convex counterclockwise polygon, the obstacle's points grown by an octagon of
+  clearance + half width + `SLACK` (10 nm), so edges run at 45° multiples round round
+  and axis-aligned copper (rotated pads give other angles); a path chord per hull for
+  arcs; keepouts are their outline's convex hull. `walk::walk` replaces the path's first
+  crossing of a hull by its outline from the entry to the *last* exit, always turning
+  one way (`EPS` 5 nm: a path along an edge isn't inside), up to 64 times; ending
+  inside a hull stops where it goes in, starting in one gives just the start.
+  `walkaround` gathers hulls from `query` (5 mm round the leg, more if a walk leaves
+  that), walks both ways, checks each exactly with `route_check` and cuts it to the
+  longest clean start (binary search to 1 µm: the board edge and approximations), and
+  takes the one that reaches, then the shorter. ~0.2 ms per walk on the 10k stress
+  board. Obstacles and their clearances are exactly `route_check`'s (same islands at
+  the ends, net classes). In the Route tool (`PcbPlacer::routed`), the walked path is
+  the ghost and what a click adds (straight segments; the leg's own, arcs included, if
+  the walk didn't change it); stopping short shows a marker and a click adds up to
+  there and goes on from it. Shift routes straight as in Highlight mode.
 - **Vias** have a span `from`..`to` (copper layers, top one first; `AddVia { span }`,
   `None` through). `Via::is_through` / `kind` (Through, Blind, Buried); `via_layers` is
   every copper layer between. Arcs: `fillet::fillet` rounds a corner with a tangent
@@ -1442,8 +1462,7 @@ defers.
   per-class minimums checked by DRC (track width below the class's), a separate edge
   clearance, schematic directive labels (net class flags) and KiCad's own class rules
   (`.kicad_dru`).
-- Routing checks: clearance to zone fills of other nets, an index for huge boards
-  (linear per check today), checking the vias L adds against the next layer's copper
+- Routing checks: clearance to zone fills of other nets, checking the vias L adds against the next layer's copper
   only once the layer changes; blind and buried vias drawn differently from through
   vias; per-span via sizes; micro vias.
 - Round track corners: corners at pads and vias, between arcs, and live radius

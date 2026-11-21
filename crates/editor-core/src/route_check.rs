@@ -70,12 +70,11 @@ pub fn check(
     for (geo, probe) in &geos {
         let bits = probe.layers();
         let reach = geo.bounds().grow(clear.max.max(net_rules.clearance));
-        for c in &copper.items {
+        for c in copper.query(reach) {
             if c.layers & bits == 0
                 || matches!(c.item, CopperItem::Zone { .. })
                 || islands.contains(&c.island)
                 || (net.is_some() && c.net == net)
-                || !c.geo.bounds().intersects(&reach)
             {
                 continue;
             }
