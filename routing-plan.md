@@ -215,9 +215,13 @@ Built as described in PLAN.md ("Shove"). A pushed via moves straight away from t
 pusher (no search for the smallest move), and the head never moves vias it ends on
 (their island is the head's).
 
-### R4: Drag with shove
+### R4: Drag with shove (done)
 
-The Select tool's track segment and via drags shove (`Move.shove`).
+Built as described in PLAN.md ("Drag with shove"). Differences from the plan: no
+`Move.shove` flag (the shove needs the board connectivity, which the Document has, not
+the editor), so MCP's `move` doesn't shove; any drag of only tracks and vias shoves
+(every track and via the move changed is the head), not just single segments and vias;
+a drag that can't push stops at its last good position.
 
 ### R5: Polish
 
@@ -231,6 +235,7 @@ an index of pushed lines.
 
 - Diff pairs (routing and shoving them as pairs), length tuning (meanders).
 - Shoving arc tracks.
+- MCP `move` shoving like a drag (a `shove` flag running `router::shove_moved`).
 - "Hug and push" / walking around in shove mode when a shove fails.
 - Shoving footprints' copper (moving parts out of the way), KiCad's "smart pads"
   (choosing a pad's exit direction).

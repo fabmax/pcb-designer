@@ -323,7 +323,18 @@ the current design of each area with the gotchas a change needs to know, the pla
   ping-pong) fails. The result is `Shoved { lines, vias }`, `commands()` turning it into
   `SetTrackPaths` + via `Update`s. `shove_via`: a new via (L while routing in Shove
   mode) is a head of just a via; it's first checked against fixed copper, keepouts and
-  the edge, then pushes; the tool adds it and the pushes in one undo group. Limits: 1000
+  the edge, then pushes; the tool adds it and the pushes in one undo group.
+  `shove_shapes` is the engine with any head copper (shapes on layer masks, a net, the
+  islands it belongs to).
+- **Drag with shove**: `Document::drag_shove` (the app sets it each frame from the Route
+  tool's mode: Shove only) makes a board drag of tracks and vias only
+  (`ProjectTarget::edit`, `Move` in an undo group) run `Document::move_shoving`: the
+  `Move`, then `router::shove_moved` with the tracks and vias the move changed (its
+  ChangeSet, so the band's neighbours push too) as the head, against the connectivity
+  from before the drag (`drag_base`, cloned once per drag group: each step is a replay
+  from the start, so it stays valid and pushes spring back), the pushes in the same
+  group. A failed shove retracts the step and errs; `Interaction::drag_to` then replays
+  the last offset that worked and keeps the message (the drag stops at the obstacle). Limits: 1000
   pops and `SHOVE_TIME` (40 ms) for the whole call; on failure a binary search (20 µm)
   finds the longest head that pushes clear. Lines keep their end points. Pure: every
   step starts from the board as it is, so pushed tracks spring back. Costs: a push

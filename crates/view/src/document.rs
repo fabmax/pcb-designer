@@ -57,6 +57,11 @@ pub struct Document {
     sim: SimOverlay,
     /// Tracks the router pushed aside for the leg being routed.
     route_preview: Option<RoutePreview>,
+    /// Dragging tracks and vias on the board pushes aside what's in the way (the Route
+    /// tool in Shove mode; the app sets it).
+    pub drag_shove: bool,
+    /// The copper before the drag (its undo group) that shoves.
+    drag_base: Option<(u64, BoardConnectivity)>,
 }
 
 /// A route leg's pushed tracks, shown as real edits in an undo group of their own: retracted
@@ -122,6 +127,8 @@ impl Document {
             text_edit: None,
             sim: SimOverlay::default(),
             route_preview: None,
+            drag_shove: false,
+            drag_base: None,
         };
         doc.update_connectivity(false);
         doc
@@ -381,6 +388,34 @@ impl Document {
             }
         }
         self.route_preview = None;
+        result
+    }
+
+    /// Move board `ids` by `delta` as a step of the drag with undo group `group`, pushing
+    /// aside the copper in the way of the tracks and vias moved. `Err`: something can't
+    /// give way (the step is taken back).
+    pub fn move_shoving(&mut self, ids: Vec<ObjectId>, delta: Point, group: u64) -> Result<(), String> {
+        // Each step starts from the board before the drag (the last step is retracted).
+        if self.drag_base.as_ref().is_none_or(|b| b.0 != group) {
+            let base = self.current_copper().clone();
+            self.drag_base = Some((group, base));
+        }
+        let changes = self
+            .execute_grouped(Command::Move { ids, delta, keep_connected: true }, Some(group))
+            .map_err(|e| e.to_string())?;
+        let moved: Vec<ObjectId> = changes.ids().collect();
+        let base = &self.drag_base.as_ref().expect("set above").1;
+        let shoved = editor_core::router::shove_moved(self.editor.project(), base, &moved);
+        let result = match shoved {
+            Ok(s) => s
+                .commands(self.editor.project())
+                .into_iter()
+                .try_for_each(|c| self.execute_grouped(c, Some(group)).map(drop).map_err(|e| e.to_string())),
+            Err(c) => Err(format!("Can't push aside: {}", c.message)),
+        };
+        if result.is_err() {
+            self.retract(group);
+        }
         result
     }
 
@@ -792,6 +827,11 @@ impl Document {
     }
 }
 
+/// Does dragging `ids` push copper aside (tracks and vias only)?
+fn shoves(ids: &[ObjectId]) -> bool {
+    !ids.is_empty() && ids.iter().all(|id| matches!(id, ObjectId::Track(_) | ObjectId::Via(_)))
+}
+
 impl ProjectTarget<'_> {
     fn run(&mut self, cmd: Command, group: Option<u64>) -> Result<(), String> {
         self.doc.execute_grouped(cmd, group).map(drop).map_err(|e| e.to_string())
@@ -838,7 +878,12 @@ impl Target for ProjectTarget<'_> {
         // What is attached stays attached, except to a carried paste.
         let keep = !carry;
         match edit {
-            Edit::Move { ids, delta } => self.run(Command::Move { ids, delta, keep_connected: keep }, group)?,
+            Edit::Move { ids, delta } => match group {
+                Some(g) if keep && self.view.kind() == ViewKind::Board && self.doc.drag_shove && shoves(&ids) => {
+                    self.doc.move_shoving(ids, delta, g)?
+                }
+                _ => self.run(Command::Move { ids, delta, keep_connected: keep }, group)?,
+            },
             Edit::Rotate { ids, center, angle } => {
                 self.run(Command::Rotate { ids, center, angle, keep_connected: keep }, group)?
             }

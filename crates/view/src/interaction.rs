@@ -419,8 +419,17 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
             }
             return;
         }
+        let last = drag.moved;
         drag.moved = target;
         self.replay(t, drag);
+        if !drag.executed && last != Point::ZERO {
+            // Refused (e.g. a shove that can't push something aside): stay where it last
+            // went, keeping the message.
+            let message = self.message.take();
+            drag.moved = last;
+            self.replay(t, drag);
+            self.message = message;
+        }
     }
 
     /// Redo a drag from its start: undo what it did so far and apply its whole rotation

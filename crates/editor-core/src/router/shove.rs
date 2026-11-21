@@ -90,7 +90,63 @@ pub struct Head<'a> {
 /// Push what's in the head's way. `Err`: something that can't move is in the way (of
 /// the head or of something pushed).
 pub fn shove(project: &Project, copper: &BoardConnectivity, head: &Head) -> Result<Shoved, Blocked> {
-    let mut e = Engine::new(project, copper, head);
+    let rules = &project.board.rules;
+    let net = head.net.and_then(|n| copper.net_index(n));
+    let ends = [head.path.first(), head.path.last()];
+    let islands = ends
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i == 0 || net.is_none())
+        .filter_map(|(_, p)| copper.at(*(*p)?, head.layer))
+        .filter(|c| !matches!(c.item, CopperItem::Zone { .. }))
+        .map(|c| c.island)
+        .collect();
+    let (half, bit) = (head.width / 2, layer_bit(head.layer));
+    let mut shapes: Shapes = head.path.windows(2).map(|w| (Geo::Capsule { a: w[0], b: w[1], r: half }, bit)).collect();
+    if let (Some((d, layers)), Some(&at)) = (head.via, head.path.last()) {
+        shapes.push((Geo::Capsule { a: at, b: at, r: d / 2 }, layers));
+    }
+    let at = head.path.last().copied().unwrap_or(Point::ZERO);
+    let pusher = HeadCopper { shapes, net, clearance: rules.for_net(head.net).clearance, islands, at };
+    run(project, copper, pusher, head.deadline)
+}
+
+/// Push what's in the way of `shapes` (on their layers), the copper of tracks and vias
+/// just moved (a drag): of `net`, connected to `islands` (the moved items' islands, so
+/// their old copper is no obstacle).
+pub fn shove_shapes(
+    project: &Project,
+    copper: &BoardConnectivity,
+    shapes: Vec<(Geo, LayerMask)>,
+    net: Option<&str>,
+    islands: Vec<u32>,
+    deadline: std::time::Instant,
+) -> Result<Shoved, Blocked> {
+    let at = shapes.first().map_or(Point::ZERO, |s| s.0.bounds().center());
+    let clearance = project.board.rules.for_net(net).clearance;
+    let net = net.and_then(|n| copper.net_index(n));
+    run(project, copper, HeadCopper { shapes, net, clearance, islands, at }, deadline)
+}
+
+/// The copper doing the pushing.
+struct HeadCopper {
+    shapes: Shapes,
+    net: Option<u32>,
+    /// The clearance of its net class (known by name before the net has copper).
+    clearance: Coord,
+    /// Islands it connects to (its own copper while the net isn't known).
+    islands: Vec<u32>,
+    /// Where to report giving up.
+    at: Point,
+}
+
+fn run(
+    project: &Project,
+    copper: &BoardConnectivity,
+    head: HeadCopper,
+    deadline: std::time::Instant,
+) -> Result<Shoved, Blocked> {
+    let mut e = Engine::new(project, copper, head, deadline);
     e.run()?;
     let mut lines: Vec<Pushed> = e
         .moved
@@ -136,15 +192,11 @@ struct Engine<'a> {
     project: &'a Project,
     copper: &'a BoardConnectivity,
     clearances: Clearances,
-    head: Vec<Point>,
-    head_bit: LayerMask,
-    head_half: Coord,
-    head_via: Option<(Coord, LayerMask)>,
+    head: Shapes,
     head_net: Option<u32>,
-    /// The clearance of the head's net class (known by name before the net has copper).
     head_clearance: Coord,
-    /// Islands the head connects to (its own copper while the net isn't known).
     head_islands: Vec<u32>,
+    head_at: Point,
     lines: Vec<Line>,
     /// Each line's island.
     line_islands: Vec<u32>,
@@ -162,29 +214,21 @@ struct Engine<'a> {
 }
 
 impl<'a> Engine<'a> {
-    fn new(project: &'a Project, copper: &'a BoardConnectivity, head: &Head) -> Self {
-        let rules = &project.board.rules;
-        let head_net = head.net.and_then(|n| copper.net_index(n));
-        let ends = [head.path.first(), head.path.last()];
-        let head_islands = ends
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| *i == 0 || head_net.is_none())
-            .filter_map(|(_, p)| copper.at(*(*p)?, head.layer))
-            .filter(|c| !matches!(c.item, CopperItem::Zone { .. }))
-            .map(|c| c.island)
-            .collect();
+    fn new(
+        project: &'a Project,
+        copper: &'a BoardConnectivity,
+        head: HeadCopper,
+        deadline: std::time::Instant,
+    ) -> Self {
         Engine {
             project,
             copper,
-            clearances: copper.clearances(rules),
-            head: head.path.to_vec(),
-            head_bit: layer_bit(head.layer),
-            head_half: head.width / 2,
-            head_via: head.via,
-            head_net,
-            head_clearance: rules.for_net(head.net).clearance,
-            head_islands,
+            clearances: copper.clearances(&project.board.rules),
+            head: head.shapes,
+            head_net: head.net,
+            head_clearance: head.clearance,
+            head_islands: head.islands,
+            head_at: head.at,
             lines: Vec::new(),
             line_islands: Vec::new(),
             line_of: HashMap::new(),
@@ -194,7 +238,7 @@ impl<'a> Engine<'a> {
             via_of: HashMap::new(),
             moved_vias: HashMap::new(),
             pushed_by: HashMap::new(),
-            deadline: head.deadline,
+            deadline,
         }
     }
 
@@ -204,7 +248,7 @@ impl<'a> Engine<'a> {
         while let Some(p) = stack.pop() {
             pops += 1;
             if pops > MAX_PUSHES || std::time::Instant::now() > self.deadline {
-                let at = self.head.last().copied().unwrap_or(Point::ZERO);
+                let at = self.head_at;
                 return Err(Blocked(Clash { at, message: "too much to push aside".into() }));
             }
             // The nearest thing in the way first; its own pushes settle before the
@@ -271,17 +315,7 @@ impl<'a> Engine<'a> {
     /// A pusher's copper, its own clearance and its net.
     fn shapes(&self, p: Pusher) -> (Shapes, Coord, Option<u32>) {
         match p {
-            Pusher::Head => {
-                let mut s: Shapes = self
-                    .head
-                    .windows(2)
-                    .map(|w| (Geo::Capsule { a: w[0], b: w[1], r: self.head_half }, self.head_bit))
-                    .collect();
-                if let (Some((d, layers)), Some(&at)) = (self.head_via, self.head.last()) {
-                    s.push((Geo::Capsule { a: at, b: at, r: d / 2 }, layers));
-                }
-                (s, self.head_clearance, self.head_net)
-            }
+            Pusher::Head => (self.head.clone(), self.head_clearance, self.head_net),
             Pusher::Line(i) => {
                 let l = &self.lines[i];
                 let (r, bit) = (l.width / 2, layer_bit(l.layer));

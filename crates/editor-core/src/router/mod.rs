@@ -143,6 +143,34 @@ pub fn shove_via(
     shove::shove(project, copper, &head).map_err(|b| b.0)
 }
 
+/// What tracks and vias just moved (by a drag, `moved`) push aside. `copper` is the board
+/// from before the move (their old copper is no obstacle); `Err`: what they can't push.
+pub fn shove_moved(project: &Project, copper: &BoardConnectivity, moved: &[ObjectId]) -> Result<shove::Shoved, Clash> {
+    let board = &project.board;
+    let mut shapes = Vec::new();
+    let (mut islands, mut net) = (Vec::new(), None);
+    for &id in moved {
+        let (item, geo, layers) = match id {
+            ObjectId::Track(t) => {
+                let Some(t) = board.tracks.get(t) else { continue };
+                (CopperItem::Track(t.id), crate::copper::track_geo(t), layer_bit(t.layer))
+            }
+            ObjectId::Via(v) => {
+                let Some(v) = board.vias.get(v) else { continue };
+                (CopperItem::Via(v.id), crate::copper::via_geo(v), crate::copper::via_layers(board, v))
+            }
+            _ => continue,
+        };
+        shapes.push((geo, layers));
+        if let Some(c) = copper.get(item) {
+            islands.push(c.island);
+            net = net.or(copper.net_of(item));
+        }
+    }
+    let deadline = std::time::Instant::now() + SHOVE_TIME;
+    shove::shove_shapes(project, copper, shapes, net, islands, deadline).map_err(|b| b.0)
+}
+
 /// The leg along `points` (its first point is where it starts, the last the pointer) of
 /// a track `width` wide on `layer`, of `net` (`None`: not known yet), walked round the
 /// copper of other nets and the keepouts that forbid tracks, and cut short where it would

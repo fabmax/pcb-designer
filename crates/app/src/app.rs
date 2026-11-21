@@ -4831,6 +4831,8 @@ impl TreeBehavior<'_> {
         if kind == ViewKind::Board && !self.pcb.wants_route_preview() {
             doc.drop_route_preview();
         }
+        // Dragging tracks and vias follows the Route tool's mode.
+        doc.drag_shove = self.pcb.settings.route_mode == view::pcb_tools::RouteMode::Shove;
         let pane = self.panes.get(view);
         // The text being edited takes presses on it; a press elsewhere commits it.
         let pointer = response.hover_pos().map(|p| {

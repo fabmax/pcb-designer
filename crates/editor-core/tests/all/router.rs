@@ -282,3 +282,57 @@ fn a_new_via_pushes_tracks() {
         .collect();
     assert!(bad.is_empty(), "{bad:?}");
 }
+
+fn no_clashes(ed: &Editor) {
+    let copper = conn(ed.project());
+    let bad: Vec<String> = editor_core::drc::run(ed.project(), &copper)
+        .into_iter()
+        .filter(|v| matches!(v.kind, ViolationKind::Clearance | ViolationKind::Short))
+        .map(|v| v.message)
+        .collect();
+    assert!(bad.is_empty(), "{bad:?}");
+}
+
+/// Move `ids` by `delta` (keeping what's attached), then push aside what they hit.
+fn drag(ed: &mut Editor, ids: Vec<ObjectId>, delta: Point) -> Result<editor_core::router::shove::Shoved, String> {
+    let before = conn(ed.project());
+    let changes = ed.execute(Command::Move { ids, delta, keep_connected: true }).unwrap();
+    let moved: Vec<ObjectId> = changes.ids().collect();
+    let s = editor_core::router::shove_moved(ed.project(), &before, &moved).map_err(|c| c.message)?;
+    for c in s.commands(ed.project()) {
+        ed.execute(c).unwrap();
+    }
+    Ok(s)
+}
+
+#[test]
+fn a_dragged_segment_pushes_tracks() {
+    let mut ed = Editor::new(Project::new("T"));
+    let wall = ids(&mut ed, &[Point::mm(0.0, 0.0), Point::mm(20.0, 0.0)]);
+    // A dog-leg: its middle segment is dragged down onto the wall.
+    let leg = ids(&mut ed, &[Point::mm(0.0, 3.0), Point::mm(8.0, 3.0), Point::mm(12.0, 3.0), Point::mm(20.0, 3.0)]);
+    let s = drag(&mut ed, vec![ObjectId::Track(leg[1])], Point::mm(0.0, -2.8)).unwrap();
+    assert_eq!(s.lines.len(), 1, "{s:?}");
+    assert_eq!(s.lines[0].line.tracks, wall);
+    no_clashes(&ed);
+}
+
+#[test]
+fn a_dragged_via_pushes_tracks_and_a_locked_via_stops_it() {
+    let mut ed = Editor::new(Project::new("T"));
+    let wall = ids(&mut ed, &[Point::mm(0.0, 0.0), Point::mm(20.0, 0.0)]);
+    let v = via(&mut ed, Point::mm(10.0, 3.0));
+    ids(&mut ed, &[Point::mm(10.0, 3.0), Point::mm(10.0, 8.0)]);
+    let s = drag(&mut ed, vec![ObjectId::Via(v)], Point::mm(0.0, -2.6)).unwrap();
+    assert_eq!(s.lines.len(), 1, "{s:?}");
+    assert_eq!(s.lines[0].line.tracks, wall);
+    no_clashes(&ed);
+    // A locked via can't be pushed.
+    let mut ed = Editor::new(Project::new("T"));
+    let fixed = via(&mut ed, Point::mm(10.0, 0.0));
+    let mut o = ed.project().board.vias.get(fixed).unwrap().clone();
+    o.locked = true;
+    ed.execute(Command::Update { objects: vec![Object::Via(o)] }).unwrap();
+    let v = via(&mut ed, Point::mm(10.0, 3.0));
+    assert!(drag(&mut ed, vec![ObjectId::Via(v)], Point::mm(0.0, -2.6)).is_err());
+}

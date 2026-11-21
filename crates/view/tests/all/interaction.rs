@@ -312,3 +312,64 @@ fn a_click_never_moves_when_the_view_shifts() {
     it.pointer(&mut doc.target(v), &PointerInput { released: true, ..on_screen(pointer, hand) });
     assert_eq!(symbol(&doc, "R1").pos, r1.pos + Point::mm(5.08, 0.0));
 }
+
+/// A wall along y = 0 and a dog-leg along y = 3 whose middle segment is dragged.
+fn shove_board(locked: bool) -> (Document, Vec<Track>, Id) {
+    let mut doc = Document::new(Project::new("T"));
+    let mut wall = Track::straight(LayerId::TOP_COPPER, Point::mm(0.0, 0.0), Point::mm(20.0, 0.0), mm(0.25));
+    wall.locked = locked;
+    let ys = [(0.0, 8.0), (8.0, 12.0), (12.0, 20.0)];
+    let leg: Vec<Track> = ys
+        .iter()
+        .map(|&(a, b)| Track::straight(LayerId::TOP_COPPER, Point::mm(a, 3.0), Point::mm(b, 3.0), mm(0.25)))
+        .collect();
+    let middle = leg[1].id;
+    let objects = std::iter::once(&wall).chain(&leg).cloned().map(Object::Track).collect();
+    doc.execute(Command::Insert { objects }).unwrap();
+    doc.drag_shove = true;
+    let before = doc.project().board.tracks.iter().cloned().collect();
+    (doc, before, middle)
+}
+
+fn copper_clashes(doc: &mut Document) -> Vec<String> {
+    doc.run_drc()
+        .violations
+        .iter()
+        .filter(|v| matches!(v.kind, ViolationKind::Clearance | ViolationKind::Short))
+        .map(|v| v.message.clone())
+        .collect()
+}
+
+#[test]
+fn dragging_a_segment_shoves_and_is_one_undo_step() {
+    let (mut doc, before, middle) = shove_board(false);
+    let mut it = Interaction::new(mm(0.5));
+    let t = &mut doc.target(ViewId::Board);
+    press(&mut it, t, Point::mm(10.0, 3.0));
+    for y in [2.5, 1.5, 0.0, 1.0, 0.0] {
+        drag(&mut it, t, Point::mm(10.0, y));
+    }
+    release(&mut it, t, Point::mm(10.0, 0.0));
+    assert_eq!(doc.project().board.tracks.get(middle).unwrap().a.y, 0);
+    let wall = before[0].id;
+    assert_ne!(doc.project().board.tracks.get(wall), Some(&before[0]), "the wall goes round");
+    assert!(copper_clashes(&mut doc).is_empty());
+    doc.undo();
+    assert_eq!(doc.project().board.tracks.iter().cloned().collect::<Vec<_>>(), before);
+}
+
+#[test]
+fn a_shove_that_cannot_push_stops_the_drag() {
+    let (mut doc, _, middle) = shove_board(true);
+    let mut it = Interaction::new(mm(0.5));
+    let t = &mut doc.target(ViewId::Board);
+    press(&mut it, t, Point::mm(10.0, 3.0));
+    for y in [2.5, 2.0, 1.5, 1.0, 0.5, 0.0] {
+        drag(&mut it, t, Point::mm(10.0, y));
+    }
+    release(&mut it, t, Point::mm(10.0, 0.0));
+    let y = doc.project().board.tracks.get(middle).unwrap().a.y;
+    assert_eq!(y, mm(0.5), "stopped at the last step that worked");
+    assert!(it.message.as_deref().unwrap_or("").contains("push"), "{:?}", it.message);
+    assert!(copper_clashes(&mut doc).is_empty());
+}
