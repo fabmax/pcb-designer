@@ -5,6 +5,7 @@ of JSON files, and an MCP server lets agents edit the open project.
 
 - Requirements: [pcb-designer.md](pcb-designer.md).
 - Simulation, planned milestones S2–S8: [simulation-plan.md](simulation-plan.md).
+- Push-and-shove routing, milestones R1–R5: [routing-plan.md](routing-plan.md).
 - Decisions, the design of each area with its gotchas, and the Later list:
   [PLAN.md](PLAN.md). Read its section on the area you're touching before changing a
   design decision.

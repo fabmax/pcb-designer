@@ -1437,7 +1437,7 @@ defers.
 - Clipboard: carrying a paste between the schematic and the board.
 - Parts panel: dragging a part from the list onto the canvas.
 - Cutouts that split a zone into two pieces (refused today; would need a second zone).
-- Push-and-shove routing.
+- Push-and-shove routing: see [routing-plan.md](routing-plan.md).
 - Net classes: diff pairs and their gap, class colours on the board and ratsnest,
   per-class minimums checked by DRC (track width below the class's), a separate edge
   clearance, schematic directive labels (net class flags) and KiCad's own class rules
