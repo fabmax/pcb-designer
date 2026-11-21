@@ -1139,7 +1139,9 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   Rows show the net class; the context menu assigns one (`NetsAct::SetClass`).
 - **Board setup** (`pcb_ui::board_setup`): the Default class's sizes and the board
   rules, then a card per net class (name and nets commit on Enter / focus loss through
-  `committed_text`; sizes live while dragging, one undo group), then DRC severities.
+  `committed_text`; sizes live while dragging, one undo group), then DRC severities,
+  then "Reset to defaults" (rules and severities in one undo group; not the layer
+  count, net classes or DRC exclusions).
 - **Agent activity** (`activity_ui.rs`, `Agent::activity`, at most 500): each call's
   request name (snake case of the `Request` variant, not always the tool's name), its
   `describe`, the `Debug` arguments and `mcp::Outcome` (`handle` returns it: the result
@@ -1247,6 +1249,19 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   arrows and ⌘ ⇧ ⌥ (so `format_shortcut` shows symbols, not "Cmd+"). ↺ and other
   symbols are still missing: `theme::tests::ui_strings_have_glyphs` scans the string
   literals of `app` and `view` and fails on a character without a glyph.
+- **Panel forms** (`fields.rs`): panels and windows draw in a `form_scope` (the dock
+  wraps `panel_ui`, `theme` wraps window contents): every `fields::grid` in it shares
+  one label column, last frame's widest `fields::label` (at most 45 % of the width,
+  longer labels wrap; a change repaints). In a grid (`IN_GRID`, a thread local) value
+  widgets fill the value column: `fill`, `combo_box`, `units::drag`, `Fields::number`;
+  `pair` splits it in halves, `sized` gives a field less room (a button after it). Use
+  these, not `egui::ComboBox` / `ui.add(DragValue)`, in grids. Text: `subject` (16 pt,
+  the selection or tool; Tool settings reserve it with `reserve_subject` and draw it
+  last, since the tool sets its help), `section` (bold 14 pt, no space at the panel
+  top), `collapsing` (long lists), `hint` (one line), `info_button` (help longer than
+  a line: hover shows it, a click pins it), `check_row` (boolean: label left, bare
+  box), `search_field` + `summary` (list panels). The Settings window keeps its own
+  wide layout (`Rows`), the part form its own field widths.
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
   `theme::bold_label`) and, for non-modal resizable ones, `theme::window` (same frame
   and title bar, a × button, opens centred; Settings, KiCad import). Bus prompts are `name_prompt.rs`.
@@ -1413,11 +1428,6 @@ defers.
 - Native menus don't show shortcuts without ⌘ (they would steal typing).
 - Remove weird items in native macOS Edit menu: Autofill, Start dictation, Emoji and symbols?
   Is that even possible? It seems to be there in any app...
-- Unify panel appearances:
-  - Properties and Overview panels have section titles in larger font than all other panels
-  - Overview panel looks a bit odd
-  - Input fields have varying widths
-  - Move large explaining text blocks behind some Info button (i in a circle)?
 
 **Other**
 - Simulation: see [simulation-plan.md](simulation-plan.md).
