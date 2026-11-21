@@ -195,10 +195,12 @@ pub fn on_inset(ui: &mut egui::Ui) {
     }
 }
 
+/// How far bold text is smeared sideways (points).
+pub const BOLD: f32 = 0.8;
+
 /// Text in a bolder weight. egui ships no bold face, so the text is drawn three times,
 /// smeared sideways by `BOLD` points.
 pub fn bold_label(ui: &mut egui::Ui, text: &str, size: f32, color: Color32) {
-    const BOLD: f32 = 0.8;
     let galley = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(size), color);
     let (rect, _) = ui.allocate_exact_size(galley.size() + egui::vec2(BOLD, 0.0), egui::Sense::hover());
     for dx in [0.0, BOLD / 2.0, BOLD] {

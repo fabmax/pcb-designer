@@ -5005,8 +5005,12 @@ impl Behavior<Tab> for TreeBehavior<'_> {
         };
         let icon_size = 15.0;
         let icon_gap = 6.0;
-        let width =
-            icon_size + icon_gap + galley.size().x + 2.0 * margin + if state.closable { close + 4.0 } else { 0.0 };
+        let width = icon_size
+            + icon_gap
+            + galley.size().x
+            + theme::BOLD
+            + 2.0 * margin
+            + if state.closable { close + 4.0 } else { 0.0 };
         let (_, rect) = ui.allocate_space(egui::vec2(width + 4.0, ui.available_height()));
         let pill = egui::Rect::from_min_max(
             egui::pos2(rect.left() + 4.0, rect.top() + 4.0),
@@ -5040,7 +5044,11 @@ impl Behavior<Tab> for TreeBehavior<'_> {
             );
             icons::paint(ui.painter(), icon_rect, icon, icon_color);
             let pos = egui::pos2(icon_rect.right() + icon_gap, pill.center().y - galley.size().y / 2.0);
-            ui.painter().galley(pos, galley, color);
+            // The active tab's title bold (faked like `theme::bold_label`).
+            let smear: &[f32] = if state.active { &[0.0, theme::BOLD / 2.0, theme::BOLD] } else { &[0.0] };
+            for &dx in smear {
+                ui.painter().galley(pos + egui::vec2(dx, 0.0), galley.clone(), color);
+            }
             if state.closable {
                 let r = egui::Rect::from_center_size(
                     egui::pos2(pill.right() - margin - close / 2.0 + 2.0, pill.center().y),
