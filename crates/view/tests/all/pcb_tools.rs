@@ -476,3 +476,37 @@ fn shove_mode_pushes_tracks_live_and_commits_one_undo_step() {
     doc.undo();
     assert!(doc.project().board.tracks.is_empty());
 }
+
+#[test]
+fn a_via_added_while_routing_pushes_tracks_aside() {
+    let mut doc = Document::new(Project::new("T"));
+    let wall = Track::straight(LayerId::TOP_COPPER, Point::mm(10.6, -3.0), Point::mm(10.6, 3.0), mm(0.25));
+    doc.execute(Command::Insert { objects: vec![Object::Track(wall)] }).unwrap();
+    let mut t = PcbPlacer::default();
+    t.set_tool(PcbTool::Route);
+    assert_eq!(t.settings.route_mode, view::pcb_tools::RouteMode::Shove);
+    let (a, b) = (Point::mm(0.0, 0.0), Point::mm(10.0, 0.0));
+    t.hover(&mut doc, Some((a, a)), mm(0.0));
+    t.click(&mut doc).unwrap();
+    t.hover(&mut doc, Some((b, b)), mm(0.0));
+    t.click(&mut doc).unwrap();
+    let before: Vec<Track> = doc.project().board.tracks.iter().cloned().collect();
+    t.next_layer(&mut doc).unwrap();
+    let board = &doc.project().board;
+    assert_eq!(board.vias.len(), 1);
+    assert_eq!(board.vias.iter().next().unwrap().pos, b);
+    assert!(board.tracks.len() > before.len(), "the wall goes round the via");
+    let bad: Vec<_> = doc
+        .run_drc()
+        .violations
+        .iter()
+        .filter(|v| matches!(v.kind, ViolationKind::Clearance | ViolationKind::Short))
+        .map(|v| v.message.clone())
+        .collect();
+    assert!(bad.is_empty(), "{bad:?}");
+    // One undo takes the via and its pushes back.
+    doc.undo();
+    assert_eq!(doc.project().board.vias.len(), 0);
+    let after: Vec<Track> = doc.project().board.tracks.iter().cloned().collect();
+    assert_eq!(after, before);
+}

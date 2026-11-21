@@ -209,10 +209,11 @@ MCP has a `route` tool instead of `add_track.mode`; the head walks round what ca
 pushed before shoving (KiCad's "walk around solids" in shove mode). The preview shows
 the head as a ghost and only the pushes as edits.
 
-### R3: Shove vias
+### R3: Shove vias (done)
 
-Vias pushed by translation with their lines dragged along on all layers; the via added
-by L while routing shoves.
+Built as described in PLAN.md ("Shove"). A pushed via moves straight away from the
+pusher (no search for the smallest move), and the head never moves vias it ends on
+(their island is the head's).
 
 ### R4: Drag with shove
 

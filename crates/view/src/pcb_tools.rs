@@ -3,7 +3,6 @@
 //! Independent of the GUI toolkit.
 
 use editor_core::Command;
-use editor_core::command::TrackPath;
 use editor_core::copper::{CopperItem, layer_bit};
 use editor_core::route_check::{Clash, Probe};
 pub use editor_core::router::RouteMode;
@@ -442,18 +441,42 @@ impl PcbPlacer {
             });
             if !joined {
                 let span = self.settings.via_pair.then_some([cur, next]).filter(|s| !is_through(s));
-                let via = Probe::Via {
-                    pos: p,
-                    diameter: Self::via_diameter(doc, self.net.as_deref()),
-                    layers: span_mask(doc.project(), span),
-                };
-                if let Some(c) = doc.route_clash(&[via], self.net.as_deref(), &[(cur, p)])
-                    && !self.allows_violations()
-                {
-                    return Err(format!("No via here: {}", c.message));
+                let diameter = Self::via_diameter(doc, self.net.as_deref());
+                let layers = span_mask(doc.project(), span);
+                let add = Command::AddVia { pos: p, diameter: None, drill: None, span };
+                if self.mode() == RouteMode::Shove {
+                    // The via pushes aside what it can.
+                    doc.drop_route_preview();
+                    doc.route_copper();
+                    let (project, copper) = doc.route_base();
+                    let shoved = router::shove_via(project, copper, cur, self.net.as_deref(), p, diameter, layers);
+                    let commands = match shoved {
+                        Ok(s) => s.commands(project),
+                        Err(c) if !self.allows_violations() => return Err(format!("No via here: {}", c.message)),
+                        Err(_) => Vec::new(),
+                    };
+                    let group = crate::interaction::new_group();
+                    let mut result = Ok(());
+                    for c in std::iter::once(add).chain(commands) {
+                        if let Err(e) = doc.execute_grouped(c, Some(group)) {
+                            result = Err(e.to_string());
+                            break;
+                        }
+                    }
+                    if result.is_err() {
+                        doc.retract(group);
+                    }
+                    doc.close_group();
+                    result?;
+                } else {
+                    let via = Probe::Via { pos: p, diameter, layers };
+                    if let Some(c) = doc.route_clash(&[via], self.net.as_deref(), &[(cur, p)])
+                        && !self.allows_violations()
+                    {
+                        return Err(format!("No via here: {}", c.message));
+                    }
+                    doc.execute(add).map_err(|e| e.to_string())?;
                 }
-                doc.execute(Command::AddVia { pos: p, diameter: None, drill: None, span })
-                    .map_err(|e| e.to_string())?;
             }
         }
         self.settings.layer = next;
@@ -516,16 +539,8 @@ impl PcbPlacer {
                 doc.route_copper();
                 let (project, copper) = doc.route_base();
                 let routed = router::route(project, copper, mode, layer, width, self.net.as_deref(), &points);
-                let paths: Vec<TrackPath> = routed
-                    .pushed
-                    .iter()
-                    .map(|p| TrackPath { tracks: p.line.tracks.clone(), path: p.path.clone() })
-                    .collect();
-                let shown = if paths.is_empty() {
-                    Ok(())
-                } else {
-                    doc.set_route_preview(vec![Command::SetTrackPaths { paths }])
-                };
+                let commands = routed.shoved.commands(project);
+                let shown = if commands.is_empty() { Ok(()) } else { doc.set_route_preview(commands) };
                 self.routed = Some(match shown {
                     Ok(()) => routed,
                     // Not expected: the router's pushes are valid commands.
@@ -533,7 +548,7 @@ impl PcbPlacer {
                         points: vec![start],
                         reached: false,
                         blocked: Some(Clash { at: start, message }),
-                        pushed: Vec::new(),
+                        shoved: Default::default(),
                     },
                 });
             }

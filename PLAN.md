@@ -306,8 +306,8 @@ the current design of each area with the gotchas a change needs to know, the pla
   board. Obstacles and their clearances are exactly `route_check`'s (same islands at
   the ends, net classes; `check_with` leaves out copper a filter says).
 - **Shove** (`router::shove`): the head first walks round what can't move
-  (`lay(…, fixed_only)`: pads, vias, locked tracks, arcs, keepouts; checks skip movable
-  tracks), then `shove::shove` pushes. `line::Line`: the chain of straight tracks of one
+  (`lay(…, fixed_only)`: pads, locked vias and tracks, arcs, keepouts; checks skip
+  movable copper), then `shove::shove` pushes. `line::Line`: the chain of straight tracks of one
   width on one layer between joints (pads or vias containing the end, ends with ≠ 1
   other track end exactly there, arcs, a width change), with its tracks in order; fixed
   if a track is locked or it's an arc. Engine: a stack of pushers (the head, pushed
@@ -315,8 +315,15 @@ the current design of each area with the gotchas a change needs to know, the pla
   `TOLERANCE` 5 nm, as walked lines sit at the hull) is walked round the pusher's
   segment hulls both ways, the shorter one clear of fixed copper, the head, keepouts and
   the edge wins, and it's pushed with the pusher on top of the stack (its own pushes
-  settle first, then the pusher is checked again). Pushing a fixed line, a pad, a via or
-  one of the pusher's own pushers (`pushes_back`: no ping-pong) fails. Limits: 1000
+  settle first, then the pusher is checked again). Vias (unlocked) are pushed by
+  translation away from the pusher's nearest segment (up to 8 steps, then checked like
+  a line), and drag the tracks ending within their radius on every layer: those lines
+  get the new end and are walked round the pusher, then pushed in turn. Pushing a
+  fixed line, a pad, a locked via or one of the pusher's own pushers (`pushes_back`: no
+  ping-pong) fails. The result is `Shoved { lines, vias }`, `commands()` turning it into
+  `SetTrackPaths` + via `Update`s. `shove_via`: a new via (L while routing in Shove
+  mode) is a head of just a via; it's first checked against fixed copper, keepouts and
+  the edge, then pushes; the tool adds it and the pushes in one undo group. Limits: 1000
   pops and `SHOVE_TIME` (40 ms) for the whole call; on failure a binary search (20 µm)
   finds the longest head that pushes clear. Lines keep their end points. Pure: every
   step starts from the board as it is, so pushed tracks spring back. Costs: a push

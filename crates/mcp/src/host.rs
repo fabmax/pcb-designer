@@ -775,7 +775,6 @@ fn route(
     width: Option<Coord>,
     mode: editor_core::router::RouteMode,
 ) -> Result<Value, String> {
-    use editor_core::command::TrackPath;
     let &start = points.first().ok_or("no points given")?;
     if points.len() < 2 {
         return Err("a track needs two points".into());
@@ -791,17 +790,16 @@ fn route(
     }
     let mut commands =
         vec![Command::AddTrack { layer, points: routed.points.clone(), width: Some(width), mids: Vec::new() }];
-    let paths: Vec<TrackPath> =
-        routed.pushed.iter().map(|p| TrackPath { tracks: p.line.tracks.clone(), path: p.path.clone() }).collect();
-    let pushed: Vec<Value> = routed.pushed.iter().map(|p| json!({ "tracks": p.line.tracks, "path": p.path })).collect();
-    if !paths.is_empty() {
-        commands.push(Command::SetTrackPaths { paths });
-    }
+    commands.extend(routed.shoved.commands(project));
+    let pushed: Vec<Value> =
+        routed.shoved.lines.iter().map(|p| json!({ "tracks": p.line.tracks, "path": p.path })).collect();
+    let vias: Vec<Value> = routed.shoved.vias.iter().map(|m| json!({ "id": m.id, "to": m.to })).collect();
     let mut out = execute(doc, commands)?;
     out["path"] = json!(routed.points);
     out["reached"] = json!(routed.reached);
     out["blocked"] = json!(routed.blocked.map(|c| json!({ "at": c.at, "message": c.message })));
     out["pushed"] = json!(pushed);
+    out["moved_vias"] = json!(vias);
     Ok(out)
 }
 

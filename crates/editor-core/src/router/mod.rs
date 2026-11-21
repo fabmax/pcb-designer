@@ -58,8 +58,8 @@ pub struct Routed {
     pub reached: bool,
     /// What the straight leg runs into, when it stops short.
     pub blocked: Option<Clash>,
-    /// Lines pushed aside (Shove).
-    pub pushed: Vec<shove::Pushed>,
+    /// Lines and vias pushed aside (Shove).
+    pub shoved: shove::Shoved,
 }
 
 /// The leg along `points` laid in `mode` (Shove or Walkaround; Highlight takes it as it
@@ -74,7 +74,9 @@ pub fn route(
     points: &[Point],
 ) -> Routed {
     match mode {
-        RouteMode::Highlight => Routed { points: points.to_vec(), reached: true, blocked: None, pushed: Vec::new() },
+        RouteMode::Highlight => {
+            Routed { points: points.to_vec(), reached: true, blocked: None, shoved: Default::default() }
+        }
         RouteMode::Walkaround => walkaround(project, copper, layer, width, net, points),
         RouteMode::Shove => shove(project, copper, layer, width, net, points),
     }
@@ -94,14 +96,15 @@ pub fn shove(
     let walked = lay(project, copper, layer, width, net, points, true);
     // A frame or two at most, the search for where to stop included.
     let deadline = std::time::Instant::now() + SHOVE_TIME;
-    let attempt = |path: &[Point]| shove::shove(project, copper, &shove::Head { layer, width, net, path, deadline });
+    let attempt =
+        |path: &[Point]| shove::shove(project, copper, &shove::Head { layer, width, net, path, via: None, deadline });
     let blocked = match attempt(&walked.points) {
-        Ok(pushed) => return Routed { pushed, ..walked },
+        Ok(shoved) => return Routed { shoved, ..walked },
         Err(shove::Blocked(c)) => c,
     };
     // The longest start of the leg that pushes clear, to 20 µm.
     let (mut lo, mut hi) = (0.0, walk::length(&walked.points));
-    let mut best = Vec::new();
+    let mut best = shove::Shoved::default();
     while hi - lo > 20_000.0 && std::time::Instant::now() < deadline {
         let mid = (lo + hi) / 2.0;
         match attempt(&prefix(&walked.points, mid)) {
@@ -113,8 +116,31 @@ pub fn shove(
         }
     }
     let points = prefix(&walked.points, lo);
-    let pushed = if points.len() < 2 { Vec::new() } else { best };
-    Routed { points, reached: false, blocked: Some(blocked), pushed }
+    let shoved = if points.len() < 2 { Default::default() } else { best };
+    Routed { points, reached: false, blocked: Some(blocked), shoved }
+}
+
+/// What a via of `diameter` on `layers` at `pos` (the end of the track being routed, of
+/// `net`, on `layer`) pushes aside; `Err`: what it can't.
+pub fn shove_via(
+    project: &Project,
+    copper: &BoardConnectivity,
+    layer: LayerId,
+    net: Option<&str>,
+    pos: Point,
+    diameter: Coord,
+    layers: crate::copper::LayerMask,
+) -> Result<shove::Shoved, Clash> {
+    // Fixed copper, keepouts and the board edge; what can move is pushed aside below.
+    let probe = Probe::Via { pos, diameter, layers };
+    if let Some(c) = route_check::check_with(project, copper, &[probe], net, &[(layer, pos)], &|c| movable(project, c))
+    {
+        return Err(c);
+    }
+    let deadline = std::time::Instant::now() + SHOVE_TIME;
+    let path = [pos];
+    let head = shove::Head { layer, width: 0, net, path: &path, via: Some((diameter, layers)), deadline };
+    shove::shove(project, copper, &head).map_err(|b| b.0)
 }
 
 /// The leg along `points` (its first point is where it starts, the last the pointer) of
@@ -132,10 +158,11 @@ pub fn walkaround(
     lay(project, copper, layer, width, net, points, false)
 }
 
-/// Can the router push this copper aside (a straight, unlocked track)?
+/// Can the router push this copper aside (a straight, unlocked track; an unlocked via)?
 fn movable(project: &Project, c: &Copper) -> bool {
     match c.item {
         CopperItem::Track(id) => project.board.tracks.get(id).is_some_and(|t| !t.locked && t.mid.is_none()),
+        CopperItem::Via(id) => project.board.vias.get(id).is_some_and(|v| !v.locked),
         _ => false,
     }
 }
@@ -151,7 +178,7 @@ fn lay(
     fixed_only: bool,
 ) -> Routed {
     let (Some(&start), Some(&target)) = (points.first(), points.last()) else {
-        return Routed { points: Vec::new(), reached: false, blocked: None, pushed: Vec::new() };
+        return Routed { points: Vec::new(), reached: false, blocked: None, shoved: Default::default() };
     };
     let ends = [(layer, start), (layer, target)];
     let skip = |c: &Copper| fixed_only && movable(project, c);
@@ -195,7 +222,7 @@ fn lay(
     }
     let (points_out, reached) = best.expect("two walks");
     let blocked = (!reached).then(|| check(project, copper, layer, width, net, start, points, &skip)).flatten();
-    Routed { points: points_out, reached, blocked, pushed: Vec::new() }
+    Routed { points: points_out, reached, blocked, shoved: Default::default() }
 }
 
 /// The longest a shove may take, stopping short included.

@@ -116,10 +116,10 @@ fn ids(ed: &mut Editor, points: &[Point]) -> Vec<Id> {
 
 /// Add the routed leg and lay the pushed lines, then: no clearance violations or shorts.
 fn apply_and_check(ed: &mut Editor, r: &editor_core::router::Routed) {
-    use editor_core::command::TrackPath;
     ed.execute(Command::AddTrack { layer: L, points: r.points.clone(), width: Some(W), mids: Vec::new() }).unwrap();
-    let paths = r.pushed.iter().map(|p| TrackPath { tracks: p.line.tracks.clone(), path: p.path.clone() }).collect();
-    ed.execute(Command::SetTrackPaths { paths }).unwrap();
+    for c in r.shoved.commands(ed.project()) {
+        ed.execute(c).unwrap();
+    }
     let copper = conn(ed.project());
     let bad: Vec<String> = editor_core::drc::run(ed.project(), &copper)
         .into_iter()
@@ -155,8 +155,8 @@ fn shove_a_track_ahead_of_the_head() {
     let r = shove(ed.project(), &copper, L, W, None, &leg);
     assert!(r.reached, "{r:?}");
     assert_eq!(r.points, leg.to_vec());
-    assert_eq!(r.pushed.len(), 1);
-    let p = &r.pushed[0];
+    assert_eq!(r.shoved.lines.len(), 1);
+    let p = &r.shoved.lines[0];
     assert_eq!(p.line.tracks, wall);
     assert_eq!((p.path[0], *p.path.last().unwrap()), (Point::mm(0.0, 0.0), Point::mm(20.0, 0.0)), "ends stay");
     assert!(p.path.iter().any(|q| q.y > mm(1.0)), "bulges over the head's end: {p:?}");
@@ -173,7 +173,7 @@ fn shove_cascades_through_parallel_tracks() {
     let copper = conn(ed.project());
     let r = shove(ed.project(), &copper, L, W, None, &[Point::mm(10.0, -5.0), Point::mm(10.0, 0.5)]);
     assert!(r.reached, "{r:?}");
-    assert_eq!(r.pushed.len(), 3, "{r:?}");
+    assert_eq!(r.shoved.lines.len(), 3, "{r:?}");
     apply_and_check(&mut ed, &r);
 }
 
@@ -192,7 +192,7 @@ fn a_locked_track_stops_the_head() {
     // Ending beside it, too close (on it would connect to it): stops below it.
     let r = shove(ed.project(), &copper, L, W, None, &[Point::mm(10.0, -5.0), Point::mm(10.0, -0.2)]);
     assert!(!r.reached);
-    assert!(r.pushed.is_empty());
+    assert!(r.shoved.is_empty());
     let end = *r.points.last().unwrap();
     assert!(end.y < mm(-0.45) && end.y > mm(-1.0), "stops below it: {r:?}");
     apply_and_check(&mut ed, &r);
@@ -201,7 +201,84 @@ fn a_locked_track_stops_the_head() {
     ed.execute(Command::Insert { objects: vec![Object::Track(ed_track_locked())] }).unwrap();
     let copper = conn(ed.project());
     let r = shove(ed.project(), &copper, L, W, None, &[Point::mm(10.0, -5.0), Point::mm(10.0, 1.0)]);
-    assert!(r.reached && r.pushed.is_empty(), "{r:?}");
+    assert!(r.reached && r.shoved.is_empty(), "{r:?}");
     assert!(r.points.len() > 2);
     apply_and_check(&mut ed, &r);
+}
+
+fn via(ed: &mut Editor, at: Point) -> Id {
+    let c = ed.execute(Command::AddVia { pos: at, diameter: Some(mm(0.6)), drill: Some(mm(0.3)), span: None }).unwrap();
+    c.ids().find_map(|id| if let ObjectId::Via(v) = id { Some(v) } else { None }).unwrap()
+}
+
+#[test]
+fn shove_a_via_with_its_tracks_on_both_layers() {
+    let mut ed = Editor::new(Project::new("T"));
+    let at = Point::mm(10.0, 0.5);
+    let v = via(&mut ed, at);
+    let top = ids(&mut ed, &[at, Point::mm(20.0, 0.5)]);
+    let bottom = ed
+        .execute(Command::AddTrack {
+            layer: LayerId::BOTTOM_COPPER,
+            points: vec![at, Point::mm(0.0, 0.5)],
+            width: Some(W),
+            mids: Vec::new(),
+        })
+        .unwrap();
+    let bottom: Vec<Id> =
+        bottom.ids().filter_map(|id| if let ObjectId::Track(t) = id { Some(t) } else { None }).collect();
+    let copper = conn(ed.project());
+    let r = shove(ed.project(), &copper, L, W, None, &[Point::mm(10.0, -5.0), Point::mm(10.0, 0.0)]);
+    assert!(r.reached, "{r:?}");
+    assert_eq!(r.shoved.vias.len(), 1, "{r:?}");
+    let to = r.shoved.vias[0].to;
+    assert_eq!(r.shoved.vias[0].id, v);
+    assert!(to.y >= mm(0.62), "moved up, clear of the head's end: {to:?}");
+    // Its tracks come along, on both layers.
+    for chain in [&top, &bottom] {
+        let p = r.shoved.lines.iter().find(|p| &p.line.tracks == chain).expect("dragged");
+        assert!(p.path.contains(&to), "{p:?}");
+    }
+    apply_and_check(&mut ed, &r);
+    // The via is still connected to both tracks.
+    let b = &ed.project().board;
+    assert!(b.tracks.iter().filter(|t| t.a == to || t.b == to).count() >= 2);
+}
+
+#[test]
+fn a_locked_via_stops_the_head() {
+    let mut ed = Editor::new(Project::new("T"));
+    let v = via(&mut ed, Point::mm(10.0, 0.5));
+    let mut o = ed.project().board.vias.get(v).unwrap().clone();
+    o.locked = true;
+    ed.execute(Command::Update { objects: vec![Object::Via(o)] }).unwrap();
+    let copper = conn(ed.project());
+    let r = shove(ed.project(), &copper, L, W, None, &[Point::mm(10.0, -5.0), Point::mm(10.0, 0.0)]);
+    assert!(!r.reached, "{r:?}");
+    assert!(r.shoved.is_empty());
+    apply_and_check(&mut ed, &r);
+}
+
+#[test]
+fn a_new_via_pushes_tracks() {
+    let mut ed = Editor::new(Project::new("T"));
+    let wall = ids(&mut ed, &[Point::mm(0.0, 0.0), Point::mm(20.0, 0.0)]);
+    let copper = conn(ed.project());
+    let all = (1u64 << 63) | 1; // both outer layers
+    let mask = copper.items.iter().map(|c| c.layers).fold(0, |a, l| a | l) | all;
+    let at = Point::mm(10.0, -0.3);
+    let s = editor_core::router::shove_via(ed.project(), &copper, L, None, at, mm(0.6), mask).unwrap();
+    assert_eq!(s.lines.len(), 1);
+    assert_eq!(s.lines[0].line.tracks, wall);
+    ed.execute(Command::AddVia { pos: at, diameter: Some(mm(0.6)), drill: Some(mm(0.3)), span: None }).unwrap();
+    for c in s.commands(ed.project()) {
+        ed.execute(c).unwrap();
+    }
+    let copper = conn(ed.project());
+    let bad: Vec<String> = editor_core::drc::run(ed.project(), &copper)
+        .into_iter()
+        .filter(|v| matches!(v.kind, ViolationKind::Clearance | ViolationKind::Short))
+        .map(|v| v.message)
+        .collect();
+    assert!(bad.is_empty(), "{bad:?}");
 }
