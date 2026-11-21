@@ -1186,29 +1186,73 @@ fn exclude_many(ui: &mut egui::Ui, cx: &mut Ctx, ids: &[ObjectId]) {
     }
 }
 
-/// Project statistics (Overview panel).
+/// Project statistics (Overview panel), by area. Counts of problems show in the warning
+/// colour when not zero.
 pub fn project_summary(ui: &mut egui::Ui, doc: &Document) {
+    use crate::fields::{problem_row, section};
     let p = doc.project();
-    heading(ui, &p.name, "");
-    if let Some(path) = &doc.path {
-        ui.label(RichText::new(path.display().to_string()).color(theme::text_dim()).small());
-    }
-    ui.add_space(4.0);
+    let conn = doc.connectivity();
+    section(ui, "Schematic", None);
     grid(ui, |ui| {
         row(ui, "Components", p.schematic.components.len().to_string());
         row(ui, "Wires", p.schematic.wires.len().to_string());
         row(ui, "Labels", p.schematic.labels.len().to_string());
         if !p.schematic.bus_wires.is_empty() {
-            row(ui, "Buses", doc.connectivity().buses.len().to_string());
+            row(ui, "Buses", conn.buses.len().to_string());
         }
-        let conn = doc.connectivity();
         row(ui, "Nets", conn.netlist().filter(|n| n.pins.len() > 1 || n.named).count().to_string());
-        row(ui, "Unconnected pins", conn.unconnected.len().to_string());
+        problem_row(ui, "Unconnected pins", conn.unconnected.len(), None);
+        let severities = conn.problems.iter().filter(|p| !p.excluded).map(|p| p.severity);
+        checks_row(ui, "Electrical rules", Some(severities));
+    });
+    section(ui, "Board", None);
+    grid(ui, |ui| {
         row(ui, "Copper layers", p.board.copper_layers().count().to_string());
+        row(ui, "Footprints", p.board.footprints.len().to_string());
         row(ui, "Tracks", p.board.tracks.len().to_string());
         row(ui, "Vias", p.board.vias.len().to_string());
-        row(ui, "Library parts", p.library.parts.len().to_string());
+        problem_row(ui, "Unrouted", doc.copper().unrouted(), Some("connections"));
+        let drc = doc.drc().map(|r| r.violations.iter().filter(|v| !v.excluded).map(|v| v.severity));
+        checks_row(ui, "Design rules", drc);
     });
+    section(ui, "Library", None);
+    grid(ui, |ui| {
+        row(ui, "Parts", p.library.parts.len().to_string());
+        row(ui, "Symbols", p.library.symbols.len().to_string());
+        row(ui, "Footprints", p.library.footprints.len().to_string());
+    });
+}
+
+/// Errors and warnings of a check ("not run" without findings to count).
+fn checks_row(ui: &mut egui::Ui, name: &str, findings: Option<impl Iterator<Item = Severity>>) {
+    let Some(findings) = findings else {
+        return row(ui, name, "not run".into());
+    };
+    let (mut errors, mut warnings) = (0, 0);
+    for s in findings {
+        match s {
+            Severity::Error => errors += 1,
+            Severity::Warning => warnings += 1,
+            Severity::Ignore => {}
+        }
+    }
+    let plural = |n: usize, what: &str| format!("{n} {what}{}", if n == 1 { "" } else { "s" });
+    let text = match (errors, warnings) {
+        (0, 0) => "OK".to_string(),
+        (e, 0) => plural(e, "error"),
+        (0, w) => plural(w, "warning"),
+        (e, w) => format!("{}, {}", plural(e, "error"), plural(w, "warning")),
+    };
+    label(ui, name);
+    let color = if errors > 0 {
+        theme::error()
+    } else if warnings > 0 {
+        theme::warn()
+    } else {
+        ui.visuals().text_color()
+    };
+    ui.label(RichText::new(text).color(color));
+    ui.end_row();
 }
 
 /// A zone setting that overrides a design rule.

@@ -235,7 +235,7 @@ impl LibraryEditor {
 
     /// The library summary (Overview panel).
     pub fn overview_ui(&mut self, ui: &mut egui::Ui) {
-        fields::subject(ui, "Library", "", None);
+        fields::section(ui, "Library", Some("The library is named after its file (Save as… renames it)."));
         let lib = self.lib.library();
         let (np, ns, nf) = (lib.parts.len(), lib.symbols.len(), lib.footprints.len());
         let issues = lib.validate();
@@ -246,7 +246,6 @@ impl LibraryEditor {
             fields::row(ui, "Symbols", ns.to_string());
             fields::row(ui, "Footprints", nf.to_string());
         });
-        hint(ui, "The library is named after its file (Save as… renames it).");
         issues_ui(ui, &issues);
     }
 }
@@ -1449,8 +1448,7 @@ pub fn issues_ui(ui: &mut egui::Ui, issues: &[String]) {
     if issues.is_empty() {
         return;
     }
-    ui.add_space(8.0);
-    ui.label(RichText::new(format!("{} problem(s)", issues.len())).color(theme::warn()).strong());
+    fields::section(ui, &format!("Problems ({})", issues.len()), None);
     for i in issues {
         ui.label(RichText::new(i).color(theme::warn()));
     }

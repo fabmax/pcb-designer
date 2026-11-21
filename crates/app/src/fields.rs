@@ -260,9 +260,16 @@ pub fn draw_subject(ui: &mut egui::Ui, rect: egui::Rect, title: &str, info: Opti
     });
 }
 
+/// Space between a section and what's above it (none at the top of a panel).
+fn space_above_section(ui: &mut egui::Ui) {
+    if ui.min_rect().height() > 1.0 {
+        ui.add_space(10.0);
+    }
+}
+
 /// A section title, with help behind an ⓘ.
 pub fn section(ui: &mut egui::Ui, title: &str, info: Option<&str>) {
-    ui.add_space(10.0);
+    space_above_section(ui);
     ui.horizontal(|ui| {
         theme::bold_label(ui, title, SECTION_SIZE, ui.visuals().strong_text_color());
         if let Some(t) = info {
@@ -274,7 +281,7 @@ pub fn section(ui: &mut egui::Ui, title: &str, info: Option<&str>) {
 
 /// A section title with a dim note after it ("Sheet  /sub", "Title block  all sheets").
 pub fn section_note(ui: &mut egui::Ui, title: &str, note: &str) {
-    ui.add_space(10.0);
+    space_above_section(ui);
     ui.horizontal(|ui| {
         theme::bold_label(ui, title, SECTION_SIZE, ui.visuals().strong_text_color());
         if !note.is_empty() {
@@ -411,7 +418,7 @@ pub fn collapsing(
     salt: impl std::hash::Hash + std::fmt::Debug,
     add: impl FnOnce(&mut egui::Ui),
 ) {
-    ui.add_space(10.0);
+    space_above_section(ui);
     let id = ui.make_persistent_id(salt);
     egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false)
         .show_header(ui, |ui| theme::bold_label(ui, title, SECTION_SIZE, ui.visuals().strong_text_color()))
@@ -422,6 +429,19 @@ pub fn collapsing(
 pub fn row(ui: &mut egui::Ui, k: &str, v: String) {
     label(ui, k);
     ui.label(v);
+    ui.end_row();
+}
+
+/// A read-only count of problems: in the warning colour when not zero, with an optional
+/// unit ("3 connections").
+pub fn problem_row(ui: &mut egui::Ui, k: &str, n: usize, unit: Option<&str>) {
+    label(ui, k);
+    let text = match unit {
+        Some(u) if n > 0 => format!("{n} {u}"),
+        _ => n.to_string(),
+    };
+    let color = if n > 0 { theme::warn() } else { ui.visuals().text_color() };
+    ui.label(RichText::new(text).color(color));
     ui.end_row();
 }
 
