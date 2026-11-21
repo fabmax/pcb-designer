@@ -1257,7 +1257,8 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   wraps `panel_ui`, `theme` wraps window contents): every `fields::grid` in it shares
   one label column, last frame's widest `fields::label` (at most 45 % of the width,
   longer labels wrap; a change repaints). In a grid (`IN_GRID`, a thread local) value
-  widgets fill the value column: `fill`, `combo_box`, `units::drag`, `Fields::number`;
+  widgets fill the value column: `fill`, `combo_box`, `units::drag`, `Fields::number`,
+  `Fields::text_hint`, `SiFields::field` (their `width` is for outside grids);
   `pair` splits it in halves, `sized` gives a field less room (a button after it). Use
   these, not `egui::ComboBox` / `ui.add(DragValue)`, in grids. Text: `subject` (a section
   title with a dim subtitle: the selection or tool; Tool settings reserve it with `reserve_subject` and draw it

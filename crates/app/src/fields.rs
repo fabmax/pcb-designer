@@ -55,7 +55,8 @@ impl Fields {
         self.text_hint(ui, salt, current, width, "")
     }
 
-    /// A text field with a greyed hint while empty.
+    /// A text field with a greyed hint while empty, `width` points wide (in a [`grid`]:
+    /// filling the value column).
     pub fn text_hint(
         &mut self,
         ui: &mut egui::Ui,
@@ -71,7 +72,7 @@ impl Fields {
             buf.clear();
             buf.push_str(current);
         }
-        let width = width.min(ui.available_width());
+        let width = value_width(ui).unwrap_or(width.min(ui.available_width()));
         let r = ui.add(egui::TextEdit::singleline(buf).id(id).desired_width(width).hint_text(hint));
         (r.lost_focus() && buf != current).then(|| buf.clone())
     }
@@ -560,7 +561,7 @@ impl SiFields {
         self.field_sized(ui, salt, value, unit, empty, 110.0)
     }
 
-    /// [`field`](Self::field) `width` points wide.
+    /// [`field`](Self::field) `width` points wide (in a [`grid`]: filling the value column).
     pub fn field_sized(
         &mut self,
         ui: &mut egui::Ui,
@@ -578,6 +579,7 @@ impl SiFields {
         if !focused && !bad {
             buf.clone_from(&shown);
         }
+        let width = value_width(ui).unwrap_or(width);
         let mut edit = egui::TextEdit::singleline(buf).id(id).desired_width(width).hint_text(empty);
         if bad {
             edit = edit.text_color(theme::error());

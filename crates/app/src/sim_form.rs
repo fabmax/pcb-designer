@@ -418,10 +418,10 @@ impl ComponentForm {
             add(k, "");
         }
         if !names.is_empty() {
-            label(ui, "Parameters (empty: the part's)");
-            egui::Grid::new(("sim_overrides", id)).num_columns(2).spacing([12.0, 4.0]).show(ui, |ui| {
+            hint(ui, "Parameters (empty: the part's value)");
+            fields::grid(ui, ("sim_overrides", id), |ui| {
                 for (k, part_value) in &names {
-                    ui.label(RichText::new(k).monospace());
+                    label(ui, k);
                     let current = params.get(k).cloned().unwrap_or_default();
                     if let Some(v) =
                         self.fields.text_hint(ui, ("sim_override", id, k.as_str()), &current, 160.0, part_value)
@@ -436,18 +436,20 @@ impl ComponentForm {
                 }
             });
         }
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.new_param)
-                    .hint_text("Override another parameter")
-                    .desired_width(180.0),
-            );
+        // The button first (right to left), the field filling what's left.
+        let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+        ui.allocate_ui_with_layout(row, egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let key = self.new_param.trim().to_string();
             let taken = names.iter().any(|(n, _)| n.eq_ignore_ascii_case(&key));
             if ui.add_enabled(!key.is_empty() && !taken, egui::Button::new("Add")).clicked() {
                 params.insert(key, "0".into());
                 self.new_param.clear();
             }
+            ui.add(
+                egui::TextEdit::singleline(&mut self.new_param)
+                    .hint_text("Override another parameter")
+                    .desired_width(ui.available_width()),
+            );
         });
     }
 
@@ -455,7 +457,7 @@ impl ComponentForm {
     /// and a preview.
     fn source_ui(&mut self, ui: &mut egui::Ui, id: Id, s: &mut Source, unit: &str) {
         let kinds: Vec<(&str, String)> = Waveform::KINDS.iter().map(|k| (*k, k.to_string())).collect();
-        egui::Grid::new(("sim_source", id)).num_columns(2).spacing([12.0, 4.0]).show(ui, |ui| {
+        fields::grid(ui, ("sim_source", id), |ui| {
             label(ui, "Waveform");
             if let Some(k) = fields::combo(ui, ("sim_wave", id), &s.waveform.label(), &kinds) {
                 s.waveform = s.waveform.with_kind(k);
@@ -562,7 +564,7 @@ pub fn parse_pwl(text: &str) -> Option<Vec<(f64, f64)>> {
 
 /// A small plot of the waveform over its preview span.
 fn preview(ui: &mut egui::Ui, w: &Waveform, unit: &str) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width().min(260.0), 64.0), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 64.0), egui::Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, theme::panel_dark());
     let span = w.preview_span();
