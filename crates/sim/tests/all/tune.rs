@@ -99,3 +99,44 @@ fn the_tuner_reports_what_differs_from_the_document() {
     t.retain(&rows[1..]);
     assert!(t.changed(p, &rows, None).is_empty());
 }
+
+#[test]
+fn step_values() {
+    let lin = StepValues::Linear { start: 0.0, stop: 1.0, step: 0.25 };
+    assert_eq!(lin.points(), vec![0.0, 0.25, 0.5, 0.75, 1.0]);
+    let down = StepValues::Linear { start: 1.0, stop: 0.0, step: -0.5 };
+    assert_eq!(down.points(), vec![1.0, 0.5, 0.0]);
+    let log = StepValues::Log { start: 1e3, stop: 1e5, points_per_decade: 2 };
+    let p = log.points();
+    assert_eq!(p.len(), 5);
+    assert!((p[1] - 1e3 * 10f64.sqrt()).abs() < 1e-6 && (p[4] - 1e5).abs() < 1e-6, "{p:?}");
+    assert!(StepValues::List { values: vec![] }.problem().is_some());
+    assert!(StepValues::Linear { start: 0.0, stop: 1.0, step: 0.001 }.problem().unwrap().contains("at most"));
+    assert!(StepValues::Linear { start: 0.0, stop: 1.0, step: 0.0 }.problem().is_some());
+    assert!(StepValues::Log { start: 0.0, stop: 1.0, points_per_decade: 3 }.problem().is_some());
+    assert!(lin.problem().is_none());
+}
+
+#[test]
+fn default_steps() {
+    let (b, v1, r1, _) = circuit();
+    let s = tune::default_step(b.project(), &TuneParam::Value { component: r1 }).unwrap();
+    assert_eq!(s.values, StepValues::Log { start: 1e3, stop: 1e5, points_per_decade: 3 });
+    assert_eq!(s.values.points().len(), 7);
+    let a = tune::default_step(b.project(), &TuneParam::Source { component: v1, field: "amplitude".into() }).unwrap();
+    assert_eq!(a.values.points(), vec![0.0, 0.5, 1.0, 1.5, 2.0]);
+}
+
+#[test]
+fn overrides_stack_a_step_on_the_tuned_values() {
+    let (b, v1, r1, _) = circuit();
+    let tuned = Overrides::new(b.project(), &[(TuneParam::Value { component: r1 }, 4700.0)]);
+    let amp = TuneParam::Source { component: v1, field: "amplitude".into() };
+    let o = tuned.try_with(b.project(), &amp, 0.3).unwrap();
+    let a = Analysis::new("T", AnalysisKind::Tran { stop: 1e-3, step: None, start: 0.0, max_step: None });
+    let text = sim::netlist::build_with(b.project(), &b.conn(), &a, &o).text;
+    assert!(text.contains("R1 in out 4700") && text.contains("SIN(0 0.3 1000"), "{text}");
+    // A field the source doesn't have, a part that's gone.
+    assert!(tuned.try_with(b.project(), &TuneParam::Source { component: v1, field: "width".into() }, 1.0).is_none());
+    assert!(tuned.try_with(b.project(), &TuneParam::Value { component: Id::new() }, 1.0).is_none());
+}

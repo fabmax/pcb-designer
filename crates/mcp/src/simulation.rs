@@ -235,7 +235,7 @@ pub fn check(job: &SimJob, session: &mut Session, doc: &Document) -> Option<Resu
             let done = session.result(job.analysis)?;
             let project = doc.project();
             let analysis = find_analysis(project, Some(&job.analysis.to_string()), None).ok()?;
-            Ok(reply(analysis, job, done, doc.connectivity(), session))
+            Ok(reply(project, analysis, job, done, doc.connectivity(), session))
         }
         Some(Outcome::Cancelled) | None => Err("the run was stopped".into()),
         Some(Outcome::Failed(_) | Outcome::NetlistErrors) => Err(format!("the run failed: {}", errors(session))),
@@ -264,8 +264,16 @@ fn round(v: f64) -> Value {
 }
 
 /// The answer to `simulate`.
-fn reply(analysis: &Analysis, job: &SimJob, done: &Finished, conn: &Connectivity, session: &Session) -> Value {
+fn reply(
+    project: &Project,
+    analysis: &Analysis,
+    job: &SimJob,
+    done: &Finished,
+    conn: &Connectivity,
+    session: &Session,
+) -> Value {
     let r = &done.result;
+    let steps = sim::tune::steps(project, done);
     let warnings: Vec<&str> = session
         .attempt()
         .iter()
@@ -280,30 +288,59 @@ fn reply(analysis: &Analysis, job: &SimJob, done: &Finished, conn: &Connectivity
         "seconds": round(done.duration.as_secs_f64()),
         "warnings": warnings,
     });
+    if let Some((param, values)) = &done.step {
+        out["step"] = json!({ "parameter": sim::tune::short_label(project, param), "values": values.iter().map(|v| round(*v)).collect::<Vec<_>>() });
+    }
     let signals = job.signals.clone().unwrap_or_else(|| plot::signals(analysis, r, conn).0);
-    let Some(data) = plot::data(r, &signals, true, conn) else {
-        // An operating point: the table, or the signals asked for.
+    let Some(data) = plot::data_steps(&steps, &signals, true, conn) else {
+        // An operating point: the table, or the signals asked for (a sweep: per step).
         let row = |label: String, v: f64, unit: &str| json!({ "signal": label, "value": round(v), "unit": unit, "text": si::format(v, unit) });
-        let rows: Vec<Value> = match &job.signals {
-            None => sim::report::signals(r)
-                .into_iter()
-                .map(|s| row(s.label, s.vector.re.first().copied().unwrap_or(f64::NAN), s.unit))
-                .collect(),
-            Some(asked) => asked
-                .iter()
-                .map(|a| {
-                    let v = plot::vector(r, a).and_then(|v| v.re.first().copied()).unwrap_or(f64::NAN);
-                    row(plot::signal_label(r, a), v, a.unit())
-                })
-                .collect(),
+        let rows = |r: &sim::SimResult| -> Vec<Value> {
+            match &job.signals {
+                None => sim::report::signals(r)
+                    .into_iter()
+                    .map(|s| row(s.label, s.vector.re.first().copied().unwrap_or(f64::NAN), s.unit))
+                    .collect(),
+                Some(asked) => asked
+                    .iter()
+                    .map(|a| {
+                        let v = plot::vector(r, a).and_then(|v| v.re.first().copied()).unwrap_or(f64::NAN);
+                        row(plot::signal_label(r, a), v, a.unit())
+                    })
+                    .collect(),
+            }
         };
-        out["values"] = json!(rows);
+        match &done.step {
+            None => out["values"] = json!(rows(r)),
+            Some(_) => {
+                out["steps"] = json!(
+                    done.results()
+                        .into_iter()
+                        .zip(&steps)
+                        .map(|((v, r), (label, _))| json!({ "step": label, "value": v.map_or(Value::Null, round), "values": rows(r) }))
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
         return out;
     };
     let (lo, hi) = (data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(0.0));
     out["x"] = json!({ "label": data.x_label, "unit": data.x_unit, "from": round(lo), "to": round(hi), "samples": data.x.len() });
     let range = (job.range.0.unwrap_or(lo), job.range.1.unwrap_or(hi));
-    out["signals"] = json!(data.traces.iter().map(|t| trace_json(&data, t, &job.points, range)).collect::<Vec<_>>());
+    let values = done.step.as_ref().map(|(_, v)| v.as_slice());
+    out["signals"] = json!(
+        data.traces
+            .iter()
+            .map(|t| {
+                let mut v = trace_json(&data, t, &job.points, range);
+                if let Some(value) = values.and_then(|v| v.get(t.step)) {
+                    v["step"] = json!(data.steps[t.step]);
+                    v["step_value"] = round(*value);
+                }
+                v
+            })
+            .collect::<Vec<_>>()
+    );
     if !data.missing.is_empty() {
         out["missing"] =
             json!(data.missing.iter().map(|m| json!({"signal": m.label, "reason": m.reason})).collect::<Vec<_>>());
@@ -344,7 +381,7 @@ fn trace_json(data: &PlotData, t: &plot::Trace, points: &[f64], (from, to): (f64
         v["minus_3db"] = json!([opt(m.minus_3db.0), opt(m.minus_3db.1)]);
     }
     if t.unit == "°"
-        && let Some(mag) = data.traces.iter().find(|m| m.signal == t.signal && m.unit == "dB")
+        && let Some(mag) = data.traces.iter().find(|m| m.signal == t.signal && m.step == t.step && m.unit == "dB")
     {
         v["phase_margin"] = opt(sim::measure::phase_margin(x, &mag.y, &t.y, from, to));
     }
@@ -388,13 +425,14 @@ pub fn netlist_reply(project: &Project, conn: &Connectivity, analysis: &Analysis
 /// and the camera that shows exactly `width` × `height`: the whole run, the given
 /// signals (AC with phase).
 pub fn plot_scene(
+    project: &Project,
     done: &Finished,
     signals: &[Signal],
     conn: &Connectivity,
     width: u32,
     height: u32,
 ) -> Option<(Scene, Camera)> {
-    let data = plot::data(&done.result, signals, true, conn)?;
+    let data = plot::data_steps(&sim::tune::steps(project, done), signals, true, conn)?;
     let pal = view::style::pal();
     let (w, h) = (width as f32, height as f32);
     let mut prims: Vec<Instance> = Vec::new();
@@ -451,20 +489,27 @@ pub fn plot_scene(
     }
     // Traces, decimated per pixel column.
     let columns = cw.ceil() as usize;
+    // A trace's colour: a sweep's steps fade towards the chart.
+    let style = |tr: &plot::Trace| {
+        let (index, fade) = data.color(tr);
+        let (c, bg) = (view::style::trace_color(index).0, pal.plot_bg.0);
+        let mix = |k: usize| (c[k] as f32 + (bg[k] as f32 - c[k] as f32) * fade).round() as u8;
+        (Color([mix(0), mix(1), mix(2), c[3]]), tr.dashed || index >= 8)
+    };
     for tr in &data.traces {
         let s = &ys[if tr.axis == Axis::Left { 0 } else { 1 }];
-        let color = view::style::trace_color(tr.signal);
+        let (color, dashed) = style(tr);
         let pts = plot::decimate(&data.x, &tr.y, lo, hi, columns, |v| (x.frac(v) * columns as f64).floor() as i64);
         let pts: Vec<[f32; 2]> =
             pts.iter().filter(|p| p[1].is_finite()).map(|p| [px(p[0]), py(s, p[1]).clamp(b, t)]).collect();
-        polyline(&mut prims, &pts, 1.5, color, tr.dashed || tr.signal >= 8);
+        polyline(&mut prims, &pts, 1.5, color, dashed);
     }
     // The legend above the chart.
     let mut lx = l;
     let ly = t + legend_h / 2.0 + 4.0;
     for tr in &data.traces {
-        let color = view::style::trace_color(tr.signal);
-        polyline(&mut prims, &[[lx, ly], [lx + 16.0, ly]], 3.0, color, tr.dashed || tr.signal >= 8);
+        let (color, dashed) = style(tr);
+        polyline(&mut prims, &[[lx, ly], [lx + 16.0, ly]], 3.0, color, dashed);
         text(&mut prims, &tr.label, [lx + 22.0, ly], HAlign::Left, VAlign::Center, pal.plot_text);
         lx += 22.0 + font::text_width(&tr.label, 8.0) + 18.0;
     }

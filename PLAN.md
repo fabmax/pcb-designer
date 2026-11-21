@@ -561,6 +561,22 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   change under a dragged slider ends the drag. "Tune R1" in the schematic's context
   menu takes a symbol or its field; a source's level (value, amplitude, high, v2)
   first. Agent runs use their `values` only, not the tuner's.
+- **Parameter sweeps** (`Analysis::step`: a `TuneParam` and `StepValues` list, linear
+  or log, at most `MAX_STEPS`): `Session::start_with` builds a netlist per value
+  (`Overrides::try_with` on top of the tuner's, refused when the parameter is gone) and
+  runs them on `min(steps, cores)` worker threads pulling from a shared index; a failed
+  step cancels the rest and names its step. `Finished` keeps the first result as
+  `result` (everything that ignores steps keeps working), the others in `rest`, the
+  values in `step`, and `base` (the netlist without the step) for the stale check;
+  the tuner's overrides leave the swept parameter out (`SimPanel::overrides(project,
+  analysis)`), and its row is disabled. `plot::data_steps` merges the steps onto the
+  union of their x samples (transients step differently; the first step's x past
+  400k), traces by signal then step, labelled "V(OUT) · R1 = 4.7 kΩ"; `PlotData::color`
+  gives a colour per step for one signal, else per signal with steps faded towards the
+  chart. The readout puts a header row before each signal's steps (hides them all).
+  An operating point gets a column per step; sorting by one shows its values on the
+  schematic (`PlotState::sort`, in the overlay key). Phase margins pair magnitude and
+  phase traces of the same step.
 - **Model editing** (`app/src/sim_form.rs`): the parsing lives in `model::simulation`
   (`logical_lines`, `ModelCard`, `SubcktHeader`, `SimModel::problems`, `SimDevice::ports`)
   so the netlister, the library's issues and the forms agree. `Library::sim_pins` is the

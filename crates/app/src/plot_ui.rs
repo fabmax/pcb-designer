@@ -76,8 +76,11 @@ pub struct PlotState {
     fitted_to: Option<(f64, f64)>,
     drag: Option<Drag>,
     decimated: Option<Decimated>,
-    /// Operating point table: sort column (0: signal, 1: value) and descending.
-    sort: (usize, bool),
+    /// Operating point table: sort column (0: signal, 1…: a step's value) and
+    /// descending. A sweep's schematic values show the step sorted by (else the first).
+    pub sort: (usize, bool),
+    /// The operating point table's columns: (run, each step's label and rows).
+    op_rows: Option<(u64, OpColumns)>,
     /// The readout table shows measurements instead of the cursor values.
     measure: bool,
     /// The measurements as last computed: (range, data) and the table.
@@ -85,6 +88,7 @@ pub struct PlotState {
 }
 
 type MeasureKey = (u64, u64, usize);
+type OpColumns = Arc<Vec<(String, Vec<sim::report::Row>)>>;
 type MeasureTable = (Vec<&'static str>, Vec<Vec<String>>);
 
 #[derive(Clone, Copy)]
@@ -160,7 +164,7 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
 fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis) -> Option<PlotAct> {
     let mut act = None;
     let setup = &doc.project().schematic.simulation;
-    let overrides = panel.overrides(doc.project());
+    let overrides = panel.overrides(doc.project(), &analysis);
     let stale = panel.session.is_stale(doc.project(), doc.connectivity(), &analysis, &overrides, doc.revision);
     let running = panel.session.running().is_some_and(|(id, _)| id == analysis.id);
     let ac = matches!(analysis.kind, AnalysisKind::Ac { .. });
@@ -225,7 +229,17 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     };
     let dim = stale || running;
     if done.result.scale().is_none() {
-        if let Some(t) = op_table(ui, &done.rows, &mut state.sort, dim) {
+        // A column per step of a sweep.
+        if state.op_rows.as_ref().is_none_or(|(run, _)| *run != done.run) {
+            let cols: Vec<(String, Vec<sim::report::Row>)> = if done.step.is_some() {
+                sim::tune::steps(doc.project(), done).into_iter().map(|(l, r)| (l, sim::report::rows(r))).collect()
+            } else {
+                vec![("Value".to_string(), done.rows.clone())]
+            };
+            state.op_rows = Some((done.run, Arc::new(cols)));
+        }
+        let cols = state.op_rows.as_ref().expect("set above").1.clone();
+        if let Some(t) = op_table(ui, &cols, &mut state.sort, dim) {
             panel.hover = Some(t);
         }
         return act;
@@ -235,7 +249,8 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     let (signals, named) = plot::signals(&analysis, &done.result, doc.connectivity());
     let key = (done.run, signals.clone(), phase);
     if state.data.as_ref().is_none_or(|d| d.0 != key) {
-        let Some(data) = plot::data(&done.result, &signals, phase, doc.connectivity()) else { return act };
+        let steps = sim::tune::steps(doc.project(), done);
+        let Some(data) = plot::data_steps(&steps, &signals, phase, doc.connectivity()) else { return act };
         let range = (data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0));
         if state.fitted_to != Some(range) {
             state.x = None;
@@ -475,13 +490,13 @@ fn draw(
             continue;
         }
         let s = &ys[t.axis.index()];
-        let mut color = theme::color(view::style::trace_color(t.signal));
+        let (mut color, dashed) = trace_style(data, t);
         if dim {
             color = color.gamma_multiply(0.35);
         }
         let points: Vec<Pos2> = pts.iter().map(|p| pos2(px(p[0]), py(s, p[1]))).collect();
         let stroke = Stroke::new(1.5, color);
-        if t.dashed || t.signal >= 8 {
+        if dashed {
             clip.extend(egui::Shape::dashed_line(&points, stroke, 6.0, 4.0));
         } else {
             clip.add(egui::Shape::line(points.clone(), stroke));
@@ -542,8 +557,8 @@ fn draw(
             .filter(|t| !state.hidden.contains(&t.label))
             .filter_map(|t| {
                 let y = plot::interpolate(&data.x, &t.y, v)?;
-                let color = theme::color(view::style::trace_color(t.signal));
-                Some((color, t.dashed || t.signal >= 8, t.label.clone(), plot::label(y, t.unit)))
+                let (color, dashed) = trace_style(data, t);
+                Some((color, dashed, t.label.clone(), plot::label(y, t.unit)))
             })
             .collect();
         egui::Tooltip::always_open(
@@ -577,6 +592,14 @@ fn chart_bg() -> Color32 {
     theme::color(view::style::pal().plot_bg)
 }
 
+/// A trace's colour and whether it's dashed (phases, and signals past the palette's 8
+/// colours). A sweep's steps fade towards the chart's background ([`PlotData::color`]).
+fn trace_style(data: &PlotData, t: &plot::Trace) -> (Color32, bool) {
+    let (index, fade) = data.color(t);
+    let color = theme::color(view::style::trace_color(index));
+    (color.lerp_to_gamma(chart_bg(), fade), t.dashed || index >= 8)
+}
+
 /// A trace's colour: a short thick line, dashed like the trace.
 fn swatch(ui: &mut Ui, color: Color32, dashed: bool) {
     let (r, _) = ui.allocate_exact_size(vec2(16.0, 10.0), Sense::hover());
@@ -586,6 +609,56 @@ fn swatch(ui: &mut Ui, color: Color32, dashed: bool) {
     } else {
         ui.painter().line_segment([r.left_center(), r.right_center()], stroke);
     }
+}
+
+/// A readout row's trace: swatch and label. True when clicked (hide or show it).
+fn trace_row(
+    ui: &mut Ui,
+    state: &PlotState,
+    data: &PlotData,
+    t: &plot::Trace,
+    row_menu: &mut impl FnMut(&egui::Response, usize),
+) -> bool {
+    let hidden = state.hidden.contains(&t.label);
+    let (color, dashed) = trace_style(data, t);
+    let r = ui
+        .horizontal(|ui| {
+            if !data.steps.is_empty() {
+                ui.add_space(12.0);
+            }
+            swatch(ui, if hidden { color.gamma_multiply(0.25) } else { color }, dashed);
+            let text = RichText::new(&t.label);
+            let text = if hidden { text.color(theme::text_dim()).strikethrough() } else { text };
+            ui.add(egui::Label::new(text).sense(Sense::click()))
+        })
+        .inner;
+    row_menu(&r, t.signal);
+    r.on_hover_text(if hidden { "Show" } else { "Hide" }).clicked()
+}
+
+/// A sweep's header row of a signal, before its first step: its label; a click hides
+/// or shows all its steps. Returns the steps' label prefix when clicked.
+fn group_header(
+    ui: &mut Ui,
+    state: &PlotState,
+    data: &PlotData,
+    t: &plot::Trace,
+    row_menu: &mut impl FnMut(&egui::Response, usize),
+) -> Option<String> {
+    if data.steps.is_empty() || t.step != 0 {
+        return None;
+    }
+    let name = t.label.rsplit_once(" · ").map_or(t.label.as_str(), |(n, _)| n);
+    let prefix = format!("{name} · ");
+    let all_hidden =
+        data.traces.iter().filter(|u| u.label.starts_with(&prefix)).all(|u| state.hidden.contains(&u.label));
+    let text = RichText::new(name).strong();
+    let text = if all_hidden { text.color(theme::text_dim()).strikethrough() } else { text };
+    let r = ui.add(egui::Label::new(text).sense(Sense::click()));
+    row_menu(&r, t.signal);
+    let clicked = r.on_hover_text(if all_hidden { "Show all steps" } else { "Hide all steps" }).clicked();
+    ui.end_row();
+    clicked.then_some(prefix)
 }
 
 /// The traces with their values at the cursors; a click on a row hides or shows it.
@@ -616,6 +689,7 @@ fn readout(
     let at = |c: Option<f64>| c.and_then(|v| plot::nearest(&data.x, v));
     let (a, b) = (at(state.cursors[0]), at(state.cursors[1]));
     let mut toggle = None;
+    let mut toggle_group: Option<String> = None;
     // Measurements: between the cursors, else over the visible range.
     let (lo, hi, between) = match state.cursors {
         [Some(p), Some(q)] => (p.min(q), p.max(q), true),
@@ -658,18 +732,10 @@ fn readout(
             }
             ui.end_row();
             for (k, t) in data.traces.iter().enumerate() {
-                let hidden = state.hidden.contains(&t.label);
-                let color = theme::color(view::style::trace_color(t.signal));
-                let r = ui
-                    .horizontal(|ui| {
-                        swatch(ui, if hidden { color.gamma_multiply(0.25) } else { color }, t.dashed || t.signal >= 8);
-                        let text = RichText::new(&t.label);
-                        let text = if hidden { text.color(theme::text_dim()).strikethrough() } else { text };
-                        ui.add(egui::Label::new(text).sense(Sense::click()))
-                    })
-                    .inner;
-                row_menu(&r, t.signal);
-                if r.on_hover_text(if hidden { "Show" } else { "Hide" }).clicked() {
+                if let Some(group) = group_header(ui, state, data, t, &mut row_menu) {
+                    toggle_group = Some(group);
+                }
+                if trace_row(ui, state, data, t, &mut row_menu) {
                     toggle = Some(t.label.clone());
                 }
                 for v in &rows[k] {
@@ -698,18 +764,10 @@ fn readout(
             );
             ui.end_row();
             for t in &data.traces {
-                let hidden = state.hidden.contains(&t.label);
-                let color = theme::color(view::style::trace_color(t.signal));
-                let r = ui
-                    .horizontal(|ui| {
-                        swatch(ui, if hidden { color.gamma_multiply(0.25) } else { color }, t.dashed || t.signal >= 8);
-                        let text = RichText::new(&t.label);
-                        let text = if hidden { text.color(theme::text_dim()).strikethrough() } else { text };
-                        ui.add(egui::Label::new(text).sense(Sense::click()))
-                    })
-                    .inner;
-                row_menu(&r, t.signal);
-                if r.on_hover_text(if hidden { "Show" } else { "Hide" }).clicked() {
+                if let Some(group) = group_header(ui, state, data, t, &mut row_menu) {
+                    toggle_group = Some(group);
+                }
+                if trace_row(ui, state, data, t, &mut row_menu) {
                     toggle = Some(t.label.clone());
                 }
                 let value = |i: Option<usize>| i.map_or(String::new(), |i| plot::label(t.y[i], t.unit));
@@ -734,6 +792,17 @@ fn readout(
     {
         state.hidden.insert(l);
     }
+    // A signal's header: hides all its steps, or shows them when all are hidden.
+    if let Some(prefix) = toggle_group {
+        let labels: Vec<&String> = data.traces.iter().map(|t| &t.label).filter(|l| l.starts_with(&prefix)).collect();
+        if labels.iter().all(|l| state.hidden.contains(*l)) {
+            for l in labels {
+                state.hidden.remove(l);
+            }
+        } else {
+            state.hidden.extend(labels.into_iter().cloned());
+        }
+    }
     if auto {
         let shown = data.traces.iter().filter(|t| !t.dashed).count();
         let text = if named > shown {
@@ -751,28 +820,45 @@ fn readout(
     (hover, remove)
 }
 
-/// The operating point's values, sortable by signal or value. Returns the hovered row's
-/// target.
-fn op_table(ui: &mut Ui, rows: &[sim::report::Row], sort: &mut (usize, bool), dim: bool) -> Option<ProbeTarget> {
+/// The operating point's values, sortable by signal or value; a sweep's steps as
+/// columns. Returns the hovered row's target.
+fn op_table(
+    ui: &mut Ui,
+    cols: &[(String, Vec<sim::report::Row>)],
+    sort: &mut (usize, bool),
+    dim: bool,
+) -> Option<ProbeTarget> {
     let mut hover = None;
-    let mut rows: Vec<&sim::report::Row> = rows.iter().collect();
-    let number = |r: &sim::report::Row| r.values.first().and_then(|v| si::parse(v)).unwrap_or(f64::NAN);
+    let (_, first) = cols.first()?;
+    // Each row's values by step, matched by label.
+    let others: Vec<std::collections::HashMap<&str, &str>> = cols
+        .iter()
+        .map(|(_, rows)| rows.iter().map(|r| (r.label.as_str(), r.values.first().map_or("", |v| v.as_str()))).collect())
+        .collect();
+    let value =
+        |r: &sim::report::Row, k: usize| others.get(k).and_then(|m| m.get(r.label.as_str()).copied()).unwrap_or("");
+    let mut rows: Vec<&sim::report::Row> = first.iter().collect();
+    let number = |r: &sim::report::Row, k: usize| si::parse(value(r, k)).unwrap_or(f64::NAN);
     match sort.0 {
-        1 => rows.sort_by(|a, b| number(a).total_cmp(&number(b))),
-        _ => rows.sort_by(|a, b| natural_cmp(&a.label, &b.label)),
+        0 => rows.sort_by(|a, b| natural_cmp(&a.label, &b.label)),
+        k => rows.sort_by(|a, b| number(a, k - 1).total_cmp(&number(b, k - 1))),
     }
     if sort.1 {
         rows.reverse();
     }
-    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+    let stepped = cols.len() > 1;
+    egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
         egui::Frame::new().inner_margin(12).show(ui, |ui| {
             egui::Grid::new("op_table").striped(true).spacing([30.0, 4.0]).min_col_width(80.0).show(ui, |ui| {
-                for (i, name) in ["Signal", "Value"].into_iter().enumerate() {
+                let names: Vec<&str> = std::iter::once("Signal").chain(cols.iter().map(|(l, _)| l.as_str())).collect();
+                for (i, name) in names.into_iter().enumerate() {
                     let arrow = if sort.0 == i { if sort.1 { " ▼" } else { " ▲" } } else { "" };
-                    if ui
-                        .add(egui::Button::new(RichText::new(format!("{name}{arrow}")).strong()).frame(false))
-                        .clicked()
-                    {
+                    let mut b =
+                        ui.add(egui::Button::new(RichText::new(format!("{name}{arrow}")).strong()).frame(false));
+                    if stepped && i > 0 {
+                        b = b.on_hover_text("Sort by this step; the schematic shows its values");
+                    }
+                    if b.clicked() {
                         *sort = if sort.0 == i { (i, !sort.1) } else { (i, false) };
                     }
                 }
@@ -783,7 +869,9 @@ fn op_table(ui: &mut Ui, rows: &[sim::report::Row], sort: &mut (usize, bool), di
                         if dim { t.color(theme::text_dim()) } else { t }
                     };
                     let l = ui.add(egui::Label::new(text(&r.label)).sense(Sense::hover()));
-                    ui.label(text(r.values.first().map_or("", |v| v.as_str())).monospace());
+                    for k in 0..cols.len() {
+                        ui.label(text(value(r, k)).monospace());
+                    }
                     if l.hovered() {
                         hover = match (&r.net, r.current) {
                             (Some(net), _) => Some(target(&Signal::Voltage(net.clone()))),
@@ -821,8 +909,16 @@ mod tests {
     fn data() -> PlotData {
         let x: Vec<f64> = (0..=100).map(|i| i as f64 * 1e-5).collect();
         let y = x.iter().map(|t| (t * 6283.0).sin()).collect();
-        let trace = Trace { label: "V(OUT)".into(), unit: "V", axis: Axis::Left, dashed: false, signal: 0, y };
-        PlotData { x_label: "Time".into(), x_unit: "s", log_x: false, x, traces: vec![trace], missing: Vec::new() }
+        let trace = Trace { label: "V(OUT)".into(), unit: "V", axis: Axis::Left, dashed: false, signal: 0, step: 0, y };
+        PlotData {
+            x_label: "Time".into(),
+            x_unit: "s",
+            log_x: false,
+            x,
+            traces: vec![trace],
+            missing: Vec::new(),
+            steps: Vec::new(),
+        }
     }
 
     /// One frame of the plot (pointer handling, then drawing) with `events`.

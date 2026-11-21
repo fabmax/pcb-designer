@@ -138,6 +138,8 @@ pub struct Trace {
     pub dashed: bool,
     /// Index of the signal (its colour).
     pub signal: usize,
+    /// Index of a parameter sweep's step (0 without one).
+    pub step: usize,
     pub y: Vec<f64>,
 }
 
@@ -153,6 +155,8 @@ pub struct PlotData {
     pub traces: Vec<Trace>,
     /// Signals that have no data (net gone, pin not probed in this run).
     pub missing: Vec<Missing>,
+    /// A parameter sweep's steps ("R1 = 4.7 kΩ"); empty without one.
+    pub steps: Vec<String>,
 }
 
 /// A signal without data, and why.
@@ -169,6 +173,67 @@ impl PlotData {
     pub fn axis_unit(&self, axis: Axis) -> &'static str {
         self.traces.iter().find(|t| t.axis == axis).map_or("", |t| t.unit)
     }
+
+    /// The palette index of a trace and how far to fade it (0: not at all): with one
+    /// signal each step gets its own colour, with several each signal keeps its colour
+    /// and its steps fade from full to lighter.
+    pub fn color(&self, t: &Trace) -> (usize, f32) {
+        let n = self.steps.len();
+        if n <= 1 {
+            return (t.signal, 0.0);
+        }
+        let signals = self.traces.iter().map(|t| t.signal).max().unwrap_or(0) + 1;
+        if signals == 1 { (t.step, 0.0) } else { (t.signal, 0.6 * t.step as f32 / (n - 1) as f32) }
+    }
+}
+
+/// Most x samples of a sweep's merged plot (more: the first step's x).
+const MAX_MERGED: usize = 400_000;
+
+/// The plot of a parameter sweep: [`data`] of each step's result, put onto one x axis
+/// (the union of the steps' samples; transients step differently), a trace per signal
+/// and step labelled "V(OUT) · R1 = 4.7 kΩ". `steps`: each step's label and result.
+pub fn data_steps(
+    steps: &[(String, &SimResult)],
+    signals: &[Signal],
+    phase: bool,
+    conn: &Connectivity,
+) -> Option<PlotData> {
+    let [(_, first), ..] = steps else { return None };
+    if steps.len() == 1 {
+        return data(first, signals, phase, conn);
+    }
+    let all: Vec<PlotData> = steps.iter().map(|(_, r)| data(r, signals, phase, conn)).collect::<Option<_>>()?;
+    let mut x: Vec<f64> = all.iter().flat_map(|d| d.x.iter().copied()).collect();
+    x.sort_by(f64::total_cmp);
+    x.dedup();
+    if x.len() > MAX_MERGED {
+        x = all[0].x.clone();
+    }
+    let mut traces = Vec::new();
+    // By signal (and its phase), then step.
+    let firsts = &all[0].traces;
+    for (i, proto) in firsts.iter().enumerate() {
+        for (k, d) in all.iter().enumerate() {
+            let Some(t) = d.traces.get(i) else { continue };
+            let y = if d.x == x {
+                t.y.clone()
+            } else {
+                x.iter().map(|v| interpolate(&d.x, &t.y, *v).unwrap_or(f64::NAN)).collect()
+            };
+            traces.push(Trace { label: format!("{} · {}", proto.label, steps[k].0), step: k, y, ..proto.clone() });
+        }
+    }
+    let first = &all[0];
+    Some(PlotData {
+        x_label: first.x_label.clone(),
+        x_unit: first.x_unit,
+        log_x: first.log_x,
+        x,
+        traces,
+        missing: first.missing.clone(),
+        steps: steps.iter().map(|(l, _)| l.clone()).collect(),
+    })
 }
 
 /// The plot of `signals` in `result` (`None` for an operating point). AC: magnitude in
@@ -200,6 +265,7 @@ pub fn data(result: &SimResult, signals: &[Signal], phase: bool, conn: &Connecti
                 axis: Axis::Left,
                 dashed: false,
                 signal: i,
+                step: 0,
                 y: v.db(),
             });
             if phase {
@@ -210,16 +276,17 @@ pub fn data(result: &SimResult, signals: &[Signal], phase: bool, conn: &Connecti
                     axis: Axis::Right,
                     dashed: true,
                     signal: i,
+                    step: 0,
                     y,
                 });
             }
         } else {
             let unit = s.unit();
             let axis = Axis::ALL[units.iter().position(|u| *u == unit).unwrap_or(0)];
-            traces.push(Trace { label, unit, axis, dashed: false, signal: i, y: v.re.clone() });
+            traces.push(Trace { label, unit, axis, dashed: false, signal: i, step: 0, y: v.re.clone() });
         }
     }
-    Some(PlotData { x_label, x_unit, log_x: ac, x: scale.re.clone(), traces, missing })
+    Some(PlotData { x_label, x_unit, log_x: ac, x: scale.re.clone(), traces, missing, steps: Vec::new() })
 }
 
 /// Why a signal has no data in `result`.

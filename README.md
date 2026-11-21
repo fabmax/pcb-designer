@@ -256,6 +256,14 @@ Simulation**. What's planned next is in [simulation-plan.md](simulation-plan.md)
   runs are quick); plot and schematic values show the tuned run. **Apply** writes a
   value into the schematic (one undo step), the header's **Apply** all of them,
   **Reset** goes back. The rows are saved with the project, the tuned values aren't.
+- **Parameter sweeps:** tick **Parameter sweep** under an analysis' settings, pick a
+  part value or source setting and its values (a list like `1k, 2.2k, 4.7k`, linear
+  from/to/step, or log per decade; at most 64). Each value runs as its own ngspice
+  process, several at once. The plot shows a trace per signal and step ("V(OUT) · R1 =
+  4.7 kΩ"; one signal: a colour per step, several: each signal's steps in fading
+  shades), the table groups them under the signal (click it to hide all its steps). An
+  operating point shows a column per step; click a column to sort by it and see its
+  values on the schematic.
 - **Probe tool** (**O**, in the tool bar's Simulation group, shown with the panel or
   tab open): click a wire, label or junction to plot its net's voltage, drag from one
   net to another for the voltage between them (`V(OUT,IN)`), click the body of a pin

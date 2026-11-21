@@ -33,6 +33,8 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
     let mut act = None;
     let mut new_rows = rows.clone();
     let live = panel.tune_live(project);
+    // The parameter the tab's analysis sweeps: its row is off.
+    let swept = panel.current(&project.schematic.simulation).and_then(|a| a.step.as_ref()).map(|s| s.param.clone());
     egui::Frame::new().fill(theme::panel()).inner_margin(egui::Margin { left: 12, right: 12, top: 4, bottom: 8 }).show(
         ui,
         |ui| {
@@ -57,7 +59,11 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
                     let text: Vec<String> = tuned
                         .iter()
                         .map(|(p, v)| {
-                            format!("{} = {}", short_label(project, p), si::format(*v, sim::tune::unit(project, p)))
+                            format!(
+                                "{} = {}",
+                                sim::tune::short_label(project, p),
+                                si::format(*v, sim::tune::unit(project, p))
+                            )
                         })
                         .collect();
                     ui.label(RichText::new(format!("Tuned: {}", text.join(" · "))).color(theme::warn()));
@@ -76,7 +82,9 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
                     ui.push_id(("tune_row", &row.param), |ui| {
                         ui.horizontal(|ui| {
                             ui.set_height(ROW - 4.0);
-                            match row_ui(ui, panel, project, row, live) {
+                            let off = swept.as_ref() == Some(&row.param);
+                            let r = ui.add_enabled_ui(!off, |ui| row_ui(ui, panel, project, row, live, off)).inner;
+                            match r {
                                 RowAct::None => {}
                                 RowAct::Run => act = Some(PlotAct::TuneRun),
                                 RowAct::Edit(r) => new_rows[i] = r,
@@ -108,13 +116,14 @@ enum RowAct {
 }
 
 /// One row: name, slider, value, min and max, snapping, Apply, ✕.
-fn row_ui(ui: &mut Ui, panel: &mut SimPanel, project: &Project, row: &TuneRow, live: bool) -> RowAct {
+fn row_ui(ui: &mut Ui, panel: &mut SimPanel, project: &Project, row: &TuneRow, live: bool, swept: bool) -> RowAct {
     let mut out = RowAct::None;
     let param = &row.param;
     let unit = sim::tune::unit(project, param);
     let value = panel.tuner.value(project, param);
     let changed = value.is_some() && value != sim::tune::current(project, param);
-    let name = RichText::new(sim::tune::label(project, param));
+    let label = sim::tune::label(project, param);
+    let name = RichText::new(if swept { format!("{label} · swept") } else { label });
     let name = if changed { name.color(theme::warn()) } else { name };
     ui.allocate_ui_with_layout(egui::vec2(110.0, ROW - 6.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
         ui.set_min_width(110.0);
@@ -176,15 +185,6 @@ fn row_ui(ui: &mut Ui, panel: &mut SimPanel, project: &Project, row: &TuneRow, l
         out = RowAct::Remove;
     }
     out
-}
-
-/// "R1", "V1.amplitude": the bar's names.
-fn short_label(project: &Project, param: &TuneParam) -> String {
-    let refdes = project.schematic.components.get(param.component()).map_or("?", |c| c.refdes.as_str());
-    match param {
-        TuneParam::Value { .. } => refdes.to_string(),
-        TuneParam::Source { field, .. } => format!("{refdes}.{field}"),
-    }
 }
 
 /// "Tune…": the parameters not in the tuner yet, with a filter.

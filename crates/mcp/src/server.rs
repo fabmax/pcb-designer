@@ -710,7 +710,10 @@ impl PcbTools {
         envelope), its values at `points`, and measurements over from..to: min, max, and for \
         transient and DC average, rms, peak_to_peak, frequency, rise and fall (10-90 %); AC \
         signals in dB with peak and minus_3db (below and above the peak), their phase in \
-        degrees as separate signals with phase_margin (loop gain). Set analyses up with the set_simulation command \
+        degrees as separate signals with phase_margin (loop gain). An analysis with a \
+        parameter sweep (its step: a part's value or a source field and its values) answers \
+        each signal per step (step, step_value), an operating point its values per step. \
+        Set analyses up with the set_simulation command \
         (execute); give parts models in the library (edit_library) and sources their waveform \
         through their component's sim field.")]
     async fn simulate(&self, Parameters(p): Parameters<SimulateParams>) -> Result<CallToolResult, ErrorData> {

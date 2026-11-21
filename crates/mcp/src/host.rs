@@ -642,9 +642,10 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             let conn = doc.connectivity();
             let signals = sim::plot::signals(a, &done.result, conn).0;
             let (w, h) = (width.clamp(64, 4096), height.clamp(64, 4096));
-            let (scene, camera) = crate::simulation::plot_scene(done, &signals, conn, w, h).ok_or_else(|| {
-                format!("{} is an operating point: it has no plot; simulate answers its values", a.name)
-            })?;
+            let (scene, camera) =
+                crate::simulation::plot_scene(doc.project(), done, &signals, conn, w, h).ok_or_else(|| {
+                    format!("{} is an operating point: it has no plot; simulate answers its values", a.name)
+                })?;
             return host.render_scene(&scene, Some(camera), w, h).map(Reply::Png);
         }
         Request::Execute { commands } => execute_json(host.document_mut(), commands)?,

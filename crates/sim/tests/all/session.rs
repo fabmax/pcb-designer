@@ -151,3 +151,67 @@ fn stop_and_restart() {
     assert_eq!(wait(&mut s), Outcome::Done);
     assert!(s.result(op.id).is_some());
 }
+
+#[test]
+fn a_parameter_sweep_runs_a_netlist_per_step() {
+    let mut b = divider();
+    let r2 = b.project().schematic.components.iter().find(|c| c.refdes == "R2").unwrap().id;
+    let mut op = Analysis::new("OP", AnalysisKind::Op);
+    let param = TuneParam::Value { component: r2 };
+    op.step = Some(Step { param: param.clone(), values: StepValues::List { values: vec![1e3, 2.2e3, 4.7e3] } });
+    let fake = Fake { gate: open(), ..Default::default() };
+    let netlists = fake.netlists.clone();
+    let mut s = Session::default();
+    let none = sim::tune::Overrides::default();
+    assert!(s.start_with(b.project(), &b.conn(), &op, &[], &none, Arc::new(fake)));
+    assert_eq!(wait(&mut s), Outcome::Done);
+    let mut ran: Vec<String> = netlists.lock().unwrap().clone();
+    ran.sort();
+    assert_eq!(ran.len(), 3);
+    for v in ["1000", "2200", "4700"] {
+        assert!(ran.iter().any(|n| n.contains(&format!("vsense_r2_2_in {v}"))), "{v}: {ran:?}");
+    }
+    let done = s.result(op.id).unwrap();
+    assert_eq!(done.step, Some((param.clone(), vec![1e3, 2.2e3, 4.7e3])));
+    // In step order, whichever worker finished first.
+    let results = done.results();
+    assert_eq!(results.len(), 3);
+    for ((v, r), want) in results.iter().zip(["1000", "2200", "4700"]) {
+        assert!(v.is_some());
+        assert!(r.netlist.text.contains(&format!("vsense_r2_2_in {want}")), "{}", r.netlist.text);
+    }
+    let labels: Vec<String> = sim::tune::steps(b.project(), done).into_iter().map(|(l, _)| l).collect();
+    assert_eq!(labels, ["R2 = 1 kΩ", "R2 = 2.2 kΩ", "R2 = 4.7 kΩ"]);
+    // Stale by the netlist without the step: the swept value itself doesn't count.
+    assert!(!s.is_stale(b.project(), &b.conn(), &op, &none, 1));
+    b.update_component(r2, |c| c.value = "3k3".into());
+    assert!(s.is_stale(b.project(), &b.conn(), &op, &none, 2));
+
+    // A failing step fails the sweep, named by its step.
+    let fake = Fake { gate: open(), fail: Some("singular matrix".into()), ..Default::default() };
+    assert!(s.start_with(b.project(), &b.conn(), &op, &[], &none, Arc::new(fake)));
+    assert!(matches!(wait(&mut s), Outcome::Failed(m) if m.starts_with("step ")));
+}
+
+#[test]
+fn a_sweep_of_a_deleted_part_does_not_start() {
+    let b = divider();
+    let mut op = Analysis::new("OP", AnalysisKind::Op);
+    op.step = Some(Step {
+        param: TuneParam::Value { component: Id::new() },
+        values: StepValues::List { values: vec![1.0, 2.0] },
+    });
+    let mut s = Session::default();
+    let none = sim::tune::Overrides::default();
+    assert!(!s.start_with(
+        b.project(),
+        &b.conn(),
+        &op,
+        &[],
+        &none,
+        Arc::new(Fake { gate: open(), ..Default::default() })
+    ));
+    let a = s.attempt().unwrap();
+    assert_eq!(a.outcome, Outcome::NetlistErrors);
+    assert!(a.problems.iter().any(|p| p.message.contains("no longer exists")));
+}

@@ -4,14 +4,18 @@
 //! The netlist is built on the caller's thread (it needs the project), only the backend
 //! runs on the worker. A result is stale when the netlist its analysis would get now
 //! differs from the one it ran (checked once per document revision).
+//!
+//! A parameter sweep (`Analysis::step`) runs one netlist per value, on up to as many
+//! workers as there are cores; it's stale by its base netlist (without the step).
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use editor_core::connectivity::Connectivity;
-use model::{Analysis, Id, Probe, Project};
+use model::{Analysis, Id, Probe, Project, TuneParam};
 
 use crate::netlist::{self, Level, Netlist, SimProblem};
 use crate::tune::Overrides;
@@ -23,7 +27,14 @@ pub type SharedBackend = Arc<dyn Backend + Send + Sync>;
 /// A finished run of an analysis.
 #[derive(Clone, Debug)]
 pub struct Finished {
+    /// The result (of a parameter sweep: the first step's).
     pub result: SimResult,
+    /// A parameter sweep's parameter and its values (one per step, in order).
+    pub step: Option<(TuneParam, Vec<f64>)>,
+    /// The results of the steps after the first.
+    pub rest: Vec<SimResult>,
+    /// The netlist the stale check compares (a sweep's without the step).
+    pub base: String,
     pub duration: Duration,
     /// The summary table ([`report::rows`]).
     pub rows: Vec<report::Row>,
@@ -59,14 +70,33 @@ pub enum Outcome {
     Cancelled,
 }
 
+/// A step's output, once its worker ran it.
+type Outputs = Arc<Mutex<Vec<Option<Result<Output, SimError>>>>>;
+
 struct Run {
     analysis: Id,
     started: Instant,
     cancel: Cancel,
-    netlist: Netlist,
+    /// The netlist of each step (one without a sweep).
+    netlists: Vec<Netlist>,
+    step: Option<(TuneParam, Vec<f64>)>,
+    base: String,
     extra: Vec<Probe>,
     overrides: Overrides,
-    worker: JoinHandle<Result<Output, SimError>>,
+    outputs: Outputs,
+    workers: Vec<JoinHandle<()>>,
+}
+
+impl Finished {
+    /// Each step's value (`None` without a sweep) and result.
+    pub fn results(&self) -> Vec<(Option<f64>, &SimResult)> {
+        match &self.step {
+            None => vec![(None, &self.result)],
+            Some((_, values)) => {
+                values.iter().map(|v| Some(*v)).zip(std::iter::once(&self.result).chain(&self.rest)).collect()
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -105,31 +135,89 @@ impl Session {
     ) -> bool {
         self.stop();
         let analysis = &with_probes(analysis, extra);
-        let netlist = netlist::build_with(project, conn, analysis, overrides);
+        let base = netlist::build_with(project, conn, analysis, overrides);
         let mut attempt = Attempt {
             analysis: analysis.id,
             name: analysis.name.clone(),
-            netlist: netlist.text.clone(),
-            problems: netlist.problems.clone(),
+            netlist: base.text.clone(),
+            problems: base.problems.clone(),
             log: String::new(),
             outcome: Outcome::Running,
         };
-        if netlist.has_errors() {
+        // A sweep: a netlist per value.
+        let mut step = None;
+        let netlists = match &analysis.step {
+            None => vec![base.clone()],
+            Some(s) => {
+                let values = s.values.points();
+                let mut out = Vec::new();
+                for v in &values {
+                    let Some(o) = overrides.try_with(project, &s.param, *v) else {
+                        attempt.problems.push(SimProblem {
+                            level: Level::Error,
+                            message: "the swept parameter no longer exists".into(),
+                            objects: Vec::new(),
+                        });
+                        break;
+                    };
+                    out.push(netlist::build_with(project, conn, analysis, &o));
+                }
+                if let Some(first) = out.first() {
+                    attempt.netlist = first.text.clone();
+                }
+                step = Some((s.param.clone(), values));
+                out
+            }
+        };
+        if base.has_errors() || attempt.problems.iter().any(|p| p.level == Level::Error) || netlists.is_empty() {
             attempt.outcome = Outcome::NetlistErrors;
             self.attempt = Some(attempt);
             return false;
         }
         self.attempt = Some(attempt);
         let cancel = Cancel::default();
-        let text = netlist.text.clone();
-        let c = cancel.clone();
-        let worker = std::thread::Builder::new()
-            .name("simulation".into())
-            .spawn(move || backend.run(&text, &c))
-            .expect("spawn simulation thread");
+        let texts: Arc<Vec<String>> = Arc::new(netlists.iter().map(|n| n.text.clone()).collect());
+        let outputs: Outputs = Arc::new(Mutex::new((0..texts.len()).map(|_| None).collect()));
+        let next = Arc::new(AtomicUsize::new(0));
+        let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
+        let workers = (0..texts.len().min(cores))
+            .map(|_| {
+                let (texts, outputs, next, backend, c) =
+                    (texts.clone(), outputs.clone(), next.clone(), backend.clone(), cancel.clone());
+                std::thread::Builder::new()
+                    .name("simulation".into())
+                    .spawn(move || {
+                        loop {
+                            let k = next.fetch_add(1, Ordering::SeqCst);
+                            if k >= texts.len() || c.is_cancelled() {
+                                break;
+                            }
+                            let out = backend.run(&texts[k], &c);
+                            // A failed step ends the sweep.
+                            if out.is_err() {
+                                c.cancel();
+                            }
+                            outputs.lock().expect("outputs")[k] = Some(out);
+                        }
+                    })
+                    .expect("spawn simulation thread")
+            })
+            .collect();
         let (extra, overrides) = (extra.to_vec(), overrides.clone());
         let started = Instant::now();
-        self.run = Some(Run { analysis: analysis.id, started, cancel, netlist, extra, overrides, worker });
+        let base = base.text;
+        self.run = Some(Run {
+            analysis: analysis.id,
+            started,
+            cancel,
+            netlists,
+            step,
+            base,
+            extra,
+            overrides,
+            outputs,
+            workers,
+        });
         true
     }
 
@@ -150,56 +238,92 @@ impl Session {
 
     /// Collects a finished run. Returns its outcome when one finished since the last call.
     pub fn poll(&mut self) -> Option<Outcome> {
-        if !self.run.as_ref()?.worker.is_finished() {
+        if !self.run.as_ref()?.workers.iter().all(|w| w.is_finished()) {
             return None;
         }
         let run = self.run.take()?;
         let duration = run.started.elapsed();
-        let output = run.worker.join().unwrap_or_else(|_| {
-            Err(SimError::Failed { message: "the simulation thread panicked".into(), log: String::new() })
-        });
-        let attempt = self.attempt.as_mut()?;
-        let line = |level, message: &str| SimProblem { level, message: message.to_string(), objects: Vec::new() };
-        attempt.outcome = match output {
-            Ok(out) => {
-                attempt.log = out.log.clone();
-                attempt.problems.extend(out.warnings.iter().map(|w| line(Level::Warning, w)));
-                match out.plots.into_iter().next() {
-                    Some(plot) => {
-                        let result = SimResult { plot, netlist: run.netlist, log: out.log, warnings: out.warnings };
-                        let rows = report::rows(&result);
-                        self.runs += 1;
-                        let finished = Finished {
-                            result,
-                            duration,
-                            rows,
-                            run: self.runs,
-                            extra: run.extra,
-                            overrides: run.overrides,
-                        };
-                        self.results.insert(run.analysis, finished);
-                        self.stale.remove(&run.analysis);
-                        Outcome::Done
-                    }
-                    None => {
-                        attempt.problems.push(line(Level::Error, "ngspice wrote no results"));
-                        Outcome::Failed("ngspice wrote no results".into())
+        let panicked = run.workers.into_iter().any(|w| w.join().is_err());
+        let outputs = std::mem::take(&mut *run.outputs.lock().expect("outputs"));
+        let stepped = run.step.is_some();
+        let labels: Vec<String> = match &run.step {
+            Some((_, values)) => values.iter().map(|v| format!("step {}: ", crate::plot::label(*v, ""))).collect(),
+            None => vec![String::new()],
+        };
+        // The first failure (by step), else every step's output.
+        let mut done = Vec::new();
+        let mut failure = None;
+        for (k, out) in outputs.into_iter().enumerate() {
+            match out {
+                Some(Ok(o)) => done.push(o),
+                Some(Err(SimError::Cancelled)) | None => {
+                    failure.get_or_insert((k, SimError::Cancelled));
+                }
+                Some(Err(e)) => {
+                    // A real error wins over the cancels it caused.
+                    if failure.as_ref().is_none_or(|(_, f)| matches!(f, SimError::Cancelled)) {
+                        failure = Some((k, e));
                     }
                 }
             }
-            Err(SimError::Cancelled) => Outcome::Cancelled,
-            Err(SimError::Failed { message, log }) => {
-                attempt.log = log;
-                attempt.problems.extend(message.lines().map(|l| line(Level::Error, l)));
-                Outcome::Failed(message)
+        }
+        if panicked {
+            failure =
+                Some((0, SimError::Failed { message: "the simulation thread panicked".into(), log: String::new() }));
+        }
+        let attempt = self.attempt.as_mut()?;
+        let line = |level, message: &str| SimProblem { level, message: message.to_string(), objects: Vec::new() };
+        if let Some((k, e)) = failure {
+            let prefix = if stepped { labels[k].as_str() } else { "" };
+            attempt.outcome = match e {
+                SimError::Cancelled => Outcome::Cancelled,
+                SimError::Failed { message, log } => {
+                    attempt.log = log;
+                    attempt.problems.extend(message.lines().map(|l| line(Level::Error, &format!("{prefix}{l}"))));
+                    Outcome::Failed(format!("{prefix}{message}"))
+                }
+                e => {
+                    let message = format!("{prefix}{e}");
+                    attempt.problems.push(line(Level::Error, &message));
+                    Outcome::Failed(message)
+                }
+            };
+            return Some(attempt.outcome.clone());
+        }
+        let mut results = Vec::new();
+        for (k, (out, netlist)) in done.into_iter().zip(run.netlists).enumerate() {
+            if k == 0 {
+                attempt.log = out.log.clone();
             }
-            Err(e) => {
-                let message = e.to_string();
+            let prefix = if stepped { labels[k].as_str() } else { "" };
+            attempt.problems.extend(out.warnings.iter().map(|w| line(Level::Warning, &format!("{prefix}{w}"))));
+            let Some(plot) = out.plots.into_iter().next() else {
+                let message = format!("{prefix}ngspice wrote no results");
                 attempt.problems.push(line(Level::Error, &message));
-                Outcome::Failed(message)
-            }
+                attempt.outcome = Outcome::Failed(message);
+                return Some(attempt.outcome.clone());
+            };
+            results.push(SimResult { plot, netlist, log: out.log, warnings: out.warnings });
+        }
+        let mut results = results.into_iter();
+        let result = results.next()?;
+        let rows = report::rows(&result);
+        self.runs += 1;
+        let finished = Finished {
+            result,
+            step: run.step,
+            rest: results.collect(),
+            base: run.base,
+            duration,
+            rows,
+            run: self.runs,
+            extra: run.extra,
+            overrides: run.overrides,
         };
-        Some(attempt.outcome.clone())
+        self.results.insert(run.analysis, finished);
+        self.stale.remove(&run.analysis);
+        attempt.outcome = Outcome::Done;
+        Some(Outcome::Done)
     }
 
     /// The last finished run of an analysis.
@@ -231,7 +355,7 @@ impl Session {
             return *stale;
         }
         let a = with_probes(analysis, &done.extra);
-        let stale = netlist::build_with(project, conn, &a, overrides).text != done.result.netlist.text;
+        let stale = netlist::build_with(project, conn, &a, overrides).text != done.base;
         self.stale.insert(analysis.id, (revision, overrides.clone(), stale));
         stale
     }

@@ -16,7 +16,13 @@ impl Overrides {
     /// `values` applied to copies of their components (parameters of missing
     /// components, or that don't apply, are left out).
     pub fn new(project: &Project, values: &[(TuneParam, f64)]) -> Overrides {
-        let mut components: HashMap<Id, Component> = HashMap::new();
+        Overrides::default().with(project, values)
+    }
+
+    /// These overrides with `values` put in as well (a sweep's step on top of the
+    /// tuner's).
+    pub fn with(&self, project: &Project, values: &[(TuneParam, f64)]) -> Overrides {
+        let mut components = self.components.clone();
         for (param, v) in values {
             let id = param.component();
             let Some(c) = components.get(&id).cloned().or_else(|| project.schematic.components.get(id).cloned()) else {
@@ -32,6 +38,22 @@ impl Overrides {
 
     pub fn is_empty(&self) -> bool {
         self.components.is_empty()
+    }
+
+    /// [`with`](Self::with) `param` at `v`; `None` when it doesn't apply (the component
+    /// is gone, the source has no such field).
+    pub fn try_with(&self, project: &Project, param: &TuneParam, v: f64) -> Option<Overrides> {
+        let mut c = self
+            .components
+            .get(&param.component())
+            .or_else(|| project.schematic.components.get(param.component()))?
+            .clone();
+        if !apply(&mut c, param, v) {
+            return None;
+        }
+        let mut out = self.clone();
+        out.components.insert(c.id, c);
+        Some(out)
     }
 
     /// The component a run uses for `c`.
@@ -74,6 +96,32 @@ pub fn label(project: &Project, param: &TuneParam) -> String {
         TuneParam::Source { field, .. } if field == "ac" => format!("{refdes} AC"),
         TuneParam::Source { field, .. } => format!("{refdes} {field}"),
     }
+}
+
+/// "R1", "V1.amplitude": a parameter's short name (the tuned summary, sweep steps, MCP).
+pub fn short_label(project: &Project, param: &TuneParam) -> String {
+    let refdes = project.schematic.components.get(param.component()).map_or("?", |c| c.refdes.as_str());
+    match param {
+        TuneParam::Value { .. } => refdes.to_string(),
+        TuneParam::Source { field, .. } => format!("{refdes}.{field}"),
+    }
+}
+
+/// A sweep step's label: "R1 = 4.7 kΩ".
+pub fn step_label(project: &Project, param: &TuneParam, v: f64) -> String {
+    format!("{} = {}", short_label(project, param), crate::plot::label(v, unit(project, param)))
+}
+
+/// The steps of a finished run, labelled, with their results (one unlabelled without
+/// a sweep).
+pub fn steps<'a>(project: &Project, done: &'a crate::Finished) -> Vec<(String, &'a crate::SimResult)> {
+    done.results()
+        .into_iter()
+        .map(|(v, r)| match (v, &done.step) {
+            (Some(v), Some((param, _))) => (step_label(project, param, v), r),
+            _ => (String::new(), r),
+        })
+        .collect()
 }
 
 /// The model of a component's part.
@@ -157,6 +205,18 @@ pub fn default_row(project: &Project, param: &TuneParam) -> Option<TuneRow> {
         TuneParam::Source { .. } => (-1.0, 1.0, Snap::None),
     };
     Some(TuneRow { param: param.clone(), min, max, snap })
+}
+
+/// A new parameter sweep of `param`: values a decade either way at 3 per decade, a
+/// source field 0 to twice its value in 4 steps (−2× to 2×; ±1 around 0).
+pub fn default_step(project: &Project, param: &TuneParam) -> Option<Step> {
+    let row = default_row(project, param)?;
+    let values = if param.is_log() {
+        StepValues::Log { start: row.min, stop: row.max, points_per_decade: 3 }
+    } else {
+        StepValues::Linear { start: row.min, stop: row.max, step: (row.max - row.min) / 4.0 }
+    };
+    Some(Step { param: param.clone(), values })
 }
 
 /// The value at slider position `t` (0…1) of a row: log for values, linear for

@@ -193,3 +193,47 @@ fn voltage_probes_follow_their_object() {
     assert_eq!(d.missing[0].label, "I(R1.1)");
     assert_eq!(d.missing[0].reason, "not measured in this result: run again");
 }
+
+/// A made-up transient result of the RC's nets sampled at `t`, `v(out)` = `k`·t.
+fn tran(b: &crate::bench::Bench, t: &[f64], k: f64) -> sim::SimResult {
+    let a = Analysis::new("T", AnalysisKind::Tran { stop: 1.0, step: None, start: 0.0, max_step: None });
+    let netlist = sim::netlist::build(b.project(), &b.conn(), &a);
+    let v = |name: &str, re: Vec<f64>| sim::Vector { name: name.into(), kind: "voltage".into(), re, im: None };
+    let plot = sim::Plot {
+        name: "Transient Analysis".into(),
+        complex: false,
+        vectors: vec![
+            sim::Vector { name: "time".into(), kind: "time".into(), re: t.to_vec(), im: None },
+            v("v(in)", vec![1.0; t.len()]),
+            v("v(out)", t.iter().map(|t| k * t).collect()),
+        ],
+    };
+    sim::SimResult { plot, netlist, log: String::new(), warnings: Vec::new() }
+}
+
+#[test]
+fn sweep_steps_share_one_x_axis() {
+    let (b, _, _) = rc();
+    let conn = b.conn();
+    let r1 = tran(&b, &[0.0, 0.5, 1.0], 1.0);
+    let r2 = tran(&b, &[0.0, 0.25, 1.0], 2.0);
+    let steps = vec![("R1 = 1 kΩ".to_string(), &r1), ("R1 = 2 kΩ".to_string(), &r2)];
+    let out = [Signal::Voltage("OUT".into())];
+    let d = plot::data_steps(&steps, &out, false, &conn).unwrap();
+    assert_eq!(d.x, vec![0.0, 0.25, 0.5, 1.0]);
+    let labels: Vec<&str> = d.traces.iter().map(|t| t.label.as_str()).collect();
+    assert_eq!(labels, ["V(OUT) · R1 = 1 kΩ", "V(OUT) · R1 = 2 kΩ"]);
+    // Interpolated onto the shared samples.
+    assert_eq!(d.traces[0].y, vec![0.0, 0.25, 0.5, 1.0]);
+    assert_eq!(d.traces[1].y, vec![0.0, 0.5, 1.0, 2.0]);
+    // One signal: a colour per step.
+    assert_eq!((d.color(&d.traces[0]), d.color(&d.traces[1])), ((0, 0.0), (1, 0.0)));
+    // Several: the signal's colour, steps fading.
+    let both = [Signal::Voltage("IN".into()), Signal::Voltage("OUT".into())];
+    let d = plot::data_steps(&steps, &both, false, &conn).unwrap();
+    let colors: Vec<(usize, f32)> = d.traces.iter().map(|t| d.color(t)).collect();
+    assert_eq!(colors, [(0, 0.0), (0, 0.6), (1, 0.0), (1, 0.6)]);
+    // Without a sweep: the plain data.
+    let one = plot::data_steps(&steps[..1], &out, false, &conn).unwrap();
+    assert_eq!(one, plot::data(&r1, &out, false, &conn).unwrap());
+}

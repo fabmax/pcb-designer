@@ -87,7 +87,8 @@ pub struct SimPanel {
 struct OverlayKey {
     revision: u64,
     probes: Option<Id>,
-    values: Option<(Id, u64)>,
+    /// The operating point shown: analysis, run and step.
+    values: Option<(Id, u64, usize)>,
     hover: Option<ProbeTarget>,
     dark: bool,
     tuned: Vec<(TuneParam, f64)>,
@@ -205,7 +206,10 @@ impl SimPanel {
         let key = OverlayKey {
             revision: doc.revision,
             probes,
-            values: values.and_then(|a| Some((a.id, self.session.result(a.id)?.run))),
+            values: values.and_then(|a| {
+                let step = self.plots.get(&a.id).map_or(0, |p| p.sort.0.saturating_sub(1));
+                Some((a.id, self.session.result(a.id)?.run, step))
+            }),
             hover: self.hover.clone().filter(|_| shown),
             dark: view::style::theme() == view::style::Theme::Dark,
             tuned: self.tuned(doc.project()),
@@ -232,13 +236,17 @@ impl SimPanel {
             }
         }
         let mut devices = Vec::new();
-        let overrides = self.overrides(doc.project());
-        let stale = values.is_some_and(|a| self.session.is_stale(doc.project(), conn, a, &overrides, doc.revision));
+        let stale = values.is_some_and(|a| {
+            let overrides = self.overrides(doc.project(), a);
+            self.session.is_stale(doc.project(), conn, a, &overrides, doc.revision)
+        });
         if let Some(a) = values
             && let Some(done) = self.session.result(a.id)
         {
             o.dim = stale;
-            let r = &done.result;
+            // A sweep: the step its table is sorted by, else the first.
+            let results = done.results();
+            let r = results.get(key.values.map_or(0, |v| v.2)).unwrap_or(&results[0]).1;
             for (net, node) in &r.netlist.nodes {
                 if node != "0"
                     && let Some(v) = r.op_voltage(net)
@@ -279,9 +287,11 @@ impl SimPanel {
         self.tuner.changed(project, &project.schematic.simulation.tune, None)
     }
 
-    /// The components runs use: the tuned values put in.
-    pub fn overrides(&self, project: &Project) -> sim::tune::Overrides {
-        self.tuner.overrides(project, &project.schematic.simulation.tune, None)
+    /// The components runs of `a` use: the tuned values put in (but the parameter it
+    /// sweeps).
+    pub fn overrides(&self, project: &Project, a: &Analysis) -> sim::tune::Overrides {
+        let swept = a.step.as_ref().map(|s| &s.param);
+        self.tuner.overrides(project, &project.schematic.simulation.tune, swept)
     }
 
     /// The tuner changed a value: runs the tab's analysis with it, or once the run going
@@ -300,7 +310,7 @@ impl SimPanel {
         if let Some(a) = project.schematic.simulation.analyses.iter().find(|a| a.id == id)
             && self.session.result(id).is_some()
         {
-            let overrides = self.overrides(project);
+            let overrides = self.overrides(project, a);
             if !self.session.is_stale(project, doc.connectivity(), a, &overrides, doc.revision) {
                 return;
             }
@@ -332,7 +342,7 @@ impl SimPanel {
         let Some(a) = project.schematic.simulation.analyses.iter().find(|a| a.id == analysis) else {
             return Err("No such analysis".into());
         };
-        let overrides = self.overrides(project);
+        let overrides = self.overrides(project, a);
         if self.session.start_with(project, doc.connectivity(), a, &[], &overrides, Arc::new(ngspice)) {
             Ok(())
         } else {
@@ -627,6 +637,100 @@ impl SimPanel {
                 });
             }
         }
+        ui.add_space(4.0);
+        self.step_ui(ui, a, project);
+    }
+
+    /// The parameter sweep: off, or a parameter and its values (a list, linear or log).
+    fn step_ui(&mut self, ui: &mut Ui, a: &mut Analysis, project: &Project) {
+        let id = a.id;
+        let mut on = a.step.is_some();
+        let tip = "Run it once per value of a part's value or a source setting";
+        if ui.checkbox(&mut on, "Parameter sweep").on_hover_text(tip).changed() {
+            a.step = if on {
+                // The tuner's first row, else the first tunable parameter.
+                let tuned = project.schematic.simulation.tune.first().map(|r| r.param.clone());
+                tuned
+                    .or_else(|| sim::tune::tunable(project).into_iter().next())
+                    .and_then(|p| sim::tune::default_step(project, &p))
+            } else {
+                None
+            };
+        }
+        let Some(step) = &mut a.step else { return };
+        let unit = sim::tune::unit(project, &step.param);
+        grid(ui, "sim_step", |ui| {
+            label(ui, "Parameter");
+            let options: Vec<(TuneParam, String)> =
+                sim::tune::tunable(project).into_iter().map(|p| (p.clone(), sim::tune::label(project, &p))).collect();
+            if let Some(p) = crate::fields::combo(ui, ("sim_step_param", id), &step.param, &options)
+                && let Some(s) = sim::tune::default_step(project, &p)
+            {
+                *step = s;
+            }
+            ui.end_row();
+            label(ui, "Values");
+            let kinds = [(0, "List".to_string()), (1, "Linear".to_string()), (2, "Log".to_string())];
+            let kind = match step.values {
+                StepValues::List { .. } => 0,
+                StepValues::Linear { .. } => 1,
+                StepValues::Log { .. } => 2,
+            };
+            if let Some(k) = crate::fields::combo(ui, ("sim_step_kind", id), &kind, &kinds) {
+                let points = step.values.points();
+                let (lo, hi) = (points.first().copied().unwrap_or(1.0), points.last().copied().unwrap_or(10.0));
+                step.values = match k {
+                    0 => StepValues::List { values: points },
+                    1 => StepValues::Linear { start: lo, stop: hi, step: (hi - lo) / 4.0 },
+                    _ => StepValues::Log { start: lo.max(1e-12), stop: hi.max(lo * 10.0), points_per_decade: 3 },
+                };
+            }
+            ui.end_row();
+            match &mut step.values {
+                StepValues::List { values } => {
+                    label(ui, "List");
+                    let key = egui::Id::unique(("sim_step_list", id));
+                    let shown = values.iter().map(|v| si::format(*v, unit)).collect::<Vec<_>>().join(", ");
+                    let focused = ui.memory(|m| m.has_focus(key));
+                    let buf = self.texts.entry(key).or_insert_with(|| shown.clone());
+                    if !focused {
+                        buf.clone_from(&shown);
+                    }
+                    let r = ui
+                        .add(egui::TextEdit::singleline(buf).id(key).desired_width(160.0).hint_text("1k, 2.2k, 4.7k"));
+                    if r.lost_focus() {
+                        let parsed: Option<Vec<f64>> =
+                            buf.split([',', ';']).map(str::trim).filter(|t| !t.is_empty()).map(si::parse).collect();
+                        if let Some(v) = parsed {
+                            *values = v;
+                        }
+                    }
+                    ui.end_row();
+                }
+                StepValues::Linear { start, stop, step } => {
+                    self.value_row(ui, (id, "step_start"), "From", start, unit);
+                    self.value_row(ui, (id, "step_stop"), "To", stop, unit);
+                    self.value_row(ui, (id, "step_step"), "Step", step, unit);
+                }
+                StepValues::Log { start, stop, points_per_decade } => {
+                    self.value_row(ui, (id, "step_start"), "From", start, unit);
+                    self.value_row(ui, (id, "step_stop"), "To", stop, unit);
+                    label(ui, "Per decade");
+                    ui.add(egui::DragValue::new(points_per_decade).range(1..=100).speed(0.1));
+                    ui.end_row();
+                }
+            }
+        });
+        let points = step.values.points();
+        let text = match step.values.problem() {
+            Some(p) => RichText::new(p).color(theme::warn()),
+            None => {
+                let list: Vec<String> = points.iter().take(8).map(|v| si::format(*v, unit)).collect();
+                let more = if points.len() > 8 { ", …" } else { "" };
+                RichText::new(format!("{} steps: {}{more}", points.len(), list.join(", "))).color(theme::text_dim())
+            }
+        };
+        ui.label(text.small());
     }
 
     /// A labelled value with an SI prefix.
@@ -682,7 +786,7 @@ impl SimPanel {
     /// The result table. Returns a probe to add or remove (a row's check box: the
     /// signals the plot shows).
     fn results_ui(&mut self, ui: &mut Ui, doc: &Document, a: &Analysis, act: &mut Option<SimAct>) -> Option<Probe> {
-        let overrides = self.overrides(doc.project());
+        let overrides = self.overrides(doc.project(), a);
         let stale = self.session.is_stale(doc.project(), doc.connectivity(), a, &overrides, doc.revision);
         let Some(done) = self.session.result(a.id) else {
             hint(ui, "Not run yet.");

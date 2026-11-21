@@ -1980,6 +1980,16 @@ fn check_simulation(project: &Project, sim: &Simulation) -> Result<(), String> {
     if !(sim.temperature.is_finite() && sim.temperature > -273.15) {
         return Err("temperature below absolute zero".into());
     }
+    for a in &sim.analyses {
+        if let Some(step) = &a.step {
+            if let Some(p) = step.values.problem() {
+                return Err(format!("{}: {p}", a.name));
+            }
+            if step.param.is_log() && step.values.points().iter().any(|v| *v <= 0.0) {
+                return Err(format!("{}: a component value's steps must be positive", a.name));
+            }
+        }
+    }
     let mut tuned = HashSet::new();
     for row in &sim.tune {
         if !tuned.insert(&row.param) {

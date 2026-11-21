@@ -215,7 +215,7 @@ pub fn table(data: &crate::plot::PlotData, lo: f64, hi: f64) -> (Vec<&'static st
             .iter()
             .map(|t| {
                 if t.unit == "°" {
-                    let mag = data.traces.iter().find(|m| m.signal == t.signal && m.unit == "dB");
+                    let mag = data.traces.iter().find(|m| m.signal == t.signal && m.step == t.step && m.unit == "dB");
                     let pm = mag.and_then(|m| phase_margin(&data.x, &m.y, &t.y, lo, hi));
                     return vec![none(), none(), none(), pm.map_or_else(none, |v| format!("{v:.1}°"))];
                 }

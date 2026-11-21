@@ -94,6 +94,36 @@ fn simulate_takes_values_for_one_run() {
 }
 
 #[test]
+fn simulate_answers_a_sweep_per_step() {
+    let mut host = demo();
+    let nl = ask(&mut host, Request::SpiceNetlist { analysis: None }).unwrap();
+    let nodes = nl["nodes"].as_object().unwrap().values().map(|n| n.as_str().unwrap().to_string()).collect();
+    host.sim_backend = Some(Arc::new(Fake { nodes }));
+    let project = host.doc.project();
+    let r1 = project.schematic.components.iter().find(|c| c.refdes == "R1").unwrap().id;
+    let mut setup = project.schematic.simulation.clone();
+    let tran = setup.analyses.iter_mut().find(|a| a.name == "Transient").unwrap();
+    tran.step = Some(model::Step {
+        param: model::TuneParam::Value { component: r1 },
+        values: model::StepValues::List { values: vec![100.0, 1000.0] },
+    });
+    host.doc.execute(editor_core::Command::SetSimulation { simulation: setup }).unwrap();
+
+    let v = simulate(&mut host, "Transient", Some(&["+5V"]), &[]).unwrap();
+    assert_eq!(v["step"]["parameter"], "R1", "{v}");
+    let signals = v["signals"].as_array().unwrap();
+    let labels: Vec<&str> = signals.iter().map(|s| s["signal"].as_str().unwrap()).collect();
+    assert_eq!(labels, ["V(+5V) · R1 = 100 Ω", "V(+5V) · R1 = 1 kΩ"]);
+    assert_eq!(signals[1]["step_value"], 1000.0);
+    assert!(signals[0]["max"].is_number(), "{v}");
+    // The plot draws every step.
+    assert!(matches!(
+        call(&mut host, Request::SimulationScreenshot { analysis: Some("Transient".into()), width: 300, height: 200 }),
+        Ok(Reply::Png(_))
+    ));
+}
+
+#[test]
 fn spice_netlist_names_nodes_and_devices() {
     let mut host = demo();
     let v = ask(&mut host, Request::SpiceNetlist { analysis: Some("ac".into()) }).unwrap();

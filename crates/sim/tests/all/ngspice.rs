@@ -358,3 +358,33 @@ fn differential_and_power_signals_in_a_sweep() {
     // Volts left, watts right.
     assert_eq!((d.traces[0].axis, d.traces[1].axis), (plot::Axis::Left, plot::Axis::Right));
 }
+
+#[test]
+fn a_parameter_sweep_in_parallel_processes() {
+    let Some(ng) = ngspice() else { return };
+    let mut b = Bench::new();
+    b.dc(10.0, "IN", "GND");
+    b.place("Resistor", "10k", &["IN", "OUT"]);
+    let (r2, _) = b.place("Resistor", "10k", &["OUT", "GND"]);
+    let mut a = op(&mut b);
+    let values = vec![10e3, 30e3, 90e3];
+    a.step =
+        Some(Step { param: TuneParam::Value { component: r2 }, values: StepValues::List { values: values.clone() } });
+    let mut s = sim::Session::default();
+    let none = sim::tune::Overrides::default();
+    assert!(s.start_with(b.project(), &b.conn(), &a, &[], &none, std::sync::Arc::new(ng)));
+    let t = std::time::Instant::now();
+    let outcome = loop {
+        if let Some(o) = s.poll() {
+            break o;
+        }
+        assert!(t.elapsed().as_secs() < 30, "the sweep didn't finish");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    };
+    assert_eq!(outcome, sim::Outcome::Done);
+    let done = s.result(a.id).unwrap();
+    let out: Vec<f64> = done.results().iter().map(|(_, r)| r.op_voltage("OUT").unwrap()).collect();
+    for (v, r) in out.iter().zip(&values) {
+        assert!(near(*v, 10.0 * r / (10e3 + r), 1e-3), "{out:?}");
+    }
+}

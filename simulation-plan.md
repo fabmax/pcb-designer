@@ -40,7 +40,7 @@ What to avoid: SPICE syntax as the main interface (LTspice), simulations as sche
 objects (Qucs-S: clutters the drawing and the print), and a separate modal window (KiCad's
 simulator is its own frame; ours should be a tab that can sit beside the schematic).
 
-## Built so far (S1–S5)
+## Built so far (S1–S6)
 
 The engine and everything headless are built; their design and gotchas are in
 PLAN.md, "Simulation (`sim`)":
@@ -94,6 +94,9 @@ PLAN.md, "Simulation (`sim`)":
 - S6b: the tuner (`sim::tune`): rows in the setup, slider values as temporary
   overrides of the runs' netlists, live re-runs, Apply and Reset, "Tune R1" on a
   part; `simulate` takes `values`.
+- S6c: parameter sweeps (`Analysis::step`): a netlist per value, run in parallel
+  processes; traces per signal and step on one x axis, an operating point's column per
+  step; `simulate` answers per step.
 
 Still to come in the areas S1 built:
 
@@ -275,35 +278,10 @@ Datasheet). Mapping them:
 Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1–S5 are done and
 give a usable simulator; S6–S8 make it comfortable, compatible and fast.
 
-### S6: Comfort
+### S6: Comfort (done)
 
-Three commits on one branch: S6a (done: probes, measurements, supplies, tab order),
-S6b (done: the tuner), S6c parameter sweeps.
-
-- **Tuner (S6b):** a Tuner section in the Simulation tab under the readout table; rows
-  added by right-click on a part → "Tune R1" or the section's **+** (a filtered list of
-  tunable parameters). Tunable: the value of parts whose model uses `${VALUE}`, and a
-  source's numeric waveform fields and DC/AC values (model parameter overrides later).
-  A row: parameter, slider, value field, min/max, snapping (None/E6/E12/E24/E96), Apply,
-  ✕. Values get a log slider from value/10 to ×10 (E24 for R, E12 for C/L); source
-  fields a linear one from 0 to 2× (−2× to 2× when negative), no snapping. The rows
-  are saved in the setup (`Simulation::tune`; adding or removing one is an undo step);
-  the tuned values are not: they override the netlist of runs without touching the
-  document, stale checks use the tuned netlist, the schematic's tags show the tuned
-  run, and the tuner's header says "Tuned: R1 = 4.7k · Apply · Reset". Apply writes them all in
-  one undo step. Runs on release, and while dragging when the last run took under
-  150 ms (one in flight, the newest value queued). The tuner runs the analysis the tab
-  shows. Agents: `simulate` takes `values` (`{"R1": "4k7", "V1.amplitude": 0.2}`),
-  the same temporary overrides for one run.
-- **Parameter sweeps (S6c):** `Analysis::step: Option<Step>` — a parameter (the tuner's
-  kinds) and list, linear or log values; one per analysis, for all four kinds (an
-  operating point gets a column per step). One netlist per step, run as parallel
-  ngspice processes (up to the cores); Stop stops all; stale by the base netlist. With
-  one signal each step gets a palette colour, with several each signal keeps its
-  colour and steps are shades; readout rows per signal and step ("V(OUT) · R1=4.7k"),
-  a signal's header row hides all its steps. Steps run with the tuner's other values;
-  the stepped parameter's tuner row is disabled. Agents set `step` through
-  `SetSimulation`; `simulate` answers per signal and step.
+Probes between nets and of a part's power, measurements, supply suggestions, the
+tuner and parameter sweeps; see "Built so far" and PLAN.md.
 
 ### S7: KiCad simulation import
 
@@ -336,6 +314,11 @@ S6b (done: the tuner), S6c parameter sweeps.
 - Switch models (voltage/time-controlled) for `SW_Push` and relays, transformer and
   coupled inductors (`K` lines), transmission lines.
 - Several plot panes per analysis (stacked, shared x), saved plot layouts.
+- Sweeps: two parameters (nested), a measurement plotted over the stepped value (the
+  −3 dB point against R1), steps of a model parameter or the temperature; the
+  Simulation panel's result table shows the first step only.
+- Tuner: model parameter overrides as rows; agents have no tuner tool (`simulate`'s
+  `values` do the same for one run).
 - Probes and op annotations on sub-sheet instances when sheets are reused (not
   supported by the schematic today: every sheet is one instance).
 - Board-aware simulation (track resistance, parasitic capacitance from the layout).

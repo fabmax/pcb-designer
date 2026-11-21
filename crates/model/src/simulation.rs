@@ -853,11 +853,86 @@ pub struct Analysis {
     /// The signals its plot shows.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub probes: Vec<Probe>,
+    /// Runs it once per value of a parameter (a parameter sweep).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<Step>,
 }
 
 impl Analysis {
     pub fn new(name: impl Into<String>, kind: AnalysisKind) -> Analysis {
-        Analysis { id: Id::new(), name: name.into(), kind, probes: Vec::new() }
+        Analysis { id: Id::new(), name: name.into(), kind, probes: Vec::new(), step: None }
+    }
+}
+
+/// Most steps of a parameter sweep.
+pub const MAX_STEPS: usize = 64;
+
+/// A parameter sweep: the parameter (a part's value or a source's field, like the
+/// tuner's) and its values.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Step {
+    pub param: TuneParam,
+    pub values: StepValues,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StepValues {
+    /// These values, in this order.
+    List { values: Vec<f64> },
+    /// `start`, `start + step`, … up to `stop` (included when it falls on a step).
+    Linear { start: f64, stop: f64, step: f64 },
+    /// `points_per_decade` values per decade from `start` to `stop` (both > 0).
+    Log { start: f64, stop: f64, points_per_decade: u32 },
+}
+
+impl StepValues {
+    /// The values, at most [`MAX_STEPS`] + 1 (more means too many: see
+    /// [`problem`](Self::problem)).
+    pub fn points(&self) -> Vec<f64> {
+        let cap = MAX_STEPS + 1;
+        match self {
+            StepValues::List { values } => values.iter().copied().take(cap).collect(),
+            StepValues::Linear { start, stop, step } => {
+                if !(step.is_finite() && *step != 0.0 && start.is_finite() && stop.is_finite()) {
+                    return Vec::new();
+                }
+                let n = ((stop - start) / step + 1e-9).floor();
+                if n < 0.0 {
+                    return Vec::new();
+                }
+                (0..=(n as usize).min(cap)).map(|k| start + k as f64 * step).take(cap).collect()
+            }
+            StepValues::Log { start, stop, points_per_decade } => {
+                if !(*start > 0.0 && *stop > 0.0 && *points_per_decade > 0 && start.is_finite() && stop.is_finite()) {
+                    return Vec::new();
+                }
+                let decades = (stop / start).log10();
+                let n = (decades * *points_per_decade as f64 + 1e-9).floor();
+                if n < 0.0 {
+                    return Vec::new();
+                }
+                (0..=(n as usize).min(cap))
+                    .map(|k| start * 10f64.powf(k as f64 / *points_per_decade as f64))
+                    .take(cap)
+                    .collect()
+            }
+        }
+    }
+
+    /// What is wrong with the values, if anything.
+    pub fn problem(&self) -> Option<String> {
+        let p = self.points();
+        if p.is_empty() {
+            return Some("a parameter sweep needs values".into());
+        }
+        if p.len() > MAX_STEPS {
+            return Some(format!("a parameter sweep has at most {MAX_STEPS} steps"));
+        }
+        if p.iter().any(|v| !v.is_finite()) {
+            return Some("a parameter sweep's values must be numbers".into());
+        }
+        None
     }
 }
 
