@@ -226,8 +226,6 @@ impl PartsPanel {
             Kind::Schematic => "Schematic parts",
             Kind::Board => "Board parts",
         };
-        ui.label(RichText::new(title).color(theme::text_dim()).size(12.0));
-        ui.add_space(2.0);
 
         // Esc in the field clears the query first (a second Esc leaves the field).
         let field_focused = ui.memory(|m| m.has_focus(search_id()));
@@ -236,7 +234,7 @@ impl PartsPanel {
         }
         let field_keys = nav_list::field_keys(ui, search_id());
         let field = egui::TextEdit::singleline(&mut self.query).id(search_id()).hint_text("Search parts");
-        ui.add(field.desired_width(f32::INFINITY));
+        crate::fields::search_field(ui, field);
         if std::mem::take(&mut self.focus_search) {
             ui.memory_mut(|m| m.request_focus(search_id()));
             if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), search_id()) {
@@ -248,6 +246,7 @@ impl PartsPanel {
                 state.store(ui.ctx(), search_id());
             }
         }
+        crate::fields::summary(ui, title);
         if kicad_link(ui, kicad).clicked() {
             return Some(PartsAct::Kicad);
         }

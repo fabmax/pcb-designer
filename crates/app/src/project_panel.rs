@@ -956,10 +956,8 @@ impl ProjectPanel {
             }
         }
         let before = self.state.query().unwrap_or_default().to_string();
-        let mut changed = false;
-        ui.horizontal(|ui| {
-            let (r, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
-            icons::paint(ui.painter(), r, Icon::Search, theme::text_dim());
+        let changed;
+        {
             let edit = egui::TextEdit::singleline(self.state.query_mut())
                 .id(search_id())
                 .hint_text("Search")
@@ -969,9 +967,8 @@ impl ProjectPanel {
                     vertical_arrows: true,
                     escape: true,
                     tab: false,
-                })
-                .desired_width(f32::INFINITY);
-            let r = ui.add(edit);
+                });
+            let r = crate::fields::search_field(ui, edit);
             if std::mem::take(&mut self.focus_search) {
                 r.request_focus();
                 // Typing in the tree started the search: continue after its text.
@@ -982,7 +979,7 @@ impl ProjectPanel {
                 }
             }
             changed = r.changed();
-        });
+        }
         if changed || before != self.state.query().unwrap_or_default() {
             self.state.select_first_match(roots);
             self.scroll = true;

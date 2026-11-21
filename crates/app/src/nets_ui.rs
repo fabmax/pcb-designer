@@ -140,14 +140,12 @@ impl NetsPanel {
             self.cache = Some((doc.revision, rows(doc)));
         }
         let all = &self.cache.as_ref().expect("filled").1;
-        ui.add(egui::TextEdit::singleline(&mut self.query).hint_text("Filter nets").desired_width(f32::INFINITY));
-        ui.add_space(4.0);
+        crate::fields::search_field(ui, egui::TextEdit::singleline(&mut self.query).hint_text("Filter nets"));
         let q = self.query.to_lowercase();
         let shown: Vec<&NetRow> = all.iter().filter(|r| q.is_empty() || r.name.to_lowercase().contains(&q)).collect();
         let unrouted: usize = all.iter().filter(|r| matches!(r.routing, Routing::Unrouted(_))).count();
         let summary = format!("{} nets, {} not fully routed", all.len(), unrouted);
-        ui.label(RichText::new(summary).color(theme::text_dim()).size(12.0));
-        ui.add_space(2.0);
+        crate::fields::summary(ui, &summary);
         let mut act = None;
         let width = ui.available_width();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW, shown.len(), |ui, range| {

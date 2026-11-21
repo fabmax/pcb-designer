@@ -29,7 +29,7 @@ pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, running: bool) -> bool
             (0, true) => "No agent calls yet.".to_string(),
             (n, _) => format!("{n} call(s) this session"),
         };
-        ui.label(RichText::new(text).color(theme::text_dim()));
+        crate::fields::summary(ui, &text);
         if !entries.is_empty() {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 clear = ui.small_button("Clear").clicked();

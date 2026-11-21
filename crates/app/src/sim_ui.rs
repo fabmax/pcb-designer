@@ -648,7 +648,11 @@ impl SimPanel {
         let id = a.id;
         let mut on = a.step.is_some();
         let tip = "Run it once per value of a part's value or a source setting";
-        if ui.checkbox(&mut on, "Parameter sweep").on_hover_text(tip).changed() {
+        let mut toggled = false;
+        grid(ui, ("sim_sweep_on", id), |ui| {
+            toggled = crate::fields::check_row(ui, "Parameter sweep", &mut on).on_hover_text(tip).changed();
+        });
+        if toggled {
             a.step = if on {
                 // The tuner's first row, else the first tunable parameter.
                 let tuned = project.schematic.simulation.tune.first().map(|r| r.param.clone());
@@ -800,18 +804,13 @@ impl SimPanel {
         };
         let sweep = done.result.scale().is_some();
         let mut toggle = None;
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Results").strong());
-            let took = format!("{} · {:.2} s", sim::report::title(&done.result), done.duration.as_secs_f64());
-            ui.label(RichText::new(took).color(theme::text_dim()).small());
-        });
+        let took = format!("{} · {:.2} s", sim::report::title(&done.result), done.duration.as_secs_f64());
+        crate::fields::section_note(ui, "Results", &took);
         if stale {
             ui.label(RichText::new("Changed since the run · run again to update").color(theme::warn()).small());
         }
-        ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text("Filter").desired_width(140.0));
-            ui.checkbox(&mut self.show_all, "Show all nets");
-        });
+        crate::fields::search_field(ui, egui::TextEdit::singleline(&mut self.filter).hint_text("Filter"));
+        ui.checkbox(&mut self.show_all, "Show all nets");
         let conn = doc.connectivity();
         let probed: HashSet<&str> = a
             .probes
@@ -908,124 +907,117 @@ impl SimPanel {
     /// Ground, supplies, temperature and extra lines (for every analysis), and the netlist
     /// and log.
     fn circuit_ui(&mut self, ui: &mut Ui, setup: &mut Simulation, doc: &Document, act: &mut Option<SimAct>) {
-        egui::CollapsingHeader::new(RichText::new("Circuit").strong()).id_salt("sim_circuit").default_open(false).show(
-            ui,
-            |ui| {
-                let mut nets: Vec<String> = doc.connectivity().netlist().map(|n| n.name.clone()).collect();
-                nets.sort_by(|a, b| natural_cmp(a, b));
-                grid(ui, "sim_circuit_grid", |ui| {
-                    label(ui, "Ground");
-                    let options: Vec<(Option<String>, String)> =
-                        std::iter::once((None, "Automatic (GND ports)".into()))
-                            .chain(nets.iter().map(|n| (Some(n.clone()), n.clone())))
-                            .collect();
-                    if let Some(g) = crate::fields::combo(ui, "sim_ground", &setup.ground, &options) {
-                        setup.ground = g;
+        crate::fields::collapsing(ui, "Circuit", "sim_circuit", |ui| {
+            let mut nets: Vec<String> = doc.connectivity().netlist().map(|n| n.name.clone()).collect();
+            nets.sort_by(|a, b| natural_cmp(a, b));
+            grid(ui, "sim_circuit_grid", |ui| {
+                label(ui, "Ground");
+                let options: Vec<(Option<String>, String)> = std::iter::once((None, "Automatic (GND ports)".into()))
+                    .chain(nets.iter().map(|n| (Some(n.clone()), n.clone())))
+                    .collect();
+                if let Some(g) = crate::fields::combo(ui, "sim_ground", &setup.ground, &options) {
+                    setup.ground = g;
+                }
+                ui.end_row();
+                label(ui, "Temperature");
+                if let Some(Some(t)) = self.si_field(ui, "temperature", Some(setup.temperature), "°C", "") {
+                    setup.temperature = t;
+                }
+                ui.end_row();
+            });
+            ui.add_space(4.0);
+            label(ui, "Supplies (DC sources for power nets without one drawn)");
+            let mut remove = None;
+            grid(ui, "sim_supplies", |ui| {
+                for (i, s) in setup.supplies.iter_mut().enumerate() {
+                    let options: Vec<(String, String)> = nets.iter().map(|n| (n.clone(), n.clone())).collect();
+                    if let Some(n) = crate::fields::combo(ui, ("sim_supply", i), &s.net, &options) {
+                        s.net = n;
                     }
-                    ui.end_row();
-                    label(ui, "Temperature");
-                    if let Some(Some(t)) = self.si_field(ui, "temperature", Some(setup.temperature), "°C", "") {
-                        setup.temperature = t;
-                    }
-                    ui.end_row();
-                });
-                ui.add_space(4.0);
-                label(ui, "Supplies (DC sources for power nets without one drawn)");
-                let mut remove = None;
-                grid(ui, "sim_supplies", |ui| {
-                    for (i, s) in setup.supplies.iter_mut().enumerate() {
-                        let options: Vec<(String, String)> = nets.iter().map(|n| (n.clone(), n.clone())).collect();
-                        if let Some(n) = crate::fields::combo(ui, ("sim_supply", i), &s.net, &options) {
-                            s.net = n;
+                    ui.horizontal(|ui| {
+                        if let Some(Some(v)) = self.si_field(ui, ("supply", i), Some(s.voltage), "V", "") {
+                            s.voltage = v;
                         }
+                        if ui.small_button("✕").on_hover_text("Remove").clicked() {
+                            remove = Some(i);
+                        }
+                    });
+                    ui.end_row();
+                }
+            });
+            if let Some(i) = remove {
+                setup.supplies.remove(i);
+                self.texts.clear();
+                self.si.clear();
+            }
+            let suggested = suggested_supplies(doc);
+            if ui.small_button("Add supply").clicked() {
+                let net = suggested.first().map(|s| s.0.clone()).or(nets.first().cloned()).unwrap_or_default();
+                let voltage = supply_voltage(&net).unwrap_or(0.0);
+                setup.supplies.push(Supply { net, voltage });
+            }
+            if !suggested.is_empty() {
+                ui.add_space(4.0);
+                label(ui, "Power nets without a source");
+                let mut add = Vec::new();
+                grid(ui, "sim_suggested", |ui| {
+                    for (net, guess) in &suggested {
+                        ui.label(net);
+                        let typed = self.suggest.get(net).copied();
+                        let v = typed.or(*guess);
                         ui.horizontal(|ui| {
-                            if let Some(Some(v)) = self.si_field(ui, ("supply", i), Some(s.voltage), "V", "") {
-                                s.voltage = v;
+                            if let Some(new) = self.si_field(ui, ("suggest", net.as_str()), v, "V", "volts") {
+                                match new {
+                                    Some(x) => _ = self.suggest.insert(net.clone(), x),
+                                    None => _ = self.suggest.remove(net),
+                                }
                             }
-                            if ui.small_button("✕").on_hover_text("Remove").clicked() {
-                                remove = Some(i);
+                            let r = ui.add_enabled(v.is_some(), egui::Button::new("Add").small());
+                            if r.on_disabled_hover_text("Enter its voltage first").clicked()
+                                && let Some(v) = v
+                            {
+                                add.push(Supply { net: net.clone(), voltage: v });
                             }
                         });
                         ui.end_row();
                     }
                 });
-                if let Some(i) = remove {
-                    setup.supplies.remove(i);
+                let known: Vec<Supply> = suggested
+                    .iter()
+                    .filter_map(|(n, g)| Some(Supply { net: n.clone(), voltage: self.suggest.get(n).copied().or(*g)? }))
+                    .collect();
+                if known.len() > 1 && ui.small_button("Add all").on_hover_text("Those with a voltage").clicked() {
+                    add = known;
+                }
+                if !add.is_empty() {
+                    setup.supplies.extend(add);
                     self.texts.clear();
                     self.si.clear();
                 }
-                let suggested = suggested_supplies(doc);
-                if ui.small_button("Add supply").clicked() {
-                    let net = suggested.first().map(|s| s.0.clone()).or(nets.first().cloned()).unwrap_or_default();
-                    let voltage = supply_voltage(&net).unwrap_or(0.0);
-                    setup.supplies.push(Supply { net, voltage });
+            }
+            ui.add_space(4.0);
+            label(ui, "Extra SPICE lines (.param, .options, models)");
+            let id = egui::Id::unique("sim_extra");
+            let focused = ui.memory(|m| m.has_focus(id));
+            let buf = self.texts.entry(id).or_insert_with(|| setup.extra.clone());
+            if !focused {
+                buf.clone_from(&setup.extra);
+            }
+            let r = ui
+                .add(egui::TextEdit::multiline(buf).id(id).code_editor().desired_rows(3).desired_width(f32::INFINITY));
+            if r.lost_focus() && *buf != setup.extra {
+                setup.extra = buf.clone();
+            }
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if ui.button("SPICE netlist").clicked() {
+                    *act = Some(SimAct::ShowNetlist);
                 }
-                if !suggested.is_empty() {
-                    ui.add_space(4.0);
-                    label(ui, "Power nets without a source");
-                    let mut add = Vec::new();
-                    grid(ui, "sim_suggested", |ui| {
-                        for (net, guess) in &suggested {
-                            ui.label(net);
-                            let typed = self.suggest.get(net).copied();
-                            let v = typed.or(*guess);
-                            ui.horizontal(|ui| {
-                                if let Some(new) = self.si_field(ui, ("suggest", net.as_str()), v, "V", "volts") {
-                                    match new {
-                                        Some(x) => _ = self.suggest.insert(net.clone(), x),
-                                        None => _ = self.suggest.remove(net),
-                                    }
-                                }
-                                let r = ui.add_enabled(v.is_some(), egui::Button::new("Add").small());
-                                if r.on_disabled_hover_text("Enter its voltage first").clicked()
-                                    && let Some(v) = v
-                                {
-                                    add.push(Supply { net: net.clone(), voltage: v });
-                                }
-                            });
-                            ui.end_row();
-                        }
-                    });
-                    let known: Vec<Supply> = suggested
-                        .iter()
-                        .filter_map(|(n, g)| {
-                            Some(Supply { net: n.clone(), voltage: self.suggest.get(n).copied().or(*g)? })
-                        })
-                        .collect();
-                    if known.len() > 1 && ui.small_button("Add all").on_hover_text("Those with a voltage").clicked() {
-                        add = known;
-                    }
-                    if !add.is_empty() {
-                        setup.supplies.extend(add);
-                        self.texts.clear();
-                        self.si.clear();
-                    }
+                if ui.button("Log").clicked() {
+                    *act = Some(SimAct::ShowLog);
                 }
-                ui.add_space(4.0);
-                label(ui, "Extra SPICE lines (.param, .options, models)");
-                let id = egui::Id::unique("sim_extra");
-                let focused = ui.memory(|m| m.has_focus(id));
-                let buf = self.texts.entry(id).or_insert_with(|| setup.extra.clone());
-                if !focused {
-                    buf.clone_from(&setup.extra);
-                }
-                let r = ui.add(
-                    egui::TextEdit::multiline(buf).id(id).code_editor().desired_rows(3).desired_width(f32::INFINITY),
-                );
-                if r.lost_focus() && *buf != setup.extra {
-                    setup.extra = buf.clone();
-                }
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    if ui.button("SPICE netlist").clicked() {
-                        *act = Some(SimAct::ShowNetlist);
-                    }
-                    if ui.button("Log").clicked() {
-                        *act = Some(SimAct::ShowLog);
-                    }
-                });
-            },
-        );
+            });
+        });
     }
 
     /// Opens the netlist window on its netlist or log tab.

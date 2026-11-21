@@ -453,6 +453,26 @@ pub fn check_row(ui: &mut egui::Ui, k: &str, value: &mut bool) -> egui::Response
     r
 }
 
+/// Size of a list panel's summary line.
+const SUMMARY_SIZE: f32 = 12.0;
+
+/// A list panel's search field: a search icon and the field `edit` (full width).
+pub fn search_field(ui: &mut egui::Ui, edit: egui::TextEdit) -> egui::Response {
+    use crate::icons::{self, Icon};
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let (r, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
+        icons::paint(ui.painter(), r, Icon::Search, theme::text_dim());
+        ui.add(edit.desired_width(f32::INFINITY))
+    })
+    .inner
+}
+
+/// A list panel's summary line ("5 nets, 2 not fully routed"), below its search field.
+pub fn summary(ui: &mut egui::Ui, text: &str) {
+    ui.label(RichText::new(text).color(theme::text_dim()).size(SUMMARY_SIZE));
+}
+
 /// A one-line hint, dim.
 pub fn hint(ui: &mut egui::Ui, text: &str) {
     ui.label(RichText::new(text).color(theme::text_dim()));
