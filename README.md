@@ -188,9 +188,14 @@ Many UI icons are [Tabler icons](https://tabler.io/icons) (MIT,
 
 Builds for macOS (Apple Silicon), Linux and Windows (x86_64) come from GitHub Actions:
 the **Release** workflow keeps them as workflow artifacts when run by hand, and a
-version tag (`v0.2.0`) publishes them as a GitHub Release. The macOS app is only
-ad-hoc signed: open it the first time with right-click → Open. Every push to `main`
-and every pull request runs the tests on all three (**CI**).
+version tag (`v0.2.0`) publishes them as a GitHub Release. Every push to `main` and
+every pull request runs the tests on all three (**CI**).
+
+The macOS app is only ad-hoc signed (not notarized), so macOS refuses to open it at
+first: open it once, then click **Open Anyway** in **System Settings → Privacy &
+Security** and confirm. (Right-click → Open no longer does this since macOS 15.) A
+downloaded archive can instead be cleared with
+`xattr -dr com.apple.quarantine "PCB Designer.app"`.
 
 On macOS, `scripts/bundle-macos.sh` builds `target/release/bundle/PCB Designer.app`
 (`--install` copies it to /Applications). Run from the bundle, the app is named

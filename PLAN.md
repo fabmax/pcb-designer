@@ -1419,6 +1419,15 @@ defers.
   `cmake` crate on its CMake build, unused features off: OSDI, RF, PSS, FFTW, sound
   files, OpenMP, X11; unused device models patched out of its list; XSPICE kept for
   POLY): no library search, install or bundling. About 730k lines of C, 464k of them
-  device models we mostly don't use. A universal (x86_64 + arm64) macOS app, Developer ID signing and
-  notarization, a Windows installer and a Linux AppImage; ngspice on Windows CI.
+  device models we mostly don't use. A universal (x86_64 + arm64) macOS app, a Windows
+  installer and a Linux AppImage; ngspice on Windows CI.
+- macOS signing and notarization: the Apple Developer Program (US$99 a year; an
+  individual's legal name shows in the signature, an organisation needs a D-U-N-S
+  number), a "Developer ID Application" certificate exported as `.p12`. In the release
+  job: secrets for the `.p12` (base64), its password and an App Store Connect API key;
+  import into a temporary keychain, `codesign --options runtime --timestamp` (hardened
+  runtime) instead of the ad-hoc signature, `xcrun notarytool submit --wait`, `xcrun
+  stapler staple`. The hardened runtime won't load another developer's libngspice
+  (Homebrew's, KiCad's) without the `com.apple.security.cs.disable-library-validation`
+  entitlement; building ngspice in statically (above) avoids that.
 - Documentation / manual. E.g. some github pages template (just-the-docs or something similar)
