@@ -210,6 +210,10 @@ pub enum Command {
     SetDesignRules {
         rules: DesignRules,
     },
+    /// Replace the board's stack-up (thickness, copper, finish, colours).
+    SetStackup {
+        stackup: Stackup,
+    },
     /// Replace the electrical rules check's settings (severities, pin conflict matrix,
     /// exclusions).
     SetErcSettings {
@@ -350,6 +354,7 @@ impl Command {
             Command::SetCopperLayers { count } => format!("{count} copper layers"),
             Command::SetDesignRules { .. } => "Edit design rules".into(),
             Command::SetErcSettings { .. } => "Edit electrical rules check settings".into(),
+            Command::SetStackup { .. } => "Edit board stack-up".into(),
             Command::SetDrcSettings { .. } => "Edit design rules check settings".into(),
             Command::SetSimulation { .. } => "Edit simulation setup".into(),
             Command::SetTitleBlock { .. } => "Edit title block".into(),
@@ -601,6 +606,20 @@ impl Command {
                 check_net_classes(&rules).map_err(CommandError::Invalid)?;
                 let mut setup = Setup::of(tx.project());
                 setup.rules = rules;
+                tx.set_setup(setup);
+                Ok(())
+            }
+            Command::SetStackup { stackup } => {
+                let copper = [stackup.outer_copper, stackup.inner_copper];
+                if stackup.thickness <= 0 || copper.iter().any(|&c| c <= 0) {
+                    return Err(CommandError::Invalid("thickness and copper must be positive".into()));
+                }
+                let layers = tx.project().board.copper_layers().count() as Coord;
+                if stackup.outer_copper * 2 + stackup.inner_copper * (layers - 2) >= stackup.thickness {
+                    return Err(CommandError::Invalid("the copper is thicker than the board".into()));
+                }
+                let mut setup = Setup::of(tx.project());
+                setup.stackup = stackup;
                 tx.set_setup(setup);
                 Ok(())
             }

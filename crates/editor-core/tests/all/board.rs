@@ -247,6 +247,20 @@ fn layer_stack_changes_are_undoable() {
     assert!(b.ed.execute(Command::SetDesignRules { rules }).is_err());
 }
 
+#[test]
+fn the_stackup_is_set_and_undone() {
+    let mut ed = Editor::new(Project::new("T"));
+    assert_eq!(ed.project().board.stackup.thickness, mm(1.6));
+    let stackup = Stackup { thickness: mm(0.8), finish: Finish::Enig, ..Stackup::default() };
+    ed.execute(Command::SetStackup { stackup: stackup.clone() }).unwrap();
+    assert_eq!(ed.project().board.stackup, stackup);
+    ed.undo();
+    assert_eq!(ed.project().board.stackup, Stackup::default());
+    // Copper thicker than the board is refused.
+    let thin = Stackup { thickness: mm(0.06), ..Stackup::default() };
+    assert!(ed.execute(Command::SetStackup { stackup: thin }).is_err());
+}
+
 // ---- Schematic edits on a routed board: copper is kept and flagged, never deleted.
 
 /// `series()` with R1.2–R2.1 routed on top. Returns the track.

@@ -7,10 +7,6 @@ use model::*;
 
 use crate::OutputFile;
 
-/// Board thickness in the job file. The model has no stack-up yet: 1.6 mm is the
-/// standard every board house assumes.
-const BOARD_THICKNESS_MM: f64 = 1.6;
-
 /// The X2 file attributes of a Gerber or Excellon file, scanned from its text:
 /// `%TF.FileFunction,…*%` and `; #@! TF.FileFunction,…` lines.
 fn file_attributes(content: &str) -> (Option<String>, Option<String>) {
@@ -51,8 +47,11 @@ pub fn job_file(project: &Project, files: &[OutputFile], created: &str) -> Strin
     let mut specs = json!({
         "ProjectId": { "Name": project.name, "GUID": project_guid(project), "Revision": "1" },
         "LayerNumber": board.copper_layers().count(),
-        "BoardThickness": BOARD_THICKNESS_MM,
+        "BoardThickness": mm(board.stackup.thickness),
     });
+    if let Some(finish) = board.stackup.finish.job_name() {
+        specs["Finish"] = json!(finish);
+    }
     if let Some(r) = outline {
         specs["Size"] = json!({ "X": mm(r.width()), "Y": mm(r.height()) });
     }
@@ -83,8 +82,36 @@ pub fn job_file(project: &Project, files: &[OutputFile], created: &str) -> Strin
             "MinLineWidth": mm(board.rules.min_track_width),
         }],
         "FilesAttributes": attributes,
+        "MaterialStackup": material_stackup(board),
     });
     serde_json::to_string_pretty(&job).expect("serializable")
+}
+
+/// The layers top to bottom: silkscreen, mask, copper and FR-4 between the copper
+/// layers, splitting what the copper leaves of the thickness evenly.
+fn material_stackup(board: &Board) -> Vec<Value> {
+    let s = &board.stackup;
+    let mm = |v: Coord| (v as f64 / 1e3).round() / 1e3;
+    let copper: Vec<&BoardLayer> = board.copper_layers().collect();
+    let n = copper.len();
+    let copper_total = s.outer_copper * 2 + s.inner_copper * (n as Coord - 2).max(0);
+    let dielectric = (s.thickness - copper_total).max(0) / (n as Coord - 1).max(1);
+    let mut out = vec![
+        json!({ "Type": "Legend", "Color": s.silk_color.label(), "Name": "Top Silkscreen" }),
+        json!({ "Type": "SolderMask", "Color": s.mask_color.label(), "Name": "Top Solder Mask" }),
+    ];
+    for (i, layer) in copper.iter().enumerate() {
+        let outer = i == 0 || i == n - 1;
+        let thickness = if outer { s.outer_copper } else { s.inner_copper };
+        out.push(json!({ "Type": "Copper", "Thickness": mm(thickness), "Name": layer.name }));
+        if i + 1 < n {
+            let name = format!("Dielectric {}", i + 1);
+            out.push(json!({ "Type": "Dielectric", "Thickness": mm(dielectric), "Material": "FR4", "Name": name }));
+        }
+    }
+    out.push(json!({ "Type": "SolderMask", "Color": s.mask_color.label(), "Name": "Bottom Solder Mask" }));
+    out.push(json!({ "Type": "Legend", "Color": s.silk_color.label(), "Name": "Bottom Silkscreen" }));
+    out
 }
 
 /// A stable GUID for the project: its name hashed (the job file wants one; the project
@@ -126,6 +153,21 @@ mod tests {
         assert_eq!(iso8601(0), "1970-01-01T00:00:00Z");
         assert_eq!(iso8601(951_782_400), "2000-02-29T00:00:00Z");
         assert_eq!(iso8601(1_794_990_645), "2026-11-18T08:30:45Z");
+    }
+
+    #[test]
+    fn the_stackup_adds_up_to_the_thickness() {
+        let mut board = Board::with_copper_layers(4);
+        board.stackup.finish = Finish::Enig;
+        let layers = material_stackup(&board);
+        let types: Vec<&str> = layers.iter().map(|l| l["Type"].as_str().unwrap()).collect();
+        assert_eq!(types.iter().filter(|t| **t == "Copper").count(), 4);
+        assert_eq!(types.iter().filter(|t| **t == "Dielectric").count(), 3);
+        assert_eq!((types[0], types[1], types[2]), ("Legend", "SolderMask", "Copper"));
+        let total: f64 = layers.iter().filter_map(|l| l["Thickness"].as_f64()).sum();
+        assert!((total - 1.6).abs() < 0.002, "{total}");
+        assert_eq!(layers[2]["Thickness"], 0.035);
+        assert_eq!(layers[4]["Thickness"], 0.018, "inner copper");
     }
 
     #[test]

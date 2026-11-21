@@ -26,7 +26,8 @@ in Properties (their pads stay on the board; the schematic crosses them out and 
 editors draw them faded).
 Zones are refilled and the design rules checked first; violations are reported but don't
 stop the export. Solder mask openings and paste come from the pads (Board setup: mask
-expansion, paste margin). Without a window: `pcb-designer export-gerber PROJECT_DIR`.
+expansion, paste margin). The job file carries the board's stack-up (Board setup →
+Stack-up: thickness, copper in µm or oz, surface finish, mask and silkscreen colours). Without a window: `pcb-designer export-gerber PROJECT_DIR`.
 The `output` folder is generated, so you may want it in `.gitignore`.
 
 The Project panel lists the files under Outputs › Gerber and Outputs › Assembly (marked

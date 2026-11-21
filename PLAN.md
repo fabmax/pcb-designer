@@ -352,8 +352,11 @@ the current design of each area with the gotchas a change needs to know, the pla
   (`%TD.AperFunction*%`), as a bare `%TD*%` would also drop the object attributes.
   Values are escaped (`,` `*` `%` `\` and non-ASCII as `\uXXXX`).
 - **Job file** (`job.rs`): JSON with the creation time (UTC, from `SystemTime`; no date
-  crate), the outline size at the stroke centre line, the copper count, a fixed 1.6 mm
-  thickness (no stack-up in the model), the board rules and `FilesAttributes` scanned
+  crate), the outline size at the stroke centre line, the copper count, the stack-up
+  (`Board::stackup`, Board setup → Stack-up, `Command::SetStackup`, part of `Setup`):
+  `BoardThickness`, `Finish` (unless "not specified") and `MaterialStackup` (silk, mask,
+  copper and FR-4 between, the copper's leftover thickness split evenly; dielectrics
+  aren't modelled; copper is stored in nm and labelled in µm and oz), the board rules and `FilesAttributes` scanned
   from each file's own `TF.FileFunction` / `TF.FilePolarity` lines (Gerber `%TF…*%` and
   Excellon `; #@! TF…`), so the two can't disagree.
 - **Assembly** (`assembly.rs`): `-bom.csv` (lines grouped by value, footprint and all
@@ -1373,10 +1376,10 @@ defers.
   symbols on import and export.
 
 **Board**
-- Fabrication outputs: fab/courtyard Gerbers, Protel file extensions, a board stack-up
-  (thickness, copper weight, finish) for the job file (1.6 mm fixed today), BOM and
-  position column presets per assembly service, assembly variants (several
-  fitted/not-fitted sets per board; "do not populate" is one flag today), IPC-D-356
+- Fabrication outputs: fab/courtyard Gerbers, Protel file extensions, BOM and position
+  column presets per assembly service, dielectric layers and impedance in the stack-up,
+  assembly variants (several fitted/not-fitted sets per board; "do not populate" is one
+  flag today), IPC-D-356
   netlist,
   silkscreen clipped at mask openings, mirrored bottom text in the editor; in the viewer:
   the mask area from the outline's contour (bounding box today), true clear polarity,

@@ -426,6 +426,7 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
             *message = Some(e.to_string());
         }
     }
+    stackup(ui, doc, message);
     net_classes(ui, doc, message);
     crate::checks_ui::drc_severities(ui, doc, message);
     // The rules and severities; layers and net classes are the design's.
@@ -444,6 +445,75 @@ pub fn board_setup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<S
                 *message = Some(e.to_string());
             }
         }
+        doc.close_group();
+    }
+}
+
+/// The board's stack-up as the fab gets it (the job file).
+fn stackup(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<String>) {
+    fields::section(
+        ui,
+        "Stack-up",
+        Some(
+            "What the board is made of, for the fab: written into the Gerber job file. Copper in µm and \
+             oz/ft², whichever the order form asks for. The FR-4 between the copper layers is what the copper \
+             leaves of the thickness, split evenly.",
+        ),
+    );
+    let board = &doc.project().board;
+    let inner = board.copper_layers().count() > 2;
+    let mut s = board.stackup.clone();
+    let before = s.clone();
+    let mut active = false;
+    grid(ui, "stackup", |ui| {
+        label(ui, "Thickness");
+        let (r, v) = units::drag(ui, s.thickness, mm(0.2), mm(10.0));
+        if let Some(v) = v {
+            s.thickness = v;
+        }
+        active = r.dragged() || r.has_focus();
+        ui.end_row();
+        let copper = |ui: &mut egui::Ui, name: &str, value: &mut Coord| {
+            label(ui, name);
+            let options: Vec<(Coord, String)> =
+                Stackup::COPPER.iter().map(|(t, _)| (*t, Stackup::copper_label(*t))).collect();
+            if let Some(v) = fields::combo(ui, name, value, &options) {
+                *value = v;
+            }
+            ui.end_row();
+        };
+        copper(ui, "Outer copper", &mut s.outer_copper);
+        if inner {
+            copper(ui, "Inner copper", &mut s.inner_copper);
+        }
+        label(ui, "Surface finish");
+        let finishes: Vec<(Finish, String)> = Finish::ALL.iter().map(|f| (*f, f.label().to_string())).collect();
+        if let Some(f) = fields::combo(ui, "finish", &s.finish, &finishes) {
+            s.finish = f;
+        }
+        ui.end_row();
+        label(ui, "Solder mask");
+        let masks: Vec<(MaskColor, String)> = MaskColor::ALL.iter().map(|c| (*c, c.label().to_string())).collect();
+        if let Some(c) = fields::combo(ui, "mask_color", &s.mask_color, &masks) {
+            s.mask_color = c;
+        }
+        ui.end_row();
+        label(ui, "Silkscreen");
+        let silks: Vec<(SilkColor, String)> = SilkColor::ALL.iter().map(|c| (*c, c.label().to_string())).collect();
+        if let Some(c) = fields::combo(ui, "silk_color", &s.silk_color, &silks) {
+            s.silk_color = c;
+        }
+        ui.end_row();
+    });
+    // Live while dragging or typing the thickness; one undo step per edit.
+    let key = ui.make_persistent_id("stackup_group");
+    if s != before {
+        let group = active.then(|| ui.data_mut(|d| *d.get_temp_mut_or_insert_with(key, new_group)));
+        if let Err(e) = doc.execute_grouped(Command::SetStackup { stackup: s }, group) {
+            *message = Some(e.to_string());
+        }
+    }
+    if !active && ui.data_mut(|d| d.remove_temp::<u64>(key)).is_some() {
         doc.close_group();
     }
 }

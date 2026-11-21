@@ -516,6 +516,170 @@ impl FootprintField {
 
 has_id!(FootprintInstance, FootprintField, Track, Via, Zone, Keepout, BoardGraphic, BoardText);
 
+/// The board's stack-up as a fab order asks for it. Dielectrics aren't modelled: the job
+/// file splits what the copper leaves of the thickness evenly between the layers.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(default)]
+pub struct Stackup {
+    /// Finished board thickness.
+    pub thickness: Coord,
+    /// Copper thickness of the outer layers (35 µm: 1 oz).
+    pub outer_copper: Coord,
+    /// Copper thickness of the inner layers.
+    pub inner_copper: Coord,
+    pub finish: Finish,
+    pub mask_color: MaskColor,
+    pub silk_color: SilkColor,
+}
+
+impl Default for Stackup {
+    fn default() -> Self {
+        Stackup {
+            thickness: 1_600_000,
+            outer_copper: 35_000,
+            inner_copper: 18_000,
+            finish: Finish::default(),
+            mask_color: MaskColor::default(),
+            silk_color: SilkColor::default(),
+        }
+    }
+}
+
+impl Stackup {
+    /// Board thicknesses fabs offer (nm).
+    pub const THICKNESSES: [Coord; 9] =
+        [400_000, 600_000, 800_000, 1_000_000, 1_200_000, 1_600_000, 2_000_000, 2_400_000, 3_200_000];
+    /// Copper thicknesses fabs offer (nm), with their weight in oz/ft².
+    pub const COPPER: [(Coord, &'static str); 5] =
+        [(12_000, "⅓ oz"), (18_000, "½ oz"), (35_000, "1 oz"), (70_000, "2 oz"), (105_000, "3 oz")];
+
+    /// "35 µm (1 oz)": both units, as fab forms ask for either.
+    pub fn copper_label(thickness: Coord) -> String {
+        let um = thickness as f64 / 1e3;
+        match Stackup::COPPER.iter().find(|(t, _)| *t == thickness) {
+            Some((_, oz)) => format!("{um} µm ({oz})"),
+            None => format!("{um} µm ({:.2} oz)", thickness as f64 / 35_000.0),
+        }
+    }
+}
+
+/// Surface finish of the exposed copper.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Finish {
+    /// Not chosen: left to the fab (not in the job file).
+    #[default]
+    Unspecified,
+    Hasl,
+    HaslLeadFree,
+    Enig,
+    Osp,
+    ImmersionTin,
+    ImmersionSilver,
+    /// Bare copper.
+    None,
+}
+
+impl Finish {
+    pub const ALL: [Finish; 8] = [
+        Finish::Unspecified,
+        Finish::Hasl,
+        Finish::HaslLeadFree,
+        Finish::Enig,
+        Finish::Osp,
+        Finish::ImmersionTin,
+        Finish::ImmersionSilver,
+        Finish::None,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Finish::Unspecified => "Not specified",
+            Finish::Hasl => "HASL",
+            Finish::HaslLeadFree => "HASL lead-free",
+            Finish::Enig => "ENIG",
+            Finish::Osp => "OSP",
+            Finish::ImmersionTin => "Immersion tin",
+            Finish::ImmersionSilver => "Immersion silver",
+            Finish::None => "None (bare copper)",
+        }
+    }
+
+    /// The Gerber job file's name of it (`GeneralSpecs.Finish`).
+    pub fn job_name(self) -> Option<&'static str> {
+        Some(match self {
+            Finish::Unspecified => return None,
+            Finish::Hasl => "HAL SnPb",
+            Finish::HaslLeadFree => "HAL lead-free",
+            Finish::Enig => "ENIG",
+            Finish::Osp => "OSP",
+            Finish::ImmersionTin => "Immersion tin",
+            Finish::ImmersionSilver => "Immersion silver",
+            Finish::None => "None",
+        })
+    }
+}
+
+/// Solder mask colours fabs offer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MaskColor {
+    #[default]
+    Green,
+    Red,
+    Yellow,
+    Blue,
+    White,
+    Black,
+    Purple,
+}
+
+impl MaskColor {
+    pub const ALL: [MaskColor; 7] = [
+        MaskColor::Green,
+        MaskColor::Red,
+        MaskColor::Yellow,
+        MaskColor::Blue,
+        MaskColor::White,
+        MaskColor::Black,
+        MaskColor::Purple,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            MaskColor::Green => "Green",
+            MaskColor::Red => "Red",
+            MaskColor::Yellow => "Yellow",
+            MaskColor::Blue => "Blue",
+            MaskColor::White => "White",
+            MaskColor::Black => "Black",
+            MaskColor::Purple => "Purple",
+        }
+    }
+}
+
+/// Silkscreen colours fabs offer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SilkColor {
+    #[default]
+    White,
+    Black,
+    Yellow,
+}
+
+impl SilkColor {
+    pub const ALL: [SilkColor; 3] = [SilkColor::White, SilkColor::Black, SilkColor::Yellow];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SilkColor::White => "White",
+            SilkColor::Black => "Black",
+            SilkColor::Yellow => "Yellow",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct DesignRules {
     pub clearance: Coord,
@@ -698,6 +862,9 @@ pub struct Board {
     /// Severities and exclusions of the design rules check.
     #[serde(default, skip_serializing_if = "DrcSettings::is_default")]
     pub drc: DrcSettings,
+    /// What the fab builds it from: thickness, copper, finish, colours (the job file).
+    #[serde(default)]
+    pub stackup: Stackup,
 }
 
 impl Default for Board {
@@ -748,6 +915,7 @@ impl Board {
             graphics: Store::default(),
             texts: Store::default(),
             drc: DrcSettings::default(),
+            stackup: Stackup::default(),
         }
     }
 

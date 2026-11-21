@@ -459,6 +459,10 @@ fn exports_a_job_file_and_assembly_files() {
     assert!(listed.iter().any(|a| a["FileFunction"] == "Copper,L1,Top" && a["FilePolarity"] == "Positive"));
     assert_eq!(json["GeneralSpecs"]["LayerNumber"], doc.project().board.copper_layers().count());
     assert!(json["GeneralSpecs"]["Size"]["X"].as_f64().unwrap() > 10.0);
+    // The stack-up's (the default: 1.6 mm, no finish chosen).
+    assert_eq!(json["GeneralSpecs"]["BoardThickness"], 1.6);
+    assert!(json["GeneralSpecs"].get("Finish").is_none());
+    assert!(json["MaterialStackup"].as_array().unwrap().iter().any(|l| l["Type"] == "Dielectric"));
 
     let project_dir = doc.path.clone().unwrap();
     let assembly = gerber::assembly_dir(&project_dir);
