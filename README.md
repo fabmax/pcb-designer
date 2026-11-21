@@ -608,6 +608,12 @@ saved in `settings.json` in the configuration folder (macOS:
 folder; `--keymap FILE.json` loads key bindings and `--mcp-port PORT` the port for one
 session.
 
+Unsaved changes are copied to `recovery/` in the configuration folder 5 minutes after
+the first change not in the copy (the project itself is only written when you save). The copy is removed when
+you save, discard the changes or quit. After a crash the next start offers to restore
+it, with the changes still unsaved; Later asks again at the next start or when the
+project is opened.
+
 Each saved project remembers its workspace: open tabs and splits, the zoom and position
 of each sheet, the board and each library tab, hidden layers and the routing layer. It's kept in the
 project folder in `.pcb-designer/`, which ignores itself for git.

@@ -566,6 +566,11 @@ impl Document {
         self.editor.mark_saved();
     }
 
+    /// Unsaved changes from the start (a project restored from a recovery copy).
+    pub fn mark_unsaved(&mut self) {
+        self.editor.mark_unsaved();
+    }
+
     pub fn close_group(&mut self) {
         self.editor.close_group();
     }

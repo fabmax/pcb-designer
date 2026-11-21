@@ -1307,6 +1307,17 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
 - **Dialogs:** use `theme::dialog` (modal, accent title; bold is faked by
   `theme::bold_label`) and, for non-modal resizable ones, `theme::window` (same frame
   and title bar, a × button, opens centred; Settings, KiCad import). Bus prompts are `name_prompt.rs`.
+- **Recovery copies** (`recovery.rs`): saving stays explicit. Each running app has a
+  slot in the settings folder's `recovery/` (unsaved projects too, nothing in project
+  folders), with a recovery copy written 5 minutes (`INTERVAL`) after the first change
+  not in it, on a thread (a clone of the project), into `project.next/` and then swapped
+  in, the meta file last. The slot empties when the document is unmodified again (saved,
+  undone) or replaced, and goes on a clean quit (`on_exit`). The app holds an exclusive
+  lock on the slot's `lock` file (`File::try_lock`) while it runs; the OS lets go when it
+  crashes, so unlocked slots are what `left_over` offers at start and when opening their
+  project (Restore / Discard / Later). Restore opens the copy with `Document::mark_unsaved`
+  and its folder, if it still exists; the copy then moves to this app's slot. Scripted
+  runs keep copies only with `PCB_DESIGNER_CONFIG`.
 - **Native file dialogs** (`file_dialog.rs`) never block the frame. A blocking
   `rfd::FileDialog` runs a nested event loop inside winit's event handler, and on macOS
   the save panel can deliver an event winit queued meanwhile: winit aborts ("tried to
@@ -1486,6 +1497,8 @@ defers.
   Is that even possible? It seems to be there in any app...
 
 **Other**
+- Recovery copies of modified external libraries (only the project is kept now), and a
+  setting for the interval.
 - Simulation: see [simulation-plan.md](simulation-plan.md).
 - Releases: ngspice built from source and linked statically (a pinned version, the
   `cmake` crate on its CMake build, unused features off: OSDI, RF, PSS, FFTW, sound

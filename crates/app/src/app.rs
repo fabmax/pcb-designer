@@ -15,6 +15,7 @@ use model::*;
 use view::item::Item;
 
 use crate::file_dialog::{Dialog, Kind};
+use crate::recovery;
 use view::pcb_tools::{PcbPlacer, PcbSettings, PcbTool};
 use view::sch_tools::{SchPlacer, SchSettings, SchTool};
 
@@ -384,6 +385,10 @@ pub struct PcbApp {
     /// The open file dialog (they don't block the frame, see `file_dialog`).
     file_dialog: Dialog<Chosen>,
     egui_ctx: egui::Context,
+    /// This app's recovery copy of unsaved changes (not in scripted runs).
+    recovery: Option<recovery::Slot>,
+    /// Recovery copies crashed apps left, to offer one after the other.
+    recover: Vec<recovery::Entry>,
     /// Counts item tab uses ([`ItemTab::used`]).
     tab_clock: u64,
     /// The Messages panel's tab, and whether the panel was open last frame.
@@ -466,6 +471,8 @@ impl PcbApp {
             deferred: Vec::new(),
             file_dialog: Dialog::default(),
             egui_ctx: cc.egui_ctx.clone(),
+            recovery: None,
+            recover: Vec::new(),
             tab_clock: 0,
             message_tab: messages::Category::default(),
             messages_open: false,
@@ -575,6 +582,14 @@ impl PcbApp {
         app.saved_dock = app.settings.dock.clone();
         if start_mcp {
             app.agent.start(&cc.egui_ctx);
+        }
+        // Scripted runs only with a throwaway settings folder.
+        let scripted = app.screenshot.is_some() || app.script.is_some();
+        if (!scripted || std::env::var_os("PCB_DESIGNER_CONFIG").is_some())
+            && let Some(root) = recovery::root()
+        {
+            app.recover = recovery::left_over(&root);
+            app.recovery = recovery::Slot::new(&root).inspect_err(|e| log::warn!("no recovery copies: {e}")).ok();
         }
         // The project's saved tabs and cameras (the command line's layout wins).
         if opened && !opts.side_by_side {
@@ -974,6 +989,10 @@ impl PcbApp {
 
     fn replace_document(&mut self, doc: Document) {
         self.save_workspace();
+        // The old document's changes were saved or discarded.
+        if let Some(slot) = &mut self.recovery {
+            slot.clear();
+        }
         let old_root = self.doc().root();
         self.project = LibraryEditor::new(PROJECT_LIB, LibraryDoc { doc, path: None });
         self.sync_libraries();
@@ -1065,6 +1084,7 @@ impl PcbApp {
                 self.replace_document(doc);
                 self.set_status(format!("Opened {}", dir.display()));
                 self.remember_project(dir);
+                self.offer_recovery_of(dir);
             }
             Err(e) => self.set_status(format!("Open failed: {e}")),
         }
@@ -1156,6 +1176,88 @@ impl PcbApp {
         if close || modal.should_close() {
             self.import_report = None;
         }
+    }
+
+    /// Write the recovery copy when it's due (and wake up for it).
+    fn keep_recovery_copy(&mut self, ctx: &egui::Context) {
+        let Some(slot) = &mut self.recovery else { return };
+        let doc = &self.project.lib.doc;
+        let copy = || (doc.project().clone(), doc.path.clone());
+        if let Some(wait) = slot.tick(Instant::now(), doc.is_modified(), doc.revision, copy) {
+            ctx.request_repaint_after(wait);
+        }
+    }
+
+    /// Offer the recovery copies of the project in `dir` (left for later, or from
+    /// another app that crashed meanwhile).
+    fn offer_recovery_of(&mut self, dir: &std::path::Path) {
+        let Some(root) = recovery::root().filter(|_| self.recovery.is_some()) else { return };
+        let same = |p: &std::path::Path| std::fs::canonicalize(p).ok() == std::fs::canonicalize(dir).ok();
+        for e in recovery::left_over(&root) {
+            if e.meta.project.as_deref().is_some_and(same) && !self.recover.iter().any(|r| r.dir == e.dir) {
+                self.recover.push(e);
+            }
+        }
+    }
+
+    /// Offer the first recovery copy: restore, discard, or ask again next time.
+    fn recovery_ui(&mut self, ctx: &egui::Context) {
+        let Some(e) = self.recover.first() else { return };
+        let mut answer = None;
+        theme::dialog(ctx, egui::Id::unique("recovery"), "Recover unsaved changes", 460.0, |ui| {
+            ui.label(format!("PCB Designer quit without saving the changes to \"{}\".", e.meta.name));
+            let place = e.meta.project.as_ref().map_or("never saved".into(), |p| p.display().to_string());
+            ui.label(RichText::new(format!("Recovery copy from {} · {place}", e.age())).color(theme::text_dim()));
+            if e.saved_since() {
+                ui.label(
+                    RichText::new("The project was saved after this copy: restoring it goes back to an older state.")
+                        .color(theme::warn()),
+                );
+            }
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                if ui.button("Restore").clicked() {
+                    answer = Some(0);
+                }
+                if ui.button("Discard").on_hover_text("Delete the recovery copy").clicked() {
+                    answer = Some(1);
+                }
+                if ui.button("Later").on_hover_text("Ask again at the next start").clicked() {
+                    answer = Some(2);
+                }
+            });
+        });
+        let Some(answer) = answer else { return };
+        let e = self.recover.remove(0);
+        match answer {
+            0 => {
+                if self.confirm_discard({
+                    let e = e.clone();
+                    move |a| a.restore(e)
+                }) {
+                    self.restore(e);
+                }
+            }
+            1 => e.discard(),
+            _ => {}
+        }
+    }
+
+    /// Open a recovery copy as the project, with its changes unsaved.
+    fn restore(&mut self, e: recovery::Entry) {
+        let project = match e.load() {
+            Ok(p) => p,
+            Err(err) => return self.set_status(format!("Could not restore: {err}")),
+        };
+        let mut doc = Document::new(project);
+        doc.path = e.meta.project.clone().filter(|p| p.join(model::io::PROJECT_FILE).exists());
+        doc.mark_unsaved();
+        self.replace_document(doc);
+        e.discard();
+        if let Some(slot) = &mut self.recovery {
+            slot.write_soon();
+        }
+        self.set_status(format!("Restored the unsaved changes to {}: save to keep them", e.meta.name));
     }
 
     fn remember_project(&mut self, dir: &std::path::Path) {
@@ -5213,6 +5315,10 @@ impl eframe::App for PcbApp {
     }
 
     fn on_exit(&mut self) {
+        // Quitting cleanly: changes were saved or discarded.
+        if let Some(slot) = self.recovery.take() {
+            slot.close();
+        }
         if self.screenshot.is_some() || self.script.is_some() {
             return;
         }
@@ -5230,6 +5336,7 @@ impl eframe::App for PcbApp {
         self.sync_libraries();
         self.handle_close(&ctx);
         self.file_dialog_answer();
+        self.keep_recovery_copy(&ctx);
         // The name dialog takes the keys while it is open.
         self.paste_text = ctx.input(|i| {
             i.events.iter().find_map(|e| if let egui::Event::Paste(t) = e { Some(t.clone()) } else { None })
@@ -5466,6 +5573,7 @@ impl eframe::App for PcbApp {
         self.rename_ui(&ctx);
         self.settings_window(&ctx);
         self.import_report_ui(&ctx);
+        self.recovery_ui(&ctx);
         let libs: Vec<(u64, String)> = self.libraries.iter().map(|l| (l.key, l.lib.name().to_string())).collect();
         self.kicad.poll();
         if let Some(ImportAction::Import(target, req)) = self.kicad.ui(&ctx, &libs) {

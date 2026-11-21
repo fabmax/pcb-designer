@@ -75,6 +75,7 @@ mod pointer_filter;
 mod preview;
 mod project_panel;
 mod properties;
+mod recovery;
 mod sch_ui;
 mod script;
 mod settings;

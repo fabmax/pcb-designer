@@ -104,6 +104,11 @@ impl History {
         self.saved_at = Some(self.current());
     }
 
+    /// No state in the history is the saved one (a document restored from a copy).
+    pub fn mark_unsaved(&mut self) {
+        self.saved_at = None;
+    }
+
     pub fn is_modified(&self) -> bool {
         self.saved_at != Some(self.current())
     }

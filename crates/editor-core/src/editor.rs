@@ -104,6 +104,11 @@ impl Editor {
         self.history.mark_saved();
     }
 
+    /// See [`History::mark_unsaved`].
+    pub fn mark_unsaved(&mut self) {
+        self.history.mark_unsaved();
+    }
+
     pub fn is_modified(&self) -> bool {
         self.history.is_modified()
     }
