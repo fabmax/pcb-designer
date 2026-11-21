@@ -409,7 +409,9 @@ the current design of each area with the gotchas a change needs to know, the pla
   `gerber` (optional `layers`) renders the same view offscreen.
 - **Outputs in the tree** (`app/src/outputs.rs`): Outputs › Gerber › files and
   Outputs › Assembly › files. Image files open in the Gerber tab; the job file and the
-  CSVs are `NodeId::DataFile` and open in the system's app. Scanned
+  CSVs are `NodeId::DataFile` and open in the system's app. Outputs › Schematic PDF
+  (`NodeId::SchematicPdf`: the newest `output/*-schematic.pdf`) opens in the system's
+  app, or exports when missing; it isn't marked outdated (no hash saved with it). Scanned
   when the project folder changes, after an export and when the window regains focus
   (no file watching). "Outdated" compares the manifest's hash with `design_hash`,
   recomputed once per document revision and never while an interaction is running.

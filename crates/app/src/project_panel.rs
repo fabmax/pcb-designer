@@ -59,6 +59,8 @@ pub enum NodeId {
     OutputFile(u64),
     /// The assembly folder (bill of materials, positions).
     Assembly,
+    /// The schematic PDF (File › Export schematic PDF).
+    SchematicPdf,
     /// A file of either folder without an image (job file, BOM, positions), opened in
     /// the system's app (by a hash of its path in the output folder).
     DataFile(u64),
@@ -145,6 +147,7 @@ pub enum Act {
     /// Remove the Project Library's unused parts, symbols and footprints.
     RemoveUnused,
     ExportGerber,
+    ExportSchematicPdf,
     /// Show the Gerber tab, with only this file (`None`: as it was).
     OpenGerber(Option<PathBuf>),
     /// Delete the export folder (and its zip), after asking.
@@ -294,6 +297,17 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
                 reveal(&mut out);
             }
         }
+        NodeId::SchematicPdf => {
+            if info.flag
+                && let Some(p) = &info.path
+            {
+                out.push(A("Open", Act::OpenFile(p.clone())));
+                out.push(A("Re-export", Act::ExportSchematicPdf));
+                reveal(&mut out);
+            } else {
+                out.push(A("Export schematic PDF", Act::ExportSchematicPdf));
+            }
+        }
         NodeId::DataFile(_) => {
             if let Some(p) = &info.path {
                 out.push(A("Open", Act::OpenFile(p.clone())));
@@ -340,6 +354,8 @@ pub fn activate(id: NodeId, info: &Info) -> Option<Act> {
         NodeId::OutputFile(_) => Some(Act::OpenGerber(info.path.clone())),
         NodeId::Assembly if !info.flag && info.editable => Some(Act::ExportGerber),
         NodeId::DataFile(_) => info.path.clone().map(Act::OpenFile),
+        NodeId::SchematicPdf if info.flag => info.path.clone().map(Act::OpenFile),
+        NodeId::SchematicPdf if info.editable => Some(Act::ExportSchematicPdf),
         _ => None,
     }
 }

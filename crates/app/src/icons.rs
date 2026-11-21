@@ -97,6 +97,7 @@ icons! {
     Check => "tabler/check",
     Spreadsheet => "tabler/file-spreadsheet",
     FileCode => "tabler/file-code",
+    FilePdf => "tabler/file-type-pdf",
     /// Corner styles of drawn wires and tracks.
     Corner90 => "corner-90",
     Corner45 => "corner-45",

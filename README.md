@@ -42,7 +42,8 @@ The `output` folder is generated, so you may want it in `.gitignore`.
 
 The Project panel lists the files under Outputs › Gerber and Outputs › Assembly (marked
 *outdated* when the design changed since); the job file and the CSV files open in your
-system's app. Double-click opens them read back from disk in a read-only
+system's app, and so does Outputs › Schematic PDF (double-click; it exports the PDF when
+there is none yet). Double-click opens them read back from disk in a read-only
 Gerber tab, stacked like the board in its colours (solder mask inverted, drills as
 holes); double-clicking a single file shows only that one, the layers button toggles
 them, and hovering names the file, aperture and its function, and the pad and net. Open the PCB tab side by

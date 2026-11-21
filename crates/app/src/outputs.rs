@@ -29,6 +29,10 @@ pub struct Outputs {
     /// The assembly folder, and its files in the same order.
     pub assembly_dir: Option<PathBuf>,
     pub assembly: Vec<String>,
+    /// The output folder (`None`: the project isn't saved) and the schematic PDF in it,
+    /// if exported.
+    pub output_dir: Option<PathBuf>,
+    pub schematic_pdf: Option<PathBuf>,
     /// The design hash and the document revision it was computed at.
     hash: Option<(u64, String)>,
 }
@@ -41,6 +45,8 @@ impl Outputs {
         self.manifest = project_dir.and_then(read_manifest);
         self.files = list(self.dir.as_deref(), self.manifest.as_ref().map(|m| &m.files[..]));
         self.assembly = list(self.assembly_dir.as_deref(), self.manifest.as_ref().map(|m| &m.assembly[..]));
+        self.output_dir = project_dir.map(|d| d.join("output"));
+        self.schematic_pdf = self.output_dir.as_deref().and_then(find_schematic_pdf);
     }
 
     pub fn exported(&self) -> bool {
@@ -136,8 +142,38 @@ impl Outputs {
             &self.assembly,
             true,
         ));
-        TreeNode::new(NodeId::Outputs, "Outputs", Info::icon(Icon::Folder)).with_children(vec![gerber, assembly])
+        let pdf = &self.schematic_pdf;
+        let pdf_info = Info {
+            detail: pdf
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .map_or("not exported".into(), |n| n.to_string_lossy().into()),
+            dim: pdf.is_none(),
+            editable: self.output_dir.is_some(),
+            flag: pdf.is_some(),
+            tip: match pdf {
+                Some(_) => {
+                    "The schematic as a PDF, a page per sheet: double-click opens it in the system's viewer".into()
+                }
+                None => "The schematic as a PDF, a page per sheet (File › Export schematic PDF)".into(),
+            },
+            path: pdf.clone(),
+            ..Info::icon(Icon::FilePdf)
+        };
+        let pdf = TreeNode::new(NodeId::SchematicPdf, "Schematic PDF", pdf_info);
+        TreeNode::new(NodeId::Outputs, "Outputs", Info::icon(Icon::Folder)).with_children(vec![gerber, assembly, pdf])
     }
+}
+
+/// The schematic PDF in the output folder (`<name>-schematic.pdf`; the newest if the
+/// project was renamed since).
+fn find_schematic_pdf(output: &Path) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(output).ok()?;
+    entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().ends_with("-schematic.pdf"))
+        .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok())
+        .map(|e| e.path())
 }
 
 /// The files in `dir` (not the manifest or hidden ones): those `listed` first in their
@@ -394,15 +430,18 @@ mod tests {
         let mut outputs = Outputs::default();
         outputs.scan(Some(&dir));
         let node = outputs.node(false);
-        let [gerber, assembly] = &node.children[..] else { panic!() };
+        let [gerber, assembly, pdf] = &node.children[..] else { panic!() };
         assert!(gerber.children.is_empty() && assembly.children.is_empty());
         assert_eq!(assembly.data.detail, "not exported");
+        // Not exported yet: activating it exports.
+        assert_eq!(pdf.data.detail, "not exported");
+        assert!(matches!(project_panel::activate(pdf.id, &pdf.data), Some(project_panel::Act::ExportSchematicPdf)));
 
         doc.export_gerber().unwrap();
         outputs.scan(Some(&dir));
         assert_eq!(outputs.dirs().len(), 2);
         let node = outputs.node(false);
-        let [gerber, assembly] = &node.children[..] else { panic!() };
+        let [gerber, assembly, _] = &node.children[..] else { panic!() };
         let job = gerber.children.iter().find(|n| n.label == "Job File").unwrap();
         assert!(matches!(job.id, NodeId::DataFile(_)), "the job file opens in the system's app");
         assert!(matches!(gerber.children[0].id, NodeId::OutputFile(_)));
@@ -412,5 +451,15 @@ mod tests {
         assert!(bom.data.path.as_ref().unwrap().is_file());
         assert!(matches!(project_panel::activate(bom.id, &bom.data), Some(project_panel::Act::OpenFile(_))));
         assert_eq!(assembly.data.detail, "2 files");
+
+        // The schematic PDF opens in the system's viewer.
+        let file = doc.export_schematic_pdf().unwrap();
+        outputs.scan(Some(&dir));
+        let node = outputs.node(false);
+        let pdf = &node.children[2];
+        assert_eq!(pdf.data.path.as_ref(), Some(&file));
+        assert!(
+            matches!(project_panel::activate(pdf.id, &pdf.data), Some(project_panel::Act::OpenFile(p)) if p == file)
+        );
     }
 }

@@ -1231,7 +1231,10 @@ impl PcbApp {
             return;
         }
         match self.doc_mut().export_schematic_pdf() {
-            Ok(file) => self.set_status(format!("Exported the schematic to {}", file.display())),
+            Ok(file) => {
+                self.refresh_outputs();
+                self.set_status(format!("Exported the schematic to {}", file.display()));
+            }
             Err(e) => self.set_status(format!("PDF export failed: {e}")),
         }
     }
@@ -3254,6 +3257,7 @@ impl PcbApp {
                 self.save(false);
             }
             Act::ExportGerber => self.export_gerber(),
+            Act::ExportSchematicPdf => self.export_schematic_pdf(),
             Act::OpenGerber(file) => self.open_gerber(file),
             Act::DeleteOutputs => self.delete_outputs(),
             Act::SaveProjectAs => {
