@@ -99,7 +99,6 @@ const ENTRIES: &[Entry] = &[
     entry(Page::Agent, "Headless mode", "stdio claude code command copy window"),
     entry(Page::Libraries, "Most library tabs", "tabs preview limit maximum open items parts symbols footprints"),
     entry(Page::Libraries, "KiCad library folder", "download path directory kicad"),
-    entry(Page::Libraries, "Settings file", "config configuration path json location folder"),
     entry(Page::Simulation, "Run simulations", "spice ngspice shared library process backend crash in use version"),
     entry(Page::Simulation, "ngspice", "spice simulator path executable install program version"),
     entry(Page::Simulation, "ngspice library", "spice simulator path libngspice dll dylib shared install"),
@@ -612,10 +611,6 @@ impl SettingsWindow {
                 changes.save = true;
             }
         });
-        rows.row(ui, "Settings file", None, |ui| {
-            let path = Settings::path().map(|p| p.display().to_string()).unwrap_or_else(|| "(none)".into());
-            ui.label(RichText::new(path).monospace().color(theme::text_dim()));
-        });
         reset(ui, rows, || {
             settings.kicad_dir = None;
             self.kicad_text = None;
@@ -688,8 +683,8 @@ impl SettingsWindow {
             ui.horizontal(|ui| {
                 ui.add_space(LABEL_WIDTH + ui.spacing().item_spacing.x);
                 match found {
-                    Ok(t) => ui.label(RichText::new(t).color(theme::success())),
-                    Err(e) => ui.label(RichText::new(e).color(theme::warn())),
+                    Ok(t) => ui.add(egui::Label::new(RichText::new(t).color(theme::success())).wrap()),
+                    Err(e) => ui.add(egui::Label::new(RichText::new(e).color(theme::warn())).wrap()),
                 };
             });
         }
@@ -742,7 +737,7 @@ fn tools(ui: &mut Ui, rows: &mut Rows, settings: &mut Settings, changes: &mut Ch
     rows.row(ui, "Remembered tool settings", Some(help), |ui| {
         let families: Vec<&str> = settings.tools.keys().map(|k| k.as_str()).collect();
         let text = if families.is_empty() { "Nothing remembered yet".into() } else { families.join(", ") };
-        ui.label(RichText::new(text).color(theme::text_dim()));
+        ui.add(egui::Label::new(RichText::new(text).color(theme::text_dim())).wrap());
     });
     reset(ui, rows, || {
         changes.forget_tools = true;

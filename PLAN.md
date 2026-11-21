@@ -1208,7 +1208,8 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   label, so a new row needs an entry), keymap rows match by action name and shortcut
   text. `--show settings:PAGE` opens it (screenshots). `MIN_SIZE` is wide enough for
   the widest page (Appearance's UI scale buttons): egui grows a window to its content, so
-  a narrower minimum made switching pages widen the window. A wider page needs it raised.
+  a narrower minimum made switching pages widen the window. A wider page needs it raised;
+  text of unbounded length (paths, messages) wraps or sits in fixed-width fields.
 - **Remembered tool settings** (`view::tool_memory`): `SchSettings`, `PcbSettings`,
   `tools::Settings` and `ArrayForm` serialize their style fields; transient ones
   (rotation, the next name, the routing layer, the zone net) are `#[serde(skip)]` and come
