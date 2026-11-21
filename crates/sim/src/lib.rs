@@ -207,20 +207,22 @@ impl Engine {
     }
 
     /// The backend for `analysis`: the library, but for sweeps when the executable is
-    /// there too.
+    /// there too, and once ngspice exited in this process ([`Libngspice::exited`]).
     pub fn backend(&self, analysis: &Analysis) -> Result<session::SharedBackend, String> {
+        let process_first = analysis.step.is_some() || Libngspice::exited();
         let library = self.library.clone().map(|l| Arc::new(l) as session::SharedBackend);
         let process = self.process.clone().map(|p| Arc::new(p) as session::SharedBackend);
         if let Some(e) = &self.error {
             return Err(e.clone());
         }
-        let pick = if analysis.step.is_some() { process.or(library) } else { library.or(process) };
+        let pick = if process_first { process.or(library) } else { library.or(process) };
         pick.ok_or_else(|| "ngspice is not installed".into())
     }
 
     /// What runs single analyses: "libngspice-47, shared library".
     pub fn describe(&self) -> Option<String> {
         match (&self.library, &self.process) {
+            (Some(_), Some(p)) if Libngspice::exited() => Some(p.describe()),
             (Some(l), _) => Some(l.describe()),
             (None, Some(p)) => Some(p.describe()),
             _ => None,

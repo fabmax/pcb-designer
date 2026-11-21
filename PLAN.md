@@ -471,8 +471,11 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   compiled-in folder, Homebrew's isn't found) it has no code models and POLY sources of
   vendor op amps fail, so `codemodel` loads them from `lib/ngspice` beside it.
   `ControlledExit` (a `quit`, or it gave up: e.g. it can't allocate a run's vectors on
-  macOS; Linux overcommits and runs on) sets a flag, the run fails with "ngspice
-  exited", and the next run calls `ngSpice_Init` again.
+  macOS; Linux overcommits and runs on) sets a flag and the run fails with "ngspice
+  exited". The instance is spent for the rest of the process: `ngSpice_Init` again
+  (with or without `ngSpice_Reset`) leaves it corrupt and later runs crash (macOS
+  malloc traps it), so `Libngspice::exited` makes library runs fail and
+  `Engine::backend` / `describe` pick the process backend.
 - **Versions:** Ubuntu ships ngspice 45 (CI tests it), Homebrew 47. Before 46 current
   sources have no `r=` (PWL repeat), so a repeating PWL current source is netlisted as
   the I element with its DC and AC parts, plus a hidden repeating V of the PWL less its
@@ -656,8 +659,9 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   everywhere; the circuits in `tests/all/ngspice.rs` (RC in AC and transient, diode, op
   amps, regulators, transistors, NAND, zener, crystal, DC sweep, errors, cancel, the
   demo) run by every backend found, which must agree (same vectors and values), and
-  skip with a note when none is; library-only ones stream and stop, recover after
-  ngspice exits (a `.control` `quit`), and serialise runs from threads (they queue:
+  skip with a note when none is; library-only ones stream and stop, refuse to run after
+  ngspice exits (a `.control` `quit`; that test reruns the test binary as a child
+  process, which would otherwise spend the other tests' library), and serialise runs from threads (they queue:
   tests waiting for the library allow for the others' runs). The KiCad demo comparison also
   runs our netlists through the library. `tests/all/bench.rs` builds circuits
   by labelling pin ends. `tests/all/plot.rs` covers scales, ticks, decimation and AC

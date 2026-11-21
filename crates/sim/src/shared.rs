@@ -11,8 +11,10 @@
 //! * `SendInitData` / `SendData` stream every accepted point into the [`Live`] plot,
 //!   `SendStat` the percentage.
 //! * Gotchas: a crashing model takes the app down (the process backend is the setting
-//!   for that). `ControlledExit` (ngspice wants to quit) mustn't end the app: the
-//!   instance is initialised again before the next run. The library is never unloaded
+//!   for that). `ControlledExit` (ngspice wants to quit) mustn't end the app, but the
+//!   instance is spent: calling `ngSpice_Init` again (or `ngSpice_Reset` first) leaves it
+//!   corrupt, and later runs crash. So it's never run again in this process
+//!   ([`Libngspice::exited`]; the engine falls back to processes). The library is never unloaded
 //!   (its threads may still run). No lock may be held across an ngspice call that
 //!   calls back (`SendChar` comes on the calling thread too).
 
@@ -85,7 +87,7 @@ struct Api {
     init: Init,
     command: CommandFn,
     circ: Circ,
-    /// Initialised (false at first and after a `ControlledExit`).
+    /// Initialised.
     ready: AtomicBool,
     version: Mutex<Option<String>>,
 }
@@ -96,7 +98,7 @@ static LOADED: Mutex<Vec<(PathBuf, &'static Api)>> = Mutex::new(Vec::new());
 static RUN: Mutex<()> = Mutex::new(());
 /// Where the callbacks write (the run going).
 static SINK: Mutex<Option<Sink>> = Mutex::new(None);
-/// ngspice asked to exit: initialise again before the next run.
+/// ngspice asked to exit: the instance can't run again in this process.
 static EXITED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Default)]
@@ -289,6 +291,12 @@ const PLACES: &[&str] = &[
 ];
 
 impl Libngspice {
+    /// ngspice asked to exit (a `quit`, or it gave up): no library runs any more in this
+    /// process, whichever path was loaded (one instance per process).
+    pub fn exited() -> bool {
+        EXITED.load(Ordering::SeqCst)
+    }
+
     /// `configured` if given (an error when it doesn't load), else `NGSPICE_LIBRARY` from
     /// the environment, else the usual install places.
     pub fn find(configured: Option<&Path>) -> Result<Libngspice, SimError> {
@@ -355,12 +363,13 @@ impl Libngspice {
         unsafe { (self.api.command)(c.as_ptr()) }
     }
 
-    /// Initialises the instance (first use, or after ngspice asked to exit).
+    /// Initialises the instance on first use.
     fn ensure_init(&self) -> Result<(), SimError> {
-        if EXITED.swap(false, Ordering::SeqCst) {
-            for (_, api) in LOADED.lock().expect("loaded").iter() {
-                api.ready.store(false, Ordering::SeqCst);
-            }
+        if Libngspice::exited() {
+            return Err(SimError::Failed {
+                message: "ngspice exited and can't run again in this session: restart the app".into(),
+                log: String::new(),
+            });
         }
         if self.api.ready.load(Ordering::SeqCst) {
             return Ok(());
@@ -404,7 +413,7 @@ fn exited(sink: Sink) -> SimError {
     if !message.is_empty() {
         message.push('\n');
     }
-    message.push_str("ngspice exited (it starts again for the next run)");
+    message.push_str("ngspice exited (later runs use ngspice processes)");
     SimError::Failed { message, log: format!("{}{}", sink.stdout, sink.stderr) }
 }
 
@@ -446,7 +455,7 @@ impl Backend for Libngspice {
         // Errors ngspice continues after ("Error on line …" of a line it then drops)
         // fail neither here nor in a process.
         let not_parsed = SINK.lock().expect("sink").as_ref().is_some_and(|s| s.stderr.contains("circuit not parsed"));
-        // ngspice asked to exit (a `quit`, or it gave up): initialised again next run.
+        // ngspice asked to exit (a `quit`, or it gave up): the instance is spent.
         if EXITED.load(Ordering::SeqCst) {
             return Err(exited(take()));
         }

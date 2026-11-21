@@ -402,20 +402,46 @@ fn the_library_streams_and_stops() {
 }
 
 /// ngspice asking to exit (a `quit`: what it does when it gives up, e.g. when it can't
-/// allocate a run's vectors) doesn't take the app down, and the next run works.
+/// allocate a run's vectors) doesn't take the app down. The instance is spent: later
+/// library runs fail, and the engine picks processes. It runs in a child process of
+/// this test binary, so the other tests' library stays usable.
 #[test]
-fn the_library_recovers_when_ngspice_exits() {
-    let Some(lib) = library() else { return };
+fn an_exited_library_runs_no_more() {
+    const CHILD: &str = "PCB_DESIGNER_EXIT_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        if library().is_none() {
+            return;
+        }
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "ngspice::an_exited_library_runs_no_more", "--nocapture", "--test-threads=1"])
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(out.status.success() && text.contains("1 passed"), "{text}");
+        return;
+    }
+    let lib = library().unwrap();
+    assert!(!Libngspice::exited());
     let quit = "* quit\nV1 a 0 1\nR1 a 0 1k\n.op\n.control\nquit\n.endc\n.end\n";
     let r = lib.run(quit, &Cancel::default(), &sim::Live::default());
     assert!(matches!(&r, Err(SimError::Failed { message, .. }) if message.contains("exited")), "{r:?}");
+    assert!(Libngspice::exited());
+
     let mut b = Bench::new();
     b.dc(5.0, "IN", "GND");
     b.place("Resistor", "1k", &["IN", "OUT"]);
     b.place("Resistor", "4k", &["OUT", "GND"]);
     let a = op(&mut b);
-    let r = sim::simulate(b.project(), &b.conn(), &a, &lib, &Cancel::default()).unwrap();
-    assert!(near(r.op_voltage("OUT").unwrap(), 4.0, 1e-6));
+    let r = sim::simulate(b.project(), &b.conn(), &a, &lib, &Cancel::default());
+    assert!(matches!(&r, Err(SimError::Failed { message, .. }) if message.contains("restart")), "{r:?}");
+    // The engine runs it in a process instead (when the executable is there).
+    let engine = sim::Engine { process: ngspice(), library: Some(lib), error: None };
+    if engine.process.is_some() {
+        let backend = engine.backend(&a).unwrap();
+        let r = sim::simulate(b.project(), &b.conn(), &a, backend.as_ref(), &Cancel::default()).unwrap();
+        assert!(near(r.op_voltage("OUT").unwrap(), 4.0, 1e-6));
+    }
 }
 
 /// Runs one after the other through the one instance, from several threads.
