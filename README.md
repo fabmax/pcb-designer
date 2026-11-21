@@ -213,8 +213,13 @@ on the canvas (View → ERC markers turns the schematic's off).
 Circuits simulate with [ngspice](https://ngspice.sourceforge.io/), which you install
 yourself (`brew install ngspice`, `apt install ngspice`, or the Windows download); it is
 found on `PATH` and the usual install places, or set its path in **Settings →
-Simulation**. It runs in its LTspice/PSpice compatibility mode (as in KiCad), so vendor
-models written for those simulators work. What's planned next is in
+Simulation**. When ngspice's shared library is installed too (Homebrew's `libngspice`,
+`libngspice0` on Debian/Ubuntu, Spice64's `ngspice.dll`, or the one KiCad bundles), runs
+go through it: they start at once, and transient, AC and DC sweep traces grow while
+they run. A model that crashes ngspice then takes the app down with it; **Settings →
+Simulation → Separate process only** runs everything in a process instead (parameter
+sweeps always do). It runs in its LTspice/PSpice compatibility mode (as in KiCad), so
+vendor models written for those simulators work. What's planned next is in
 [simulation-plan.md](simulation-plan.md).
 
 - **Simulation panel** (⌘2, or the **Simulation** menu): one tab per analysis
@@ -222,8 +227,8 @@ models written for those simulators work. What's planned next is in
   duplicates or deletes it) with its settings. Values take SI prefixes (`10m`, `1.5k`,
   `1meg`); text that isn't a value turns red and isn't applied. **Run** (⌘R) runs the
   analysis shown (with none, it adds an operating point; drag the tabs to reorder them),
-  **Stop** (⌘.) stops it; the
-  status bar shows a running simulation. The result table lists the named nets (all of
+  **Stop** (⌘.) stops it and keeps what it computed so far ("Stopped at 3.2 ms"); the
+  status bar shows a running simulation and, with the shared library, how far it is. The result table lists the named nets (all of
   them with **Show all nets**) and the measured currents; click a net to select it. An
   operating point measures the current into every pin (`I(R1.1)`) and each part's
   power (`P(R1)`). When the schematic changes in a
@@ -458,8 +463,8 @@ claude mcp add pcb-designer -- /path/to/pcb-designer --mcp-stdio ~/boards/my.pcb
 ```
 
 (Tools → "Copy Claude Code command (headless)" fills in the paths.) Screenshots are
-rendered offscreen; `simulate` finds ngspice like the app (the Settings path, `PATH`,
-the usual places).
+rendered offscreen; `simulate` finds ngspice like the app (the Settings paths and
+choice, `PATH`, the usual places).
 
 ## KiCad libraries
 
@@ -565,8 +570,9 @@ apply at once; each page has a **Reset to defaults**.
   the commands and config to connect a client.
 - **Libraries:** the most library tabs open at once (1–50, 10 by default), and where
   KiCad's libraries are downloaded to.
-- **Simulation:** where ngspice is (empty: found automatically); shows the one found and
-  its version, or how to install it.
+- **Simulation:** shared library when found or a separate process only; where ngspice
+  and its library are (empty: found automatically); shows what's in use with its
+  version, or how to install it.
 
 These, the panel layout, the window's size and position and the recent projects are
 saved in `settings.json` in the configuration folder (macOS:

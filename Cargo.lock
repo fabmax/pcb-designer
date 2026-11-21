@@ -3946,6 +3946,7 @@ name = "sim"
 version = "0.1.0"
 dependencies = [
  "editor-core",
+ "libloading",
  "log",
  "model",
  "tempfile",

@@ -1,8 +1,9 @@
-//! Circuits run by ngspice, checked against what they should do. Skipped (with a note)
+//! Circuits run by ngspice, checked against what they should do: by every backend found
+//! (the executable and the shared library), which must agree. Skipped (with a note)
 //! when ngspice isn't installed, so a fresh checkout's tests pass.
 
 use model::*;
-use sim::{Cancel, Ngspice, SimError, SimResult};
+use sim::{Backend, Cancel, Libngspice, Ngspice, SimError, SimResult};
 
 use crate::bench::Bench;
 
@@ -16,9 +17,67 @@ fn ngspice() -> Option<Ngspice> {
     }
 }
 
+fn library() -> Option<Libngspice> {
+    match Libngspice::find(None) {
+        Ok(n) => Some(n),
+        Err(e) => {
+            eprintln!("skipped: {e}");
+            None
+        }
+    }
+}
+
+/// Every backend found.
+fn backends() -> Vec<Box<dyn Backend>> {
+    let mut out: Vec<Box<dyn Backend>> = Vec::new();
+    if let Some(n) = ngspice() {
+        out.push(Box::new(n));
+    }
+    if let Some(l) = library() {
+        out.push(Box::new(l));
+    }
+    out
+}
+
+/// The run by every backend (`None` without any); they must agree: the same vectors,
+/// points and values, or both fail alike.
 fn run(b: &Bench, analysis: &Analysis) -> Option<Result<SimResult, SimError>> {
-    let ng = ngspice()?;
-    Some(sim::simulate(b.project(), &b.conn(), analysis, &ng, &Cancel::default()))
+    let mut results = backends()
+        .into_iter()
+        .map(|ng| (ng.describe(), sim::simulate(b.project(), &b.conn(), analysis, &*ng, &Cancel::default())));
+    let (first_name, first) = results.next()?;
+    for (name, other) in results {
+        match (&first, &other) {
+            (Ok(a), Ok(b)) => {
+                // The same vectors (in any order: `write` sorts them), the scale first.
+                let names = |r: &SimResult| {
+                    let mut n: Vec<String> = r.plot.vectors.iter().map(|v| v.name.clone()).collect();
+                    n.sort();
+                    n
+                };
+                assert_eq!(names(a), names(b), "{first_name} vs. {name}");
+                assert_eq!(a.scale().map(|s| &s.name), b.scale().map(|s| &s.name));
+                assert_eq!(a.plot.len(), b.plot.len(), "{first_name} vs. {name}");
+                for x in &a.plot.vectors {
+                    let y = b.plot.vector(&x.name).unwrap();
+                    for (p, q) in x.re.iter().zip(&y.re) {
+                        assert!(
+                            near(*p, *q, 1e-9 * p.abs().max(1e-3)),
+                            "{}: {p} vs. {q} ({first_name} vs. {name})",
+                            x.name
+                        );
+                    }
+                }
+            }
+            (Err(a), Err(b)) => assert_eq!(
+                std::mem::discriminant(a),
+                std::mem::discriminant(b),
+                "{a} vs. {b} ({first_name} vs. {name})"
+            ),
+            (a, b) => panic!("{first_name}: {a:?}\n{name}: {b:?}"),
+        }
+    }
+    Some(first)
 }
 
 fn ok(b: &Bench, analysis: &Analysis) -> Option<SimResult> {
@@ -246,8 +305,12 @@ fn netlist_errors_stop_before_ngspice() {
     // No backend needed: the netlist has no ground.
     struct Never;
     impl sim::Backend for Never {
-        fn run(&self, _: &str, _: &Cancel) -> Result<sim::Output, SimError> {
+        fn run(&self, _: &str, _: &Cancel, _: &sim::Live) -> Result<sim::Output, SimError> {
             panic!("must not run")
+        }
+
+        fn describe(&self) -> String {
+            "never".into()
         }
     }
     let r = sim::simulate(b.project(), &b.conn(), &a, &Never, &Cancel::default());
@@ -262,18 +325,113 @@ fn cancel_stops_a_run() {
     b.source("VSource", sine, 0.0, &["A", "GND"]);
     b.place("Resistor", "1k", &["A", "GND"]);
     // Long enough to be still running when cancelled.
-    let a = b.analysis(AnalysisKind::Tran { stop: 10.0, step: Some(1e-9), start: 0.0, max_step: Some(1e-9) });
-    let Some(ng) = ngspice() else { return };
-    let cancel = Cancel::default();
-    let c = cancel.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        c.cancel();
-    });
-    let started = std::time::Instant::now();
-    let r = sim::simulate(b.project(), &b.conn(), &a, &ng, &cancel);
-    assert!(matches!(r, Err(SimError::Cancelled)), "{r:?}");
-    assert!(started.elapsed().as_secs() < 5);
+    let a = b.analysis(AnalysisKind::Tran { stop: 0.1, step: Some(1e-7), start: 0.0, max_step: Some(1e-7) });
+    for ng in backends() {
+        let cancel = Cancel::default();
+        let c = cancel.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            c.cancel();
+        });
+        let started = std::time::Instant::now();
+        let r = sim::simulate(b.project(), &b.conn(), &a, &*ng, &cancel);
+        // What it had so far (the library always, a process as far as its raw file got).
+        match r {
+            Err(SimError::Cancelled) => {}
+            Ok(r) => assert!(r.plot.len() > 1, "{}", ng.describe()),
+            Err(e) => panic!("{}: {e}", ng.describe()),
+        }
+        assert!(started.elapsed().as_secs() < 5);
+    }
+}
+
+/// The library streams the points while it runs, its progress too, and Stop keeps
+/// what it has.
+#[test]
+fn the_library_streams_and_stops() {
+    let Some(lib) = library() else { return };
+    let mut b = Bench::new();
+    let sine = Waveform::Sine { offset: 0.0, amplitude: 1.0, frequency: 1e3, delay: 0.0, damping: 0.0, phase: 0.0 };
+    b.source("VSource", sine, 0.0, &["A", "GND"]);
+    b.place("Resistor", "1k", &["A", "OUT"]);
+    b.place("Capacitor", "100n", &["OUT", "GND"]);
+    let a = b.analysis(AnalysisKind::Tran { stop: 100.0, step: Some(1e-6), start: 0.0, max_step: Some(1e-6) });
+    let mut s = sim::Session::default();
+    let none = sim::tune::Overrides::default();
+    assert!(s.start_with(b.project(), &b.conn(), &a, &[], &none, std::sync::Arc::new(lib)));
+    let t = std::time::Instant::now();
+    // Points come while it runs.
+    let live = loop {
+        assert!(s.poll().is_none(), "{:?}", s.attempt());
+        if let Some(f) = s.live(a.id)
+            && f.result.plot.len() > 10
+        {
+            break f.clone();
+        }
+        assert!(t.elapsed().as_secs() < 10, "no live points");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    assert_eq!(live.range, Some((0.0, 100.0)));
+    assert!(live.result.voltage("OUT").is_some());
+    assert_eq!(live.result.scale().unwrap().name, "time");
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let p = s.progress().unwrap();
+    assert!((0.0..0.5).contains(&p), "{p}");
+    s.stop();
+    let outcome = loop {
+        if let Some(o) = s.poll() {
+            break o;
+        }
+        assert!(t.elapsed().as_secs() < 20, "didn't stop");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    };
+    assert_eq!(outcome, sim::Outcome::Done);
+    let done = s.result(a.id).unwrap();
+    assert!(done.stopped && done.range == Some((0.0, 100.0)));
+    let end = *done.result.scale().unwrap().re.last().unwrap();
+    assert!(end > 0.0 && end < 100.0, "{end}");
+    assert!(done.result.plot.len() >= live.result.plot.len());
+    assert!(s.live(a.id).is_none());
+}
+
+/// ngspice giving up (it can't allocate a run's vectors) doesn't take the app down,
+/// and the next run works.
+#[test]
+fn the_library_recovers_when_ngspice_gives_up() {
+    let Some(lib) = library() else { return };
+    let mut b = Bench::new();
+    b.dc(5.0, "IN", "GND");
+    b.place("Resistor", "1k", &["IN", "OUT"]);
+    b.place("Resistor", "4k", &["OUT", "GND"]);
+    let huge = b.analysis(AnalysisKind::Tran { stop: 10.0, step: Some(1e-12), start: 0.0, max_step: Some(1e-12) });
+    let r = sim::simulate(b.project(), &b.conn(), &huge, &lib, &Cancel::default());
+    assert!(matches!(r, Err(SimError::Failed { .. })), "{r:?}");
+    let a = op(&mut b);
+    let r = sim::simulate(b.project(), &b.conn(), &a, &lib, &Cancel::default()).unwrap();
+    assert!(near(r.op_voltage("OUT").unwrap(), 4.0, 1e-6));
+}
+
+/// Runs one after the other through the one instance, from several threads.
+#[test]
+fn library_runs_are_serialised() {
+    let Some(lib) = library() else { return };
+    let mut b = Bench::new();
+    b.dc(5.0, "IN", "GND");
+    b.place("Resistor", "1k", &["IN", "OUT"]);
+    b.place("Resistor", "4k", &["OUT", "GND"]);
+    let a = op(&mut b);
+    let text = sim::netlist::build(b.project(), &b.conn(), &a).text;
+    let threads: Vec<_> = (0..4)
+        .map(|_| {
+            let (lib, text) = (lib.clone(), text.clone());
+            std::thread::spawn(move || lib.run(&text, &Cancel::default(), &sim::Live::default()).unwrap())
+        })
+        .collect();
+    for t in threads {
+        let out = t.join().unwrap();
+        let v = out.plots[0].vector("v(out)").unwrap().re[0];
+        assert!(near(v, 4.0, 1e-6), "{v}");
+    }
 }
 
 #[test]
@@ -320,18 +478,34 @@ fn demo_project_simulates() {
     let conn = editor_core::connectivity::Connectivity::build(&project);
     let n = sim::netlist::build(&project, &conn, &analysis);
     assert!(!n.has_errors(), "{:?}", n.problems);
-    let Some(ng) = ngspice() else { return };
-    let r = sim::simulate(&project, &conn, &analysis, &ng, &Cancel::default()).unwrap();
+    let Some(r) = run_project(&project, &conn, &analysis) else { return };
     let led = r.op_voltage("Net-(D1-2)").unwrap();
     assert!((1.6..2.0).contains(&led), "LED at {led} V");
     assert_eq!(r.op_voltage("+5V"), Some(5.0));
 }
 
+fn run_project(project: &Project, conn: &editor_core::connectivity::Connectivity, a: &Analysis) -> Option<SimResult> {
+    let mut out = None;
+    for ng in backends() {
+        let r = sim::simulate(project, conn, a, &*ng, &Cancel::default())
+            .unwrap_or_else(|e| panic!("{}: {e}", ng.describe()));
+        out.get_or_insert(r);
+    }
+    out
+}
+
 #[test]
 fn version() {
-    let Some(ng) = ngspice() else { return };
-    let v = ng.version().unwrap();
-    assert!(v.starts_with("ngspice-"), "{v}");
+    if let Some(ng) = ngspice() {
+        let v = ng.version().unwrap();
+        assert!(v.starts_with("ngspice-"), "{v}");
+        assert_eq!(ng.describe(), format!("{v}, process"));
+    }
+    if let Some(lib) = library() {
+        let v = lib.version().unwrap();
+        assert!(v.starts_with("ngspice-"), "{v}");
+        assert_eq!(lib.describe(), format!("lib{v}, shared library"));
+    }
 }
 
 #[test]

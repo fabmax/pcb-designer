@@ -74,6 +74,8 @@ pub struct PlotState {
     /// The run's x range the view was fitted to (a rerun over the same range keeps
     /// the zoom).
     fitted_to: Option<(f64, f64)>,
+    /// A live run's x range (the whole analysis), which a fit shows.
+    full: Option<(f64, f64)>,
     drag: Option<Drag>,
     decimated: Option<Decimated>,
     /// Operating point table: sort column (0: signal, 1…: a step's value) and
@@ -113,7 +115,8 @@ impl PlotState {
     /// The x and y scales, filling in what a fit cleared: x over the whole run, y to the
     /// visible part of the traces (always, while the user hasn't zoomed y).
     fn scales(&mut self, data: &PlotData, log_x: bool) -> (Scale, [Scale; 3]) {
-        let (x0, x1) = (data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0));
+        let (x0, x1) =
+            self.full.unwrap_or((data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0)));
         let x = *self.x.get_or_insert_with(|| Scale::new(x0, x1, log_x));
         let mut ys = [Scale::new(-1.0, 1.0, false); 3];
         for (i, axis) in Axis::ALL.into_iter().enumerate() {
@@ -191,8 +194,10 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if running {
-                    ui.label(RichText::new("Running…").color(theme::text_dim()));
+                    ui.label(RichText::new(running_text(panel.session.progress())).color(theme::text_dim()));
                     ui.spinner();
+                } else if let Some(at) = panel.session.result(analysis.id).and_then(stopped_at) {
+                    ui.label(RichText::new(format!("Stopped at {at}")).color(theme::warn()));
                 } else if stale {
                     if ui.small_button("Run").on_hover_text("⌘R").clicked() {
                         act = Some(PlotAct::Run(analysis.id));
@@ -216,7 +221,8 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         state.fit();
     }
 
-    let Some(done) = panel.session.result(analysis.id) else {
+    // A run going shows its points so far (backends that stream).
+    let Some(done) = panel.session.live(analysis.id).or_else(|| panel.session.result(analysis.id)) else {
         let text = if running {
             "Simulating…"
         } else if analysis.probes.is_empty() && analysis.kind != AnalysisKind::Op {
@@ -227,7 +233,7 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         centered_hint(ui, text);
         return act;
     };
-    let dim = stale || running;
+    let dim = (stale || running) && done.range.is_none();
     if done.result.scale().is_none() {
         // A column per step of a sweep.
         if state.op_rows.as_ref().is_none_or(|(run, _)| *run != done.run) {
@@ -251,7 +257,9 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     if state.data.as_ref().is_none_or(|d| d.0 != key) {
         let steps = sim::tune::steps(doc.project(), done);
         let Some(data) = plot::data_steps(&steps, &signals, phase, doc.connectivity()) else { return act };
-        let range = (data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0));
+        let range =
+            done.range.unwrap_or((data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0)));
+        state.full = done.range;
         if state.fitted_to != Some(range) {
             state.x = None;
             state.fitted_to = Some(range);
@@ -294,6 +302,11 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     // After the pointer: a double-click may just have cleared the view for a fit.
     let scales = state.scales(&data, log_x);
     draw(ui, state, &data, scales, rect, outer, &response, dim);
+    if running && let Some(p) = panel.session.progress() {
+        // A thin bar along the top of the plot.
+        let bar = Rect::from_min_size(outer.left_top(), vec2(outer.width() * p as f32, 3.0));
+        ui.painter().rect_filled(bar, 0.0, theme::accent());
+    }
 
     ui.add_space(4.0);
     egui::ScrollArea::vertical().id_salt(("plot_table", analysis.id)).auto_shrink([false, false]).show(ui, |ui| {
@@ -308,6 +321,29 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         });
     });
     act
+}
+
+/// "Running… 42 %" (the percentage when the backend tells it).
+pub fn running_text(progress: Option<f64>) -> String {
+    match progress {
+        Some(p) => format!("Running… {:.0} %", p * 100.0),
+        None => "Running…".into(),
+    }
+}
+
+/// Where a stopped run got to: "3.2 ms" (`None` when it ran to the end).
+pub fn stopped_at(done: &sim::Finished) -> Option<String> {
+    if !done.stopped {
+        return None;
+    }
+    let scale = done.result.scale()?;
+    let unit = match scale.name.as_str() {
+        "time" => "s",
+        "frequency" => "Hz",
+        _ if scale.kind == "current" => "A",
+        _ => "V",
+    };
+    Some(plot::label(*scale.re.last()?, unit))
 }
 
 fn centered_hint(ui: &mut Ui, text: &str) {

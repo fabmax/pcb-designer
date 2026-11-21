@@ -56,8 +56,9 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), `sim` on
 - `mcp`: MCP tools (`server.rs`), and their execution against a `Host` (`host.rs`, with
   `describe` and `respond`). It also has the headless host and stdio mode.
 - `gerber`: Gerber X2 and Excellon export of the board (and the zip and manifest).
-- `sim`: circuit simulation: the schematic as a SPICE netlist, run by ngspice (a
-  process), results read back by net and pin. Plan: [simulation-plan.md](simulation-plan.md).
+- `sim`: circuit simulation: the schematic as a SPICE netlist, run by ngspice (its
+  shared library or a process), results read back by net and pin. Plan:
+  [simulation-plan.md](simulation-plan.md).
 - `kicad`: imports KiCad symbols and footprints.
 - `app`: the egui shell (binary `pcb-designer`). It holds tabs (egui_tiles), panels,
   menus, settings, keymap, chrome theme and floating tool bars.
@@ -138,7 +139,7 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
     `press X,Y` / `move X,Y` / `release X,Y` (a drag), `double-click X,Y`,
     `ui-double-click X,Y`, `ui-right-click X,Y`, `ui-press X,Y` / `ui-release X,Y` (a drag
     in screen points, with `ui-move` between), `type TEXT` and `run [ANALYSIS]` (runs
-    a simulation; later steps wait for it), and `zoom F` (zooms the canvas under the
+    a simulation; later steps wait for it; `start [ANALYSIS]` doesn't wait), and `zoom F` (zooms the canvas under the
     pointer, after a `move` / `ui-move`) and `scroll DY` (scrolls a panel or form under
     the pointer down by DY points), and `hold Alt` (modifiers held for the pointer steps
     that follow, e.g. an Alt-click; `hold` lets go). Hover the canvas

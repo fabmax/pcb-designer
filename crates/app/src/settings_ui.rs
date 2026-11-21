@@ -97,7 +97,9 @@ const ENTRIES: &[Entry] = &[
     entry(Page::Libraries, "Most library tabs", "tabs preview limit maximum open items parts symbols footprints"),
     entry(Page::Libraries, "KiCad library folder", "download path directory kicad"),
     entry(Page::Libraries, "Settings file", "config configuration path json location folder"),
+    entry(Page::Simulation, "Run simulations", "spice ngspice shared library process backend crash in use version"),
     entry(Page::Simulation, "ngspice", "spice simulator path executable install program version"),
+    entry(Page::Simulation, "ngspice library", "spice simulator path libngspice dll dylib shared install"),
 ];
 
 /// The search words (lower case; every one has to match).
@@ -227,8 +229,10 @@ pub struct SettingsWindow {
     kicad_text: Option<String>,
     /// The ngspice path being typed.
     ngspice_text: Option<String>,
-    /// What was found for the configured ngspice path (the path it was for, the text).
-    ngspice_found: Option<(Option<std::path::PathBuf>, Result<String, String>)>,
+    /// The ngspice library path being typed.
+    ngspice_lib_text: Option<String>,
+    /// What was found for the simulation settings (the settings it was for, the text).
+    ngspice_found: Option<(sim::EngineSettings, Result<String, String>)>,
 }
 
 fn search_id() -> egui::Id {
@@ -632,58 +636,111 @@ impl SettingsWindow {
 
 impl SettingsWindow {
     fn simulation(&mut self, ui: &mut Ui, rows: &mut Rows, settings: &mut Settings, changes: &mut Changes) {
-        let help = "Empty: found on PATH and in the usual install folders (Homebrew, /usr/bin, Program Files).";
-        let shown = settings.ngspice.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
-        rows.row(ui, "ngspice", Some(help), |ui| {
-            let text = self.ngspice_text.get_or_insert_with(|| shown.clone());
-            let r = ui.add(egui::TextEdit::singleline(text).hint_text("automatic").desired_width(320.0));
-            if r.lost_focus() && *text != shown {
-                settings.ngspice = (!text.trim().is_empty()).then(|| text.trim().into());
-                changes.ngspice = true;
-                changes.save = true;
-            }
-            if !r.has_focus() {
-                self.ngspice_text = None;
-            }
-            if ui.button("Choose…").clicked()
-                && let Some(file) = rfd::FileDialog::new().set_title("ngspice executable").pick_file()
-            {
-                settings.ngspice = Some(file);
-                self.ngspice_text = None;
+        let help = "The shared library starts runs at once (the tuner reacts quicker) and draws traces while \
+                    they run. A model that crashes ngspice takes the app down with it, though: a separate \
+                    process is safe. Parameter sweeps always run in processes, several at once.";
+        rows.row(ui, "Run simulations", Some(help), |ui| {
+            let mut process_only = settings.simulation_process_only;
+            ui.selectable_value(&mut process_only, false, "Shared library when found");
+            ui.selectable_value(&mut process_only, true, "Separate process only");
+            if process_only != settings.simulation_process_only {
+                settings.simulation_process_only = process_only;
                 changes.ngspice = true;
                 changes.save = true;
             }
         });
-        if self.ngspice_found.as_ref().is_none_or(|(p, _)| *p != settings.ngspice) {
-            let found = match sim::Ngspice::find(settings.ngspice.as_deref()) {
-                Ok(n) => {
-                    Ok(format!("{} · {}", n.path.display(), n.version().unwrap_or_else(|| "version unknown".into())))
+        let help = "Empty: found on PATH and in the usual install folders (Homebrew, /usr/bin, Program Files).";
+        if let Some(path) = path_row(ui, rows, "ngspice", help, &settings.ngspice, &mut self.ngspice_text) {
+            settings.ngspice = path;
+            changes.ngspice = true;
+            changes.save = true;
+        }
+        if !settings.simulation_process_only {
+            let help = "libngspice (ngspice.dll on Windows). Empty: the usual install folders (Homebrew, \
+                        /usr/lib, Program Files\\Spice64, KiCad's).";
+            let (label, text) = ("ngspice library", &mut self.ngspice_lib_text);
+            if let Some(path) = path_row(ui, rows, label, help, &settings.ngspice_library, text) {
+                settings.ngspice_library = path;
+                changes.ngspice = true;
+                changes.save = true;
+            }
+        }
+        let engine = settings.engine();
+        if self.ngspice_found.as_ref().is_none_or(|(e, _)| *e != engine) {
+            use sim::Backend;
+            let found = sim::Engine::find(&engine);
+            let text = match (&found.error, &found.library, &found.process) {
+                (Some(e), ..) => Err(format!("{e}.")),
+                (None, Some(l), p) => {
+                    let mut t = format!("In use: {} · {}", l.describe(), l.path.display());
+                    if let Some(p) = p {
+                        t.push_str(&format!("\nSweeps: {} · {}", p.describe(), p.path.display()));
+                    }
+                    Ok(t)
                 }
-                Err(e) => Err(format!(
-                    "{e}. Install it (macOS: brew install ngspice; Linux: your package manager; Windows: \
-                     ngspice.sourceforge.io) or choose where it is."
-                )),
+                (None, None, Some(p)) => Ok(format!("In use: {} · {}", p.describe(), p.path.display())),
+                (None, None, None) => Err("ngspice is not installed.".to_string()),
             };
-            self.ngspice_found = Some((settings.ngspice.clone(), found));
+            let text = text.map_err(|e| {
+                format!(
+                    "{e} Install it (macOS: brew install ngspice; Linux: your package manager; Windows: \
+                     ngspice.sourceforge.io) or choose where it is."
+                )
+            });
+            self.ngspice_found = Some((engine, text));
         }
         if let Some((_, found)) = &self.ngspice_found
-            && rows.filter.entry(Page::Simulation, "ngspice")
+            && rows.filter.entry(Page::Simulation, "Run simulations")
         {
             ui.horizontal(|ui| {
-                ui.add_space(LABEL_WIDTH);
+                ui.add_space(LABEL_WIDTH + ui.spacing().item_spacing.x);
                 match found {
-                    Ok(t) => ui.label(RichText::new(format!("Found: {t}")).color(theme::success())),
+                    Ok(t) => ui.label(RichText::new(t).color(theme::success())),
                     Err(e) => ui.label(RichText::new(e).color(theme::warn())),
                 };
             });
         }
         reset(ui, rows, || {
             settings.ngspice = None;
+            settings.ngspice_library = None;
+            settings.simulation_process_only = false;
             self.ngspice_text = None;
+            self.ngspice_lib_text = None;
             changes.ngspice = true;
             changes.save = true;
         });
     }
+}
+
+/// A file path row: typed (applied when the field loses focus) or chosen. Returns the
+/// new path when it changed (`None` inside: empty, found automatically).
+fn path_row(
+    ui: &mut Ui,
+    rows: &mut Rows,
+    label: &str,
+    help: &str,
+    path: &Option<std::path::PathBuf>,
+    typing: &mut Option<String>,
+) -> Option<Option<std::path::PathBuf>> {
+    let shown = path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+    let mut out = None;
+    rows.row(ui, label, Some(help), |ui| {
+        let text = typing.get_or_insert_with(|| shown.clone());
+        let r = ui.add(egui::TextEdit::singleline(text).hint_text("automatic").desired_width(320.0));
+        if r.lost_focus() && *text != shown {
+            out = Some((!text.trim().is_empty()).then(|| text.trim().into()));
+        }
+        if !r.has_focus() {
+            *typing = None;
+        }
+        if ui.button("Choose…").clicked()
+            && let Some(file) = rfd::FileDialog::new().set_title(label).pick_file()
+        {
+            *typing = None;
+            out = Some(Some(file));
+        }
+    });
+    out
 }
 
 fn tools(ui: &mut Ui, rows: &mut Rows, settings: &mut Settings, changes: &mut Changes) {

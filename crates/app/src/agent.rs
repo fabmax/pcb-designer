@@ -123,13 +123,13 @@ impl Agent {
         panes: &mut Panes,
         libraries: &[&Library],
         kicad: &mut KicadImport,
-        sim: (&mut SimPanel, Option<std::path::PathBuf>),
+        sim: (&mut SimPanel, sim::EngineSettings),
     ) -> Vec<Job> {
         let Some((_, rx)) = &self.server else { return Vec::new() };
         let mut jobs = Vec::new();
-        let (sim, ngspice) = sim;
+        let (sim, engine) = sim;
         let offscreen = &mut self.offscreen;
-        let mut host = AppHost { ctx, doc, panes, libraries, offscreen, kicad, jobs: &mut jobs, sim, ngspice };
+        let mut host = AppHost { ctx, doc, panes, libraries, offscreen, kicad, jobs: &mut jobs, sim, engine };
         while let Ok(call) = rx.try_recv() {
             self.calls += 1;
             let description = call.request.describe();
@@ -171,8 +171,8 @@ struct AppHost<'a> {
     kicad: &'a mut KicadImport,
     jobs: &'a mut Vec<Job>,
     sim: &'a mut SimPanel,
-    /// The ngspice setting.
-    ngspice: Option<std::path::PathBuf>,
+    /// Where ngspice is and how to run it.
+    engine: sim::EngineSettings,
 }
 
 impl Host for AppHost<'_> {
@@ -228,7 +228,7 @@ impl Host for AppHost<'_> {
     }
 
     fn simulate(&mut self, job: mcp::simulation::SimJob, reply: Responder) {
-        self.sim.start_agent(self.doc, job, reply, self.ngspice.clone());
+        self.sim.start_agent(self.doc, job, reply, &self.engine);
         self.ctx.request_repaint();
     }
 

@@ -47,6 +47,11 @@ pub struct Settings {
     pub library_tabs: Option<usize>,
     /// The ngspice executable; `None`: found on `PATH` and the usual places.
     pub ngspice: Option<PathBuf>,
+    /// The ngspice shared library (libngspice); `None`: found in the usual places.
+    pub ngspice_library: Option<PathBuf>,
+    /// Every simulation in a separate ngspice process (never the shared library).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub simulation_process_only: bool,
 }
 
 /// The default and the range of [`Settings::library_tabs`].
@@ -162,9 +167,13 @@ impl Settings {
     }
 
     /// Where KiCad's libraries are downloaded to.
-    /// The configured ngspice executable, if any (`sim::Ngspice::find` searches otherwise).
-    pub fn ngspice_path(&self) -> Option<PathBuf> {
-        self.ngspice.clone()
+    /// Where ngspice is and how to run it.
+    pub fn engine(&self) -> sim::EngineSettings {
+        sim::EngineSettings {
+            executable: self.ngspice.clone(),
+            library: self.ngspice_library.clone(),
+            process_only: self.simulation_process_only,
+        }
     }
 
     pub fn kicad_dir(&self) -> Option<PathBuf> {

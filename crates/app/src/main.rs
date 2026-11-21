@@ -297,10 +297,10 @@ fn simulate(args: Vec<String>) -> Result<(), String> {
         print!("{}", netlist.text);
         return Ok(());
     }
-    let ngspice =
-        sim::Ngspice::find(settings::Settings::load().ngspice_path().as_deref()).map_err(|e| e.to_string())?;
+    let engine = sim::Engine::find(&settings::Settings::load().engine());
+    let backend = engine.backend(&analysis)?;
     let result =
-        sim::simulate(&project, &conn, &analysis, &ngspice, &sim::Cancel::default()).map_err(|e| e.to_string())?;
+        sim::simulate(&project, &conn, &analysis, &*backend, &sim::Cancel::default()).map_err(|e| e.to_string())?;
     for w in &result.warnings {
         eprintln!("ngspice: {w}");
     }
@@ -343,7 +343,7 @@ fn run_stdio(startup: Startup, kicad_paths: Vec<std::path::PathBuf>) -> Result<(
     let mut host = mcp::headless::HeadlessHost::new(doc);
     let settings = settings::Settings::load();
     host.kicad_root = settings.kicad_dir();
-    host.ngspice = settings.ngspice_path();
+    host.engine = settings.engine();
     host.kicad_paths = kicad_paths;
     mcp::stdio::serve_stdio(&mut host)
 }

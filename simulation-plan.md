@@ -40,13 +40,19 @@ What to avoid: SPICE syntax as the main interface (LTspice), simulations as sche
 objects (Qucs-S: clutters the drawing and the print), and a separate modal window (KiCad's
 simulator is its own frame; ours should be a tab that can sit beside the schematic).
 
-## Built so far (S1–S7)
+## Built so far (S1–S8)
 
 The engine and everything headless are built; their design and gotchas are in
 PLAN.md, "Simulation (`sim`)":
 
 - ngspice as a process per run (`sim::Ngspice`, a `Backend`), found on `PATH`, the usual
   install places or the `ngspice` setting; the raw reader; `sim::simulate`.
+- S8: ngspice as a shared library (`sim::Libngspice`), loaded at run time with
+  `libloading`, the default when found (`sim::Engine`; Settings → Simulation: "Shared
+  library when found" or "Separate process only", both paths, what's in use). Single
+  runs and the tuner use it, sweeps run in parallel processes. A running analysis
+  streams its points (`sim::Live`): traces grow over the whole x range, "Running…
+  42 %" and a progress bar; Stop keeps what it has ("Stopped at 3.2 ms").
 - The model: `Part::sim` (`SimModel`: device, pins in SPICE order, parameters),
   `Component::sim` (`ComponentSim`: parameter overrides, `exclude`, a source's
   `Waveform`), `Schematic::simulation` (`Simulation`: analyses with their probes,
@@ -100,14 +106,6 @@ PLAN.md, "Simulation (`sim`)":
 
 Still to come in the areas S1 built:
 
-- **Shared library (S8):** `ngSpice_Init` with the `SendChar` / `SendStat` /
-  `SendData` / `BGThreadRunning` callbacks, `ngSpice_Circ` to load the netlist,
-  `bg_run` / `bg_halt`, vectors read through `ngGet_Vec_Info` (or streamed by
-  `SendData`). Loaded at runtime with `libloading`, so the app builds and runs without
-  it. Gotchas to design for: one instance per process (runs are serialised; parallel
-  sweeps fall back to processes), a crash in a model takes the app down with unsaved
-  work (a "Run in a separate process" setting stays available for that), and
-  `ControlledExit` must be handled instead of letting ngspice end the app.
 - Plot: overlays of earlier runs, PNG export from the GUI (MCP's screenshot renders it
   offscreen already), the zoom saved in the workspace.
 - Schematic values: placement that avoids other texts (tags can overlap a part's
@@ -135,8 +133,8 @@ Still to come in the areas S1 built:
   through the `Netlist` maps. ngspice's stdout/stderr go into the log; its errors and
   warnings ("singular matrix", "timestep too small", unknown model parameters) become
   Messages entries, with the component if the line names one.
-- Stop kills the process. A run is never started twice for the same analysis: Run while
-  running restarts.
+- Stop kills the process (or halts the library's run) and keeps the points so far. A
+  run is never started twice for the same analysis: Run while running restarts.
 
 ## UI
 
@@ -264,7 +262,7 @@ pin).
 ## Milestones
 
 Each is a branch, tests, PLAN.md update and commit, as in AGENTS.md. S1–S5 are done and
-give a usable simulator; S6–S8 make it comfortable, compatible and fast (S6 and S7 done).
+give a usable simulator; S6–S8 make it comfortable, compatible and fast (all done).
 
 ### S6: Comfort (done)
 
@@ -275,20 +273,18 @@ tuner and parameter sweeps; see "Built so far" and PLAN.md.
 
 The mapping in "KiCad import" above, directives, and the `kicad-cli` comparison test.
 
-### S8: Shared-library backend
+### S8: Shared-library backend (done)
 
-- `Backend` for libngspice (see "Built so far"), found like the executable (a path in
-  Settings, Homebrew's `libngspice`, `libngspice.so.0`, `ngspice.dll`), the app's
-  default when found.
-- Live transient: traces grow while it runs (`SendData`), progress from `SendStat`,
-  Stop through `bg_halt`.
-- The tuner re-runs in-process (no process start), parallel sweeps still use processes.
-- The same tests as the process backend, run against both when both are found.
+libngspice as the default backend, live traces and progress, Stop keeping the partial
+run, the tuner in-process; the circuit tests and the KiCad comparison run against both
+backends. See "Built so far" and PLAN.md.
 
 ## Later
 
 - Bundling ngspice with release builds (macOS dylib signing, Windows DLL, Linux: the
   distribution's package).
+- Streaming for sweeps and processes, the library for sweeps, crash isolation of the
+  library (see PLAN.md, Later).
 - Source symbols that show the selected waveform (sine, square, ramp glyph), which needs
   symbols drawn from component data.
 - `.include` / `.lib` of external model files (relative to the project), a project
@@ -315,7 +311,8 @@ The mapping in "KiCad import" above, directives, and the `kicad-cli` comparison 
 
 ## Decisions taken
 
-- Process backend first to get started; the shared library is the eventual target (S8).
+- Process backend first to get started; the shared library became the default in S8
+  (the process stays for sweeps, as the fallback, and as the safe setting).
 - One source part per kind (`VSource`, `ISource`), waveform picked in Properties; the
   symbol doesn't follow the waveform yet (Later).
 - Sources stay ordinary components; a test bench sub-sheet keeps them out of a real

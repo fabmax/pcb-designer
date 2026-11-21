@@ -7,8 +7,6 @@
 //! is one `SetSimulation` command.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 use editor_core::Command;
@@ -37,9 +35,6 @@ pub enum SimAct {
     SelectNet(String),
 }
 
-/// ngspice as found: its version, or why not.
-type Detected = Result<(sim::Ngspice, Option<String>), String>;
-
 #[derive(Default)]
 pub struct SimPanel {
     pub session: Session,
@@ -50,7 +45,8 @@ pub struct SimPanel {
     pub si: crate::fields::SiFields,
     filter: String,
     show_all: bool,
-    ngspice: Option<Detected>,
+    /// ngspice as found (once; again when the settings change).
+    engine: Option<sim::Engine>,
     /// The netlist window: shown, on the log tab.
     pub window: bool,
     window_log: bool,
@@ -130,20 +126,22 @@ impl SimPanel {
         self.tune_pending = false;
     }
 
-    /// Looks for ngspice again (the setting changed).
+    /// Looks for ngspice again (the settings changed).
     pub fn forget_ngspice(&mut self) {
-        self.ngspice = None;
+        self.engine = None;
     }
 
-    /// ngspice, found once (at `configured`, or the usual places).
-    pub fn ngspice(&mut self, configured: Option<PathBuf>) -> &Detected {
-        self.ngspice.get_or_insert_with(|| match sim::Ngspice::find(configured.as_deref()) {
-            Ok(n) => {
-                let v = n.version();
-                Ok((n, v))
-            }
-            Err(e) => Err(e.to_string()),
-        })
+    /// ngspice, found once (the library and the executable).
+    pub fn engine(&mut self, settings: &sim::EngineSettings) -> &sim::Engine {
+        self.engine.get_or_insert_with(|| sim::Engine::find(settings))
+    }
+
+    /// Why ngspice can't run (nothing found, a configured path that doesn't work).
+    fn engine_error(&self) -> Option<String> {
+        let e = self.engine.as_ref()?;
+        e.error
+            .clone()
+            .or_else(|| (e.library.is_none() && e.process.is_none()).then(|| "ngspice is not installed".to_string()))
     }
 
     /// The analysis shown (the tab picked, else the first).
@@ -297,7 +295,7 @@ impl SimPanel {
     /// The tuner changed a value: runs the tab's analysis with it, or once the run going
     /// ends. Quiet when ngspice is missing (the panel says so) or the netlist has errors
     /// (the panel's problems show them).
-    pub fn tune_run(&mut self, doc: &mut Document, configured: Option<PathBuf>) {
+    pub fn tune_run(&mut self, doc: &mut Document, engine: &sim::EngineSettings) {
         let Some(id) = self.current(&doc.project().schematic.simulation).map(|a| a.id) else { return };
         if self.session.running().is_some() {
             self.tune_pending = true;
@@ -315,7 +313,7 @@ impl SimPanel {
                 return;
             }
         }
-        let _ = self.run(doc, id, configured);
+        let _ = self.run(doc, id, engine);
     }
 
     /// Whether the tab's last run was quick enough to re-run while a slider moves.
@@ -331,11 +329,8 @@ impl SimPanel {
 
     /// Starts `analysis`. Returns an error to show when ngspice is missing or the netlist
     /// has errors.
-    pub fn run(&mut self, doc: &mut Document, analysis: Id, configured: Option<PathBuf>) -> Result<(), String> {
-        let ngspice = match self.ngspice(configured) {
-            Ok((n, _)) => n.clone(),
-            Err(e) => return Err(e.clone()),
-        };
+    pub fn run(&mut self, doc: &mut Document, analysis: Id, engine: &sim::EngineSettings) -> Result<(), String> {
+        self.engine(engine);
         self.tab = Some(analysis);
         doc.update_connectivity(false);
         let project = doc.project();
@@ -343,7 +338,8 @@ impl SimPanel {
             return Err("No such analysis".into());
         };
         let overrides = self.overrides(project, a);
-        if self.session.start_with(project, doc.connectivity(), a, &[], &overrides, Arc::new(ngspice)) {
+        let backend = self.engine.as_ref().expect("found above").backend(a)?;
+        if self.session.start_with(project, doc.connectivity(), a, &[], &overrides, backend) {
             Ok(())
         } else {
             Err(format!("{} not started: {}", a.name, errors_text(self.session.attempt())))
@@ -356,18 +352,20 @@ impl SimPanel {
         doc: &Document,
         job: mcp::simulation::SimJob,
         reply: mcp::host::Responder,
-        configured: Option<PathBuf>,
+        engine: &sim::EngineSettings,
     ) {
         if let Some((_, earlier)) = self.agent.take() {
             let _ = earlier.send(Err("stopped: another simulate call came".into()));
         }
-        let backend: sim::SharedBackend = match self.ngspice(configured) {
-            Ok((n, _)) => Arc::new(n.clone()),
-            Err(e) => {
-                let _ = reply.send(Err(e.clone()));
-                return;
-            }
-        };
+        let analysis = doc.project().schematic.simulation.analyses.iter().find(|a| a.id == job.analysis);
+        let backend =
+            match analysis.ok_or_else(|| "no such analysis".to_string()).and_then(|a| self.engine(engine).backend(a)) {
+                Ok(b) => b,
+                Err(e) => {
+                    let _ = reply.send(Err(e));
+                    return;
+                }
+            };
         self.tab = Some(job.analysis);
         match mcp::simulation::start(&mut self.session, doc, &job, backend) {
             Ok(()) => self.agent = Some((job, reply)),
@@ -407,13 +405,14 @@ impl SimPanel {
     pub fn running_text(&self) -> Option<String> {
         let (_, elapsed) = self.session.running()?;
         let name = self.session.attempt().map_or("", |a| a.name.as_str());
-        Some(format!("Simulating {name}… {:.1} s", elapsed.as_secs_f64()))
+        let percent = self.session.progress().map(|p| format!(" {:.0} %", p * 100.0)).unwrap_or_default();
+        Some(format!("Simulating {name}…{percent} {:.1} s", elapsed.as_secs_f64()))
     }
 
     pub fn ui(&mut self, ui: &mut Ui, doc: &mut Document, message: &mut Option<String>) -> Option<SimAct> {
         let mut act = None;
-        if let Some(Err(e)) = &self.ngspice {
-            not_found(ui, e, &mut act);
+        if let Some(e) = self.engine_error() {
+            not_found(ui, &e, &mut act);
             ui.add_space(6.0);
         }
         let mut setup = doc.project().schematic.simulation.clone();
@@ -573,7 +572,8 @@ impl SimPanel {
                 }
                 ui.spinner();
                 let name = self.session.attempt().map_or("", |a| a.name.as_str());
-                ui.label(format!("{name}… {:.1} s", elapsed.as_secs_f64()));
+                let percent = self.session.progress().map(|p| format!(" {:.0} %", p * 100.0)).unwrap_or_default();
+                ui.label(format!("{name}…{percent} {:.1} s", elapsed.as_secs_f64()));
                 ui.ctx().request_repaint_after(Duration::from_millis(100));
                 return;
             }
@@ -590,8 +590,10 @@ impl SimPanel {
             let Some(attempt) = self.session.attempt().filter(|t| t.analysis == a.id) else { return };
             let errors = attempt.problems.iter().filter(|p| p.level == Level::Error).count();
             let warnings = attempt.problems.iter().filter(|p| p.level == Level::Warning).count();
+            let stopped = self.session.result(a.id).and_then(crate::plot_ui::stopped_at);
             let (text, color) = match &attempt.outcome {
                 Outcome::Cancelled => ("Stopped".to_string(), theme::text_dim()),
+                Outcome::Done if let Some(at) = stopped => (format!("Stopped at {at}"), theme::text_dim()),
                 Outcome::Done if warnings > 0 => (plural(warnings, "warning"), theme::warn()),
                 Outcome::Done => return,
                 _ => (plural(errors.max(1), "error"), theme::error()),
@@ -781,15 +783,19 @@ impl SimPanel {
         self.si.field(ui, ("sim_value", salt), value, unit, empty)
     }
 
-    /// The last result of `a`: a table of the probed and named nets (all with "Show all
-    /// nets") and the probed currents. Dimmed when the schematic changed since.
-    /// The result table. Returns a probe to add or remove (a row's check box: the
+    /// The last result of `a` (or the points so far of a run going): a table of the
+    /// probed and named nets (all with "Show all nets") and the probed currents. Dimmed
+    /// when the schematic changed since. The result table. Returns a probe to add or remove (a row's check box: the
     /// signals the plot shows).
     fn results_ui(&mut self, ui: &mut Ui, doc: &Document, a: &Analysis, act: &mut Option<SimAct>) -> Option<Probe> {
         let overrides = self.overrides(doc.project(), a);
         let stale = self.session.is_stale(doc.project(), doc.connectivity(), a, &overrides, doc.revision);
-        let Some(done) = self.session.result(a.id) else {
-            hint(ui, "Not run yet.");
+        // A run going shows its points so far (backends that stream).
+        let Some(done) = self.session.live(a.id).or_else(|| self.session.result(a.id)) else {
+            hint(
+                ui,
+                if self.session.running().is_some_and(|(id, _)| id == a.id) { "Running…" } else { "Not run yet." },
+            );
             return None;
         };
         let sweep = done.result.scale().is_some();

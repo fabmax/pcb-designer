@@ -10,6 +10,7 @@ model.workspace = true
 editor-core.workspace = true
 thiserror.workspace = true
 tempfile.workspace = true
+libloading.workspace = true
 log.workspace = true
 
 [dev-dependencies]

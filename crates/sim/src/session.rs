@@ -6,7 +6,12 @@
 //! differs from the one it ran (checked once per document revision).
 //!
 //! A parameter sweep (`Analysis::step`) runs one netlist per value, on up to as many
-//! workers as there are cores; it's stale by its base netlist (without the step).
+//! workers as there are cores (one when the backend can't run in parallel); it's stale
+//! by its base netlist (without the step).
+//!
+//! A single run streams into a [`Live`] plot when the backend does (libngspice):
+//! [`live`](Session::live) is it as a result, refreshed at most ten times a second.
+//! [`stop`](Session::stop) keeps what a single run has so far (`Finished::stopped`).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -19,7 +24,7 @@ use model::{Analysis, Id, Probe, Project, TuneParam};
 
 use crate::netlist::{self, Level, Netlist, SimProblem};
 use crate::tune::Overrides;
-use crate::{Backend, Cancel, Output, SimError, SimResult, report};
+use crate::{Backend, Cancel, Live, Output, SimError, SimResult, report};
 
 /// A backend the worker thread can own.
 pub type SharedBackend = Arc<dyn Backend + Send + Sync>;
@@ -44,6 +49,11 @@ pub struct Finished {
     pub extra: Vec<Probe>,
     /// The tuned values it ran with.
     pub overrides: Overrides,
+    /// Stopped before the end: the points up to there.
+    pub stopped: bool,
+    /// The x range to show of a live or stopped run: the whole analysis (the plot doesn't
+    /// jump as it grows, and shows where it stopped).
+    pub range: Option<(f64, f64)>,
 }
 
 /// The last run that was started (or refused): its problems, netlist and log.
@@ -85,6 +95,24 @@ struct Run {
     overrides: Overrides,
     outputs: Outputs,
     workers: Vec<JoinHandle<()>>,
+    /// The single run's points so far, and them as a result (with the revision and
+    /// time it was made).
+    live: Live,
+    shown: Option<(u64, Instant, Finished)>,
+    range: Option<(f64, f64)>,
+}
+
+/// How often a live result is refreshed.
+const LIVE_EVERY: Duration = Duration::from_millis(100);
+
+/// The x range of an analysis' plot (`None` for an operating point).
+pub fn x_range(analysis: &Analysis) -> Option<(f64, f64)> {
+    match &analysis.kind {
+        model::AnalysisKind::Op => None,
+        model::AnalysisKind::Tran { stop, start, .. } => Some((*start, *stop)),
+        model::AnalysisKind::Ac { start, stop, .. } => Some((*start, *stop)),
+        model::AnalysisKind::Dc { start, stop, .. } => Some((start.min(*stop), start.max(*stop))),
+    }
 }
 
 impl Finished {
@@ -133,7 +161,7 @@ impl Session {
         overrides: &Overrides,
         backend: SharedBackend,
     ) -> bool {
-        self.stop();
+        self.abandon();
         let analysis = &with_probes(analysis, extra);
         let base = netlist::build_with(project, conn, analysis, overrides);
         let mut attempt = Attempt {
@@ -179,11 +207,14 @@ impl Session {
         let texts: Arc<Vec<String>> = Arc::new(netlists.iter().map(|n| n.text.clone()).collect());
         let outputs: Outputs = Arc::new(Mutex::new((0..texts.len()).map(|_| None).collect()));
         let next = Arc::new(AtomicUsize::new(0));
-        let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
+        let cores = if backend.parallel() { std::thread::available_parallelism().map_or(4, |n| n.get()) } else { 1 };
+        // Only a single run streams (a sweep's steps would mix).
+        let live = Live::default();
         let workers = (0..texts.len().min(cores))
             .map(|_| {
                 let (texts, outputs, next, backend, c) =
                     (texts.clone(), outputs.clone(), next.clone(), backend.clone(), cancel.clone());
+                let live = if step.is_none() { live.clone() } else { Live::default() };
                 std::thread::Builder::new()
                     .name("simulation".into())
                     .spawn(move || {
@@ -192,7 +223,7 @@ impl Session {
                             if k >= texts.len() || c.is_cancelled() {
                                 break;
                             }
-                            let out = backend.run(&texts[k], &c);
+                            let out = backend.run(&texts[k], &c, &live);
                             // A failed step ends the sweep.
                             if out.is_err() {
                                 c.cancel();
@@ -206,6 +237,7 @@ impl Session {
         let (extra, overrides) = (extra.to_vec(), overrides.clone());
         let started = Instant::now();
         let base = base.text;
+        let range = x_range(analysis);
         self.run = Some(Run {
             analysis: analysis.id,
             started,
@@ -217,12 +249,23 @@ impl Session {
             overrides,
             outputs,
             workers,
+            live,
+            shown: None,
+            range,
         });
         true
     }
 
-    /// Stops the run in progress (its worker ends on its own; its result is dropped).
+    /// Stops the run in progress. A single run keeps what it has so far (once
+    /// [`poll`](Self::poll) collects it), a sweep is dropped.
     pub fn stop(&mut self) {
+        if let Some(run) = &self.run {
+            run.cancel.cancel();
+        }
+    }
+
+    /// Stops the run in progress and drops it (its worker ends on its own).
+    fn abandon(&mut self) {
         if let Some(run) = self.run.take() {
             run.cancel.cancel();
             if let Some(a) = &mut self.attempt {
@@ -236,9 +279,60 @@ impl Session {
         self.run.as_ref().map(|r| (r.analysis, r.started.elapsed()))
     }
 
+    /// How far the run is, 0…1 (backends that report it).
+    pub fn progress(&self) -> Option<f64> {
+        self.run.as_ref()?.live.progress()
+    }
+
+    /// The running `analysis`' points so far as a result (backends that stream).
+    pub fn live(&self, analysis: Id) -> Option<&Finished> {
+        let run = self.run.as_ref().filter(|r| r.analysis == analysis)?;
+        run.shown.as_ref().map(|(_, _, f)| f)
+    }
+
+    /// Brings the live result up to date when points came and it's time (every 100 ms,
+    /// less often for long runs: the plot redraws them all).
+    fn refresh_live(&mut self) {
+        let Some(run) = self.run.as_mut() else { return };
+        let revision = run.live.revision();
+        if let Some((r, at, f)) = &mut run.shown {
+            let every = LIVE_EVERY.mul_f64((f.result.plot.len() as f64 / 200_000.0).max(1.0));
+            if *r == revision || at.elapsed() < every {
+                return;
+            }
+            run.live.update(&mut f.result.plot);
+            f.rows = report::rows(&f.result);
+            f.duration = run.started.elapsed();
+            self.runs += 1;
+            f.run = self.runs;
+            *r = revision;
+            *at = Instant::now();
+            return;
+        }
+        let Some(plot) = run.live.plot() else { return };
+        self.runs += 1;
+        let Some(netlist) = run.netlists.first().cloned() else { return };
+        let result = SimResult { plot, netlist, log: String::new(), warnings: Vec::new() };
+        let finished = Finished {
+            rows: report::rows(&result),
+            result,
+            step: None,
+            rest: Vec::new(),
+            base: run.base.clone(),
+            duration: run.started.elapsed(),
+            run: self.runs,
+            extra: run.extra.clone(),
+            overrides: run.overrides.clone(),
+            stopped: false,
+            range: run.range,
+        };
+        run.shown = Some((revision, Instant::now(), finished));
+    }
+
     /// Collects a finished run. Returns its outcome when one finished since the last call.
     pub fn poll(&mut self) -> Option<Outcome> {
         if !self.run.as_ref()?.workers.iter().all(|w| w.is_finished()) {
+            self.refresh_live();
             return None;
         }
         let run = self.run.take()?;
@@ -253,9 +347,17 @@ impl Session {
         // The first failure (by step), else every step's output.
         let mut done = Vec::new();
         let mut failure = None;
+        let mut stopped = false;
         for (k, out) in outputs.into_iter().enumerate() {
             match out {
-                Some(Ok(o)) => done.push(o),
+                // A stopped sweep step: the sweep is incomplete.
+                Some(Ok(o)) if o.stopped && stepped => {
+                    failure.get_or_insert((k, SimError::Cancelled));
+                }
+                Some(Ok(o)) => {
+                    stopped |= o.stopped;
+                    done.push(o);
+                }
                 Some(Err(SimError::Cancelled)) | None => {
                     failure.get_or_insert((k, SimError::Cancelled));
                 }
@@ -319,6 +421,8 @@ impl Session {
             run: self.runs,
             extra: run.extra,
             overrides: run.overrides,
+            stopped,
+            range: if stopped { run.range } else { None },
         };
         self.results.insert(run.analysis, finished);
         self.stale.remove(&run.analysis);
@@ -368,8 +472,15 @@ impl Session {
 
     /// Forgets everything (another project was opened).
     pub fn clear(&mut self) {
-        self.stop();
+        self.abandon();
         *self = Session::default();
+    }
+}
+
+impl Drop for Session {
+    /// A run going ends with the session (the library would run on otherwise).
+    fn drop(&mut self) {
+        self.abandon();
     }
 }
 

@@ -40,6 +40,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 indexmap = { version = "2", features = ["serde"] }
 thiserror = "2"
 tempfile = "3"
+libloading = "0.8"
 rstar = "0.14"
 rfd = "0.18"
 arboard = { version = "3", default-features = false }

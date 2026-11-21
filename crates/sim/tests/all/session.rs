@@ -18,7 +18,7 @@ struct Fake {
 }
 
 impl Backend for Fake {
-    fn run(&self, netlist: &str, cancel: &Cancel) -> Result<Output, SimError> {
+    fn run(&self, netlist: &str, cancel: &Cancel, _: &sim::Live) -> Result<Output, SimError> {
         self.netlists.lock().unwrap().push(netlist.to_string());
         while !*self.gate.lock().unwrap() {
             if cancel.is_cancelled() {
@@ -31,7 +31,16 @@ impl Backend for Fake {
         }
         let out = Vector { name: "v(out)".into(), kind: "voltage".into(), re: vec![1.0], im: None };
         let plot = Plot { name: "Operating Point".into(), complex: false, vectors: vec![out] };
-        Ok(Output { plots: vec![plot], log: "the log".into(), warnings: vec!["warning: a hint".into()] })
+        Ok(Output {
+            plots: vec![plot],
+            log: "the log".into(),
+            warnings: vec!["warning: a hint".into()],
+            stopped: false,
+        })
+    }
+
+    fn describe(&self) -> String {
+        "fake".into()
     }
 }
 
@@ -141,7 +150,9 @@ fn stop_and_restart() {
     assert!(s.start(b.project(), &b.conn(), &op, Arc::new(Fake { gate: gate.clone(), ..Default::default() })));
     std::thread::sleep(Duration::from_millis(5));
     assert!(s.poll().is_none());
+    // Stopped, it ends once the backend gives up (with nothing so far: cancelled).
     s.stop();
+    assert_eq!(wait(&mut s), Outcome::Cancelled);
     assert!(s.running().is_none());
     assert_eq!(s.attempt().unwrap().outcome, Outcome::Cancelled);
     // Starting again while one runs replaces it.

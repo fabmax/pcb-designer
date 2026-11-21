@@ -4,7 +4,7 @@
 //! `press x,y`, `move x,y`, `release x,y` drag, `double-click x,y`; `ui-click
 //! x,y` clicks at a screen position in points, `ui-double-click x,y` / `ui-right-click x,y`
 //! likewise, `ui-move x,y` hovers there, `type TEXT` types text, `run [ANALYSIS]` runs a
-//! simulation and waits for it, `zoom F` zooms the canvas under the pointer, `scroll DY` scrolls what's under it);
+//! simulation and waits for it (`start [ANALYSIS]` doesn't wait), `zoom F` zooms the canvas under the pointer, `scroll DY` scrolls what's under it);
 //! each step runs a few frames after the previous one.
 
 use std::collections::VecDeque;
@@ -38,8 +38,9 @@ enum Step {
     Wait(u32),
     /// Following coordinates are in the board (true) or schematic (false) view.
     Board(bool),
-    /// Run a simulation (the analysis named, or the panel's); later steps wait for it.
-    Run(String),
+    /// Run a simulation (the analysis named, or the panel's); later steps wait for it
+    /// unless false (`start`).
+    Run(String, bool),
     /// Zoom the canvas under the pointer by a factor (a pinch).
     Zoom(f32),
     /// Scroll what's under the pointer by points (positive: content moves up, as a
@@ -61,6 +62,8 @@ pub struct Script {
     switched: bool,
     /// A `run` step asked for a simulation (the app takes it).
     run: Option<String>,
+    /// Later steps wait for the simulation (`run`, not `start`).
+    wait_run: bool,
 }
 
 /// Frames between steps (lets the camera fit and the UI settle).
@@ -121,7 +124,8 @@ impl Script {
                     let [x, y] = point()?;
                     steps.push_back(Step::Screen(Step2::Move(Pos2::new(x as f32, y as f32))));
                 }
-                "run" => steps.push_back(Step::Run(arg.trim().to_string())),
+                "run" => steps.push_back(Step::Run(arg.trim().to_string(), true)),
+                "start" => steps.push_back(Step::Run(arg.trim().to_string(), false)),
                 "board" => steps.push_back(Step::Board(true)),
                 "schematic" => steps.push_back(Step::Board(false)),
                 "scroll" => steps.push_back(Step::Scroll(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
@@ -143,12 +147,17 @@ impl Script {
                 _ => return Err(format!("unknown script step {cmd:?}")),
             }
         }
-        Ok(Script { steps, held: Modifiers::NONE, wait: 0, board: false, switched: true, run: None })
+        Ok(Script { steps, held: Modifiers::NONE, wait: 0, board: false, switched: true, run: None, wait_run: true })
     }
 
     /// The simulation a `run` step asked for: an analysis name, empty for the panel's.
     pub fn take_run(&mut self) -> Option<String> {
         self.run.take()
+    }
+
+    /// Whether later steps wait for a running simulation.
+    pub fn waits_for_run(&self) -> bool {
+        self.wait_run
     }
 
     /// Leave the tab in front as it is at the start (`--show` opened one).
@@ -234,8 +243,9 @@ impl Script {
                 self.wait = n;
                 Vec::new()
             }
-            Step::Run(name) => {
+            Step::Run(name, wait) => {
                 self.run = Some(name);
+                self.wait_run = wait;
                 Vec::new()
             }
             Step::Board(b) => {

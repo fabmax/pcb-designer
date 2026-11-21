@@ -49,7 +49,7 @@ struct Fake {
 }
 
 impl Backend for Fake {
-    fn run(&self, _netlist: &str, _cancel: &Cancel) -> Result<Output, SimError> {
+    fn run(&self, _netlist: &str, _cancel: &Cancel, _live: &sim::Live) -> Result<Output, SimError> {
         let n = 2001;
         let t: Vec<f64> = (0..n).map(|i| i as f64 * 1e-6).collect();
         let v: Vec<f64> = t.iter().map(|t| 5.0 + 0.5 * (2.0 * std::f64::consts::PI * 1e3 * t).sin()).collect();
@@ -58,7 +58,11 @@ impl Backend for Fake {
             vectors.push(Vector { name: format!("v({node})"), kind: "voltage".into(), re: v.clone(), im: None });
         }
         let plot = Plot { name: "Transient Analysis".into(), complex: false, vectors };
-        Ok(Output { plots: vec![plot], log: String::new(), warnings: Vec::new() })
+        Ok(Output { plots: vec![plot], log: String::new(), warnings: Vec::new(), stopped: false })
+    }
+
+    fn describe(&self) -> String {
+        "fake".into()
     }
 }
 
@@ -206,21 +210,23 @@ fn simulate_refuses_unknown_signals() {
     assert!(err.contains("no analysis"), "{err}");
 }
 
-fn ngspice() -> Option<sim::SharedBackend> {
-    match sim::Ngspice::find(None) {
-        Ok(n) => Some(Arc::new(n)),
-        Err(e) => {
-            eprintln!("skipped: {e}");
-            None
-        }
+/// Whether ngspice is found (the executable or the library).
+fn ngspice() -> bool {
+    let engine = sim::Engine::find(&sim::EngineSettings::default());
+    let found = engine.process.is_some() || engine.library.is_some();
+    if !found {
+        eprintln!("skipped: ngspice not found");
     }
+    found
 }
 
+/// Through the headless host's engine, as the app's: the library when found.
 #[test]
 fn simulate_with_ngspice() {
-    let Some(backend) = ngspice() else { return };
+    if !ngspice() {
+        return;
+    }
     let mut host = demo();
-    host.sim_backend = Some(backend);
     // An operating point: every net, pin current and power.
     let v = simulate(&mut host, "Operating point", None, &[]).unwrap();
     let values = v["values"].as_array().unwrap();

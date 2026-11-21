@@ -7,7 +7,6 @@
 //! straight into the project (there is nobody to place them from a library window).
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use editor_core::Command;
 use kicad::Catalog;
@@ -40,9 +39,11 @@ pub struct HeadlessHost {
     /// don't depend on the machine).
     pub installed_kicad: bool,
     pub kicad_source: Source,
-    /// Where ngspice is (`None`: the usual places).
-    pub ngspice: Option<PathBuf>,
-    /// The simulator (`None`: ngspice, found at the first run; tests set a fake).
+    /// Where ngspice is and how to run it.
+    pub engine: sim::EngineSettings,
+    /// ngspice as found (at the first run).
+    found: Option<sim::Engine>,
+    /// The simulator (`None`: ngspice's library or executable; tests set a fake).
     pub sim_backend: Option<sim::SharedBackend>,
     pub sim: sim::Session,
     catalog: Option<Catalog>,
@@ -60,7 +61,8 @@ impl HeadlessHost {
             kicad_paths: Vec::new(),
             installed_kicad: true,
             kicad_source: Source::default(),
-            ngspice: None,
+            engine: sim::EngineSettings::default(),
+            found: None,
             sim_backend: None,
             sim: sim::Session::default(),
             catalog: None,
@@ -71,15 +73,14 @@ impl HeadlessHost {
         host
     }
 
-    /// The simulator: the one set, else ngspice (found once).
-    fn backend(&mut self) -> Result<sim::SharedBackend, String> {
+    /// The simulator of `analysis`: the one set, else ngspice's (found once).
+    fn backend(&mut self, analysis: Id) -> Result<sim::SharedBackend, String> {
         if let Some(b) = &self.sim_backend {
             return Ok(b.clone());
         }
-        let ngspice = sim::Ngspice::find(self.ngspice.as_deref()).map_err(|e| e.to_string())?;
-        let b: sim::SharedBackend = Arc::new(ngspice);
-        self.sim_backend = Some(b.clone());
-        Ok(b)
+        let a = self.doc.project().schematic.simulation.analyses.iter().find(|a| a.id == analysis);
+        let a = a.ok_or("no such analysis")?;
+        self.found.get_or_insert_with(|| sim::Engine::find(&self.engine)).backend(a)
     }
 
     fn catalog(&mut self) -> &mut Catalog {
@@ -187,7 +188,7 @@ impl Host for HeadlessHost {
 
     /// Runs to the end: nothing else happens meanwhile in a headless host.
     fn simulate(&mut self, job: SimJob, reply: Responder) {
-        let started = self.backend().and_then(|b| simulation::start(&mut self.sim, &self.doc, &job, b));
+        let started = self.backend(job.analysis).and_then(|b| simulation::start(&mut self.sim, &self.doc, &job, b));
         if let Err(e) = started {
             let _ = reply.send(Err(e));
             return;

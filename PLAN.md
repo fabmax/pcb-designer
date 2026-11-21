@@ -16,7 +16,7 @@ the current design of each area with the gotchas a change needs to know, the pla
 | Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported later: buses, label scopes (local / global / hierarchical / power), net names and hierarchical sheets with sheet pins as KiCad does. Multi-unit parts work |
 | Files | JSON, pretty, stable order, integer nm. A project is a folder (`<name>.pcbproj/`: `project.json`, `library.json`, `schematic.json`, `board.json`); a library is one `*.pcblib`. No migrations until production use (`model::io::MIGRATIONS` stays empty) |
 | MCP | In the app (Streamable HTTP on 127.0.0.1, opt-in) and headless over stdio. Every tool goes through editor-core commands |
-| Simulation | ngspice, a process per run for now (shared library later); see [simulation-plan.md](simulation-plan.md) |
+| Simulation | ngspice: the shared library when found (live traces), else a process per run; see [simulation-plan.md](simulation-plan.md) |
 | Platforms | macOS first. macOS-only chrome (native menu, title strip) is `cfg`'d; Windows/Linux keep the egui menu bar and system title bar |
 
 ## Model and files (`model`)
@@ -448,7 +448,31 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   `v1#branch`); `No. Points` can exceed the data of a stopped run (the reader takes
   whole points); B-source lines must use subcircuit parameters by bare name or through
   a `.param` in the subcircuit — `{…}` expressions of parameters inside a B-source
-  evaluate wrongly in ngspice 47 without an error.
+  evaluate wrongly in ngspice 47 without an error. Killed (Stop), it returns the raw
+  file's whole points so far as a `stopped` output, if any.
+- **libngspice** (`sim::Libngspice`, `shared.rs`): loaded with `libloading` (never
+  unloaded; one `Api` per path), found from the `ngspice_library` setting,
+  `NGSPICE_LIBRARY`, then the usual places (Homebrew, Linux `libngspice.so.0`,
+  Spice64's `ngspice.dll`, KiCad's bundled one). One instance per process: a global
+  `RUN` mutex serialises runs, the callbacks write into a global `SINK` (never hold it
+  across an ngspice call: `SendChar` also comes on the calling thread). A run:
+  `ngSpice_Circ` (fails only on "circuit not parsed": "Error on line" is a line ngspice
+  drops and goes on, as the process does), `bg_run`, wait for `BGThreadRunning`
+  (`bg_halt` on cancel), then `write '<tmp>/out.raw'` (single quotes: double ones stay
+  in the name) read by the raw reader so names match the process (`write` sorts
+  vectors: compare by name), `destroy all`, `remcirc`. Streaming: `SendInitData`
+  names the vectors (`out` → `v(out)`, `v1#branch` → `i(v1)`, the scale moved first),
+  `SendData` appends each point to the `Live` plot, `SendStat` ("tran: 42.3%") sets its
+  progress. Init: `set ngbehavior=ltpsa`; without its spinit (a library looks in a
+  compiled-in folder, Homebrew's isn't found) it has no code models and POLY sources of
+  vendor op amps fail, so `codemodel` loads them from `lib/ngspice` beside it.
+  `ControlledExit` (e.g. it can't allocate a run's vectors) sets a flag; the next run
+  calls `ngSpice_Init` again.
+- **Engine** (`sim::Engine`, from `EngineSettings`: both paths and `process_only`):
+  `backend(analysis)` is the library, but parameter sweeps get the process (parallel);
+  `Backend::parallel` false makes a session run steps on one worker. A configured path
+  that doesn't work is an error even when the other is found. The app, the headless
+  host (MCP) and `simulate` (CLI) use it; `describe` is "libngspice-47, shared library".
 - `SimResult` reads by net (`voltage`, ground as zeros) and pin (`current`), `Vector`
   has `db`, `phase`, `magnitude` and `at` (interpolated). `sim::report` gives the text
   summary and CSV of the `simulate` command; its rows are the nets, then per device its
@@ -467,8 +491,17 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
 - **Session** (`sim::Session`, the app's `SimPanel` holds one): one run at a time. The
   netlist is built on the UI thread (it needs the project), only `Backend::run` goes to
   the worker (`SharedBackend = Arc<dyn Backend + Send + Sync>`); `poll` each frame
-  collects it (`JoinHandle::is_finished`). `start` stops a running run first (Run while
-  running restarts); a stopped worker ends on its own, its result is dropped. Results
+  collects it (`JoinHandle::is_finished`). `start` abandons a running run first (Run
+  while running restarts; its worker ends on its own, the result dropped); `stop`
+  cancels and keeps the run until `poll` collects what it has (`Finished::stopped`,
+  `range` the whole analysis so the axis doesn't shrink; a stopped sweep is
+  cancelled). Dropping the session abandons its run (the library would run on). A
+  single run streams into a `Live` (`Arc<Mutex<…>>`); `poll` brings `live(analysis)`, a
+  `Finished` with a new `run` number, up to date by appending the new points
+  (`Live::update`), every 100 ms, less often past 200k points (the plot rebuilds its
+  data from all of them). The plot and the panel's table show it while it runs
+  (`range` fixes x; not dimmed), with `progress` as "Running… 42 %" and a bar along
+  the top of the plot. Results
   are kept per analysis id with the summary rows (`report::rows`, computed once), and
   dropped by `retain` when the analysis is deleted. **Stale** = the netlist the analysis
   would get now differs in text from the one it ran (so edits that don't reach the
@@ -482,8 +515,9 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   temperature, extra lines, netlist and log window). Every edit is one `SetSimulation`;
   value fields keep their own text buffer while focused and keep text that doesn't
   parse (red, not committed). ⌘R with no analysis adds an operating point. ngspice is
-  looked for once (when the panel shows or on Run) and again when the setting changes;
-  the Settings page caches its own lookup (with `ngspice -v`) per configured path.
+  looked for once (when the panel shows or on Run; `SimPanel::engine`) and again when
+  a setting changes; the Settings page caches its own lookup per `EngineSettings` and
+  shows what's in use (and the executable sweeps use).
 - **Plot** (`sim::plot`, headless; drawn by `app/src/plot_ui.rs` in `Tab::Simulation`):
   `signals` = the analysis' probes, or without any the named nets (at most 8, not
   saved). `Signal` is `Voltage`, `Diff`, `Current` or `Power`; `plot::vector` and
@@ -601,7 +635,8 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   `V1.amplitude`, checked against `tune::tunable`) as `Overrides`. `check` after each poll answers: done, failed, stopped (by the
   user, another analysis started), or 120 s passed (the server waits 130 s for it,
   other calls 60 s). The app answers from `SimPanel::poll`; the headless host blocks
-  in a poll loop with its own session (`sim_backend` lets tests fake ngspice).
+  in a poll loop with its own session (`sim_backend` lets tests fake ngspice, else its
+  `engine` settings).
   Replies round to six significant digits; sweeps' points are `decimate`d over 49
   columns (≤ 200 points). The screenshot draws the plot as a `render` scene in pixels
   (y up, a camera at zoom 1), text with the canvas font, dashes cut by hand.
@@ -611,7 +646,10 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
 - **Tests:** netlists and the raw reader (ngspice 47 fixtures in `tests/fixtures`) run
   everywhere; the circuits in `tests/all/ngspice.rs` (RC in AC and transient, diode, op
   amps, regulators, transistors, NAND, zener, crystal, DC sweep, errors, cancel, the
-  demo) skip with a note when ngspice isn't found. `tests/all/bench.rs` builds circuits
+  demo) run by every backend found, which must agree (same vectors and values), and
+  skip with a note when none is; library-only ones stream and stop, recover after
+  ngspice gives up, and serialise runs from threads. The KiCad demo comparison also
+  runs our netlists through the library. `tests/all/bench.rs` builds circuits
   by labelling pin ends. `tests/all/plot.rs` covers scales, ticks, decimation and AC
   traces on a made-up result. `tests/all/session.rs` drives the session with a fake backend
   that waits for a gate (start, refuse, fail, stop, restart, stale).`mcp/tests/all/simulation.rs` covers the tools with a fake
@@ -1244,6 +1282,11 @@ Things decided to do later, by area. Remove an entry when it's done; add what a 
 defers.
 
 **Schematic**
+- Simulation backends: only single runs stream (a sweep's steps, and processes, show
+  nothing until done; a process could stream with ngspice's interactive mode); sweeps
+  can't use the library (one instance per process: copies of the library file would
+  give more); a crash in the library takes the app down (a watchdog process holding
+  libngspice would isolate it).
 - KiCad simulation import gaps: IBIS (KIBIS) and XSPICE code models, switches,
   transmission lines, coupled inductors (`K`), potentiometers; the workbook (`.wbk`:
   plotted signals, cursors) and `.probe` / `.save` become no probes; `.control` scripts

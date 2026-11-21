@@ -3814,9 +3814,8 @@ impl PcbApp {
                 None => {}
             },
             Panel::Simulation => {
-                let configured = self.settings.ngspice_path();
                 // Look for ngspice once the panel shows (its hint shows when missing).
-                _ = self.sim.ngspice(configured);
+                _ = self.sim.engine(&self.settings.engine());
                 match self.sim.ui(ui, &mut self.project.lib.doc, &mut message) {
                     Some(SimAct::Run(id)) => self.run_simulation(Some(id)),
                     Some(SimAct::Stop) => self.sim.session.stop(),
@@ -3920,8 +3919,8 @@ impl PcbApp {
                 id
             }
         };
-        let configured = self.settings.ngspice_path();
-        if let Err(e) = self.sim.run(&mut self.project.lib.doc, id, configured) {
+        let engine = self.settings.engine();
+        if let Err(e) = self.sim.run(&mut self.project.lib.doc, id, &engine) {
             self.set_status(e);
         }
     }
@@ -5071,7 +5070,7 @@ impl eframe::App for PcbApp {
         // A `run` step waits for the simulation.
         let simulating = self.sim.session.running().is_some();
         if let Some(script) = &mut self.script
-            && !simulating
+            && !(simulating && script.waits_for_run())
         {
             let panes = &self.panes;
             let view = if script.view() == ViewKind::Board { ViewId::Board } else { sheet };
@@ -5233,8 +5232,8 @@ impl eframe::App for PcbApp {
                 }
                 Deferred::Plot(PlotAct::SetTune(rows)) => self.set_tune_rows(rows),
                 Deferred::Plot(PlotAct::TuneRun) => {
-                    let configured = self.settings.ngspice_path();
-                    self.sim.tune_run(&mut self.project.lib.doc, configured);
+                    let engine = self.settings.engine();
+                    self.sim.tune_run(&mut self.project.lib.doc, &engine);
                 }
                 Deferred::Plot(PlotAct::ApplyTune(param)) => self.apply_tune(param),
                 Deferred::Tune(component) => self.tune_component(component),
@@ -5265,7 +5264,7 @@ impl eframe::App for PcbApp {
                 &mut self.panes,
                 &libraries,
                 &mut self.kicad,
-                (&mut self.sim, self.settings.ngspice_path()),
+                (&mut self.sim, self.settings.engine()),
             );
             for job in jobs {
                 match job {
@@ -5322,8 +5321,8 @@ impl eframe::App for PcbApp {
         }
         // A tuned value changed while the last run went: run it with the newest.
         if self.sim.tune_pending && self.sim.session.running().is_none() {
-            let configured = self.settings.ngspice_path();
-            self.sim.tune_run(&mut self.project.lib.doc, configured);
+            let engine = self.settings.engine();
+            self.sim.tune_run(&mut self.project.lib.doc, &engine);
         }
         if self.sim.session.running().is_some() {
             ctx.request_repaint_after(Duration::from_millis(100));

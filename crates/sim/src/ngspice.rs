@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::raw::{self, Plot};
-use crate::{Backend, Output, SimError};
+use crate::{Backend, Live, Output, SimError};
 
 /// The ngspice executable.
 #[derive(Clone, Debug, PartialEq)]
@@ -91,7 +91,7 @@ impl Cancel {
 }
 
 impl Backend for Ngspice {
-    fn run(&self, netlist: &str, cancel: &Cancel) -> Result<Output, SimError> {
+    fn run(&self, netlist: &str, cancel: &Cancel, _live: &Live) -> Result<Output, SimError> {
         let dir = tempfile::Builder::new().prefix("pcb-designer-sim").tempdir().map_err(SimError::io)?;
         let cir = dir.path().join("circuit.cir");
         let raw_path = dir.path().join("out.raw");
@@ -117,6 +117,11 @@ impl Backend for Ngspice {
         let stderr = err.join().unwrap_or_default();
         let log = format!("{stdout}{stderr}");
         let Some(status) = status else {
+            // Killed: the points written so far, if any.
+            let plots = std::fs::read(&raw_path).ok().and_then(|d| raw::parse(&d).ok()).unwrap_or_default();
+            if plots.first().is_some_and(|p| !p.is_empty()) {
+                return Ok(Output { plots, log, warnings: Vec::new(), stopped: true });
+            }
             return Err(SimError::Cancelled);
         };
         let errors = error_lines(&stderr);
@@ -129,7 +134,11 @@ impl Backend for Ngspice {
         // ngspice writes the plots last analysis first.
         plots.reverse();
         let warnings = warning_lines(&log);
-        Ok(Output { plots, log, warnings })
+        Ok(Output { plots, log, warnings, stopped: false })
+    }
+
+    fn describe(&self) -> String {
+        format!("{}, process", self.version().unwrap_or_else(|| "ngspice".into()))
     }
 }
 
@@ -164,7 +173,7 @@ fn wait(child: &mut Child, cancel: &Cancel) -> Result<Option<std::process::ExitS
 
 /// ngspice's error messages: lines with "error" and the line after an "Error on line"
 /// (which quotes the netlist line), without the noise around them.
-fn error_lines(stderr: &str) -> Vec<String> {
+pub(crate) fn error_lines(stderr: &str) -> Vec<String> {
     let lines: Vec<&str> = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
     let mut out = Vec::new();
     for (i, l) in lines.iter().enumerate() {
@@ -184,6 +193,6 @@ fn error_lines(stderr: &str) -> Vec<String> {
 }
 
 /// Warnings of a run that succeeded (timestep troubles, unknown parameters).
-fn warning_lines(log: &str) -> Vec<String> {
+pub(crate) fn warning_lines(log: &str) -> Vec<String> {
     log.lines().map(str::trim).filter(|l| l.to_ascii_lowercase().starts_with("warning")).map(str::to_string).collect()
 }
