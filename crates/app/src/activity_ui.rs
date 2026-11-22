@@ -26,18 +26,13 @@ pub enum Act {
     Clear,
 }
 
-/// `url`: where the server listens, while it runs. `error`: why it didn't start.
+/// `url`: where the server listens, while it runs (the header shows it). `error`: why it
+/// didn't start.
 pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, url: Option<&str>, error: Option<&str>) -> Option<Act> {
     let mut act = None;
     let running = url.is_some();
-    if let Some(url) = url {
-        crate::agent_switch::url_ui(ui, url);
-        ui.add_space(4.0);
-    } else {
-        crate::fields::summary(ui, "Agent access is off: turn it on with the switch above.");
-        if let Some(e) = error {
-            ui.label(RichText::new(e).color(theme::error()));
-        }
+    if let (false, Some(e)) = (running, error) {
+        ui.label(RichText::new(e).color(theme::error()));
         ui.add_space(4.0);
     }
     ui.horizontal(|ui| {

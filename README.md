@@ -349,10 +349,9 @@ vendor models written for those simulators work. What's planned next is in
 The app can run an [MCP](https://modelcontextprotocol.io) server so AI agents can inspect
 and edit the open project while you watch. It is off by default.
 
-1. Turn it on with the switch in the **Agent activity** panel's header or **Tools →
-   Agent access (MCP server)**, or start the app with `--mcp` (port 7340) or
-   `--mcp-port PORT`. While it runs, the panel shows the URL it listens on, with a copy
-   button.
+1. Turn it on with the **Access** switch in the Agent activity panel's header or
+   **Tools → Agent access (MCP server)**, or start the app with `--mcp` (port 7340) or
+   `--mcp-port PORT`. While it runs, the header shows the URL it listens on.
 2. Connect your agent to `http://127.0.0.1:7340/mcp`. Tools → "Copy Claude Code command"
    copies `claude mcp add --transport http pcb-designer http://127.0.0.1:7340/mcp`;
    "Copy JSON config" gives an `mcpServers` entry for other clients.

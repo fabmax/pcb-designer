@@ -3904,12 +3904,14 @@ impl PcbApp {
                     header_act = self.project_tree.header_ui(ui, &roots);
                 }
                 if panel == Panel::Activity {
+                    // After a gap behind the title, up to the hide button.
                     ui.add_space(6.0);
                     let port = self.mcp_port.unwrap_or(self.settings.mcp.port);
-                    let on = self.agent.is_running();
-                    if crate::agent_switch::switch_ui(ui, on, port, self.agent.error.as_deref()) {
-                        toggle_agent = true;
-                    }
+                    let (url, error) = (self.agent.url(), self.agent.error.clone());
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.add_space(16.0);
+                        toggle_agent = crate::agent_switch::header_ui(ui, url.as_deref(), port, error.as_deref());
+                    });
                 }
             });
         });
