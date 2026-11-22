@@ -26,8 +26,8 @@ pub enum Act {
     Clear,
 }
 
-/// `url`: where the server listens, while it runs (the header shows it). `error`: why it
-/// didn't start.
+/// `url`: where the server listens, while it runs (the header shows it and the number of
+/// calls). `error`: why it didn't start.
 pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, url: Option<&str>, error: Option<&str>) -> Option<Act> {
     let mut act = None;
     let running = url.is_some();
@@ -35,22 +35,6 @@ pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, url: Option<&str>, err
         ui.label(RichText::new(e).color(theme::error()));
         ui.add_space(4.0);
     }
-    ui.horizontal(|ui| {
-        let text = match entries.len() {
-            0 if running => "No agent calls yet.".to_string(),
-            0 => return,
-            n => format!("{n} call(s) this session"),
-        };
-        crate::fields::summary(ui, &text);
-        if !entries.is_empty() {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("Clear").clicked() {
-                    act = Some(Act::Clear);
-                }
-            });
-        }
-    });
-    ui.add_space(4.0);
     if entries.is_empty() {
         return act;
     }
@@ -64,6 +48,11 @@ pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, url: Option<&str>, err
         cols.cell(ui, cols.tool, title("Tool"));
         cols.cell(ui, cols.result, title("Result"));
         ui.label(title("What"));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.small_button("Clear").on_hover_text("Clear the list").clicked() {
+                act = Some(Act::Clear);
+            }
+        });
     });
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (i, e) in entries.iter().enumerate().rev() {
@@ -172,6 +161,15 @@ fn first_line(text: &str) -> String {
     if line.chars().count() > 80 { format!("{}…", line.chars().take(80).collect::<String>()) } else { line.into() }
 }
 
+/// The number of calls, for the header: "No calls yet", "1 call this session", …
+pub fn count(n: usize) -> String {
+    match n {
+        0 => "No calls yet".into(),
+        1 => "1 call this session".into(),
+        n => format!("{n} calls this session"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,5 +180,12 @@ mod tests {
         assert_eq!(ago(12), "12 s ago");
         assert_eq!(ago(190), "3 min ago");
         assert_eq!(ago(7300), "2 h ago");
+    }
+
+    #[test]
+    fn call_counts() {
+        assert_eq!(count(0), "No calls yet");
+        assert_eq!(count(1), "1 call this session");
+        assert_eq!(count(12), "12 calls this session");
     }
 }

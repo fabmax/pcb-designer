@@ -1,6 +1,6 @@
 //! Agent access in the Agent activity panel's header: "Access", a switch that turns the
 //! MCP server on and off, a read-only text field with the URL it listens on (or "Access
-//! is disabled") and a button that copies the URL.
+//! is disabled"), a button that copies the URL and, while on, the number of calls.
 
 use egui::{Color32, Response, RichText, Sense, Ui, vec2};
 
@@ -8,9 +8,10 @@ use crate::icons::{self, Icon};
 use crate::theme;
 
 /// The header's access controls, laid out left to right in the space after the title.
-/// `url`: where the server listens, while it runs; `error`: why it didn't start.
+/// `url`: where the server listens, while it runs; `error`: why it didn't start; `calls`:
+/// how many the panel lists (shown while access is on).
 /// Returns true if the switch was clicked (toggle the server).
-pub fn header_ui(ui: &mut Ui, url: Option<&str>, port: u16, error: Option<&str>) -> bool {
+pub fn header_ui(ui: &mut Ui, url: Option<&str>, port: u16, error: Option<&str>, calls: usize) -> bool {
     ui.spacing_mut().item_spacing.x = 6.0;
     let running = url.is_some();
     let hover = match (running, error) {
@@ -48,6 +49,10 @@ pub fn header_ui(ui: &mut Ui, url: Option<&str>, port: u16, error: Option<&str>)
         && let Some(url) = url
     {
         ui.ctx().copy_text(url.to_string());
+    }
+    if url.is_some() {
+        ui.add_space(8.0);
+        crate::fields::summary(ui, &crate::activity_ui::count(calls));
     }
     clicked
 }

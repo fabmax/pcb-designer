@@ -3908,9 +3908,11 @@ impl PcbApp {
                     ui.add_space(6.0);
                     let port = self.mcp_port.unwrap_or(self.settings.mcp.port);
                     let (url, error) = (self.agent.url(), self.agent.error.clone());
+                    let calls = self.agent.activity.len();
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         ui.add_space(16.0);
-                        toggle_agent = crate::agent_switch::header_ui(ui, url.as_deref(), port, error.as_deref());
+                        toggle_agent =
+                            crate::agent_switch::header_ui(ui, url.as_deref(), port, error.as_deref(), calls);
                     });
                 }
             });
