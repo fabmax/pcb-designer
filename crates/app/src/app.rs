@@ -2701,7 +2701,7 @@ impl PcbApp {
         if plot {
             let setup = &self.project.lib.doc.project().schematic.simulation;
             if let Some(a) = self.sim.current(setup).map(|a| a.id) {
-                let state = self.sim.plots.entry(a).or_default();
+                let state = self.sim.plot_state(a);
                 match action {
                     Action::FitView => return state.fit(),
                     Action::Cancel => return state.clear_cursors(),

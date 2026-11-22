@@ -88,6 +88,17 @@ pub struct PlotState {
     measure: bool,
     /// The measurements as last computed: (range, data) and the table.
     measured: Option<(MeasureKey, MeasureTable)>,
+    /// The spectrum of the traces as last computed: (time window, data) and the plot.
+    spectrum: Option<(MeasureKey, Arc<PlotData>)>,
+}
+
+/// What the Measure table measures.
+#[derive(Clone)]
+enum Measuring {
+    /// The plot's traces over its cursors or visible range.
+    Plot,
+    /// A spectrum's: the distortion of its time traces over the time window.
+    Distortion(Arc<PlotData>, f64, f64),
 }
 
 type MeasureKey = (u64, u64, usize);
@@ -177,13 +188,15 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     let stale = panel.session.is_stale(doc.project(), doc.connectivity(), &analysis, &overrides, doc.revision);
     let running = panel.session.running().is_some_and(|(id, _)| id == analysis.id);
     let ac = matches!(analysis.kind, AnalysisKind::Ac { .. });
+    let tran = matches!(analysis.kind, AnalysisKind::Tran { .. });
+    let mut spectrum = tran && panel.spectrum.contains(&analysis.id);
 
     // The tool bar.
     let mut fit = false;
     let mut export = false;
     let mut phase = !panel.no_phase;
-    let state = panel.plots.entry(analysis.id).or_default();
-    let mut log_x = state.log_x.unwrap_or(ac);
+    let log_default = ac || spectrum;
+    let mut log_x = panel.plot_state(analysis.id).log_x.unwrap_or(log_default);
     let mut picked = None;
     egui::Frame::new().inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
         ui.horizontal(|ui| {
@@ -195,6 +208,11 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
                 ui.checkbox(&mut log_x, "Log x");
                 if ac {
                     ui.checkbox(&mut phase, "Phase");
+                }
+                if tran {
+                    let tip = "The spectrum of the traces between cursors A and B, else of the visible time; \
+                        Measure shows their distortion";
+                    ui.checkbox(&mut spectrum, "Spectrum").on_hover_text(tip);
                 }
                 export = ui.button("Export CSV…").on_hover_text("The traces shown, every point of the run").clicked();
             }
@@ -217,8 +235,9 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         panel.show_tab(id);
     }
     panel.no_phase = !phase;
-    let state = panel.plots.entry(analysis.id).or_default();
-    if log_x != state.log_x.unwrap_or(ac) {
+    let toggled = spectrum != (tran && panel.spectrum.contains(&analysis.id));
+    let state = panel.plot_state(analysis.id);
+    if !toggled && log_x != state.log_x.unwrap_or(log_default) {
         state.log_x = Some(log_x);
         state.x = None;
         state.decimated = None;
@@ -226,6 +245,14 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     if fit {
         state.fit();
     }
+    if toggled {
+        if spectrum {
+            panel.spectrum.insert(analysis.id);
+        } else {
+            panel.spectrum.remove(&analysis.id);
+        }
+    }
+    let state = panel.plots.entry(analysis.id).or_default();
 
     // A run going shows its points so far (backends that stream).
     let Some(done) = panel.session.live(analysis.id).or_else(|| panel.session.result(analysis.id)) else {
@@ -277,6 +304,38 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         state.decimated = None;
     }
     let (_, data, named) = state.data.clone().expect("built above");
+    // A spectrum: of the time between the cursors, else of the visible time.
+    let (state, data, measuring, log_x) = if spectrum {
+        let (lo, hi) = match state.cursors {
+            [Some(p), Some(q)] => (p.min(q), p.max(q)),
+            _ => state.x.map_or((f64::NEG_INFINITY, f64::INFINITY), |x| (x.lo, x.hi)),
+        };
+        let key = (lo.to_bits(), hi.to_bits(), Arc::as_ptr(&data) as usize);
+        if state.spectrum.as_ref().is_none_or(|s| s.0 != key) {
+            match sim::spectrum::data(&data, lo, hi) {
+                Some(s) => state.spectrum = Some((key, Arc::new(s))),
+                None => {
+                    centered_hint(ui, "Too few samples for a spectrum: widen the time range.");
+                    return act;
+                }
+            }
+        }
+        let s = state.spectrum.as_ref().expect("set above").1.clone();
+        let view = panel.spectra.entry(analysis.id).or_default();
+        // A new window refits the frequency axis.
+        let range = (s.x.first().copied().unwrap_or(0.0), s.x.last().copied().unwrap_or(1.0));
+        if view.fitted_to != Some(range) {
+            view.x = None;
+            view.fitted_to = Some(range);
+            view.decimated = None;
+        }
+        let log_x = view.log_x.unwrap_or(true);
+        (view, s, Measuring::Distortion(data, lo, hi), log_x)
+    } else {
+        // The time view's (the tool bar showed the spectrum's when it was just turned off).
+        let log_x = state.log_x.unwrap_or(ac);
+        (state, data, Measuring::Plot, log_x)
+    };
     if export {
         let dialog = rfd::AsyncFileDialog::new()
             .set_title("Export CSV")
@@ -322,7 +381,7 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     ui.add_space(4.0);
     egui::ScrollArea::vertical().id_salt(("plot_table", analysis.id)).auto_shrink([false, false]).show(ui, |ui| {
         egui::Frame::new().inner_margin(egui::Margin { left: 12, right: 12, top: 0, bottom: 8 }).show(ui, |ui| {
-            let (hover, remove) = readout(ui, state, &data, &signals, named, analysis.probes.is_empty());
+            let (hover, remove) = readout(ui, state, &data, &measuring, &signals, named, analysis.probes.is_empty());
             if let Some(s) = hover {
                 panel.hover = Some(target(&s));
             }
@@ -714,6 +773,7 @@ fn readout(
     ui: &mut Ui,
     state: &mut PlotState,
     data: &PlotData,
+    measuring: &Measuring,
     signals: &[Signal],
     named: usize,
     auto: bool,
@@ -745,19 +805,37 @@ fn readout(
     let table = state.measure.then(|| {
         let key = (lo.to_bits(), hi.to_bits(), std::ptr::from_ref(data) as usize);
         if state.measured.as_ref().is_none_or(|m| m.0 != key) {
-            state.measured = Some((key, sim::measure::table(data, lo, hi)));
+            let table = match measuring {
+                Measuring::Plot => sim::measure::table(data, lo, hi),
+                Measuring::Distortion(time, lo, hi) => sim::spectrum::table(time, *lo, *hi),
+            };
+            state.measured = Some((key, table));
         }
         state.measured.as_ref().expect("set above").1.clone()
     });
     ui.horizontal(|ui| {
-        let tip = "Measure the traces between cursors A and B, else over the visible range";
+        let tip = match measuring {
+            Measuring::Plot => "Measure the traces between cursors A and B, else over the visible range",
+            Measuring::Distortion(..) => {
+                "The traces' distortion: harmonics over the last whole periods of the time the spectrum shows"
+            }
+        };
         if ui.add(egui::Button::new("Measure").selected(state.measure)).on_hover_text(tip).clicked() {
             state.measure = !state.measure;
         }
         if let Some((cols, rows)) = &table {
-            let (x0, x1) = (lo.max(data.x[0]), hi.min(*data.x.last().unwrap_or(&0.0)));
-            let span = format!("{} … {}", plot::label(x0, data.x_unit), plot::label(x1, data.x_unit));
-            let what = if between { format!("Between A and B · {span}") } else { format!("Visible range · {span}") };
+            let what = match measuring {
+                Measuring::Plot => {
+                    let (x0, x1) = (lo.max(data.x[0]), hi.min(*data.x.last().unwrap_or(&0.0)));
+                    let span = format!("{} … {}", plot::label(x0, data.x_unit), plot::label(x1, data.x_unit));
+                    if between { format!("Between A and B · {span}") } else { format!("Visible range · {span}") }
+                }
+                Measuring::Distortion(time, lo, hi) => {
+                    let (x0, x1) = (lo.max(time.x[0]), hi.min(*time.x.last().unwrap_or(&0.0)));
+                    let span = format!("{} … {}", plot::label(x0, time.x_unit), plot::label(x1, time.x_unit));
+                    format!("Distortion · {span}")
+                }
+            };
             ui.label(RichText::new(what).color(theme::text_dim()));
             if ui.small_button("Copy").on_hover_text("The table as text, tab-separated").clicked() {
                 let mut text = format!("Signal\t{}\n", cols.join("\t"));

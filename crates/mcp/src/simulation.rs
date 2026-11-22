@@ -373,6 +373,20 @@ fn trace_json(data: &PlotData, t: &plot::Trace, points: &[f64], (from, to): (f64
             v["fall"] = opt(m.fall);
         }
     }
+    if data.x_unit == "s"
+        && let Some(d) = sim::spectrum::distortion(x, &t.y, from, to)
+    {
+        let db = |r: f64| if r > 0.0 { round(20.0 * r.log10()) } else { Value::Null };
+        v["distortion"] = json!({
+            "fundamental": round(d.fundamental),
+            "level_rms": round(d.level),
+            "periods": d.periods,
+            "from": round(d.from),
+            "thd_percent": round(d.thd * 100.0),
+            "thd_n_percent": round(d.thd_n * 100.0),
+            "harmonics_dbc": d.harmonics.iter().map(|&r| db(r)).collect::<Vec<_>>(),
+        });
+    }
     if data.log_x
         && t.unit == "dB"
         && let Some(m) = sim::measure::measure_ac(x, &t.y, from, to)
@@ -429,10 +443,15 @@ pub fn plot_scene(
     done: &Finished,
     signals: &[Signal],
     conn: &Connectivity,
+    spectrum: bool,
     width: u32,
     height: u32,
 ) -> Option<(Scene, Camera)> {
-    let data = plot::data_steps(&sim::tune::steps(project, done), signals, true, conn)?;
+    let mut data = plot::data_steps(&sim::tune::steps(project, done), signals, true, conn)?;
+    if spectrum {
+        let (lo, hi) = (*data.x.first()?, *data.x.last()?);
+        data = sim::spectrum::data(&data, lo, hi)?;
+    }
     let pal = view::style::pal();
     let (w, h) = (width as f32, height as f32);
     let mut prims: Vec<Instance> = Vec::new();

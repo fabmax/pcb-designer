@@ -75,10 +75,37 @@ named nets while none are ticked.
   gone, part not simulated).
 - **Measure** turns the table into measurements between cursors A and B (else over the
   visible range): min, max, average, RMS, peak-to-peak, frequency, rise and fall time
-  (10–90 %); for AC the peak, the −3 dB points and the phase margin (loop gain at 0 dB).
-  **Copy** copies them as text.
-- **Export CSV…** saves the traces shown.
+  (10–90 %), and over time the THD of a periodic signal; for AC the peak, the −3 dB
+  points and the phase margin (loop gain at 0 dB). **Copy** copies them as text.
+- **Export CSV…** saves the traces shown (a spectrum when it shows one).
 - An operating point shows a sortable table.
+
+## Distortion
+
+A transient's **Spectrum** (tool bar) shows the traces between cursors A and B, else the
+time you were looking at, as levels in dB (of 1 V or 1 A, RMS) over log frequency. Set the
+cursors in the time plot first, then switch. **Measure** shows the distortion of each
+trace there:
+
+- **Fundamental** and its **Level** (RMS), found from the signal's crossings.
+- **THD**: the harmonics (up to the 10th) over the fundamental.
+- **THD+N**: everything but DC and the fundamental. Above the THD it's noise: in a
+  simulation, the numerical error and the coarseness of the time steps.
+- **H2 … H5** in dB of the fundamental (dBc). A strong H2 means asymmetry (the halves of
+  a push-pull stage differ); odd harmonics mean symmetric distortion: crossover or
+  clipping.
+
+The harmonics are measured over the last whole periods of the window, where the circuit
+has settled the most, so let it settle before the window starts (**Start saving at** in
+the transient). For a clean result:
+
+- **Max. step**: at most a hundredth of the period, less for low distortion. The THD+N
+  of the input shows the floor the steps allow (about 0.015 % at 100 steps a period).
+- Ten periods or more.
+- For distortion far below 0.01 %, tighter tolerances help: add
+  `.options reltol=1e-5` in the setup's **Extra** lines.
+
+The audio amplifier example shows it: run its Transient and switch to Spectrum.
 
 ## Probing
 

@@ -767,6 +767,22 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   f) and the phase margin at the first downward 0 dB crossing. `measure::table` is the
   plot's Measure table (cached per range and data in `PlotState`); its range is the
   cursors when both are set, else the visible x. Agents get the same numbers.
+- **Distortion and spectrum** (`sim::spectrum`): our own, not ngspice's `.four` (printed
+  text, fixed to the netlist, blind to cursors) or `.disto` (small-signal, unreliable).
+  `distortion` takes the fundamental from `measure`'s crossings and the last whole
+  periods of the window (the most settled; ngspice's first sample lands a little after
+  the start, so a 10-period run measures 9), then integrates each harmonic exactly over
+  the linear pieces (by parts: the value terms cancel between pieces, the slope terms
+  use sin(x)/x so short steps don't cancel out), so it needs no resampling or window
+  function. Harmonics up to the 10th, below half the mean sample rate. THD+N is
+  `rms_ac² − fundamental²` of the same interpolant (Parseval), so it shows the floor
+  linear pieces leave: (ωΔt)²-ish, about 0.015 % at 100 steps a period. The spectrum
+  view resamples evenly to a power of two (2^10…2^18), Hann window, our own radix-2 FFT
+  (no dependency), dB of RMS. In the tab, Spectrum is per analysis (`SimPanel::spectrum`)
+  with its own `PlotState` (`spectra`) so the time view keeps its zoom and cursors; its
+  window is the time view's cursors, else its visible x, cached in the time state;
+  Measure there shows `spectrum::table` of the time traces over that window
+  (`Measuring`). MCP: `distortion` per transient signal, `screenshot` `spectrum`.
 - **Panel extras:** analysis tabs drag to reorder (egui drag-and-drop payloads, one
   `SetSimulation`); `suggested_supplies` lists power port nets that no supply and no
   voltage source pin powers, with `supply_voltage` from the name (`None` for `VCC`, the
@@ -1707,8 +1723,13 @@ defers.
 - `.include` / `.lib` of external model files (relative to the project), a project model
   library browser, vendor model import (pasting a whole `.lib` with many `.subckt`s and
   picking one).
-- Noise, FFT of a transient, pole-zero, sensitivity, distortion, Monte Carlo with part
-  tolerances, temperature sweeps, worst case.
+- Noise, pole-zero, sensitivity, Monte Carlo with part tolerances, temperature sweeps,
+  worst case.
+- Distortion: THD over a sweep's steps (against the source amplitude: the clipping point;
+  against frequency), which needs a measurement per step; a "precise" transient option
+  (tighter `reltol`, a max step from the source frequency) instead of `.options` in
+  Extra; a known fundamental (the source's) instead of the measured one; spectrum window
+  choices (flat top for levels) and averaging; harmonic markers on the spectrum.
 - Digital and mixed-signal (XSPICE digital models for 74HC parts, A/D bridges), logic
   traces in the viewer.
 - Switch models (voltage/time-controlled) for `SW_Push` and relays, transformers and

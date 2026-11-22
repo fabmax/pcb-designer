@@ -364,6 +364,10 @@ pub struct ScreenshotParams {
     /// else the first.
     #[serde(default)]
     pub analysis: Option<String>,
+    /// Simulation: a transient's spectrum (dB of each signal over log frequency, of the
+    /// whole run) instead of its waveform.
+    #[serde(default)]
+    pub spectrum: Option<bool>,
     /// Image size for views in pixels (default 1200x800, 64..4096).
     #[serde(default)]
     pub width: Option<u32>,
@@ -734,7 +738,14 @@ impl PcbTools {
                 return self.call(Request::GerberScreenshot { layers: p.layers, width, height }).await;
             }
             ScreenshotTarget::Simulation => {
-                return self.call(Request::SimulationScreenshot { analysis: p.analysis, width, height }).await;
+                return self
+                    .call(Request::SimulationScreenshot {
+                        analysis: p.analysis,
+                        spectrum: p.spectrum.unwrap_or(false),
+                        width,
+                        height,
+                    })
+                    .await;
             }
             _ => {}
         }
@@ -753,7 +764,10 @@ impl PcbTools {
         current (into the pin) and each device's power. A sweep (transient, AC, DC sweep) \
         answers per signal its end value and up to 200 points (x, y; dense runs keep their \
         envelope), its values at `points`, and measurements over from..to: min, max, and for \
-        transient and DC average, rms, peak_to_peak, frequency, rise and fall (10-90 %); AC \
+        transient and DC average, rms, peak_to_peak, frequency, rise and fall (10-90 %); for \
+        a periodic transient signal its distortion over the last whole periods of from..to: \
+        fundamental, level_rms, periods, thd_percent, thd_n_percent (harmonics plus the \
+        rest: noise, and the coarseness of the time steps) and harmonics_dbc (2nd, 3rd, …); AC \
         signals in dB with peak and minus_3db (below and above the peak), their phase in \
         degrees as separate signals with phase_margin (loop gain). An analysis with a \
         parameter sweep (its step: a part's value or a source field and its values) answers \

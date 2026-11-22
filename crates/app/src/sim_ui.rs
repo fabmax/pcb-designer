@@ -56,6 +56,9 @@ pub struct SimPanel {
     pub csv_dialog: crate::file_dialog::Dialog<String>,
     /// The plots' views, per analysis.
     pub plots: std::collections::HashMap<Id, crate::plot_ui::PlotState>,
+    /// Transients that show their spectrum, and the spectrum plots' views.
+    pub spectrum: std::collections::HashSet<Id>,
+    pub spectra: std::collections::HashMap<Id, crate::plot_ui::PlotState>,
     /// AC plots leave out the phase.
     pub no_phase: bool,
     /// The user closed the plot tab: runs don't open it again (until opened by hand).
@@ -115,6 +118,15 @@ const KINDS: [&str; 4] = ["Operating point", "Transient", "AC", "DC sweep"];
 
 impl SimPanel {
     /// A new project: no results, nothing selected.
+    /// The view of an analysis' plot as shown: its spectrum's, when it shows one.
+    pub fn plot_state(&mut self, analysis: Id) -> &mut crate::plot_ui::PlotState {
+        if self.spectrum.contains(&analysis) {
+            self.spectra.entry(analysis).or_default()
+        } else {
+            self.plots.entry(analysis).or_default()
+        }
+    }
+
     pub fn clear(&mut self) {
         self.session.clear();
         self.tab = None;
@@ -122,6 +134,7 @@ impl SimPanel {
         self.si.clear();
         self.netlist = None;
         self.plots.clear();
+        self.spectra.clear();
         self.overlay = None;
         self.hover = None;
         self.tuner.reset();
@@ -381,6 +394,7 @@ impl SimPanel {
         let setup = &doc.project().schematic.simulation;
         self.session.retain(|id| setup.analyses.iter().any(|a| a.id == id));
         self.plots.retain(|id, _| setup.analyses.iter().any(|a| a.id == *id));
+        self.spectra.retain(|id, _| setup.analyses.iter().any(|a| a.id == *id));
         self.tuner.retain(&setup.tune);
         let outcome = self.session.poll();
         if let Some((job, _)) = &self.agent

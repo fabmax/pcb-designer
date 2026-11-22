@@ -3,7 +3,7 @@
 //! gain. Used by the plot's Measure table and by agents.
 
 /// The samples between `lo` and `hi`, with values interpolated at both ends.
-fn window(xs: &[f64], ys: &[f64], lo: f64, hi: f64) -> (Vec<f64>, Vec<f64>) {
+pub(crate) fn window(xs: &[f64], ys: &[f64], lo: f64, hi: f64) -> (Vec<f64>, Vec<f64>) {
     let (mut wx, mut wy) = (Vec::new(), Vec::new());
     if xs.len() != ys.len() || xs.is_empty() || hi < lo {
         return (wx, wy);
@@ -202,7 +202,8 @@ pub fn phase_margin(f: &[f64], db: &[f64], phase: &[f64], lo: f64, hi: f64) -> O
 
 /// The Measure table of a plot over `lo..hi`: its column names and, per trace, its
 /// cells ("—" where a measurement doesn't apply or wasn't found). Time and DC sweeps:
-/// min, max, average, RMS, peak-to-peak, frequency, rise and fall; AC: the peak, its
+/// min, max, average, RMS, peak-to-peak, frequency, rise and fall, and over time THD
+/// (of a periodic signal: [`crate::spectrum::distortion`]); AC: the peak, its
 /// frequency, the −3 dB points and (phase traces) the phase margin.
 pub fn table(data: &crate::plot::PlotData, lo: f64, hi: f64) -> (Vec<&'static str>, Vec<Vec<String>>) {
     use crate::plot::label;
@@ -233,22 +234,34 @@ pub fn table(data: &crate::plot::PlotData, lo: f64, hi: f64) -> (Vec<&'static st
             .collect();
         return (cols, rows);
     }
-    let cols = vec!["Min", "Max", "Average", "RMS", "Peak-peak", "Frequency", "Rise", "Fall"];
+    let time = data.x_unit == "s";
+    let mut cols = vec!["Min", "Max", "Average", "RMS", "Peak-peak", "Frequency", "Rise", "Fall"];
+    if time {
+        cols.push("THD");
+    }
+    let n = cols.len();
     let rows = data
         .traces
         .iter()
         .map(|t| match measure(&data.x, &t.y, lo, hi) {
-            Some(m) => vec![
-                label(m.min, t.unit),
-                label(m.max, t.unit),
-                label(m.average, t.unit),
-                label(m.rms, t.unit),
-                label(m.peak_to_peak, t.unit),
-                opt(m.frequency, "Hz"),
-                opt(m.rise, data.x_unit),
-                opt(m.fall, data.x_unit),
-            ],
-            None => vec![none(); 8],
+            Some(m) => {
+                let mut row = vec![
+                    label(m.min, t.unit),
+                    label(m.max, t.unit),
+                    label(m.average, t.unit),
+                    label(m.rms, t.unit),
+                    label(m.peak_to_peak, t.unit),
+                    opt(m.frequency, "Hz"),
+                    opt(m.rise, data.x_unit),
+                    opt(m.fall, data.x_unit),
+                ];
+                if time {
+                    let d = crate::spectrum::distortion(&data.x, &t.y, lo, hi);
+                    row.push(d.map_or_else(none, |d| crate::spectrum::percent(d.thd)));
+                }
+                row
+            }
+            None => vec![none(); n],
         })
         .collect();
     (cols, rows)

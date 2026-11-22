@@ -20,6 +20,7 @@ pub mod report;
 pub mod results;
 pub mod session;
 pub mod shared;
+pub mod spectrum;
 pub mod tune;
 
 use editor_core::connectivity::Connectivity;

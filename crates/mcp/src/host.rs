@@ -139,6 +139,8 @@ pub enum Request {
     /// The plot of an analysis' last run.
     SimulationScreenshot {
         analysis: Option<String>,
+        /// A transient's spectrum instead of its waveform.
+        spectrum: bool,
         width: u32,
         height: u32,
     },
@@ -667,18 +669,21 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             let a = crate::simulation::find_analysis(doc.project(), analysis.as_deref(), default)?;
             crate::simulation::netlist_reply(doc.project(), doc.connectivity(), a)
         }
-        Request::SimulationScreenshot { analysis, width, height } => {
+        Request::SimulationScreenshot { analysis, spectrum, width, height } => {
             let default = host.shown_analysis();
             host.document_mut().update_connectivity(false);
             let doc = host.document();
             let a = crate::simulation::find_analysis(doc.project(), analysis.as_deref(), default)?;
+            if spectrum && !matches!(a.kind, model::AnalysisKind::Tran { .. }) {
+                return Err(format!("{} isn't a transient: only transients have a spectrum", a.name));
+            }
             let done =
                 host.sim_result(a.id).ok_or_else(|| format!("{} has no results yet: run it with simulate", a.name))?;
             let conn = doc.connectivity();
             let signals = sim::plot::signals(a, &done.result, conn).0;
             let (w, h) = (width.clamp(64, 4096), height.clamp(64, 4096));
-            let (scene, camera) =
-                crate::simulation::plot_scene(doc.project(), done, &signals, conn, w, h).ok_or_else(|| {
+            let (scene, camera) = crate::simulation::plot_scene(doc.project(), done, &signals, conn, spectrum, w, h)
+                .ok_or_else(|| {
                     format!("{} is an operating point: it has no plot; simulate answers its values", a.name)
                 })?;
             return host.render_scene(&scene, Some(camera), w, h).map(Reply::Png);

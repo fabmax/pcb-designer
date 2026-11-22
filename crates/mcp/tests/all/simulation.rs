@@ -122,7 +122,15 @@ fn simulate_answers_a_sweep_per_step() {
     assert!(signals[0]["max"].is_number(), "{v}");
     // The plot draws every step.
     assert!(matches!(
-        call(&mut host, Request::SimulationScreenshot { analysis: Some("Transient".into()), width: 300, height: 200 }),
+        call(
+            &mut host,
+            Request::SimulationScreenshot {
+                analysis: Some("Transient".into()),
+                spectrum: false,
+                width: 300,
+                height: 200
+            }
+        ),
         Ok(Reply::Png(_))
     ));
 }
@@ -169,6 +177,13 @@ fn simulate_answers_a_sweep_by_signal() {
     assert!((s["frequency"].as_f64().unwrap() - 1e3).abs() < 1.0, "{s}");
     assert!((s["rms"].as_f64().unwrap() - (25.0f64 + 0.125).sqrt()).abs() < 1e-3, "{s}");
     assert!((s["peak_to_peak"].as_f64().unwrap() - 1.0).abs() < 1e-3, "{s}");
+    // A pure sine: 2 periods, no distortion.
+    let d = &s["distortion"];
+    assert!((d["fundamental"].as_f64().unwrap() - 1e3).abs() < 1.0, "{d}");
+    assert_eq!(d["periods"], 2);
+    assert!((d["level_rms"].as_f64().unwrap() - 0.5 / 2f64.sqrt()).abs() < 1e-3, "{d}");
+    assert!(d["thd_percent"].as_f64().unwrap() < 1e-3, "{d}");
+    assert_eq!(d["harmonics_dbc"].as_array().unwrap().len(), 9, "{d}");
     let points = s["points"].as_array().unwrap();
     assert!(points.len() <= 200 && points.len() > 50, "{}", points.len());
     // At the sine's peak; past the end, the last value.
@@ -182,14 +197,27 @@ fn simulate_answers_a_sweep_by_signal() {
     assert_eq!(v["missing"][0]["signal"], "I(R1.1)", "the fake doesn't measure it: {v}");
 
     // The plot of the last run.
-    match call(&mut host, Request::SimulationScreenshot { analysis: Some("Transient".into()), width: 400, height: 250 })
-    {
+    match call(
+        &mut host,
+        Request::SimulationScreenshot { analysis: Some("Transient".into()), spectrum: false, width: 400, height: 250 },
+    ) {
         Ok(Reply::Png(png)) => assert!(png.starts_with(b"\x89PNG")),
         Ok(Reply::Json(v)) => panic!("expected a PNG: {v}"),
         Err(e) => panic!("{e}"),
     }
-    let err = call(&mut host, Request::SimulationScreenshot { analysis: Some("AC".into()), width: 400, height: 250 });
+    let spectrum =
+        Request::SimulationScreenshot { analysis: Some("Transient".into()), spectrum: true, width: 400, height: 250 };
+    assert!(matches!(call(&mut host, spectrum), Ok(Reply::Png(_))));
+    let err = call(
+        &mut host,
+        Request::SimulationScreenshot { analysis: Some("AC".into()), spectrum: false, width: 400, height: 250 },
+    );
     assert!(err.unwrap_err().contains("no results yet"));
+    let err = call(
+        &mut host,
+        Request::SimulationScreenshot { analysis: Some("AC".into()), spectrum: true, width: 400, height: 250 },
+    );
+    assert!(err.unwrap_err().contains("only transients"));
 }
 
 #[test]

@@ -53,7 +53,7 @@ rendered offscreen; `simulate` finds ngspice like the app (the Settings paths an
 | `route` | A track laid by the router (shove, walk around or highlight); returns what it pushed |
 | `undo`, `redo` | As in the app |
 | `get_selection`, `set_selection` | The app's selection |
-| `screenshot` | A schematic sheet, the board, the last Gerber export, a simulation's plot or the whole window |
+| `screenshot` | A schematic sheet, the board, the last Gerber export, a simulation's plot (`spectrum` for a transient's) or the whole window |
 | `save_project` | Saves the project |
 
 Wherever a sheet is asked for (`sheet`, `parent`), an id, a name or a path like
@@ -75,7 +75,7 @@ Wherever a sheet is asked for (`sheet`, `parent`), an id, a name or a path like
 
 | Tool | What it does |
 | --- | --- |
-| `simulate` | Runs an analysis and answers its values: an operating point's voltages, currents and powers, or per signal of a sweep (`OUT`, `V(OUT,IN)`, `R1.1`, `P(R1)`) up to 200 points, the values at given x and the measurements of the Measure table. `values` tries part values and source settings for that run only. The run shows in the app |
+| `simulate` | Runs an analysis and answers its values: an operating point's voltages, currents and powers, or per signal of a sweep (`OUT`, `V(OUT,IN)`, `R1.1`, `P(R1)`) up to 200 points, the values at given x and the measurements of the Measure table, with a periodic transient signal's `distortion` (THD, THD+N, harmonics). `values` tries part values and source settings for that run only. The run shows in the app |
 | `get_spice_netlist` | The netlist an analysis would run, with node and device names and problems |
 
 ### Parts and libraries
