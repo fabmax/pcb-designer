@@ -1,4 +1,5 @@
-//! Simulation models of the Built-in parts and the simulation-only parts (sources).
+//! Simulation models of the Built-in parts and the simulation-only parts (sources, and
+//! passives without footprint).
 //!
 //! Models are generic: typical values of a common part of each kind (1N4148, 2N3904,
 //! 2N7002), not the exact part in the value field. Vendor macromodels aren't bundled
@@ -188,6 +189,35 @@ pub(super) fn add(b: &mut Builder) {
             ),
             prefix: prefix.into(),
             default_value: Source::default().describe(unit_name),
+            units: vec![PartUnit { name: "A".into(), symbol: unit }],
+            variants: vec![PartVariant::no_footprint(gid(&format!("part/{name}/variant/none")))],
+            properties: Default::default(),
+            sim: Some(SimModel::new(device)),
+            source: None,
+        });
+    }
+    // The passives again without footprint, e.g. as a load on a test bench sheet. Their
+    // symbols are copies of the board parts' (a symbol is in its part's category).
+    for (symbol, prefix, value, device, what) in [
+        (sym::resistor(), "R", "1k", SimDevice::Resistor, "Resistor"),
+        (sym::capacitor(), "C", "100n", SimDevice::Capacitor, "Capacitor"),
+        (sym::inductor(), "L", "10u", SimDevice::Inductor, "Inductor"),
+    ] {
+        let name = format!("{}_Sim", symbol.name);
+        let pins =
+            symbol.pins.iter().map(|p| Pin { id: gid(&format!("sym/{name}/pin/{}", p.number)), ..p.clone() }).collect();
+        let unit = gid(&format!("sym/{name}"));
+        b.symbol(Symbol { id: unit, name: name.clone(), category: "Simulation".into(), pins, ..symbol });
+        b.lib.parts.insert(Part {
+            id: gid(&format!("part/{name}")),
+            name: name.clone(),
+            category: "Simulation".into(),
+            description: format!(
+                "{what} for simulation only (not on the board), e.g. a load or a source's impedance \
+                 on a test bench sheet"
+            ),
+            prefix: prefix.into(),
+            default_value: value.into(),
             units: vec![PartUnit { name: "A".into(), symbol: unit }],
             variants: vec![PartVariant::no_footprint(gid(&format!("part/{name}/variant/none")))],
             properties: Default::default(),

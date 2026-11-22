@@ -17466,6 +17466,204 @@
       ]
     },
     {
+      "id": "5ce10000-0000-4000-9000-34d67f6500f6",
+      "name": "Resistor_Sim",
+      "category": "Simulation",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -900000],
+          "b": [2540000, 900000],
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 1400000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -1400000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-274c63625662",
+          "name": "1",
+          "number": "1",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-264c636254af",
+          "name": "2",
+          "number": "2",
+          "pos": [5080000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-d89f528e1653",
+      "name": "Capacitor_Sim",
+      "category": "Simulation",
+      "graphics": [
+        {
+          "type": "line",
+          "a": [-500000, -2000000],
+          "b": [-500000, 2000000],
+          "width": 400000
+        },
+        {
+          "type": "line",
+          "a": [500000, -2000000],
+          "b": [500000, 2000000],
+          "width": 400000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 2500000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -2500000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-7aae9e2e65cf",
+          "name": "1",
+          "number": "1",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 4580000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-7bae9e2e6782",
+          "name": "2",
+          "number": "2",
+          "pos": [5080000, 0],
+          "direction": 180.0,
+          "length": 4580000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-b8a0f950e777",
+      "name": "Inductor_Sim",
+      "category": "Simulation",
+      "graphics": [
+        {
+          "type": "arc",
+          "center": [-1905000, 0],
+          "radius": 635000,
+          "start": 0.0,
+          "sweep": 180.0,
+          "width": 254000
+        },
+        {
+          "type": "arc",
+          "center": [-635000, 0],
+          "radius": 635000,
+          "start": 0.0,
+          "sweep": 180.0,
+          "width": 254000
+        },
+        {
+          "type": "arc",
+          "center": [635000, 0],
+          "radius": 635000,
+          "start": 0.0,
+          "sweep": 180.0,
+          "width": 254000
+        },
+        {
+          "type": "arc",
+          "center": [1905000, 0],
+          "radius": 635000,
+          "start": 0.0,
+          "sweep": 180.0,
+          "width": 254000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 1400000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -1400000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-176f4958000b",
+          "name": "1",
+          "number": "1",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-186f495801be",
+          "name": "2",
+          "number": "2",
+          "pos": [5080000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
       "id": "e40412cc-4698-4466-97a6-9144dfcc99b6",
       "name": "OpAmp",
       "category": "Analog",
@@ -176568,6 +176766,84 @@
       "sim": {
         "device": {
           "type": "current_source"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2317d9697b26",
+      "name": "Resistor_Sim",
+      "category": "Simulation",
+      "description": "Resistor for simulation only (not on the board), e.g. a load or a source's impedance on a test bench sheet",
+      "prefix": "R",
+      "default_value": "1k",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-34d67f6500f6"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-64d7d5ee737f",
+          "name": "No footprint",
+          "connections": []
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "resistor"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-034520b4e423",
+      "name": "Capacitor_Sim",
+      "category": "Simulation",
+      "description": "Capacitor for simulation only (not on the board), e.g. a load or a source's impedance on a test bench sheet",
+      "prefix": "C",
+      "default_value": "100n",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-d89f528e1653"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-f3bd2adab7c4",
+          "name": "No footprint",
+          "connections": []
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "capacitor"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-7316de392927",
+      "name": "Inductor_Sim",
+      "category": "Simulation",
+      "description": "Inductor for simulation only (not on the board), e.g. a load or a source's impedance on a test bench sheet",
+      "prefix": "L",
+      "default_value": "10u",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-b8a0f950e777"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-ef6810d35438",
+          "name": "No footprint",
+          "connections": []
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "inductor"
         }
       }
     },

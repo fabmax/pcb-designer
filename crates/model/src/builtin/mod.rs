@@ -57,6 +57,9 @@ pub const PART_NPN: Id = gid("part/NPN");
 pub const PART_MOUNTING_HOLE: Id = gid("part/MountingHole_M3");
 pub const PART_VSOURCE: Id = gid("part/VSource");
 pub const PART_ISOURCE: Id = gid("part/ISource");
+pub const PART_RESISTOR_SIM: Id = gid("part/Resistor_Sim");
+pub const PART_CAPACITOR_SIM: Id = gid("part/Capacitor_Sim");
+pub const PART_INDUCTOR_SIM: Id = gid("part/Inductor_Sim");
 /// Hand-made.
 pub const PART_OPAMP: Id = bid(0x700);
 pub const PART_74HC00: Id = bid(0x900);

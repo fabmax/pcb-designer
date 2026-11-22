@@ -159,7 +159,7 @@ fn every_part_simulates() {
             );
         }
     }
-    for id in [PART_VSOURCE, PART_ISOURCE] {
+    for id in [PART_VSOURCE, PART_ISOURCE, PART_RESISTOR_SIM, PART_CAPACITOR_SIM, PART_INDUCTOR_SIM] {
         let part = lib.parts.get(id).unwrap();
         assert_eq!(part.category, "Simulation");
         assert!(part.variants.iter().all(|v| v.footprint.is_none()), "{} is off the board", part.name);

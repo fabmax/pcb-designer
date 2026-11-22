@@ -158,6 +158,9 @@ it and see its values on the schematic.
   never reach the board. Their waveform (DC, sine, pulse, piecewise linear, exponential,
   plus an AC magnitude) is set on the component, and their value shows it
   ("SIN 1 V 1 kHz").
+- **Resistor_Sim**, **Capacitor_Sim** and **Inductor_Sim** (category Simulation) are
+  passives without footprint, for loads, a source's impedance or parasitics that belong
+  in the simulation but not on the board.
 - **Supplies** in the simulation setup power nets like `+5V` without drawing a source.
 - **Test bench:** keep sources on a sheet of their own ("Testbench" in the demo): a source
   stands in for a connector's supply or signal, and has no footprint, so the board doesn't

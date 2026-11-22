@@ -670,8 +670,10 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
 - **Built-in models** (`builtin::generate::sims`): a table by part name sets the
   generated parts' models (1N4148, B5819, zener with `BV=${VALUE}`, 2N3904/2N3906,
   2N7002/BSS84 as VDMOS, a Butterworth–Van Dyke crystal with `f=${VALUE}`, ferrite and
-  fuse as 0.1 Ω) and adds `VSource` / `ISource` (Simulation category, a "No footprint"
-  variant only, so off the board by the existing rule). The hand-made parts' texts
+  fuse as 0.1 Ω) and adds `VSource` / `ISource` and `Resistor_Sim` / `Capacitor_Sim` /
+  `Inductor_Sim` (Simulation category, a "No footprint" variant only, so off the board by
+  the existing rule). The `_Sim` passives get copies of the passive symbols, renamed:
+  a symbol is in its part's category (test `categories`). The hand-made parts' texts
   (behavioural op amp, LM358, regulators, quad NAND) are `pub` there and stored in the
   file; changing one means setting it again on the part (a one-off program or the app),
   then `gen_builtin`. `every_part_simulates` checks every part has a model with real
