@@ -25,7 +25,11 @@ pub struct Image {
 impl Offscreen {
     pub fn new() -> Result<Self, String> {
         pollster::block_on(async {
-            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+            // Without debug labels: the Vulkan loader's vkSetDebugUtilsObjectNameEXT crashes
+            // (SIGSEGV) when threads create devices at once, as parallel tests do on Linux.
+            let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+            desc.flags.remove(wgpu::InstanceFlags::DEBUG);
+            let instance = wgpu::Instance::new(desc);
             let adapter = instance
                 .request_adapter(&wgpu::RequestAdapterOptions {
                     power_preference: wgpu::PowerPreference::HighPerformance,
@@ -145,5 +149,28 @@ impl Image {
     pub fn pixel(&self, x: u32, y: u32) -> [u8; 4] {
         let i = ((y * self.width + x) * 4) as usize;
         [self.rgba[i], self.rgba[i + 1], self.rgba[i + 2], self.rgba[i + 3]]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Renderers made in parallel threads (each its own instance and device), as parallel
+    /// tests and MCP screenshots do.
+    #[test]
+    fn renderers_are_made_in_parallel() {
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                std::thread::spawn(|| {
+                    let Ok(off) = Offscreen::new() else { return };
+                    let img = off.render(&Scene::new(), &Camera::default(), &Background::default(), 16, 16);
+                    assert_eq!(img.rgba.len(), 16 * 16 * 4);
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().expect("no panic");
+        }
     }
 }

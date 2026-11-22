@@ -852,7 +852,10 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
 - `Scene::set_item` gives up a shrunk item's tail as garbage (else `instance_count`
   drifts from a rebuild). `Scene::snapshot` doesn't consume the incremental upload.
 - `Offscreen` renders to PNG (tests, MCP screenshots, `render_board`, the app icon). Its
-  background is opaque.
+  background is opaque. Each one is its own wgpu instance and device, without
+  `InstanceFlags::DEBUG`: with it (debug builds) the Vulkan loader's
+  `vkSetDebugUtilsObjectNameEXT` segfaults when threads create devices at once (parallel
+  tests on Linux CI, Mesa lavapipe); `renderers_are_made_in_parallel` catches it there.
 
 ## Views and editing (`view`)
 
