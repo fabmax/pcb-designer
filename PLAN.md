@@ -868,6 +868,10 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   item on the "Frame" layer, not in the R-tree (not selectable); redrawn on any sheet
   change, since it shows the title block, sheet names and the page count. Fit to view
   includes it (scene bounds).
+- Pad numbers on the board: 45% of the pad's smaller side, at most 70% of the
+  footprint's `${REF}` text (1 mm without one: `pad_number_limit`), so exposed pads
+  don't get numbers larger than the part's label. The footprint editor isn't capped
+  (pads redraw one by one there; a cap from the reference text would go stale).
 - Library edits redraw only their users (`View::users_of`): symbols depend on symbol,
   part and the component's footprint (pad names); footprints on footprint and part.
   Edits that don't change drawing (name, prefix…) redraw nothing.

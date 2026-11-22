@@ -1559,6 +1559,13 @@ fn draw_field(project: &Project, field: &FootprintField, l: &BoardLayers, p: &mu
     true
 }
 
+/// The largest pad number on footprint `fp`: 70% of its reference text (else of 1 mm),
+/// so a large pad (an exposed pad) doesn't get a number larger than the part's label.
+fn pad_number_limit(fp: &Footprint) -> Coord {
+    let reference = fp.texts.iter().find(|t| t.text.text == "${REF}").map_or(mm(1.0), |t| t.text.size);
+    (reference as f64 * 0.7) as Coord
+}
+
 /// Draw footprint `fp` placed by `t` on `side` (also the ghost of a board part being
 /// placed). The reference and value texts are drawn only `with_fields` (the ghost):
 /// placed footprints have their own ([`draw_field`]).
@@ -1579,6 +1586,7 @@ fn draw_footprint_at(
     let mut body: Option<Rect> = None;
     let mut courtyard: Option<Rect> = None;
     let rules = &project.board.rules;
+    let max_number = pad_number_limit(fp);
     for pad in fp.pads.iter() {
         let center = t.point(pad.pos);
         let mut draw = |layer: LayerId, margin: Coord| {
@@ -1606,8 +1614,8 @@ fn draw_footprint_at(
         }
         let r = Rect::around(center, pad.size.w.max(pad.size.h) / 2);
         body = Some(body.map_or(r, |b| b.union(r)));
-        // Pad number, readable on top of the pad.
-        let size = (pad.size.w.min(pad.size.h) as f64 * 0.45) as Coord;
+        // Pad number, readable on top of the pad (large pads: no larger than the limit).
+        let size = ((pad.size.w.min(pad.size.h) as f64 * 0.45) as Coord).min(max_number);
         let text = Text::new(pad.name.clone(), center, size).aligned(HAlign::Center, VAlign::Center);
         p.text(l.pad_numbers, &text, Color::rgba(0xff, 0xff, 0xff, 0xc0), &|s| s.to_string(), false);
     }
@@ -1742,4 +1750,21 @@ fn path_instance(points: &[Point], r: Coord, extra: f32, color: Color) -> Option
         (r as f64 * 2e-6) as f32 + extra,
         color,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pad_numbers_are_at_most_70_percent_of_the_reference() {
+        let lib = model::builtin::builtin_library();
+        let mut fp = lib.footprints.iter().find(|f| f.texts.iter().any(|t| t.text.text == "${REF}")).unwrap().clone();
+        for t in fp.texts.iter_mut().filter(|t| t.text.text == "${REF}") {
+            t.text.size = mm(1.5);
+        }
+        assert_eq!(pad_number_limit(&fp), mm(1.05));
+        fp.texts.retain(|t| t.text.text != "${REF}");
+        assert_eq!(pad_number_limit(&fp), mm(0.7), "without a reference: of 1 mm");
+    }
 }
