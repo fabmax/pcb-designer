@@ -52,9 +52,9 @@ pub struct Settings {
     /// Every simulation in a separate ngspice process (never the shared library).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub simulation_process_only: bool,
-    /// The editors show crosshairs at the pointer.
+    /// The editors show a crosshair at the pointer.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub crosshairs: bool,
+    pub crosshair: bool,
 }
 
 /// The default and the range of [`Settings::library_tabs`].

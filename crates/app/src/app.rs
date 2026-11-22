@@ -2673,9 +2673,9 @@ impl PcbApp {
             Action::StopSimulation => return self.sim.session.stop(),
             Action::ShowSimNetlist => return self.sim.show_window(false),
             Action::ShowSimPlot => return self.open_sim_tab(true),
-            Action::ToggleCrosshairs => {
-                self.settings.crosshairs = !self.settings.crosshairs;
-                canvas::set_crosshairs(self.settings.crosshairs);
+            Action::ToggleCrosshair => {
+                self.settings.crosshair = !self.settings.crosshair;
+                canvas::set_crosshair(self.settings.crosshair);
                 return self.save_settings();
             }
             _ => {}
@@ -2812,7 +2812,7 @@ impl PcbApp {
             | Action::StopSimulation
             | Action::ShowSimNetlist
             | Action::ShowSimPlot
-            | Action::ToggleCrosshairs => return,
+            | Action::ToggleCrosshair => return,
         };
         let view = self.active;
         if key_action == KeyAction::Delete && !self.confirm_sheet_delete(&self.panes.selection(view)) {
@@ -2965,7 +2965,7 @@ impl PcbApp {
             | Action::StopSimulation
             | Action::ShowSimNetlist
             | Action::ShowSimPlot
-            | Action::ToggleCrosshairs => None,
+            | Action::ToggleCrosshair => None,
         };
         if let Some(m) = msg {
             self.set_status(m);
@@ -3033,7 +3033,7 @@ impl PcbApp {
             headless_command: self.headless_command(),
             move_to_sheet: !self.movable_to_sheet().is_empty(),
             sim_running: self.sim.session.running().is_some(),
-            crosshairs: self.settings.crosshairs,
+            crosshair: self.settings.crosshair,
         })
     }
 
@@ -5411,7 +5411,7 @@ impl eframe::App for PcbApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.track_window(&ctx);
-        canvas::set_crosshairs(self.settings.crosshairs);
+        canvas::set_crosshair(self.settings.crosshair);
         self.sync_tool_memory();
         self.sync_libraries();
         self.handle_close(&ctx);

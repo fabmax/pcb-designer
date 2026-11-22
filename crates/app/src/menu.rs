@@ -116,8 +116,8 @@ pub struct MenuState<'a> {
     pub move_to_sheet: bool,
     /// A simulation is running.
     pub sim_running: bool,
-    /// The editors show crosshairs at the pointer.
-    pub crosshairs: bool,
+    /// The editors show a crosshair at the pointer.
+    pub crosshair: bool,
 }
 
 pub const APP_NAME: &str = "PCB Designer";
@@ -226,9 +226,9 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
     let mut view = vec![
         action("Fit view", Action::FitView, true),
         Entry::Check {
-            label: "Crosshairs".into(),
-            cmd: Cmd::Action(Action::ToggleCrosshairs),
-            checked: s.crosshairs,
+            label: "Crosshair".into(),
+            cmd: Cmd::Action(Action::ToggleCrosshair),
+            checked: s.crosshair,
             radio: false,
             hover: Some("Lines across the editor through the pointer: horizontal, vertical and 45°"),
         },
@@ -458,7 +458,7 @@ mod tests {
             headless_command: "claude mcp add …".into(),
             move_to_sheet: false,
             sim_running: false,
-            crosshairs: false,
+            crosshair: false,
         }
     }
 

@@ -10,11 +10,11 @@ use render::{Camera, Scene, SceneUpload};
 /// Ids of dropped canvases whose GPU scenes are freed by the next `prepare`.
 static RELEASED: Mutex<Vec<u64>> = Mutex::new(Vec::new());
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-/// Canvases draw crosshairs at the pointer (View → Crosshairs).
-static CROSSHAIRS: AtomicBool = AtomicBool::new(false);
+/// Canvases draw a crosshair at the pointer (View → Crosshair).
+static CROSSHAIR: AtomicBool = AtomicBool::new(false);
 
-pub fn set_crosshairs(on: bool) {
-    CROSSHAIRS.store(on, Ordering::Relaxed);
+pub fn set_crosshair(on: bool) {
+    CROSSHAIR.store(on, Ordering::Relaxed);
 }
 
 /// Shared GPU state, stored in egui-wgpu's callback resources.
@@ -99,10 +99,10 @@ impl Canvas {
         }
         self.handle_input(ui, &response, rect);
         self.paint(ui, rect, scene);
-        if CROSSHAIRS.load(Ordering::Relaxed)
+        if CROSSHAIR.load(Ordering::Relaxed)
             && let Some(at) = response.hover_pos()
         {
-            draw_crosshairs(ui, rect, at);
+            draw_crosshair(ui, rect, at);
         }
         response
     }
@@ -266,25 +266,43 @@ pub fn pointer_input(
     }))
 }
 
-/// Draw the interaction's selection box: solid blue for "inside", dashed green for
-/// "crossing".
-/// Crosshairs through `at` across `clip`: horizontal and vertical lines, and fainter 45°
-/// ones.
-fn draw_crosshairs(ui: &egui::Ui, clip: egui::Rect, at: egui::Pos2) {
-    use egui::{Stroke, vec2};
+/// The crosshair's look (screen points): the hole around the pointer, and the dashes.
+const CROSSHAIR_HOLE: f32 = 24.0;
+const CROSSHAIR_DASH: f32 = 16.0;
+const CROSSHAIR_GAP: f32 = 24.0;
+
+/// Crosshair through `at` across `clip`: dashed horizontal and vertical lines, and
+/// fainter 45° ones, leaving a hole around the pointer.
+fn draw_crosshair(ui: &egui::Ui, clip: egui::Rect, at: egui::Pos2) {
+    use egui::{Shape, Stroke, vec2};
     let color = crate::theme::color(view::style::pal().crosshair);
     let painter = ui.painter_at(clip);
     // One physical pixel wide.
     let width = 1.0 / ui.ctx().pixels_per_point();
     let stroke = Stroke::new(width, color);
-    painter.hline(clip.x_range(), at.y, stroke);
-    painter.vline(at.x, clip.y_range(), stroke);
     let faint = Stroke::new(width, color.gamma_multiply(0.5));
-    let d = clip.width() + clip.height();
-    painter.line_segment([at - vec2(d, d), at + vec2(d, d)], faint);
-    painter.line_segment([at - vec2(d, -d), at + vec2(d, -d)], faint);
+    // Long enough to cross the canvas from anywhere; the painter clips.
+    let reach = clip.width() + clip.height();
+    let diagonal = std::f32::consts::FRAC_1_SQRT_2;
+    let rays = [
+        (vec2(1.0, 0.0), stroke),
+        (vec2(-1.0, 0.0), stroke),
+        (vec2(0.0, 1.0), stroke),
+        (vec2(0.0, -1.0), stroke),
+        (vec2(diagonal, diagonal), faint),
+        (vec2(-diagonal, diagonal), faint),
+        (vec2(diagonal, -diagonal), faint),
+        (vec2(-diagonal, -diagonal), faint),
+    ];
+    for (dir, stroke) in rays {
+        // Each ray starts its dashes at the hole, so they don't crawl as the pointer moves.
+        let line = [at + dir * CROSSHAIR_HOLE, at + dir * reach];
+        painter.extend(Shape::dashed_line(&line, stroke, CROSSHAIR_DASH, CROSSHAIR_GAP));
+    }
 }
 
+/// Draw the interaction's selection box: solid blue for "inside", dashed green for
+/// "crossing".
 pub fn draw_box(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, r: model::Rect, crossing: bool) {
     use crate::theme;
     let a = canvas.world_to_screen(r.min.to_mm());

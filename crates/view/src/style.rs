@@ -36,7 +36,7 @@ pub struct Palette {
     pub background: Color,
     pub grid: Color,
     pub axis: Color,
-    /// Crosshairs at the pointer; the 45° lines at half its alpha.
+    /// Crosshair at the pointer; the 45° lines at half its alpha.
     pub crosshair: Color,
 
     pub sch_wire: Color,
