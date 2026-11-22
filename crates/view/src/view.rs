@@ -187,6 +187,9 @@ const SIM_ITEM: u64 = (3 << 62) | 7;
 /// Net names on pads and tracks near the viewport (board, high zoom).
 const NET_LABEL_ITEM: u64 = (3 << 62) | 8;
 
+/// How far the rim of a selected track or via reaches beyond its copper (mm).
+const SELECTED_RIM: f32 = 0.1;
+
 fn overlay_item(id: ObjectId, hover: bool) -> u64 {
     item(id) | if hover { 2 << 62 } else { 1 << 62 }
 }
@@ -1035,15 +1038,25 @@ impl View {
             Layers::Board(l) => Some(l.pad_numbers),
             Layers::Sch(_) => None,
         };
-        let mut out: Vec<(RLayer, Instance)> = p
-            .out
-            .into_iter()
-            .filter(|(l, _)| Some(*l) != fill && Some(*l) != numbers)
-            .map(|(_, mut inst)| {
+        // Selected tracks and vias keep their colour inside a bright rim (the accent colour
+        // would read as another layer's).
+        let copper = !hover && matches!(id, ObjectId::Track(_) | ObjectId::Via(_));
+        let mut out: Vec<(RLayer, Instance)> = Vec::new();
+        for (_, mut inst) in p.out.into_iter().filter(|(l, _)| Some(*l) != fill && Some(*l) != numbers) {
+            if copper {
+                let (core, rim) = crate::style::selected_copper(inst.color);
+                if matches!(
+                    inst.kind & render::primitive::kind::MASK,
+                    render::primitive::kind::CAPSULE | render::primitive::kind::CIRCLE | render::primitive::kind::ARC
+                ) {
+                    out.push((layer, Instance { r: inst.r + SELECTED_RIM, color: rim, ..inst }));
+                }
+                inst.color = core;
+            } else {
                 inst.color = color;
-                (layer, inst)
-            })
-            .collect();
+            }
+            out.push((layer, inst));
+        }
         if matches!(id, ObjectId::Symbol(_) | ObjectId::Footprint(_) | ObjectId::Sheet(_))
             && let Some(b) = p.bounds
         {

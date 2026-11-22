@@ -1075,6 +1075,11 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   plain keys and ⌘Z/Y/C/X/V (no undo inside an edit).
 - Owner highlight: a selected (or dragged) field draws its owner in the hover colour
   and a tether line from the owner's origin to the text (`View::draw_overlay`).
+- Selected tracks and vias aren't drawn in the accent colour (blue, which reads as the
+  bottom layer) but in their own, opaque and slightly brightened, inside a rim
+  `SELECTED_RIM` wider, mixed strongly toward `selected_copper` (`style::selected_copper`;
+  white in the dark theme, black in the light one, like `net_highlight`). The net
+  highlight tints evenly, so the selection stands out of its net by the rim.
 - Labels are drawn KiCad style: local with a dot, global as an outline around the name,
   hierarchical as a small arrow before it; `LabelShape::points` says which ends are
   pointed. Label text goes through `Text::upright` (turned 180° with swapped alignment

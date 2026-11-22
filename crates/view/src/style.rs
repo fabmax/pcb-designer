@@ -73,6 +73,10 @@ pub struct Palette {
     pub warning_marker: Color,
     /// Copper of highlighted nets.
     pub net_highlight: Color,
+    /// Selected tracks and vias keep their own colour, opaque and mixed a little with
+    /// this, inside a rim mixed with it by its alpha (so they stand out of their
+    /// highlighted net, which `net_highlight` tints evenly).
+    pub selected_copper: Color,
     /// Objects selected in the other view (cross-probing).
     pub probe: Color,
     pub probe_fill: Color,
@@ -140,6 +144,7 @@ pub static DARK: Palette = Palette {
     drc_marker: Color::rgba(0xff, 0x4d, 0x6a, 0xe0),
     warning_marker: Color::rgba(0xff, 0xb4, 0x30, 0xe0),
     net_highlight: Color::rgba(0xff, 0xff, 0xff, 0x60),
+    selected_copper: Color::rgba(0xff, 0xff, 0xff, 0xc0),
     probe: Color::rgba(0xff, 0xd0, 0x4c, 0xd0),
     probe_fill: Color::rgba(0xff, 0xd0, 0x4c, 0x22),
     sim_value: Color::rgb(0x8c, 0xd0, 0xff),
@@ -206,6 +211,7 @@ pub static LIGHT: Palette = Palette {
     drc_marker: Color::rgba(0xd0, 0x10, 0x40, 0xe0),
     warning_marker: Color::rgba(0xc0, 0x78, 0x00, 0xe0),
     net_highlight: Color::rgba(0x00, 0x00, 0x00, 0x48),
+    selected_copper: Color::rgba(0x00, 0x00, 0x00, 0x90),
     probe: Color::rgba(0xd0, 0x90, 0x00, 0xe0),
     probe_fill: Color::rgba(0xff, 0xc0, 0x00, 0x30),
     sim_value: Color::rgb(0x0b, 0x5c, 0xad),
@@ -464,6 +470,18 @@ pub fn parse_color_hex(s: &str) -> Option<Color> {
     }
     let byte = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
     Some(Color::rgba(byte(0)?, byte(2)?, byte(4)?, if h.len() == 8 { byte(6)? } else { 0xff }))
+}
+
+/// A selected track's or via's colours, from its own: (core, rim). See
+/// `Palette::selected_copper`.
+pub fn selected_copper(c: Color) -> (Color, Color) {
+    let m = pal().selected_copper;
+    let mix = |t: f32| {
+        let ch = |i: usize| (c.0[i] as f32 * (1.0 - t) + m.0[i] as f32 * t).round() as u8;
+        Color::rgb(ch(0), ch(1), ch(2))
+    };
+    let t = m.0[3] as f32 / 255.0;
+    (mix(t * 0.15), mix(t))
 }
 
 pub fn board_layer_color(layer: LayerId) -> Color {
