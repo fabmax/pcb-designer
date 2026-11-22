@@ -146,6 +146,11 @@ impl PlotState {
     }
 }
 
+/// The handle between plot and table, and the least height of each.
+const HANDLE: f32 = 8.0;
+const MIN_PLOT: f32 = 120.0;
+const MIN_TABLE: f32 = 40.0;
+
 /// Space for the axes' labels.
 const LEFT: f32 = 64.0;
 const RIGHT: f32 = 64.0;
@@ -345,11 +350,16 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         panel.csv_dialog.open(ui.ctx(), dialog, Kind::Save, csv);
     }
 
-    // Plot above, readout table below (at most 40 % of the height).
-    // Header, traces, missing ones and up to two hint lines.
+    // Plot above, readout table below: sized to its rows (header, traces, missing ones
+    // and up to two hint lines; at most 40 % of the height) until the user drags the
+    // handle between them.
+    let avail = ui.available_height();
+    let top = ui.cursor().top();
     let table_rows = data.traces.len() + data.missing.len() + 3;
-    let table_h = (table_rows as f32 * 22.0 + 20.0).min(ui.available_height() * 0.4);
-    let plot_h = (ui.available_height() - table_h).max(120.0);
+    let auto = (table_rows as f32 * 22.0 + 20.0).min(avail * 0.4);
+    let table_h =
+        panel.table_share.map_or(auto, |s| s * avail).clamp(MIN_TABLE, (avail - MIN_PLOT - HANDLE).max(MIN_TABLE));
+    let plot_h = (avail - table_h - HANDLE).max(MIN_PLOT);
     let (outer, response) = ui.allocate_exact_size(vec2(ui.available_width(), plot_h), Sense::click_and_drag());
     let right = if !data.axis_unit(Axis::Right2).is_empty() {
         2.0 * RIGHT
@@ -378,7 +388,29 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         ui.painter().rect_filled(bar, 0.0, theme::accent());
     }
 
-    ui.add_space(4.0);
+    // The handle between plot and table: drag to resize, double-click for the automatic
+    // size.
+    let (handle, r) = ui.allocate_exact_size(vec2(ui.available_width(), HANDLE), Sense::click_and_drag());
+    if r.hovered() || r.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+    let grip = Rect::from_center_size(handle.center(), vec2(36.0, 3.0));
+    let color = if r.dragged() {
+        theme::accent()
+    } else if r.hovered() {
+        theme::text_dim()
+    } else {
+        theme::border()
+    };
+    ui.painter().rect_filled(grip, 1.5, color);
+    if r.double_clicked() {
+        panel.table_share = None;
+    } else if r.dragged()
+        && let Some(p) = r.interact_pointer_pos()
+    {
+        let table = (top + avail - p.y - HANDLE / 2.0).clamp(MIN_TABLE, (avail - MIN_PLOT - HANDLE).max(MIN_TABLE));
+        panel.table_share = Some(table / avail.max(1.0));
+    }
     egui::ScrollArea::vertical().id_salt(("plot_table", analysis.id)).auto_shrink([false, false]).show(ui, |ui| {
         egui::Frame::new().inner_margin(egui::Margin { left: 12, right: 12, top: 0, bottom: 8 }).show(ui, |ui| {
             let (hover, remove) = readout(ui, state, &data, &measuring, &signals, named, analysis.probes.is_empty());

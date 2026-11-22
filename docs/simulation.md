@@ -77,6 +77,8 @@ named nets while none are ticked.
   visible range): min, max, average, RMS, peak-to-peak, frequency, rise and fall time
   (10–90 %), and over time the THD of a periodic signal; for AC the peak, the −3 dB
   points and the phase margin (loop gain at 0 dB). **Copy** copies them as text.
+- Drag the handle between the plot and the table to give either more room;
+  double-click it for the automatic size.
 - **Export CSV…** saves the traces shown (a spectrum when it shows one).
 - An operating point shows a sortable table.
 

@@ -61,6 +61,9 @@ pub struct SimPanel {
     pub spectra: std::collections::HashMap<Id, crate::plot_ui::PlotState>,
     /// AC plots leave out the phase.
     pub no_phase: bool,
+    /// The table under the plot as a share of the plot tab's height, once the user
+    /// dragged the handle between them (`None`: sized to its rows).
+    pub table_share: Option<f32>,
     /// The user closed the plot tab: runs don't open it again (until opened by hand).
     pub plot_closed: bool,
     /// View → Simulation values is off.
