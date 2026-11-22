@@ -106,6 +106,9 @@ pub struct PcbSettings {
     pub allow_violations: bool,
     /// Vias added while routing (L) join just the two layers (else they go through).
     pub via_pair: bool,
+    /// L while routing lays the leg to the pointer and puts the via there (else the via
+    /// goes at the leg's start and the leg goes on on the new layer).
+    pub via_at_cursor: bool,
     /// Layers the via tool's vias join (blind and buried vias); through when the same or
     /// not on the board.
     pub via_span: [LayerId; 2],
@@ -140,6 +143,7 @@ impl Default for PcbSettings {
             route_mode: RouteMode::default(),
             allow_violations: false,
             via_pair: false,
+            via_at_cursor: true,
             via_span: [LayerId::TOP_COPPER, LayerId::BOTTOM_COPPER],
             zone_net: String::new(),
             keepout_all_layers: true,
@@ -463,15 +467,30 @@ impl PcbPlacer {
     }
 
     /// Switch to the next copper layer. While routing, a via joins the layers at the
-    /// current end of the track (through, or just the two layers: [`PcbSettings::via_pair`]).
-    /// The via the last L added goes again if the track hasn't gone on since: back on the
-    /// layer it came from, the track needs none.
+    /// current end of the track (through, or just the two layers: [`PcbSettings::via_pair`]);
+    /// with [`PcbSettings::via_at_cursor`] the leg to the pointer is laid first, so the
+    /// via goes there. The via the last L added goes again if the track hasn't gone on
+    /// since (and the pointer is still on it): back on the layer it came from, the track
+    /// needs none.
     pub fn next_layer(&mut self, doc: &mut Document) -> Result<(), String> {
         let layers: Vec<LayerId> = doc.project().board.copper_layers().map(|l| l.id).collect();
         let cur = self.settings.layer;
         let i = layers.iter().position(|&l| l == cur).unwrap_or(0);
         let next = layers[(i + 1) % layers.len().max(1)];
-        let pending = self.via_added.take();
+        let mut pending = self.via_added.take();
+        if self.tool == PcbTool::Route
+            && self.settings.via_at_cursor
+            && let (Some(start), Some(cursor)) = (self.start, self.cursor)
+            && cursor != start
+        {
+            // Lay the leg to the pointer (as a click would) and put the via at its end.
+            if self.click(doc)? {
+                // It ended on copper: the track is done, no via needed.
+                self.settings.layer = next;
+                return Ok(());
+            }
+            pending = None;
+        }
         if self.tool == PcbTool::Route
             && let Some(p) = self.start
         {

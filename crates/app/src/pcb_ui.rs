@@ -168,6 +168,14 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                     s.corner_radius = r;
                 }
                 ui.end_row();
+                label(ui, "Via at");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut s.via_at_cursor, true, "Pointer")
+                        .on_hover_text("L lays the track to the pointer and puts the via there");
+                    ui.selectable_value(&mut s.via_at_cursor, false, "Leg start")
+                        .on_hover_text("L puts the via where the track leg starts; the leg goes on on the new layer");
+                });
+                ui.end_row();
                 if doc.project().board.copper_layers().count() > 2 {
                     label(ui, "Via span");
                     ui.horizontal(|ui| {

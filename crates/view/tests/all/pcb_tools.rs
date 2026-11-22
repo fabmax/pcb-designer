@@ -576,6 +576,7 @@ fn switching_back_to_the_layer_takes_the_via_back() {
         let mut t = PcbPlacer::default();
         t.set_tool(PcbTool::Route);
         t.settings.route_mode = mode;
+        t.settings.via_at_cursor = false;
         let (a, b, c) = (Point::mm(0.0, 0.0), Point::mm(10.0, 0.0), Point::mm(10.0, 8.0));
         t.hover(&mut doc, Some((a, a)), mm(0.0));
         t.click(&mut doc).unwrap();
@@ -598,5 +599,43 @@ fn switching_back_to_the_layer_takes_the_via_back() {
         t.click(&mut doc).unwrap();
         t.next_layer(&mut doc).unwrap();
         assert_eq!(doc.project().board.vias.len(), 2, "a new via at the leg's end, the old one stays ({mode:?})");
+    }
+}
+
+#[test]
+fn l_lays_the_leg_and_puts_the_via_at_the_pointer() {
+    for mode in [view::pcb_tools::RouteMode::Shove, view::pcb_tools::RouteMode::Highlight] {
+        let mut doc = Document::new(Project::new("T"));
+        let mut t = PcbPlacer::default();
+        t.set_tool(PcbTool::Route);
+        t.settings.route_mode = mode;
+        assert!(t.settings.via_at_cursor, "the default");
+        let (a, b, c) = (Point::mm(0.0, 0.0), Point::mm(10.0, 0.0), Point::mm(10.0, 8.0));
+        t.hover(&mut doc, Some((a, a)), mm(0.0));
+        t.click(&mut doc).unwrap();
+        let top = t.settings.layer;
+        // L with the pointer at b: the leg to b on top, the via at b.
+        t.hover(&mut doc, Some((b, b)), mm(0.0));
+        t.next_layer(&mut doc).unwrap();
+        let board = &doc.project().board;
+        assert_eq!(board.tracks.len(), 1, "{mode:?}");
+        let leg = board.tracks.iter().next().unwrap();
+        assert_eq!((leg.layer, leg.a, leg.b), (top, a, b));
+        assert_eq!(board.vias.iter().map(|v| v.pos).collect::<Vec<_>>(), vec![b], "{mode:?}");
+        assert_ne!(t.settings.layer, top);
+        // L again on the spot: the via goes, the leg stays.
+        t.next_layer(&mut doc).unwrap();
+        assert_eq!(t.settings.layer, top);
+        assert_eq!((doc.project().board.vias.len(), doc.project().board.tracks.len()), (0, 1), "{mode:?}");
+        // Back on the other layer, then on to c: that leg on the bottom, a second via at c.
+        t.next_layer(&mut doc).unwrap();
+        let bottom = t.settings.layer;
+        t.hover(&mut doc, Some((c, c)), mm(0.0));
+        t.next_layer(&mut doc).unwrap();
+        let board = &doc.project().board;
+        let second = board.tracks.iter().find(|t| t.a == b).unwrap();
+        assert_eq!(second.layer, bottom, "{mode:?}");
+        assert_eq!(board.vias.len(), 2, "{mode:?}");
+        assert_eq!(t.settings.layer, top);
     }
 }
