@@ -1,0 +1,180 @@
+# Simulation
+
+The schematic simulates as drawn, with [ngspice](https://ngspice.sourceforge.io/): the same
+components, nets and labels, plus simulation-only sources that never reach the board.
+Analyses: operating point, DC sweep, AC (frequency response) and transient.
+
+## Installing ngspice
+
+Install ngspice yourself: `brew install ngspice`, `apt install ngspice`, or the Windows
+download. It is found on `PATH` and the usual install places, or set its path in
+**Settings → Simulation**.
+
+When ngspice's shared library is installed too (Homebrew's `libngspice`, `libngspice0` on
+Debian/Ubuntu, Spice64's `ngspice.dll`, or the one KiCad bundles), runs go through it: they
+start at once, and transient, AC and DC sweep traces grow while they run. A model that
+crashes ngspice then takes the app down with it; **Settings → Simulation → Separate process
+only** runs everything in a process instead (parameter sweeps always do).
+
+ngspice runs in its LTspice/PSpice compatibility mode (as in KiCad), so vendor models
+written for those simulators work.
+
+## A first run
+
+1. Place a source (**VSource** or **ISource**, category Simulation in the
+   [Parts panel](libraries.md#the-parts-panel)) and wire it in, or let a **supply** power
+   a net (below). Ground is the net of the GND power ports.
+2. Open the **Simulation panel** (⌘2, or the **Simulation** menu) and pick or add an
+   analysis.
+3. **Run** (⌘R). Transient, AC and DC sweeps open the plot in the Simulation tab; an
+   operating point fills the panel's table and shows the values on the schematic.
+4. Click wires and pins with the **Probe** tool (**O**) to plot more.
+5. Change a value and run again; results of an older schematic dim until then.
+
+The demo project (`--demo`) has a supply, an operating point and a test bench sheet to try.
+
+## Simulation panel
+
+One tab per analysis (operating point, transient, AC, DC sweep; **+** adds one,
+right-click renames, duplicates or deletes it; drag the tabs to reorder them) with its
+settings. Values take SI prefixes (`10m`, `1.5k`, `1meg`); text that isn't a value turns
+red and isn't applied.
+
+- **Run** (⌘R) runs the analysis shown (with none, it adds an operating point). **Stop**
+  (⌘.) stops it and keeps what it computed so far ("Stopped at 3.2 ms"); the status bar
+  shows a running simulation and, with the shared library, how far it is.
+- The **result table** lists the named nets (all of them with **Show all nets**) and the
+  measured currents; click a net to select it. An operating point measures the current
+  into every pin (`I(R1.1)`) and each part's power (`P(R1)`). Tick signals to plot them.
+- When the schematic changes in a way that changes the netlist, the results dim with
+  "Changed since the run".
+- **Circuit** holds the ground net, supplies, temperature and extra SPICE lines, and shows
+  the SPICE netlist and ngspice's log. Power nets that no source or supply powers are
+  listed with the voltage their name suggests (`+3V3` → 3.3 V) and an **Add** button.
+
+Every change undoes like any other edit.
+
+## Simulation tab (the plot)
+
+The first transient, AC or DC sweep that finishes opens a plot of the analysis the panel
+shows (also **Plot** in the panel, or **Simulation → Show simulation plot**; once you close
+it, runs don't reopen it). It plots the signals ticked in the panel's result table, or the
+named nets while none are ticked.
+
+- AC shows the magnitude in dB and, dashed on the right axis, the phase. Volts, amperes and
+  watts each get an axis (a third one on the far right).
+- Wheel zooms x around the pointer (Shift+wheel: y), middle or right drag pans, left drag
+  zooms into a box, double-click or **V** fits.
+- Click places cursor A, Shift+click cursor B (drag them to move, Esc removes them). The
+  table under the plot shows each trace's value at A and B and the difference; a click on
+  a row hides or shows its trace. Hovering a row highlights its net or pin on the
+  schematic; right-click → **Remove probe**. A probe without data says why (run again, net
+  gone, part not simulated).
+- **Measure** turns the table into measurements between cursors A and B (else over the
+  visible range): min, max, average, RMS, peak-to-peak, frequency, rise and fall time
+  (10–90 %); for AC the peak, the −3 dB points and the phase margin (loop gain at 0 dB).
+  **Copy** copies them as text.
+- **Export CSV…** saves the traces shown.
+- An operating point shows a sortable table.
+
+## Probing
+
+The **Probe** tool (**O**, in the tool bar's Simulation group, shown with the panel or tab
+open):
+
+- click a wire, label or junction to plot its net's voltage;
+- drag from one net to another for the voltage between them (`V(OUT,IN)`);
+- click the body of a pin (not its end) to plot the current into it;
+- Alt-click a part for the power it takes (`P(R1)`, negative when it delivers power);
+- click a probed one to remove it.
+
+The tip names what a click probes. Probes go to the analysis the panel shows if it's a
+transient, AC or DC sweep, else to the first one. Probed wires and pins show in their trace
+colours.
+
+**Values on the schematic** (**View → Simulation values**, with the panel or tab open):
+after an operating point run, each net shows its voltage once per sheet, and two-pin parts
+their current with an arrow in its direction; hover a bigger part for each pin's voltage
+and current and its power. They dim when the schematic changed since the run.
+
+## Tuner
+
+Under the plot, the tuner tries values without changing the schematic. Right-click a part →
+**Tune R1**, or **Tune…** lists every part value and source setting (amplitude, frequency,
+AC level, …). A row has a slider (log over a decade either way for values, snapped to E24
+for resistors and E12 for capacitors and inductors; 0 to twice the value for source
+settings), the value, the slider's range and snapping. Moving a slider runs the analysis
+again on release (while dragging when runs are quick); plot and schematic values show the
+tuned run. **Apply** writes a value into the schematic (one undo step), the header's
+**Apply** all of them, **Reset** goes back. The rows are saved with the project, the tuned
+values aren't.
+
+## Parameter sweeps
+
+Tick **Parameter sweep** under an analysis' settings, pick a part value or source setting
+and its values (a list like `1k, 2.2k, 4.7k`, linear from/to/step, or log per decade; at
+most 64). Each value runs as its own ngspice process, several at once. The plot shows a
+trace per signal and step ("V(OUT) · R1 = 4.7 kΩ"; one signal: a colour per step, several:
+each signal's steps in fading shades), the table groups them under the signal (click it to
+hide all its steps). An operating point shows a column per step; click a column to sort by
+it and see its values on the schematic.
+
+## Sources, supplies and test benches
+
+- **VSource** and **ISource** (category Simulation) are sources for simulation only and
+  never reach the board. Their waveform (DC, sine, pulse, piecewise linear, exponential,
+  plus an AC magnitude) is set on the component, and their value shows it
+  ("SIN 1 V 1 kHz").
+- **Supplies** in the simulation setup power nets like `+5V` without drawing a source.
+- **Test bench:** keep sources on a sheet of their own ("Testbench" in the demo): a source
+  stands in for a connector's supply or signal, and has no footprint, so the board doesn't
+  change.
+
+## Models
+
+### Parts that simulate out of the box
+
+Every Built-in part has a simulation model. Resistors, capacitors and inductors take their
+value: `10k`, `4k7`, `100n`, `1M` is mega.
+
+### Models of your parts
+
+The part form's **Simulation** section:
+
+- picks the device (resistor, diode, BJT, MOSFET, op amp subcircuit, source, a raw SPICE
+  line, or Not simulated);
+- takes the model text (a `.model` card or a `.subckt`, pasted from a datasheet; the line
+  under it says what it parsed);
+- maps the model's ports to the part's pins (**Auto-map** matches names like A/K, C/B/E,
+  D/G/S, + and −);
+- sets parameters.
+
+Model problems show in the library's issues.
+
+### A component's model
+
+Properties → **Simulation**: **Exclude from simulation**, parameter overrides (empty: the
+part's value, shown greyed), and for sources the waveform with its fields and a preview.
+
+## Problems
+
+Problems (no ground, values that aren't numbers, parts without model, ngspice's errors)
+show in Messages' **Simulation** tab; click one to see its parts.
+
+## KiCad projects
+
+KiCad's simulation fields and SPICE directives come along with an imported project: see
+[KiCad](kicad.md#simulation-settings).
+
+## Command line and agents
+
+```sh
+pcb-designer simulate PROJECT_DIR [--analysis NAME] [--csv FILE] [--netlist]
+```
+
+runs an analysis of the project's setup (the first, or an operating point when there is
+none) and prints the values, or writes every point as CSV; `--netlist` prints the SPICE
+netlist.
+
+Agents set the simulation up with the `SetSimulation` command and run it with the
+`simulate` MCP tool: see [Agents](agents.md).

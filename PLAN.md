@@ -1,8 +1,9 @@
 # PCB Designer – Plan and design notes
 
-Requirements are in [pcb-designer.md](pcb-designer.md). This file holds the decisions,
-the current design of each area with the gotchas a change needs to know, the planned
-**next milestones**, and the list of things to do **later**.
+Requirements are in [pcb-designer.md](pcb-designer.md), user documentation in
+[docs/](docs/README.md). This file holds the decisions, the current design of each area
+with the gotchas a change needs to know, the planned **next milestones**, and the list of
+things to do **later**.
 
 ## Decisions
 
@@ -16,7 +17,8 @@ the current design of each area with the gotchas a change needs to know, the pla
 | Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported later: buses, label scopes (local / global / hierarchical / power), net names and hierarchical sheets with sheet pins as KiCad does. Multi-unit parts work |
 | Files | JSON, pretty, stable order, integer nm. A project is a folder (`<name>.pcbproj/`: `project.json`, `library.json`, `schematic.json`, `board.json`); a library is one `*.pcblib`. No migrations until production use (`model::io::MIGRATIONS` stays empty) |
 | MCP | In the app (Streamable HTTP on 127.0.0.1, opt-in) and headless over stdio. Every tool goes through editor-core commands |
-| Simulation | ngspice: the shared library when found (live traces), else a process per run; see [simulation-plan.md](simulation-plan.md) |
+| Simulation | ngspice: the shared library when found (live traces), else a process per run. Design in "Simulation (`sim`)" |
+| Routing | Push and shove after KiCad's PNS router (hulls, lines walked round a pusher's hull, a shove stack, spring-back by recomputing from the board at the last click). Design in "Connectivity, copper, zones, DRC" (Router, Shove) |
 | Platforms | macOS first. macOS-only chrome (native menu, title strip) is `cfg`'d; Windows/Linux keep the egui menu bar and system title bar |
 | CI | GitHub Actions. `ci.yml`: fmt and clippy (`-D warnings`) on Linux, on the latest stable Rust (update locally with `rustup update` when its new lints fire), `cargo test --workspace` on macOS, Linux and Windows (`--no-fail-fast`) for pushes to main and pull requests, with ngspice and libngspice installed on macOS (Homebrew) and Linux (apt; Mesa's software Vulkan for offscreen rendering), so the simulation tests run there; Windows has no ngspice (they skip). `release.yml` (manual, or a `v*` tag, which also publishes a GitHub Release): the ad-hoc signed `.app` for Apple Silicon (`bundle-macos.sh`), and the bare binary for Linux and Windows x86_64 (Linux's with its debug info stripped: the release profile's line tables would make it 4× the size; symbols stay). Linux system packages are in `.github/actions/linux-deps`. Dependabot (`.github/dependabot.yml`) opens weekly update PRs: egui's family with wgpu, winit and muda in one, other minor/patch crates in one, majors alone, actions in one. Cargo counts 0.x → 0.y as minor, so a breaking 0.x bump can hold up the grouped PR: split it off then. Tests that need a GPU adapter skip without one |
 
@@ -288,7 +290,14 @@ the current design of each area with the gotchas a change needs to know, the pla
   the first query after a rebuild (~2 ms for 20k items; `at` and `nearest_anchor` use
   it too); the route tool only rechecks when its inputs or the document revision change
   (`ClashKey`).
-- **Router** (`router`, plan in [routing-plan.md](routing-plan.md)): `RouteMode`
+- **Router decisions:** Shove is the default mode (KiCad's default is Highlight
+  collisions). Tracks and vias have a `locked` flag; locked ones are never pushed. Drag
+  with shove follows the Route tool's mode (no separate switch). The preview executes
+  the pushes as real edits in a provisional undo group, retracted every pointer move
+  (the drag replay path), not ghosts: the view, ratsnest and markers stay exact and
+  spring-back is free. Gotcha: every step bumps `doc.revision`, so caches keyed by it
+  must use the revision at the leg start.
+- **Router** (`router`): `RouteMode`
   (Highlight, Shove (default), Walkaround; a `PcbSettings` field, Shift+R cycles it),
   `route` dispatches. `hull::Hull`: a convex counterclockwise polygon, the obstacle's
   points grown by an octagon of clearance + half width + `SLACK` (10 nm), so edges run at
@@ -548,8 +557,19 @@ the current design of each area with the gotchas a change needs to know, the pla
 
 ## Simulation (`sim`)
 
-What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
-[simulation-plan.md](simulation-plan.md).
+User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahead in
+**Later** (Simulation).
+
+- **Decisions:** the schematic simulates as drawn (no separate simulation schematic);
+  sources are ordinary components (one part per kind, `VSource` / `ISource`, the
+  waveform picked in Properties), kept off the board by having no footprint, and a test
+  bench sub-sheet keeps them out of a design's main sheets. The setup lives in
+  `schematic.json` (`Schematic::simulation`, like the ERC settings), so it rides in the
+  change set's `Setup`. The plot is a tab beside the schematic, not a modal window, and
+  a widget of our own: `egui_plot` lacks log axes, a second y axis and per-column
+  decimation, and doesn't follow the palettes. The process backend came first; the
+  shared library became the default (the process stays for sweeps, as the fallback and
+  as the safe setting). Not goals for now: mixed-signal, board parasitics, RF.
 
 - **Model** (`model::simulation`; named so, as `model::sim` would clash with the `sim`
   crate under `use model::*`): `Part::sim: Option<SimModel>` is part content (in the
@@ -1196,7 +1216,7 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   name a sheet an earlier command of the batch added. `screenshot`, `get_selection`
   and `set_selection` take a `sheet` (`ViewSpec::resolve`). `edit_library` takes the file format with merges by id or
   name, refuses edits that add new `Library::issues`, and reports pad coverage.
-- Tools are listed in README.md.
+- Tools are listed in [docs/agents.md](docs/agents.md).
 
 ## App (`app`)
 
@@ -1543,16 +1563,6 @@ Things decided to do later, by area. Remove an entry when it's done; add what a 
 defers.
 
 **Schematic**
-- Simulation backends: only single runs stream (a sweep's steps, and processes, show
-  nothing until done; a process could stream with ngspice's interactive mode); sweeps
-  can't use the library (one instance per process: copies of the library file would
-  give more); a crash in the library takes the app down (a watchdog process holding
-  libngspice would isolate it).
-- KiCad simulation import gaps: IBIS (KIBIS) and XSPICE code models, switches,
-  transmission lines, coupled inductors (`K`), potentiometers; the workbook (`.wbk`:
-  plotted signals, cursors) and `.probe` / `.save` become no probes; `.control` scripts
-  are dropped; a subcircuit's instance parameters aren't passed through a pin-joining
-  wrapper; nested DC sweeps keep the first.
 - KiCad project export. Import gaps (counted in the import report today): schematic
   graphics, images, text boxes, tables and rule areas; text variables (`${TITLE}` etc. in
   texts stay as written; the frame shows the title block);
@@ -1601,7 +1611,14 @@ defers.
 - Clipboard: carrying a paste between the schematic and the board.
 - Parts panel: dragging a part from the list onto the canvas.
 - Cutouts that split a zone into two pieces (refused today; would need a second zone).
-- Push-and-shove routing: see [routing-plan.md](routing-plan.md).
+- Routing: diff pairs (routing and shoving them as pairs), length tuning (meanders);
+  shoving arc tracks, and the Route tool's arc corner styles while shoving or walking
+  round (the router lays straight segments); an index of pushed lines (each check scans
+  them all) if cascades get deeper; dangling track ends moving with a push (a line's ends
+  are fixed, so a free end inside the head's hull makes it unpushable); MCP `move`
+  shoving like a drag (a `shove` flag running `router::shove_moved`); shoving
+  footprints' copper (moving parts out of the way) and KiCad's "smart pads" (choosing a
+  pad's exit direction).
 - Net classes: diff pairs and their gap, class colours on the board and ratsnest,
   per-class minimums checked by DRC (track width below the class's), a separate edge
   clearance, schematic directive labels (net class flags) and KiCad's own class rules
@@ -1646,6 +1663,54 @@ defers.
 - KiCad import: back-side footprint content, text boxes, De Morgan bodies, alternate pin
   functions, exact oval drills, 3D models.
 
+**Simulation**
+- Simulation backends: only single runs stream (a sweep's steps, and processes, show
+  nothing until done; a process could stream with ngspice's interactive mode); sweeps
+  can't use the library (one instance per process: copies of the library file would
+  give more); a crash in the library takes the app down (a watchdog process holding
+  libngspice would isolate it).
+- KiCad simulation import gaps: IBIS (KIBIS) and XSPICE code models, switches,
+  transmission lines, coupled inductors (`K`), potentiometers; the workbook (`.wbk`:
+  plotted signals, cursors) and `.probe` / `.save` become no probes; `.control` scripts
+  are dropped; a subcircuit's instance parameters aren't passed through a pin-joining
+  wrapper; nested DC sweeps keep the first.
+- Our own simulation engine in Rust beside ngspice, chosen in Settings: modified nodal
+  analysis, Newton–Raphson, trapezoidal/Gear integration, a sparse solver; R, C, L,
+  sources, diode, BJT, MOS level 1 first. A port of ngspice isn't realistic (~730k lines
+  of C; matching its convergence behaviour and the quirks vendor models rely on is the
+  hard part), so ngspice would stay for vendor models and KiCad projects.
+- Plot: overlays of earlier runs, PNG export from the GUI (MCP's screenshot renders it
+  offscreen already), the zoom saved in the workspace; several plot panes per analysis
+  (stacked, shared x), saved plot layouts.
+- Schematic values: placement that avoids other texts (tags can overlap a part's
+  reference or another tag), values at the cursor of a sweep (scrubbing), currents of
+  bigger parts as tags; a pinned "always" (they only show while the Simulation panel or
+  tab is open).
+- Expressions of signals (`V(OUT)/V(IN)`, `abs(I(R1.1))`); complex power for AC.
+- Per-unit models for multi-unit parts (a dual op amp as one subcircuit instance per
+  unit): a model covers every unit's pins at once today.
+- Syntax highlighting in the model text field; an inline analysis for `simulate`
+  (agents add one with `SetSimulation` first).
+- Source symbols that show the selected waveform (sine, square, ramp glyph), which needs
+  symbols drawn from component data.
+- `.include` / `.lib` of external model files (relative to the project), a project model
+  library browser, vendor model import (pasting a whole `.lib` with many `.subckt`s and
+  picking one).
+- Noise, FFT of a transient, pole-zero, sensitivity, distortion, Monte Carlo with part
+  tolerances, temperature sweeps, worst case.
+- Digital and mixed-signal (XSPICE digital models for 74HC parts, A/D bridges), logic
+  traces in the viewer.
+- Switch models (voltage/time-controlled) for `SW_Push` and relays, transformers and
+  coupled inductors (`K` lines), transmission lines.
+- Sweeps: two parameters (nested), a measurement plotted over the stepped value (the
+  −3 dB point against R1), steps of a model parameter or the temperature; the Simulation
+  panel's result table shows the first step only.
+- Tuner: model parameter overrides as rows; agents have no tuner tool (`simulate`'s
+  `values` do the same for one run).
+- Probes and operating point values on sub-sheet instances once sheets can be reused.
+- Board-aware simulation (track resistance, parasitic capacitance from the layout).
+- KiCad export of simulation fields (with the KiCad project export).
+
 **Performance**
 - Ratsnest of huge nets (7k-pad GND, ~2.3 ms): incremental MST or a worker thread.
 - Viewport culling per chunk and level of detail for tiny primitives.
@@ -1668,7 +1733,6 @@ defers.
 **Other**
 - Recovery copies of modified external libraries (only the project is kept now), and a
   setting for the interval.
-- Simulation: see [simulation-plan.md](simulation-plan.md).
 - Releases: ngspice built from source and linked statically (a pinned version, the
   `cmake` crate on its CMake build, unused features off: OSDI, RF, PSS, FFTW, sound
   files, OpenMP, X11; unused device models patched out of its list; XSPICE kept for
@@ -1684,4 +1748,5 @@ defers.
   stapler staple`. The hardened runtime won't load another developer's libngspice
   (Homebrew's, KiCad's) without the `com.apple.security.cs.disable-library-validation`
   entitlement; building ngspice in statically (above) avoids that.
-- Documentation / manual. E.g. some github pages template (just-the-docs or something similar)
+- Documentation: publish `docs/` as a site (GitHub Pages with a template such as
+  just-the-docs), with screenshots.

@@ -1,5 +1,5 @@
-//! The interactive router (see routing-plan.md): obstacle hulls around the copper of
-//! other nets and keepouts, and a track leg that walks round them. Pure: it reads the
+//! The interactive router (design in PLAN.md, "Router"): obstacle hulls around the copper
+//! of other nets and keepouts, and a track leg that walks round them. Pure: it reads the
 //! project and its board connectivity and says where the leg goes; the Route tool adds it.
 
 pub mod hull;

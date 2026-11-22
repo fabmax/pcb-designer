@@ -4,12 +4,11 @@ PCB Designer: a schematic, PCB and part editor in Rust (egui + wgpu). Projects a
 of JSON files, and an MCP server lets agents edit the open project.
 
 - Requirements: [pcb-designer.md](pcb-designer.md).
-- Simulation, planned milestones S2–S8: [simulation-plan.md](simulation-plan.md).
-- Push-and-shove routing, milestones R1–R5: [routing-plan.md](routing-plan.md).
 - Decisions, the design of each area with its gotchas, and the Later list:
   [PLAN.md](PLAN.md). Read its section on the area you're touching before changing a
   design decision.
-- User-facing usage (CLI, MCP setup, settings): [README.md](README.md).
+- User documentation, a file per area: [docs/](docs/README.md). The top-level
+  README.md stays short: overview, links to the docs, install, build, license.
 
 ## Workflow
 
@@ -30,7 +29,8 @@ Each change (a milestone or a refinement) runs through these steps:
 5. Update PLAN.md. It is a reference, not a changelog (the commit message says what
    changed). Update the section of the area you touched with the current design and the
    gotchas a later change needs to know, keeping it short. Add what you defer to
-   **Later**, and remove what you finished from it.
+   **Later**, and remove what you finished from it. When users see the change, update
+   the matching file in `docs/` too (how to use it, not how it's built).
 6. Commit with a message like `M9: copper zones …` or `GUI: floating icon tool bars …`.
    End it with the attribution trailer.
 7. `git rebase main` on the branch, then `git checkout main && git merge --ff-only
@@ -59,8 +59,7 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), `sim` on
   `describe` and `respond`). It also has the headless host and stdio mode.
 - `gerber`: Gerber X2 and Excellon export of the board (and the zip and manifest).
 - `sim`: circuit simulation: the schematic as a SPICE netlist, run by ngspice (its
-  shared library or a process), results read back by net and pin. Plan:
-  [simulation-plan.md](simulation-plan.md).
+  shared library or a process), results read back by net and pin.
 - `kicad`: imports KiCad symbols and footprints.
 - `app`: the egui shell (binary `pcb-designer`). It holds tabs (egui_tiles), panels,
   menus, settings, keymap, chrome theme and floating tool bars.
@@ -85,7 +84,7 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), `sim` on
   are exhaustive, so the compiler lists every site.
 - **MCP tool:** add a `#[tool]` in `mcp/src/server.rs`, plus a `Request` variant with
   arms in both `describe` and `respond` in `host.rs`. Test it in `mcp/tests/all`. Update
-  the tool list in README.md.
+  the tool list in `docs/agents.md`.
 - **Icon:** add an SVG to `crates/app/icons/` and a line to the `icons!` table in
   `app/src/icons.rs`. Prefer a Tabler outline icon: copy the file unchanged from
   `https://raw.githubusercontent.com/tabler/tabler-icons/main/icons/outline/NAME.svg`
