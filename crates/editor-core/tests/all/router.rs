@@ -294,15 +294,19 @@ fn no_clashes(ed: &Editor) {
 }
 
 /// Move `ids` by `delta` (keeping what's attached), then push aside what they hit.
+/// One transaction, as the app's drag steps (so the tidy comes after the pushes).
 fn drag(ed: &mut Editor, ids: Vec<ObjectId>, delta: Point) -> Result<editor_core::router::shove::Shoved, String> {
     let before = conn(ed.project());
-    let changes = ed.execute(Command::Move { ids, delta, keep_connected: true }).unwrap();
-    let moved: Vec<ObjectId> = changes.ids().collect();
-    let s = editor_core::router::shove_moved(ed.project(), &before, &moved).map_err(|c| c.message)?;
-    for c in s.commands(ed.project()) {
-        ed.execute(c).unwrap();
-    }
-    Ok(s)
+    let mut shoved = None;
+    ed.execute_then(Command::Move { ids, delta, keep_connected: true }, None, |project, moved| {
+        let s = editor_core::router::shove_moved(project, &before, moved)
+            .map_err(|c| editor_core::CommandError::Invalid(c.message))?;
+        let commands = s.commands(project);
+        shoved = Some(s);
+        Ok(commands)
+    })
+    .map_err(|e| e.to_string())?;
+    Ok(shoved.expect("set"))
 }
 
 #[test]
@@ -310,7 +314,7 @@ fn a_dragged_segment_pushes_tracks() {
     let mut ed = Editor::new(Project::new("T"));
     let wall = ids(&mut ed, &[Point::mm(0.0, 0.0), Point::mm(20.0, 0.0)]);
     // A dog-leg: its middle segment is dragged down onto the wall.
-    let leg = ids(&mut ed, &[Point::mm(0.0, 3.0), Point::mm(8.0, 3.0), Point::mm(12.0, 3.0), Point::mm(20.0, 3.0)]);
+    let leg = ids(&mut ed, &[Point::mm(0.0, 7.0), Point::mm(4.0, 3.0), Point::mm(16.0, 3.0), Point::mm(20.0, 7.0)]);
     let s = drag(&mut ed, vec![ObjectId::Track(leg[1])], Point::mm(0.0, -3.0)).unwrap();
     assert_eq!(s.lines.len(), 1, "{s:?}");
     assert_eq!(s.lines[0].line.tracks, wall);

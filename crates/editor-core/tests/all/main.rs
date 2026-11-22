@@ -22,4 +22,4 @@ mod router;
 mod routing;
 mod sheets;
 mod sheets_clip;
-mod wire_tidy;
+mod tidy;

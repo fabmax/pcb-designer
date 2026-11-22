@@ -1,7 +1,8 @@
-//! Wires are tidied after every command: split at T connections and junctions, joined
-//! when collinear with nothing between them, and never stacked.
+//! Wires and tracks are tidied after every command: split at T connections (and
+//! junctions, vias), joined when collinear with nothing between them, and never stacked.
 
 use editor_core::{Command, Editor};
+use model::builtin;
 use model::*;
 
 fn p(x: f64, y: f64) -> Point {
@@ -161,4 +162,100 @@ fn bus_wires_are_tidied_too() {
     }
     let b: Vec<_> = ed.project().schematic.bus_wires.iter().map(|w| (w.a, w.b)).collect();
     assert_eq!(b, [(p(0.0, 0.0), p(20.0, 0.0))]);
+}
+
+const TOP: LayerId = LayerId::TOP_COPPER;
+
+fn track(ed: &mut Editor, points: &[Point], width: f64) {
+    ed.execute(Command::AddTrack { layer: TOP, points: points.to_vec(), width: Some(mm(width)), mids: Vec::new() })
+        .unwrap();
+}
+
+/// Tracks on the top layer as sorted (a, b, width) triples, each with its ends sorted.
+fn tracks(ed: &Editor) -> Vec<(Point, Point, Coord)> {
+    let mut out: Vec<_> = ed
+        .project()
+        .board
+        .tracks
+        .iter()
+        .filter(|t| t.layer == TOP)
+        .map(|t| {
+            let (a, b) = if (t.a.x, t.a.y) <= (t.b.x, t.b.y) { (t.a, t.b) } else { (t.b, t.a) };
+            (a, b, t.width)
+        })
+        .collect();
+    out.sort_by_key(|(a, b, _)| (a.x, a.y, b.x, b.y));
+    out
+}
+
+#[test]
+fn tracks_split_at_tees_and_vias_and_join_in_line() {
+    let mut ed = Editor::new(Project::new("t"));
+    let w = mm(0.25);
+    // Piece by piece in a line: one track.
+    track(&mut ed, &[p(0.0, 0.0), p(10.0, 0.0)], 0.25);
+    track(&mut ed, &[p(10.0, 0.0), p(20.0, 0.0)], 0.25);
+    assert_eq!(tracks(&ed), [(p(0.0, 0.0), p(20.0, 0.0), w)]);
+    // A tee splits it; a track on the other layer doesn't.
+    track(&mut ed, &[p(5.0, 10.0), p(5.0, 0.0)], 0.25);
+    assert_eq!(tracks(&ed).len(), 3);
+    ed.execute(Command::AddTrack {
+        layer: LayerId::BOTTOM_COPPER,
+        points: vec![p(15.0, 10.0), p(15.0, 0.0)],
+        width: Some(w),
+        mids: Vec::new(),
+    })
+    .unwrap();
+    assert_eq!(tracks(&ed).len(), 3);
+    // A via on it splits it too, and joins it back when deleted.
+    let c = ed.execute(Command::AddVia { pos: p(15.0, 0.0), diameter: None, drill: None, span: None }).unwrap();
+    assert!(tracks(&ed).contains(&(p(5.0, 0.0), p(15.0, 0.0), w)));
+    let via = c.ids().find(|id| matches!(id, ObjectId::Via(_))).unwrap();
+    ed.execute(Command::Delete { ids: vec![via] }).unwrap();
+    assert!(tracks(&ed).contains(&(p(5.0, 0.0), p(20.0, 0.0), w)));
+}
+
+#[test]
+fn tracks_join_only_alike_and_not_on_pads() {
+    let mut ed = Editor::new(Project::new("t"));
+    // Different widths meet but stay two.
+    track(&mut ed, &[p(0.0, 0.0), p(10.0, 0.0)], 0.25);
+    track(&mut ed, &[p(10.0, 0.0), p(20.0, 0.0)], 0.5);
+    assert_eq!(tracks(&ed).len(), 2);
+    // Arcs are left alone.
+    ed.execute(Command::AddTrack {
+        layer: TOP,
+        points: vec![p(20.0, 0.0), p(30.0, 0.0)],
+        width: Some(mm(0.5)),
+        mids: vec![Some(p(25.0, 5.0))],
+    })
+    .unwrap();
+    assert_eq!(tracks(&ed).len(), 3);
+    // Not across a pad.
+    ed.execute(Command::import_parts(&builtin::builtin_library(), &[builtin::PART_MOUNTING_HOLE]).unwrap()).unwrap();
+    ed.execute(Command::PlaceBoardPart {
+        part: builtin::PART_MOUNTING_HOLE,
+        variant: None,
+        pos: p(50.0, 0.0),
+        rotation: Angle::ZERO,
+        side: Side::Top,
+        refdes: None,
+        value: None,
+    })
+    .unwrap();
+    track(&mut ed, &[p(40.0, 0.0), p(50.0, 0.0)], 0.25);
+    track(&mut ed, &[p(50.0, 0.0), p(60.0, 0.0)], 0.25);
+    assert!(tracks(&ed).contains(&(p(40.0, 0.0), p(50.0, 0.0), mm(0.25))));
+}
+
+#[test]
+fn stacked_tracks_of_one_width_become_one() {
+    let mut ed = Editor::new(Project::new("t"));
+    track(&mut ed, &[p(0.0, 0.0), p(20.0, 0.0)], 0.25);
+    track(&mut ed, &[p(5.0, 0.0), p(30.0, 0.0)], 0.25);
+    assert_eq!(tracks(&ed), [(p(0.0, 0.0), p(30.0, 0.0), mm(0.25))]);
+    // A wider one on top stays (it's more copper); its ends split the one below.
+    track(&mut ed, &[p(5.0, 0.0), p(15.0, 0.0)], 0.5);
+    assert!(tracks(&ed).contains(&(p(5.0, 0.0), p(15.0, 0.0), mm(0.5))));
+    assert_eq!(tracks(&ed).len(), 4, "{:?}", tracks(&ed));
 }

@@ -403,23 +403,31 @@ impl Document {
             let base = self.current_copper().clone();
             self.drag_base = Some((group, base));
         }
-        let changes = self
-            .execute_grouped(Command::Move { ids, delta, keep_connected: true }, Some(group))
-            .map_err(|e| e.to_string())?;
-        let moved: Vec<ObjectId> = changes.ids().collect();
-        let base = &self.drag_base.as_ref().expect("set above").1;
-        let shoved = editor_core::router::shove_moved(self.editor.project(), base, &moved);
-        let result = match shoved {
-            Ok(s) => s
-                .commands(self.editor.project())
-                .into_iter()
-                .try_for_each(|c| self.execute_grouped(c, Some(group)).map(drop).map_err(|e| e.to_string())),
-            Err(c) => Err(format!("Can't push aside: {}", c.message)),
-        };
-        if result.is_err() {
-            self.retract(group);
+        if self.route_preview.is_some() {
+            self.drop_route_preview();
         }
-        result
+        if let Some(why) = &self.read_only {
+            return Err(why.clone());
+        }
+        // The move and its pushes are one transaction: wires and tracks are tidied after
+        // the pushes (tidied before, a track dragged onto another would merge with it).
+        let base = &self.drag_base.as_ref().expect("set above").1;
+        let result = self.editor.execute_then(
+            Command::Move { ids, delta, keep_connected: true },
+            Some(group),
+            |project, moved| match editor_core::router::shove_moved(project, base, moved) {
+                Ok(s) => Ok(s.commands(project)),
+                Err(c) => Err(CommandError::Invalid(format!("Can't push aside: {}", c.message))),
+            },
+        );
+        match result {
+            Ok(changes) => {
+                self.changed(&changes);
+                Ok(())
+            }
+            Err(CommandError::Invalid(m)) => Err(m),
+            Err(e) => Err(e.to_string()),
+        }
     }
 
     /// End a route preview, taking its edits out.

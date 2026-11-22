@@ -3,7 +3,7 @@
 //! changes so views and derived data (connectivity, render scenes) can update
 //! incrementally.
 
-use model::Project;
+use model::{ObjectId, Project};
 
 use crate::CommandError;
 use crate::command::Command;
@@ -44,10 +44,49 @@ impl Editor {
     pub fn execute_grouped(&mut self, command: Command, group: Option<u64>) -> Result<ChangeSet, CommandError> {
         let label = command.label();
         let mut tx = Transaction::new(&mut self.project);
-        let tidy = command.wire_tidy();
+        let tidy = command.tidy_keep();
         let result = command
             .apply(&mut tx)
-            .and_then(|()| tidy.map_or(Ok(()), |keep| crate::wire_tidy::tidy(&mut tx, &keep)))
+            .and_then(|()| tidy.map_or(Ok(()), |keep| crate::segment_tidy::tidy(&mut tx, &keep)))
+            .and_then(|()| sync_board(&mut tx));
+        match result {
+            Ok(()) => {
+                let changes = tx.finish();
+                if !changes.is_empty() {
+                    self.history.push_grouped(label, changes.clone(), group);
+                }
+                Ok(changes)
+            }
+            Err(e) => {
+                tx.rollback();
+                Err(e)
+            }
+        }
+    }
+
+    /// Like [`Editor::execute_grouped`], with the commands `then` makes from the project
+    /// and the objects `command` changed run in the same transaction (a drag step and the
+    /// pushes it causes). Wires and tracks are tidied once, after all of them, keeping the
+    /// ids `command` keeps.
+    pub fn execute_then(
+        &mut self,
+        command: Command,
+        group: Option<u64>,
+        then: impl FnOnce(&Project, &[ObjectId]) -> Result<Vec<Command>, CommandError>,
+    ) -> Result<ChangeSet, CommandError> {
+        let label = command.label();
+        let mut tx = Transaction::new(&mut self.project);
+        let tidy = command.tidy_keep();
+        let result = command
+            .apply(&mut tx)
+            .and_then(|()| {
+                let mut ids: Vec<ObjectId> = tx.changes().iter().map(|c| c.id).collect();
+                ids.sort();
+                ids.dedup();
+                then(tx.project(), &ids)
+            })
+            .and_then(|more| more.into_iter().try_for_each(|c| c.apply(&mut tx)))
+            .and_then(|()| tidy.map_or(Ok(()), |keep| crate::segment_tidy::tidy(&mut tx, &keep)))
             .and_then(|()| sync_board(&mut tx));
         match result {
             Ok(()) => {

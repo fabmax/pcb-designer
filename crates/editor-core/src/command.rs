@@ -408,17 +408,19 @@ impl Command {
         Ok(Command::UpdateParts { parts })
     }
 
-    /// Whether wires are tidied after this command (`wire_tidy`), and which segments keep
-    /// their ids: those a move moves. Moves without `keep_connected` (a carried paste's
-    /// steps) leave wires as they are.
-    pub(crate) fn wire_tidy(&self) -> Option<std::collections::HashSet<Id>> {
+    /// Whether wires and tracks are tidied after this command (`segment_tidy`), and which
+    /// segments keep their ids: those a move moves. Moves without `keep_connected` (a
+    /// carried paste's steps) and the router's shoves (several commands a step, made from
+    /// the copper before it) leave them as they are.
+    pub(crate) fn tidy_keep(&self) -> Option<std::collections::HashSet<Id>> {
         match self {
+            Command::SetTrackPaths { .. } => None,
             Command::Move { ids, keep_connected, .. }
             | Command::Rotate { ids, keep_connected, .. }
             | Command::Mirror { ids, keep_connected, .. } => keep_connected.then(|| {
                 ids.iter()
                     .filter_map(|&id| match id {
-                        ObjectId::Wire(i) | ObjectId::BusWire(i) => Some(i),
+                        ObjectId::Wire(i) | ObjectId::BusWire(i) | ObjectId::Track(i) => Some(i),
                         _ => None,
                     })
                     .collect()

@@ -17,13 +17,16 @@ widely as the legs allow).
 Routing has more to it (design rules, vias, push and shove): see
 [PCB](pcb.md#routing).
 
-Schematic wires and buses tidy themselves after every edit:
+Schematic wires and buses, and tracks on the board, tidy themselves after every edit:
 
 - A wire ending on another wire's middle, or a junction placed on a wire, splits that
-  wire there, so each piece ends where something connects.
+  wire there, so each piece ends where something connects. On the board, a track ending
+  on another track's centre line (on the same layer), or a via on it, splits that track.
 - Wires in a straight line that meet end to end, with nothing else at the joint (no other
-  wire, pin, label or junction), become one wire.
-- A wire drawn on top of another one merges with it into a single wire.
+  wire, pin, label or junction), become one wire. Tracks do too when they have the same
+  width and lock and no pad or via is at the joint; arcs stay as they are.
+- A wire drawn on top of another one merges with it into a single wire, and so does a
+  track of the same width on top of another; a wider or narrower one stays.
 
 ## Selecting and dragging
 

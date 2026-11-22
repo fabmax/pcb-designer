@@ -27,7 +27,7 @@
 //!
 //! Unmoved wire ends, labels and junctions on the inside of a moved wire (T connections)
 //! slide along with it. Wires that become zero-length are deleted; joining collinear
-//! wires afterwards is `wire_tidy`'s, which runs after every command.
+//! wires afterwards is `segment_tidy`'s, which runs after every command.
 //!
 //! Bus wires follow the same rules, separately: they attach to bus wires, bus entries'
 //! bus ends, labels and junctions; wires attach to pins, wires, entries' wire ends,
@@ -400,7 +400,7 @@ pub(crate) fn apply(tx: &mut Transaction, plan: Plan, t: &Transform) -> Result<(
             Ok(())
         })?;
     }
-    // `wire_tidy` merges what the move made collinear afterwards.
+    // `segment_tidy` merges what the move made collinear afterwards.
     Ok(())
 }
 

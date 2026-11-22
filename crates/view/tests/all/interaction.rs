@@ -313,16 +313,14 @@ fn a_click_never_moves_when_the_view_shifts() {
     assert_eq!(symbol(&doc, "R1").pos, r1.pos + Point::mm(5.08, 0.0));
 }
 
-/// A wall along y = 0 and a dog-leg along y = 3 whose middle segment is dragged.
+/// A wall along y = 0 and a dog-leg whose middle segment, along y = 3, is dragged.
 fn shove_board(locked: bool) -> (Document, Vec<Track>, Id) {
     let mut doc = Document::new(Project::new("T"));
     let mut wall = Track::straight(LayerId::TOP_COPPER, Point::mm(0.0, 0.0), Point::mm(20.0, 0.0), mm(0.25));
     wall.locked = locked;
-    let ys = [(0.0, 8.0), (8.0, 12.0), (12.0, 20.0)];
-    let leg: Vec<Track> = ys
-        .iter()
-        .map(|&(a, b)| Track::straight(LayerId::TOP_COPPER, Point::mm(a, 3.0), Point::mm(b, 3.0), mm(0.25)))
-        .collect();
+    let corners = [(0.0, 7.0), (4.0, 3.0), (16.0, 3.0), (20.0, 7.0)].map(|(x, y)| Point::mm(x, y));
+    let leg: Vec<Track> =
+        corners.windows(2).map(|w| Track::straight(LayerId::TOP_COPPER, w[0], w[1], mm(0.25))).collect();
     let middle = leg[1].id;
     let objects = std::iter::once(&wall).chain(&leg).cloned().map(Object::Track).collect();
     doc.execute(Command::Insert { objects }).unwrap();
