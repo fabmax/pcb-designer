@@ -29,7 +29,7 @@ pub fn at(doc: &Document, view: ViewId, p: Point, tol: Coord, hovered: Option<Ob
     match view {
         ViewId::Sheet(_) => {
             let v = doc.view(view);
-            let markers = v.erc_markers_visible();
+            let markers = v.markers_visible();
             for f in doc.connectivity().problems.iter().filter(|f| !f.excluded) {
                 if !f.objects.iter().any(|&o| v.index.bounds(o).is_some()) {
                     continue;
@@ -78,7 +78,8 @@ pub fn at(doc: &Document, view: ViewId, p: Point, tol: Coord, hovered: Option<Ob
                     None => {}
                 }
             }
-            for v in doc.drc().into_iter().flat_map(|r| &r.violations).filter(|v| !v.excluded) {
+            let markers = doc.view(view).markers_visible();
+            for v in doc.drc().into_iter().flat_map(|r| &r.violations).filter(|v| markers && !v.excluded) {
                 if near(v.pos, MARKER_RADIUS) || hovered.is_some_and(|h| v.objects.contains(&h)) {
                     out.push(Finding { severity: v.severity, message: v.message.clone() });
                 }

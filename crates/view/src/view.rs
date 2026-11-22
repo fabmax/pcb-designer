@@ -124,6 +124,8 @@ struct BoardLayers {
     /// Pad numbers and net names at high zoom.
     pad_labels: RLayer,
     ratsnest: RLayer,
+    /// Markers of design rule violations (not printed).
+    drc: RLayer,
 }
 
 enum Layers {
@@ -279,10 +281,21 @@ impl View {
                 scene.layer_mut(pad_numbers).max_zoom = crate::net_labels::PAD_LABEL_ZOOM as f32;
                 let pad_labels = scene.add_layer("Pad net names");
                 let ratsnest = scene.add_layer("Ratsnest");
+                let drc = scene.add_layer("DRC markers");
                 for id in [LayerId::TOP_MASK, LayerId::BOTTOM_MASK, LayerId::TOP_PASTE, LayerId::BOTTOM_PASTE] {
                     scene.layer_mut(map[&id]).visible = false;
                 }
-                Layers::Board(BoardLayers { map, copper, vias, holes, pad_numbers, track_labels, pad_labels, ratsnest })
+                Layers::Board(BoardLayers {
+                    map,
+                    copper,
+                    vias,
+                    holes,
+                    pad_numbers,
+                    track_labels,
+                    pad_labels,
+                    ratsnest,
+                    drc,
+                })
             }
         };
         let hover = scene.add_layer("Hover");
@@ -320,7 +333,11 @@ impl View {
                     v.extend(ids.into_iter().map(|id| board(id, group)));
                 }
                 v.push(board(L::OUTLINE, 4));
-                v.extend([e(b.pad_numbers, None, 5), e(b.ratsnest, Some(p.ratsnest), 5)]);
+                v.extend([
+                    e(b.pad_numbers, None, 5),
+                    e(b.ratsnest, Some(p.ratsnest), 5),
+                    e(b.drc, Some(p.drc_marker), 5),
+                ]);
                 v
             }
         }
@@ -602,11 +619,11 @@ impl View {
     }
 
     /// The instances of the drawing, back to front, without the overlays (hover,
-    /// selection), ERC markers and simulation results: what a print shows.
+    /// selection), ERC and DRC markers and simulation results: what a print shows.
     pub fn drawing(&self) -> Vec<Instance> {
         let skip = match &self.layers {
             Layers::Sch(l) => vec![l.erc, l.sim],
-            Layers::Board(_) => Vec::new(),
+            Layers::Board(l) => vec![l.drc],
         };
         self.user_layers().filter(|l| !skip.contains(l)).flat_map(|l| self.scene.instances(l).iter().copied()).collect()
     }
@@ -626,9 +643,14 @@ impl View {
         self.scene.set_item(SIM_ITEM, p.out);
     }
 
-    /// The ERC markers layer is shown (schematic sheets).
-    pub fn erc_markers_visible(&self) -> bool {
-        matches!(&self.layers, Layers::Sch(l) if self.scene.layer(l.erc).visible)
+    /// The markers layer is shown: ERC markers on schematic sheets, DRC markers on the
+    /// board.
+    pub fn markers_visible(&self) -> bool {
+        let layer = match &self.layers {
+            Layers::Sch(l) => l.erc,
+            Layers::Board(l) => l.drc,
+        };
+        self.scene.layer(layer).visible
     }
 
     /// Show what a schematic creation tool would add (empty slice clears).
@@ -882,11 +904,12 @@ impl View {
     }
 
     fn draw_drc(&mut self) {
+        let Layers::Board(l) = &self.layers else { return };
         if self.drc.is_empty() {
             self.scene.remove_item(DRC_ITEM);
             return;
         }
-        let layer = self.hover_layer;
+        let layer = l.drc;
         let mut out = Vec::new();
         for &(p, severity) in &self.drc {
             push_marker(&mut out, layer, p, severity);

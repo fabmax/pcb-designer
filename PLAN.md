@@ -224,13 +224,14 @@ things to do **later**.
   rules; an ERC change makes connectivity stale, a DRC change re-runs an existing report).
   `apply_settings` (both sides) sets severities, flags excluded findings (kept, listed
   last), drops ignored ones and sorts errors first; the unconnected-pin rings, the canvas
-  markers (the schematic's "ERC markers" layer: hidden in the layer menu, they're
-  gone from the hover tip too; never printed) and the live board shorts in Messages
+  markers (layers of their own, the schematic's "ERC markers" and the board's "DRC
+  markers": hidden in the layer menu, they're gone from the hover tip too
+  (`View::markers_visible`); `View::drawing` leaves them out of prints) and the live board shorts in Messages
   follow it too. An exclusion keeps the message it was made for, so one that matches
   nothing any more is shown as unused and can be removed.
 - **Hover tip** (`view::findings::at`, shown by the app's `findings_tip` after the
   tooltip delay, Select tool idle only): the messages of what is drawn under the
-  pointer: markers (ERC only while shown) and unconnected-pin rings by distance, plus
+  pointer: markers (only while their layer is shown) and unconnected-pin rings by distance, plus
   findings listing the hovered object, and the hovered track's or via's flag (shorts
   following the short rule's severity and exclusions, like Messages). The short's nets
   come from a scan of the island's pads (hovered item only, so no index).

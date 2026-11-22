@@ -39,7 +39,7 @@ fn schematic_findings_at_their_markers() {
     assert!(v.scene.instances(erc).iter().any(|i| i.kind != render::Instance::EMPTY.kind));
     // The ERC markers layer hidden: nothing.
     doc.view_mut(root).set_hidden_layers(&["ERC markers".into()]);
-    assert!(!doc.view(root).erc_markers_visible());
+    assert!(!doc.view(root).markers_visible());
     assert!(at(&doc, root, pos, TOL, None).iter().all(|f| f.message != problem.message));
 }
 
@@ -75,4 +75,14 @@ fn flagged_tracks_and_drc_violations() {
     assert!(found.iter().any(|f| f.message == v.message), "{found:?}");
     // Errors first.
     assert!(found.windows(2).all(|w| w[0].severity == Severity::Error || w[1].severity != Severity::Error));
+    // On the DRC markers layer (in the layer menu, never printed); hidden, the tip
+    // leaves them out.
+    let board = doc.view(ViewId::Board);
+    let drc = (0..board.scene.layer_count() as u16).find(|&i| board.scene.layer(i).name == "DRC markers").unwrap();
+    assert!(board.layer_menu().iter().any(|e| e.layer == drc));
+    let live: Vec<_> = board.scene.instances(drc).iter().filter(|i| i.kind != render::Instance::EMPTY.kind).collect();
+    assert!(!live.is_empty());
+    assert!(!board.drawing().iter().any(|i| live.contains(&i)));
+    doc.view_mut(ViewId::Board).set_hidden_layers(&["DRC markers".into()]);
+    assert!(at(&doc, ViewId::Board, v.pos, TOL, None).iter().all(|f| f.message != v.message));
 }
