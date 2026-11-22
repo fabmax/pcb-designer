@@ -18,6 +18,7 @@ use view::Document;
 use view::sim_overlay::ProbeTarget;
 
 use crate::file_dialog::Kind;
+use crate::keymap::{Action, Keymap};
 use crate::sim_ui::SimPanel;
 use crate::theme;
 
@@ -167,7 +168,7 @@ const RIGHT: f32 = 64.0;
 const BOTTOM: f32 = 36.0;
 const TOP: f32 = 10.0;
 
-pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> {
+pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, keymap: &Keymap) -> Option<PlotAct> {
     // The tab has the canvas background, like the schematic; the chart sets itself off
     // from it (see `chart_bg`).
     ui.painter().rect_filled(ui.max_rect(), 0.0, theme::color(view::style::pal().background));
@@ -188,7 +189,7 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
     let top = Rect::from_min_max(full.min, pos2(full.right(), split));
     let bottom = Rect::from_min_max(pos2(full.left(), split), full.max);
     let mut top_ui = ui.new_child(egui::UiBuilder::new().id_salt("plot").max_rect(top));
-    let act = plot_ui(&mut top_ui, panel, doc, analysis);
+    let act = plot_ui(&mut top_ui, panel, doc, analysis, keymap);
     let mut bottom_ui = ui.new_child(egui::UiBuilder::new().id_salt("tuner").max_rect(bottom));
     bottom_ui.painter().hline(bottom.x_range(), bottom.top(), Stroke::new(1.0, theme::border()));
     let tune = crate::tune_ui::ui(&mut bottom_ui, panel, doc);
@@ -196,7 +197,7 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
     tune.or(act)
 }
 
-fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis) -> Option<PlotAct> {
+fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis, keymap: &Keymap) -> Option<PlotAct> {
     let mut act = None;
     let setup = &doc.project().schematic.simulation;
     let overrides = panel.overrides(doc.project(), &analysis);
@@ -399,6 +400,17 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     // After the pointer: a double-click may just have cleared the view for a fit.
     let scales = state.scales(&data, log_x);
     draw(ui, state, &data, scales, rect, outer, &response, dim);
+    // Right-click (a right drag pans).
+    response.context_menu(|ui| {
+        let mut clear = egui::Button::new("Clear cursors");
+        if let Some(s) = keymap.shortcuts(Action::Cancel).first() {
+            clear = clear.shortcut_text(ui.ctx().format_shortcut(&s.to_egui()));
+        }
+        if ui.add_enabled(state.cursors.iter().any(Option::is_some), clear).clicked() {
+            state.clear_cursors();
+            ui.close();
+        }
+    });
     if running && let Some(p) = panel.session.progress() {
         // A thin bar along the top of the plot.
         let bar = Rect::from_min_size(outer.left_top(), vec2(outer.width() * p as f32, 3.0));
@@ -699,8 +711,10 @@ fn draw(
         );
     }
 
-    // Hover: a guide line and the values at the pointer's x.
+    // Hover: a guide line and the values at the pointer's x (not while the context menu
+    // is open: the readout would cover it).
     if state.drag.is_none()
+        && !response.context_menu_opened()
         && let Some(p) = response.hover_pos()
         && rect.contains(p)
     {

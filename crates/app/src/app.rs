@@ -5186,7 +5186,7 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                 }
             }
             Tab::Simulation => {
-                if let Some(act) = crate::plot_ui::ui(ui, self.sim, &self.project.lib.doc) {
+                if let Some(act) = crate::plot_ui::ui(ui, self.sim, &self.project.lib.doc, self.keymap) {
                     self.deferred.push(Deferred::Plot(act));
                 }
             }

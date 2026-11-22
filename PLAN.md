@@ -725,7 +725,9 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   cursors: the cursor hint sits in the tool bar; at most 40 %) until the handle between
   them is dragged: then `SimPanel::table_share`
   (a share of the height, for every analysis, in memory; double-click resets it).
-  Cursors snap to samples, the hover readout
+  Right-click opens a menu (Clear cursors, with the Cancel key from the keymap; a
+  right drag still pans, egui opens menus on clicks only), and the hover readout hides
+  while it's open (it covered the menu). Cursors snap to samples, the hover readout
   interpolates. Box zoom starts at `press_origin` (egui reports drags some pixels
   late). The tab follows the panel's analysis; the first finished sweep opens it (right
   of the schematic when that tab is alone in its group, else in its group), unless the

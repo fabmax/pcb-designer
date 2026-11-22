@@ -68,9 +68,9 @@ named nets while none are ticked.
   watts each get an axis (a third one on the far right).
 - Wheel zooms x around the pointer (Shift+wheel: y), middle or right drag pans, left drag
   zooms into a box, double-click or **V** fits.
-- Click places cursor A, Shift+click cursor B (drag them to move, Esc removes them). The
-  table under the plot shows each trace's value at A and B and the difference; a click on
-  a row hides or shows its trace. Hovering a row highlights its net or pin on the
+- Click places cursor A, Shift+click cursor B (drag them to move; Esc, or right-click →
+  **Clear cursors**, removes them). The table under the plot shows each trace's value at
+  A and B and the difference; a click on a row hides or shows its trace. Hovering a row highlights its net or pin on the
   schematic; right-click → **Remove probe**. A probe without data says why (run again, net
   gone, part not simulated).
 - **Measure** turns the table into measurements between cursors A and B (else over the
