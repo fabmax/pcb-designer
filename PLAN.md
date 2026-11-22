@@ -249,8 +249,9 @@ the current design of each area with the gotchas a change needs to know, the pla
 - **Zones** (`zones`, i_overlay on nm): outline minus `holes`, clipped to the board
   outline minus edge clearance and minus `no_pour` keepouts; keep clearance to other
   nets, own pads per `ZoneConnection` (thermal, thermal for through-hole only, solid,
-  none; thermal gap/spoke overridable per zone), flood own tracks/vias and netless vias,
-  priority order, drop islands per `IslandRemoval`. A zone with net `""` is isolated
+  none; thermal gap/spoke overridable per zone), flood own tracks/vias and netless vias
+  (stitching), keep clearance to netless tracks (flooding them gave them the zone's
+  net), priority order, drop islands per `IslandRemoval`. A zone with net `""` is isolated
   copper: clearance to everything, all islands kept, no `ZoneNet`. Fills are derived,
   never saved.
   Two-pass connectivity: copper without zones → fill → rebuild with fills.

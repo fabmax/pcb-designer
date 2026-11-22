@@ -4,7 +4,8 @@
 //! clearance, and minus `no_pour` keepouts) except around copper of other nets, which
 //! keeps the clearance. Pads of the zone's own net connect as its [`ZoneConnection`]
 //! says (thermal reliefs: a gap with four spokes); its tracks and vias are simply
-//! flooded. Higher-priority zones of other nets keep the clearance too. Fill islands
+//! flooded, and so are vias without a net (stitching vias), while tracks without a net
+//! keep the clearance like other nets' copper. Higher-priority zones of other nets keep the clearance too. Fill islands
 //! that touch no copper of the zone's net are removed ([`IslandRemoval`]). A zone
 //! without a net keeps clearance to all copper and keeps all its islands.
 //!
@@ -307,9 +308,11 @@ pub fn fill_zones(project: &Project, copper: &BoardConnectivity) -> Vec<ZoneFill
                     ZoneConnection::None => clip.extend(inflate(&c.geo, clearance)),
                 },
                 CopperItem::Pad { .. } => clip.extend(inflate(&c.geo, to(c.net))),
-                // Own tracks and vias are flooded; so is copper without a net (stitching
-                // vias), unless the zone has no net either.
-                _ if same || (net.is_some() && c.net.is_none()) => {}
+                // Own tracks and vias are flooded; so are vias without a net (stitching
+                // vias), unless the zone has no net either. Tracks without a net keep the
+                // clearance: they don't take the zone's net.
+                _ if same => {}
+                CopperItem::Via(_) if net.is_some() && c.net.is_none() => {}
                 _ => clip.extend(inflate(&c.geo, to(c.net))),
             }
         }

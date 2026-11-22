@@ -506,6 +506,23 @@ fn stitching_vias_join_the_zone() {
     assert!(bc.flagged().next().is_none());
 }
 
+#[test]
+fn tracks_without_a_net_keep_clear_of_the_zone() {
+    let (mut b, _, z) = grounded();
+    let (a, c) = (Point::mm(10.0, 15.0), Point::mm(20.0, 15.0));
+    let track = b.track(LayerId::TOP_COPPER, &[a, c]);
+    let bc = b.bc();
+    // Not the zone's net: it touches no pad, and the fill keeps the clearance round it.
+    assert_eq!(bc.net_of(CopperItem::Track(track)), None);
+    assert!(bc.shorts.is_empty());
+    let clearance = b.ed.project().board.rules.clearance as f64;
+    let geo = &bc.get(CopperItem::Track(track)).unwrap().geo;
+    for zone in bc.items.iter().filter(|c| matches!(c.item, CopperItem::Zone { zone, .. } if zone == z)) {
+        let d = zone.geo.distance(geo);
+        assert!(d >= clearance - 1_000.0, "{d} nm from the zone");
+    }
+}
+
 // ---- Zone settings and keepouts
 
 fn rect_points(a: (f64, f64), b: (f64, f64)) -> Vec<Point> {
