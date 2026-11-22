@@ -1331,7 +1331,10 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   request name (snake case of the `Request` variant, not always the tool's name), its
   `describe`, the `Debug` arguments and `mcp::Outcome` (`handle` returns it: the result
   text, truncated, the error, or `Deferred` for calls the app answers later), plus the
-  undo step when the revision changed. Session only. The panel's header
+  undo step when the revision changed. Session only. Rows are a table under column
+  titles (When, Tool, Result, What; `Columns`: fixed columns as wide as their widest
+  entry, the titles indented by the rows' expand arrows, `spacing.indent`); What is
+  the summary, an error's first line and the undo step, truncated. The panel's header
   (`agent_switch.rs`) holds, after a gap behind the title: "Access", a switch that runs
   `Cmd::ToggleAgent` (a red dot and its tooltip tell why a start failed), and a
   read-only text field in the UI font, as wide as the URL in both states (shrinking in
