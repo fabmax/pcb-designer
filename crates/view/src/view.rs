@@ -115,6 +115,10 @@ struct BoardLayers {
     vias: RLayer,
     holes: RLayer,
     pad_numbers: RLayer,
+    /// Track net names, per copper layer.
+    track_labels: FxHashMap<LayerId, RLayer>,
+    /// Pad numbers and net names at high zoom.
+    pad_labels: RLayer,
     ratsnest: RLayer,
 }
 
@@ -142,6 +146,16 @@ pub struct View {
     erc_markers: bool,
     /// Cross-probed objects.
     probed: Vec<ObjectId>,
+    /// What the net labels were drawn for (board); None: none drawn, or out of date.
+    labels: Option<LabelsDrawn>,
+}
+
+/// The area, zoom step and layer visibility net labels were drawn for.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LabelsDrawn {
+    area: Rect,
+    step: i32,
+    visible: u128,
 }
 
 fn item(id: ObjectId) -> u64 {
@@ -166,6 +180,8 @@ const FRAME_ITEM: u64 = (3 << 62) | 5;
 const TEXT_EDIT_ITEM: u64 = (3 << 62) | 6;
 /// Probes and values of a simulation (schematic sheets).
 const SIM_ITEM: u64 = (3 << 62) | 7;
+/// Net names on pads and tracks near the viewport (board, high zoom).
+const NET_LABEL_ITEM: u64 = (3 << 62) | 8;
 
 fn overlay_item(id: ObjectId, hover: bool) -> u64 {
     item(id) | if hover { 2 << 62 } else { 1 << 62 }
@@ -190,6 +206,7 @@ impl View {
             drc: Vec::new(),
             erc_markers: true,
             probed: Vec::new(),
+            labels: None,
         };
         v.draw_all(project);
         v
@@ -234,8 +251,12 @@ impl View {
                 }
                 let mut copper: Vec<LayerId> = board.copper_layers().map(|l| l.id).collect();
                 copper.sort();
+                // Each copper layer's track net names right above it (hidden under
+                // the copper of the layers above).
+                let mut track_labels = FxHashMap::default();
                 for &id in copper.iter().rev() {
                     add(&mut scene, id);
+                    track_labels.insert(id, scene.add_layer(format!("{} net names", name(id))));
                 }
                 let vias = scene.add_layer("Vias");
                 let holes = scene.add_layer("Holes");
@@ -251,11 +272,14 @@ impl View {
                 }
                 let pad_numbers = scene.add_layer("Pad numbers");
                 scene.layer_mut(pad_numbers).min_zoom = 25.0;
+                // Further in, the net labels draw the pad numbers.
+                scene.layer_mut(pad_numbers).max_zoom = crate::net_labels::PAD_LABEL_ZOOM as f32;
+                let pad_labels = scene.add_layer("Pad net names");
                 let ratsnest = scene.add_layer("Ratsnest");
                 for id in [LayerId::TOP_MASK, LayerId::BOTTOM_MASK, LayerId::TOP_PASTE, LayerId::BOTTOM_PASTE] {
                     scene.layer_mut(map[&id]).visible = false;
                 }
-                Layers::Board(BoardLayers { map, copper, vias, holes, pad_numbers, ratsnest })
+                Layers::Board(BoardLayers { map, copper, vias, holes, pad_numbers, track_labels, pad_labels, ratsnest })
             }
         };
         let hover = scene.add_layer("Hover");
@@ -304,15 +328,19 @@ impl View {
 
     /// Show the user-facing layers except those named.
     pub fn set_hidden_layers(&mut self, hidden: &[String]) {
-        for i in self.user_layers() {
+        for i in self.user_layers().collect::<Vec<_>>() {
             let l = self.scene.layer_mut(i);
             l.visible = !hidden.contains(&l.name);
         }
     }
 
-    /// Number of render layers that are user facing (overlays excluded).
-    pub fn user_layers(&self) -> std::ops::Range<u16> {
-        0..self.hover_layer
+    /// The render layers that are user facing (overlays and net labels excluded).
+    pub fn user_layers(&self) -> impl Iterator<Item = u16> + '_ {
+        let labels: Vec<RLayer> = match &self.layers {
+            Layers::Board(l) => l.track_labels.values().copied().chain([l.pad_labels]).collect(),
+            Layers::Sch(_) => Vec::new(),
+        };
+        (0..self.hover_layer).filter(move |i| !labels.contains(i))
     }
 
     /// Recreate everything (after library or layer stack changes).
@@ -332,6 +360,7 @@ impl View {
         self.hover_layer = hover;
         self.selection_layer = selection;
         self.index.clear();
+        self.labels = None;
         self.draw_all(project);
         let sel: Vec<ObjectId> = self.selection.drain().collect();
         let hover = self.hover.take();
@@ -400,6 +429,7 @@ impl View {
 
     /// Redraw the changed schematic or board objects (library edits aside).
     pub fn apply_objects(&mut self, project: &Project, changes: &ChangeSet) {
+        self.labels = None;
         if changes.board_setup_changed() && self.kind == ViewKind::Board {
             // Layers come and go.
             self.rebuild(project);
@@ -466,6 +496,7 @@ impl View {
         if library.is_empty() {
             return;
         }
+        self.labels = None;
         for id in self.users_of(project, library) {
             self.redraw(project, id);
         }
@@ -743,6 +774,7 @@ impl View {
 
     /// Draw the ratsnest and refresh net highlights (board only).
     pub fn set_copper(&mut self, _project: &Project, c: &BoardConnectivity) {
+        self.labels = None;
         let Layers::Board(l) = &self.layers else { return };
         let mut out: Vec<(RLayer, Instance)> = Vec::new();
         // Zone fills, on their copper layer.
@@ -770,6 +802,70 @@ impl View {
         self.scene.set_item(CONNECTIVITY_ITEM, out);
         let nets = std::mem::take(&mut self.nets);
         self.set_nets(c, &nets);
+    }
+
+    /// Draw the net labels of what's near `visible` (the viewport) at `zoom` (pixels per
+    /// mm), if they're out of date: drawn for an area the viewport left, at another zoom
+    /// step, before the board, its copper or a layer's visibility changed. Board only;
+    /// call it every frame. Returns true if they were redrawn.
+    pub fn update_net_labels(&mut self, project: &Project, c: &BoardConnectivity, visible: Rect, zoom: f64) -> bool {
+        use crate::net_labels::{LABEL_ZOOM, PAD_LABEL_ZOOM, pad_labels, track_labels};
+        let Layers::Board(l) = &self.layers else { return false };
+        if zoom < LABEL_ZOOM || !zoom.is_finite() {
+            let drawn = self.labels.take().is_some();
+            if drawn {
+                self.scene.remove_item(NET_LABEL_ITEM);
+            }
+            return drawn;
+        }
+        let step = (zoom.ln() / 1.15f64.ln()).floor() as i32;
+        let shown = |r: RLayer| self.scene.layer(r).visible;
+        let mut bits = 0u128;
+        for (i, id) in l.copper.iter().enumerate() {
+            bits |= (shown(l.map[id]) as u128) << i;
+        }
+        bits |= (shown(l.pad_numbers) as u128) << 127;
+        let inside = |a: &Rect| a.contains(visible.min) && a.contains(visible.max);
+        if self.labels.is_some_and(|d| d.step == step && d.visible == bits && inside(&d.area)) {
+            return false;
+        }
+        // Half a viewport around it: a pan redraws them now and then, not every frame.
+        let area = visible.grow(visible.width().max(visible.height()) / 2);
+        let mut out: Vec<(RLayer, Instance)> = Vec::new();
+        let mut buf = Vec::new();
+        for id in self.index.in_rect(area, true) {
+            match id {
+                ObjectId::Track(t) => {
+                    let Some(tr) = project.board.tracks.get(t) else { continue };
+                    let Some(&layer) = l.track_labels.get(&tr.layer) else { continue };
+                    if !shown(l.map[&tr.layer]) {
+                        continue;
+                    }
+                    let Some(name) = c.net_of(editor_core::copper::CopperItem::Track(t)) else { continue };
+                    // Not over pads (a track's ends usually sit in one).
+                    let on_pad = |g: &Geo| {
+                        c.query(g.bounds()).any(|p| {
+                            matches!(p.item, editor_core::copper::CopperItem::Pad { .. })
+                                && p.layers & editor_core::copper::layer_bit(tr.layer) != 0
+                                && p.geo.touches(g)
+                        })
+                    };
+                    track_labels(tr, name, area, zoom, &on_pad, &mut buf);
+                    out.extend(buf.drain(..).map(|i| (layer, i)));
+                }
+                ObjectId::Footprint(f) if zoom >= PAD_LABEL_ZOOM && shown(l.pad_numbers) => {
+                    let Some(inst) = project.board.footprints.get(f) else { continue };
+                    let Some(fp) = footprint_of_instance(project, inst) else { continue };
+                    let net = |pad| c.net_of(editor_core::copper::CopperItem::Pad { footprint: f, pad });
+                    pad_labels(fp, inst, net, pad_number_limit(fp), zoom, &mut buf);
+                    out.extend(buf.drain(..).map(|i| (l.pad_labels, i)));
+                }
+                _ => {}
+            }
+        }
+        self.scene.set_item(NET_LABEL_ITEM, out);
+        self.labels = Some(LabelsDrawn { area, step, visible: bits });
+        true
     }
 
     /// Mark design rule violations (board only; empty clears).
@@ -904,10 +1000,15 @@ impl View {
         let (layer, color) =
             if hover { (self.hover_layer, pal().hover) } else { (self.selection_layer, pal().selection) };
         let fill = self.fill_layer();
+        // Pad numbers stay as they are (a copy would sit beside the net labels' ones).
+        let numbers = match &self.layers {
+            Layers::Board(l) => Some(l.pad_numbers),
+            Layers::Sch(_) => None,
+        };
         let mut out: Vec<(RLayer, Instance)> = p
             .out
             .into_iter()
-            .filter(|(l, _)| Some(*l) != fill)
+            .filter(|(l, _)| Some(*l) != fill && Some(*l) != numbers)
             .map(|(_, mut inst)| {
                 inst.color = color;
                 (layer, inst)

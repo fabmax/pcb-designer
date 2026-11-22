@@ -527,6 +527,12 @@ impl Document {
         }
     }
 
+    /// Net names on the board near `visible` (the viewport) at `zoom` (pixels per mm);
+    /// see [`View::update_net_labels`]. Returns true if they were redrawn.
+    pub fn update_net_labels(&mut self, visible: Rect, zoom: f64) -> bool {
+        self.board.update_net_labels(self.editor.project(), &self.copper, visible, zoom)
+    }
+
     /// Highlight the copper of these nets on the board (empty clears).
     pub fn highlight_nets(&mut self, nets: &[String]) {
         self.board.set_nets(&self.copper, nets);

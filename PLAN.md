@@ -846,7 +846,8 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   default to Bold, KiCad board imports are Bold, schematic ones follow `(bold yes)`.
   Cost: a glyph is ~20–60 triangles, so texts are most of the stress scenes' instances
   (see Performance).
-- Small details hide when zoomed out. Per-layer buffers; only dirty items upload;
+- Small details hide when zoomed out (`LayerDesc::min_zoom`), and a layer can hide
+  zoomed in (`max_zoom`). Per-layer buffers; only dirty items upload;
   pan/zoom is a uniform.
 - `Scene::set_item` gives up a shrunk item's tail as garbage (else `instance_count`
   drifts from a rebuild). `Scene::snapshot` doesn't consume the incremental upload.
@@ -872,6 +873,21 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   footprint's `${REF}` text (1 mm without one: `pad_number_limit`), so exposed pads
   don't get numbers larger than the part's label. The footprint editor isn't capped
   (pads redraw one by one there; a cap from the reference text would go stale).
+- Net labels (`net_labels.rs`, `View::update_net_labels`, called by the app every frame
+  with the viewport): one overlay item drawn only for the area around the viewport (half
+  a viewport more each side), from the view's R-tree, so a large board stays cheap. It's
+  redrawn when the viewport leaves that area, the zoom crosses a 15% step, the board or
+  its copper changes (`apply_objects`, `redraw_users`, `set_copper` and `rebuild` drop
+  it) or a copper layer's or "Pad numbers"' visibility changes. From 25 px/mm, straight
+  tracks get their net along them (upright, 0.6 of the width, at least 8 px; at the
+  middle and at fixed places either side, so labels don't swim as the view pans; not
+  where the text would touch a pad on the layer). Each copper layer has its own label
+  layer right above it, so higher copper covers a lower track's name. From 50 px/mm the
+  labels draw the pad numbers too (the static "Pad numbers" layer has `max_zoom`), with
+  the net below the number on pads that have one, along the longer side, both shrunk to
+  fit the pad. The label layers aren't user layers (not in menus, prints or saved
+  visibility). Highlights leave the pad numbers out (a copy would sit beside the
+  labels').
 - Library edits redraw only their users (`View::users_of`): symbols depend on symbol,
   part and the component's footprint (pad names); footprints on footprint and part.
   Edits that don't change drawing (name, prefix…) redraw nothing.
@@ -1556,6 +1572,8 @@ defers.
   symbols on import and export.
 
 **Board**
+- Net labels on arc tracks, vias and zones; pad labels follow the footprint editor's
+  pads only as static numbers.
 - Fabrication outputs: fab/courtyard Gerbers, Protel file extensions, JLCPCB's rotation
   offsets (their library turns some packages differently: a per-part offset in the
   position file), more assembly services, dielectric layers and impedance in the stack-up,

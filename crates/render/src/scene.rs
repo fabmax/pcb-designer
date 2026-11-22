@@ -20,6 +20,8 @@ pub struct LayerDesc {
     pub visible: bool,
     /// Hide the layer when zoomed out further than this (pixels per world unit).
     pub min_zoom: f32,
+    /// Hide the layer when zoomed in further than this (or as far).
+    pub max_zoom: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -129,7 +131,7 @@ impl Scene {
 
     pub fn add_layer(&mut self, name: impl Into<String>) -> LayerId {
         self.layers.push(Layer {
-            desc: LayerDesc { name: name.into(), visible: true, min_zoom: 0.0 },
+            desc: LayerDesc { name: name.into(), visible: true, min_zoom: 0.0, max_zoom: f32::INFINITY },
             instances: Vec::new(),
             garbage: 0,
             dirty: Vec::new(),
@@ -158,7 +160,10 @@ impl Scene {
 
     /// Which layers should be drawn at the given zoom.
     pub fn visible_layers(&self, zoom: f64) -> Vec<bool> {
-        self.layers.iter().map(|l| l.desc.visible && zoom >= l.desc.min_zoom as f64).collect()
+        self.layers
+            .iter()
+            .map(|l| l.desc.visible && zoom >= l.desc.min_zoom as f64 && zoom < l.desc.max_zoom as f64)
+            .collect()
     }
 
     /// Number of live (non-empty) instances.

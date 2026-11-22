@@ -4771,6 +4771,13 @@ impl TreeBehavior<'_> {
         let scene = &mut doc.view_mut(view).scene;
         let canvas = &mut pane.canvas;
         let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
+        if view == ViewId::Board {
+            let [x0, y0, x1, y1] = canvas.camera.visible_world(canvas.viewport());
+            let visible = Rect::from_points(Point::mm(x0, y0), Point::mm(x1, y1));
+            if doc.update_net_labels(visible, canvas.camera.zoom) {
+                ui.ctx().request_repaint();
+            }
+        }
         let picked = view.sheet().and_then(|_| sch_ui::toolbar(ui, rect, self.sch, self.keymap, self.sim_shown));
         if picked == Some(sch_ui::Pick::Run) {
             self.deferred.push(Deferred::Action(Action::RunSimulation));
