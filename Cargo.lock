@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arboard",
  "editor-core",
@@ -1053,7 +1053,7 @@ dependencies = [
 
 [[package]]
 name = "editor-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "delaunator",
  "i_overlay",
@@ -1584,7 +1584,7 @@ dependencies = [
 
 [[package]]
 name = "gerber"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "crc32fast",
  "editor-core",
@@ -2341,7 +2341,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "kicad"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "editor-core",
  "flate2",
@@ -2464,7 +2464,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "axum",
  "base64",
@@ -2547,7 +2547,7 @@ dependencies = [
 
 [[package]]
 name = "model"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "indexmap",
  "schemars",
@@ -3505,7 +3505,7 @@ checksum = "d902046e6a28a1e4c3cab97258a0ce11e994903f01c2d97a9447a0b3df85f4f6"
 
 [[package]]
 name = "render"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytemuck",
  "i_triangle",
@@ -3951,7 +3951,7 @@ dependencies = [
 
 [[package]]
 name = "sim"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "editor-core",
  "libloading 0.9.1",
@@ -4737,7 +4737,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "view"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "editor-core",
  "gerber",
