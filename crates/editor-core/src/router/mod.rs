@@ -10,7 +10,7 @@ pub mod walk;
 
 use model::*;
 
-use crate::copper::{BoardConnectivity, Copper, CopperItem, layer_bit};
+use crate::copper::{BoardConnectivity, Copper, CopperItem, LayerMask, layer_bit};
 use crate::route_check::{self, Clash, Probe};
 use hull::Hull;
 
@@ -65,6 +65,7 @@ pub struct Routed {
 
 /// The leg along `points` laid in `mode` (Shove or Walkaround; Highlight takes it as it
 /// is): see [`walkaround`] and [`shove`].
+#[allow(clippy::too_many_arguments)]
 pub fn route(
     project: &Project,
     copper: &BoardConnectivity,
@@ -73,13 +74,14 @@ pub fn route(
     width: Coord,
     net: Option<&str>,
     points: &[Point],
+    via: Option<(Coord, LayerMask)>,
 ) -> Routed {
     match mode {
         RouteMode::Highlight => {
             Routed { points: points.to_vec(), reached: true, blocked: None, shoved: Default::default() }
         }
         RouteMode::Walkaround => walkaround(project, copper, layer, width, net, points),
-        RouteMode::Shove => shove(project, copper, layer, width, net, points),
+        RouteMode::Shove => shove_leg(project, copper, layer, width, net, points, via),
     }
 }
 
@@ -94,10 +96,24 @@ pub fn shove(
     net: Option<&str>,
     points: &[Point],
 ) -> Routed {
+    shove_leg(project, copper, layer, width, net, points, None)
+}
+
+/// [`shove`] with a via (diameter, layers) at the leg's end that pushes too (and moves
+/// back with the end where the leg stops short).
+pub fn shove_leg(
+    project: &Project,
+    copper: &BoardConnectivity,
+    layer: LayerId,
+    width: Coord,
+    net: Option<&str>,
+    points: &[Point],
+    via: Option<(Coord, LayerMask)>,
+) -> Routed {
     // A frame or two at most, the search for where to stop included.
     let deadline = std::time::Instant::now() + SHOVE_TIME;
     let attempt =
-        |path: &[Point]| shove::shove(project, copper, &shove::Head { layer, width, net, path, via: None, deadline });
+        |path: &[Point]| shove::shove(project, copper, &shove::Head { layer, width, net, path, via, deadline });
     let walked = lay(project, copper, layer, width, net, points, true, &[]);
     let blocked = match attempt(&walked.points) {
         Ok(shoved) => return Routed { shoved, ..walked },
@@ -141,6 +157,23 @@ pub fn shove(
     Routed { points, reached: false, blocked: Some(blocked), shoved }
 }
 
+/// The rule a via of `diameter` on `layers` at `pos` (the end of a track on `layer`, of
+/// `net`) breaks; with `pushing`, copper that can be pushed aside doesn't count.
+#[allow(clippy::too_many_arguments)]
+pub fn check_via(
+    project: &Project,
+    copper: &BoardConnectivity,
+    layer: LayerId,
+    net: Option<&str>,
+    pos: Point,
+    diameter: Coord,
+    layers: LayerMask,
+    pushing: bool,
+) -> Option<Clash> {
+    let probe = Probe::Via { pos, diameter, layers };
+    route_check::check_with(project, copper, &[probe], net, &[(layer, pos)], &|c| pushing && movable(project, c))
+}
+
 /// What a via of `diameter` on `layers` at `pos` (the end of the track being routed, of
 /// `net`, on `layer`) pushes aside; `Err`: what it can't.
 pub fn shove_via(
@@ -150,12 +183,10 @@ pub fn shove_via(
     net: Option<&str>,
     pos: Point,
     diameter: Coord,
-    layers: crate::copper::LayerMask,
+    layers: LayerMask,
 ) -> Result<shove::Shoved, Clash> {
     // Fixed copper, keepouts and the board edge; what can move is pushed aside below.
-    let probe = Probe::Via { pos, diameter, layers };
-    if let Some(c) = route_check::check_with(project, copper, &[probe], net, &[(layer, pos)], &|c| movable(project, c))
-    {
+    if let Some(c) = check_via(project, copper, layer, net, pos, diameter, layers, true) {
         return Err(c);
     }
     let deadline = std::time::Instant::now() + SHOVE_TIME;

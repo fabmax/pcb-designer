@@ -603,9 +603,13 @@ fn switching_back_to_the_layer_takes_the_via_back() {
 }
 
 #[test]
-fn l_lays_the_leg_and_puts_the_via_at_the_pointer() {
-    for mode in [view::pcb_tools::RouteMode::Shove, view::pcb_tools::RouteMode::Highlight] {
+fn l_arms_a_via_at_the_pointer_that_the_click_places() {
+    use view::pcb_tools::RouteMode;
+    for mode in [RouteMode::Shove, RouteMode::Walkaround, RouteMode::Highlight] {
         let mut doc = Document::new(Project::new("T"));
+        // A track the via comes close to (pushed in Shove mode).
+        let wall = Track::straight(LayerId::TOP_COPPER, Point::mm(0.0, 8.6), Point::mm(20.0, 8.6), mm(0.25));
+        doc.execute(Command::Insert { objects: vec![Object::Track(wall.clone())] }).unwrap();
         let mut t = PcbPlacer::default();
         t.set_tool(PcbTool::Route);
         t.settings.route_mode = mode;
@@ -614,28 +618,66 @@ fn l_lays_the_leg_and_puts_the_via_at_the_pointer() {
         t.hover(&mut doc, Some((a, a)), mm(0.0));
         t.click(&mut doc).unwrap();
         let top = t.settings.layer;
-        // L with the pointer at b: the leg to b on top, the via at b.
         t.hover(&mut doc, Some((b, b)), mm(0.0));
-        t.next_layer(&mut doc).unwrap();
-        let board = &doc.project().board;
-        assert_eq!(board.tracks.len(), 1, "{mode:?}");
-        let leg = board.tracks.iter().next().unwrap();
-        assert_eq!((leg.layer, leg.a, leg.b), (top, a, b));
-        assert_eq!(board.vias.iter().map(|v| v.pos).collect::<Vec<_>>(), vec![b], "{mode:?}");
-        assert_ne!(t.settings.layer, top);
-        // L again on the spot: the via goes, the leg stays.
+        // L arms it: nothing placed, the leg stays on top, the via follows the pointer.
         t.next_layer(&mut doc).unwrap();
         assert_eq!(t.settings.layer, top);
+        assert!(t.via_to().is_some_and(|l| l != top));
         assert_eq!((doc.project().board.vias.len(), doc.project().board.tracks.len()), (0, 1), "{mode:?}");
-        // Back on the other layer, then on to c: that leg on the bottom, a second via at c.
+        let via_at = |t: &PcbPlacer, doc: &Document| {
+            t.ghosts(doc).iter().find_map(|g| match g {
+                PcbGhost::Via { pos, .. } => Some(*pos),
+                _ => None,
+            })
+        };
+        assert_eq!(via_at(&t, &doc), Some(b));
+        // Esc takes it off; L again arms it.
+        assert!(!t.escape());
+        assert_eq!(t.via_to(), None);
         t.next_layer(&mut doc).unwrap();
-        let bottom = t.settings.layer;
+        // On to c, by the wall.
         t.hover(&mut doc, Some((c, c)), mm(0.0));
-        t.next_layer(&mut doc).unwrap();
+        assert_eq!(via_at(&t, &doc), Some(c), "{mode:?}");
+        if mode == RouteMode::Shove {
+            assert!(t.clash().is_none(), "{:?}", t.clash());
+            assert_ne!(doc.project().board.tracks.get(wall.id), Some(&wall), "the via pushes the wall");
+        } else {
+            assert!(t.clash().is_some(), "the via is too close to the wall ({mode:?})");
+            t.force = true;
+            t.hover(&mut doc, Some((c, c)), mm(0.0));
+        }
+        let before = doc.project().board.tracks.len();
+        t.click(&mut doc).unwrap();
+        t.force = false;
         let board = &doc.project().board;
-        let second = board.tracks.iter().find(|t| t.a == b).unwrap();
-        assert_eq!(second.layer, bottom, "{mode:?}");
-        assert_eq!(board.vias.len(), 2, "{mode:?}");
-        assert_eq!(t.settings.layer, top);
+        assert_eq!(board.vias.iter().map(|v| v.pos).collect::<Vec<_>>(), vec![c], "{mode:?}");
+        assert!(board.tracks.iter().any(|t| t.layer == top && (t.b == c || t.a == c)), "the leg to it on top");
+        assert_ne!(t.settings.layer, top, "goes on on the other layer");
+        assert_eq!(t.via_to(), None);
+        if mode == RouteMode::Shove {
+            let bad: Vec<_> = doc
+                .run_drc()
+                .violations
+                .iter()
+                .filter(|v| matches!(v.kind, ViolationKind::Clearance | ViolationKind::Short))
+                .map(|v| v.message.clone())
+                .collect();
+            assert!(bad.is_empty(), "{bad:?}");
+        }
+        // One undo step: leg, via and pushes.
+        doc.undo();
+        assert_eq!(doc.project().board.vias.len(), 0, "{mode:?}");
+        assert!(doc.project().board.tracks.len() < before + 1);
+        assert_eq!(doc.project().board.tracks.get(wall.id), Some(&wall), "{mode:?}");
+        // L twice: off again (two layers).
+        let mut t2 = PcbPlacer::default();
+        t2.set_tool(PcbTool::Route);
+        t2.hover(&mut doc, Some((a, a)), mm(0.0));
+        t2.click(&mut doc).unwrap();
+        t2.hover(&mut doc, Some((b, b)), mm(0.0));
+        t2.next_layer(&mut doc).unwrap();
+        t2.next_layer(&mut doc).unwrap();
+        assert_eq!(t2.via_to(), None);
+        assert_eq!(t2.settings.layer, top);
     }
 }

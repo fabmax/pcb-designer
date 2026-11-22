@@ -366,16 +366,23 @@ the current design of each area with the gotchas a change needs to know, the pla
   lays a chain along a new path (ids kept in order, extra segments copy the first
   track, left-overs deleted). `locked` on `Track` / `Via` (Properties, KiCad import;
   not serialized when false).
-- **L while routing** (`next_layer`): with `via_at_cursor` (default, "Via at:
-  Pointer") it first lays the leg to the pointer with `click` (ending on copper ends the
-  track: just the layer switches), so the via goes at the leg's end. Then it adds a via
-  at the track's end (shoving in Shove
-  mode, one undo step with its pushes) and remembers it (`via_added`: position, layer
-  it came from, `route_revision` after it). The next L, if the track hasn't gone on
-  (same start, same revision: a route preview doesn't count; at the pointer mode, the
-  pointer still on the via), undoes it first; back on
-  the layer it came from, no via, else one from that layer to the new one (3+ layers).
-  Gotcha: the taken-back via is on the redo stack until the next edit.
+- **L while routing** (`next_layer`), two ways (`via_at_cursor`, "Via at"):
+  - Pointer (default): L arms a via at the leg's end (`via_to`: the layer it goes to;
+    L again cycles it, back to the leg's layer disarms; Esc disarms before ending the
+    track). The leg stays on its layer; the via is part of the check: Shove gives the
+    router's head a via (`router::shove_leg`, it pushes and stops short with the end),
+    and `router::check_via` checks what can't be pushed (everything in the other modes;
+    Highlight adds a via probe to the leg's). The click commits leg + `AddVia` with the
+    preview's pushes in one undo step (`Document::commit_route` takes commands) and
+    switches the layer; ending on copper drops the via. Ghost: `PcbGhost::Via` at the
+    leg's end.
+  - Leg start: adds a via at the track's end at once (shoving in Shove mode, one undo
+    step with its pushes) and remembers it (`via_added`: position, layer it came from,
+    `route_revision` after it). The next L, if the track hasn't gone on (same start,
+    same revision: a route preview doesn't count), undoes it first; back on the layer
+    it came from, no via, else one from that layer to the new one (3+ layers). Gotcha:
+    the taken-back via is on the redo stack until the next edit. With Pointer, L with
+    the pointer on the leg's start does this too.
 - **Route tool snapping** (`snap_to_copper`): pad and via centres and track ends within
   the tolerance, else the centre of a pad or via under the pointer, else the middle line
   of a straight track under (or within the tolerance of) the pointer, at the grid point

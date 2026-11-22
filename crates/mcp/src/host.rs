@@ -783,7 +783,7 @@ fn route(
     let net = copper.at(start, layer).and_then(|c| copper.net_of(c.item)).map(str::to_string);
     let width = width.unwrap_or_else(|| doc.project().board.rules.for_net(net.as_deref()).track_width);
     let (project, copper) = (doc.project(), doc.copper());
-    let routed = editor_core::router::route(project, copper, mode, layer, width, net.as_deref(), &points);
+    let routed = editor_core::router::route(project, copper, mode, layer, width, net.as_deref(), &points, None);
     if routed.points.len() < 2 {
         let why = routed.blocked.map_or("no room".to_string(), |c| c.message);
         return Err(format!("no track added: {why}"));

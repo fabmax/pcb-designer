@@ -374,19 +374,25 @@ impl Document {
         Ok(())
     }
 
-    /// Run `command` (the leg) with the route preview's edits as one undo step, and end
-    /// the preview.
-    pub fn commit_route(&mut self, command: Command) -> Result<ChangeSet, CommandError> {
-        let group = self.live_preview().filter(|p| p.applied).map(|p| p.group);
-        let result = self.execute_grouped(command, group);
-        if group.is_some() {
-            if result.is_ok() {
-                self.close_group();
-                self.route_preview = None;
-            } else {
-                self.drop_route_preview();
+    /// Run `commands` (the leg, a via at its end) with the route preview's edits as one
+    /// undo step, and end the preview.
+    pub fn commit_route(&mut self, commands: Vec<Command>) -> Result<(), CommandError> {
+        let group = match self.live_preview().filter(|p| p.applied).map(|p| p.group) {
+            Some(g) => g,
+            None => crate::interaction::new_group(),
+        };
+        let mut result = Ok(());
+        for c in commands {
+            if let Err(e) = self.execute_grouped(c, Some(group)) {
+                result = Err(e);
+                break;
             }
         }
+        if result.is_err() && self.editor.history().open_group() == Some(group) {
+            // Nothing of it stays, the preview's pushes included.
+            self.retract(group);
+        }
+        self.close_group();
         self.route_preview = None;
         result
     }

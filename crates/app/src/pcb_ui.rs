@@ -95,7 +95,16 @@ pub fn toolbar(
     });
     // Where the router stops short, what's in the way.
     let short = pcb.stopped_short().and_then(|r| r.blocked.as_ref());
+    let armed = pcb.via_to().map(|l| {
+        let board = &doc.project().board;
+        board.layers.iter().find(|x| x.id == l).map_or(format!("{l:?}"), |x| x.name.clone())
+    });
     match pcb.clash() {
+        None if let Some(layer) = &armed => toolbar::hint(
+            ui,
+            canvas,
+            &format!("Via to {layer} at the leg's end · click places both · L next layer · Esc removes the via"),
+        ),
         None if let Some(c) = short => toolbar::hint_in(
             ui,
             canvas,
@@ -170,8 +179,9 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 ui.end_row();
                 label(ui, "Via at");
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut s.via_at_cursor, true, "Pointer")
-                        .on_hover_text("L lays the track to the pointer and puts the via there");
+                    ui.selectable_value(&mut s.via_at_cursor, true, "Pointer").on_hover_text(
+                        "L puts a via at the end of the leg; it follows the pointer and the click places it",
+                    );
                     ui.selectable_value(&mut s.via_at_cursor, false, "Leg start")
                         .on_hover_text("L puts the via where the track leg starts; the leg goes on on the new layer");
                 });

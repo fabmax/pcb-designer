@@ -77,9 +77,11 @@ with inner layers, vias can be blind or buried: From/To layers in the Via tool a
 via's properties, and "Via span" (through, or just the two layers) for the vias L adds.
 
 L while routing switches the layer with a via. "Via at" in the tool settings says where:
-at the pointer (the default; the leg to the pointer is laid first, so you place the via
-where you want it) or at the start of the leg being drawn (the leg goes on on the new
-layer). L again before the track goes on takes the via back.
+at the pointer (the default: the leg being drawn gets a via at its end that follows the
+pointer, shoving in Shove mode; the click places both and the track goes on on the new
+layer; L again picks the next layer, or none, and Esc removes the via) or at the start
+of the leg being drawn (placed at once; the leg goes on on the new layer, and L again
+before the track goes on takes the via back).
 
 ## Selecting and dragging
 
