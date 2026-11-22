@@ -1549,7 +1549,10 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   registered after it, so on top of its widgets and the arrow; egui's own toggles on the
   arrow only); `egui::CollapsingHeader` already does. Bodies are unindented
   (`body_unindented`, `show_unindented`): no line on their left, so an open section looks
-  like a plain one. `check_row` (boolean: label left, bare
+  like a plain one. The arrow starts where the labels around do: `collapsing_header`
+  narrows egui's `indent` (the arrow's button) to the arrow while drawing the header,
+  `tight_arrow` does it around an `egui::CollapsingHeader` (there it's the arrow plus the
+  gap before the title, which starts at `indent`). `check_row` (boolean: label left, bare
   box), `search_field` + `summary` (list panels). Every search or filter field is
   `clearable`: a round × inside its right end while it has text (the field's right
   margin keeps text clear of it; added after the field so it gets the click; a click

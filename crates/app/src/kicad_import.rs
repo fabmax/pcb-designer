@@ -649,27 +649,29 @@ impl KicadImport {
             }
         });
         self.download_ui(ui, syms + fps == 0);
-        egui::CollapsingHeader::new(RichText::new("Library folders").color(theme::text_dim()))
-            .id_salt("kicad_paths")
-            .show_unindented(ui, |ui| {
-                let added = self.extra.len();
-                let mut remove = None;
-                let paths = self.paths();
-                egui::ScrollArea::vertical().id_salt("kicad_paths_scroll").max_height(100.0).show(ui, |ui| {
-                    for (i, p) in paths.iter().enumerate() {
-                        ui.horizontal(|ui| {
-                            if i < added && ui.small_button("Remove").clicked() {
-                                remove = Some(i);
-                            }
-                            ui.label(RichText::new(p.display().to_string()).monospace());
-                        });
+        fields::tight_arrow(ui, |ui| {
+            egui::CollapsingHeader::new(RichText::new("Library folders").color(theme::text_dim()))
+                .id_salt("kicad_paths")
+                .show_unindented(ui, |ui| {
+                    let added = self.extra.len();
+                    let mut remove = None;
+                    let paths = self.paths();
+                    egui::ScrollArea::vertical().id_salt("kicad_paths_scroll").max_height(100.0).show(ui, |ui| {
+                        for (i, p) in paths.iter().enumerate() {
+                            ui.horizontal(|ui| {
+                                if i < added && ui.small_button("Remove").clicked() {
+                                    remove = Some(i);
+                                }
+                                ui.label(RichText::new(p.display().to_string()).monospace());
+                            });
+                        }
+                    });
+                    if let Some(i) = remove {
+                        self.extra.remove(i);
+                        self.rescan();
                     }
-                });
-                if let Some(i) = remove {
-                    self.extra.remove(i);
-                    self.rescan();
-                }
-            });
+                })
+        });
         ui.separator();
 
         // ---- Search (left) and selection (right): they fill the height left over by the

@@ -462,8 +462,21 @@ pub fn collapsing_header<R>(
     body: impl FnOnce(&mut egui::Ui),
 ) {
     use egui::collapsing_header::CollapsingState;
-    let (_, head, _) =
-        CollapsingState::load_with_default_open(ui.ctx(), id, open).show_header(ui, header).body_unindented(body);
+    // The arrow is centred in a button `indent` wide: as wide as the arrow (3/4 of the
+    // icon), it starts where the labels around do.
+    let indent = ui.spacing().indent;
+    ui.spacing_mut().indent = ui.spacing().icon_width * 0.75;
+    let (_, head, _) = CollapsingState::load_with_default_open(ui.ctx(), id, open)
+        .show_header(ui, |ui| {
+            ui.spacing_mut().indent = indent;
+            ui.add_space(4.0);
+            header(ui)
+        })
+        .body_unindented(|ui| {
+            ui.spacing_mut().indent = indent;
+            body(ui)
+        });
+    ui.spacing_mut().indent = indent;
     // Registered after the header's widgets, so on top of them (the arrow included): a
     // click toggles once wherever it lands.
     let r = ui.interact(head.response.rect, id.with("header"), egui::Sense::click());
@@ -475,6 +488,17 @@ pub fn collapsing_header<R>(
         state.toggle(ui);
         state.store(ui.ctx());
     }
+}
+
+/// Run `f` (an `egui::CollapsingHeader`) with its arrow starting where the labels
+/// around do: the arrow is centred in the first `indent` of the header, the title after
+/// it, so `indent` is the arrow (3/4 of the icon) and a gap.
+pub fn tight_arrow<R>(ui: &mut egui::Ui, f: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let indent = ui.spacing().indent;
+    ui.spacing_mut().indent = ui.spacing().icon_width * 0.75 + 4.0;
+    let r = f(ui);
+    ui.spacing_mut().indent = indent;
+    r
 }
 
 /// A read-only row.

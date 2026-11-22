@@ -342,19 +342,21 @@ fn excluded_section(
         return false;
     }
     ui.add_space(4.0);
-    egui::CollapsingHeader::new(RichText::new(format!("Excluded ({excluded})")).color(theme::text_dim()))
-        .id_salt(id)
-        .default_open(false)
-        .show_unindented(ui, |ui| {
-            rows(ui);
-            if unused > 0 {
-                ui.horizontal(|ui| {
-                    let text = format!("{unused} unused (the finding no longer occurs)");
-                    ui.label(RichText::new(text).color(theme::text_dim()));
-                    remove_unused = ui.small_button("Remove unused").clicked();
-                });
-            }
-        });
+    crate::fields::tight_arrow(ui, |ui| {
+        egui::CollapsingHeader::new(RichText::new(format!("Excluded ({excluded})")).color(theme::text_dim()))
+            .id_salt(id)
+            .default_open(false)
+            .show_unindented(ui, |ui| {
+                rows(ui);
+                if unused > 0 {
+                    ui.horizontal(|ui| {
+                        let text = format!("{unused} unused (the finding no longer occurs)");
+                        ui.label(RichText::new(text).color(theme::text_dim()));
+                        remove_unused = ui.small_button("Remove unused").clicked();
+                    });
+                }
+            })
+    });
     remove_unused
 }
 
