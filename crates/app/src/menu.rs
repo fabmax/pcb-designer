@@ -385,12 +385,13 @@ pub fn entries_menu_ui(ui: &mut egui::Ui, entries: &[Entry]) -> Option<Cmd> {
 }
 
 /// Draws the menus as an egui menu bar. Returns the picked command.
-pub fn bar_ui(ui: &mut egui::Ui, menus: &[Menu]) -> Option<Cmd> {
+pub fn bar_ui(ui: &mut egui::Ui, menus: &[Menu], right: &mut dyn FnMut(&mut egui::Ui)) -> Option<Cmd> {
     let mut picked = None;
     egui::MenuBar::new().ui(ui, |ui| {
         for m in menus {
             ui.menu_button(&m.title, |ui| entries_ui(ui, &m.entries, &mut picked));
         }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| right(ui));
     });
     picked
 }

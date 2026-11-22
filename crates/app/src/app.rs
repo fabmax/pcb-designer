@@ -3000,7 +3000,13 @@ impl PcbApp {
                     let edited = self.doc().is_modified();
                     title_bar::set_document_edited(frame, edited);
                     let name = self.project_name();
-                    self.title_bar.show(ui, frame, chrome, &name, edited);
+                    let mut toggle = false;
+                    let mut switch = self.agent_switch(&mut toggle);
+                    self.title_bar.show(ui, frame, chrome, &name, edited, &mut switch);
+                    drop(switch);
+                    if toggle {
+                        self.run_menu_cmd(ui.ctx(), Cmd::ToggleAgent);
+                    }
                     return;
                 }
             }
@@ -3008,10 +3014,24 @@ impl PcbApp {
             panel.frame(margin(0)).exact_size(f32::from(gap)).show(ui, |_| {});
         } else {
             let menus = self.menus(false);
-            if let Some(cmd) = panel.frame(margin(2)).show(ui, |ui| menu::bar_ui(ui, &menus)).inner {
+            let mut toggle = false;
+            let mut switch = self.agent_switch(&mut toggle);
+            let picked = panel.frame(margin(2)).show(ui, |ui| menu::bar_ui(ui, &menus, &mut switch)).inner;
+            drop(switch);
+            if toggle {
+                self.run_menu_cmd(ui.ctx(), Cmd::ToggleAgent);
+            }
+            if let Some(cmd) = picked {
                 self.run_menu_cmd(ui.ctx(), cmd);
             }
         }
+    }
+
+    /// The agent access switch for the title or menu bar; sets `toggle` when clicked.
+    fn agent_switch<'a>(&self, toggle: &'a mut bool) -> impl FnMut(&mut egui::Ui) + use<'a> {
+        let (running, url, error) = (self.agent.is_running(), self.agent.url(), self.agent.error.clone());
+        let port = self.mcp_port.unwrap_or(self.settings.mcp.port);
+        move |ui| *toggle |= crate::agent_switch::ui(ui, running, url.as_deref(), port, error.as_deref())
     }
 
     fn menus(&self, native: bool) -> Vec<Menu> {
@@ -4067,10 +4087,6 @@ impl PcbApp {
                     self.agent.error.as_deref(),
                 ) {
                     Some(crate::activity_ui::Act::Clear) => self.agent.activity.clear(),
-                    Some(crate::activity_ui::Act::Start) => {
-                        self.agent.port = self.mcp_port.unwrap_or(self.settings.mcp.port);
-                        self.agent.start(ui.ctx());
-                    }
                     None => {}
                 }
                 ui.ctx().request_repaint_after(Duration::from_secs(1));

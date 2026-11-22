@@ -44,6 +44,7 @@
 
 mod activity_ui;
 mod agent;
+mod agent_switch;
 mod app;
 mod array_form;
 mod canvas;

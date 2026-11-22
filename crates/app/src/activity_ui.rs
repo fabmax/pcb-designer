@@ -24,21 +24,13 @@ pub fn ago(seconds: u64) -> String {
 pub enum Act {
     /// Clear the log.
     Clear,
-    /// Start the MCP server.
-    Start,
 }
 
 /// `error`: why the server didn't start.
 pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, running: bool, error: Option<&str>) -> Option<Act> {
     let mut act = None;
     if !running {
-        ui.horizontal(|ui| {
-            crate::fields::summary(ui, "The MCP server is off.");
-            if ui.button("Start").on_hover_text("Lets agents edit the open project (Tools → Agent access)").clicked()
-            {
-                act = Some(Act::Start);
-            }
-        });
+        crate::fields::summary(ui, "Agent access is off: turn it on with the switch in the title bar.");
         if let Some(e) = error {
             ui.label(RichText::new(e).color(theme::error()));
         }
