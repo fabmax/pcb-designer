@@ -2673,7 +2673,6 @@ impl PcbApp {
             Action::StopSimulation => return self.sim.session.stop(),
             Action::ShowSimNetlist => return self.sim.show_window(false),
             Action::ShowSimPlot => return self.open_sim_tab(true),
-            Action::ToggleSimValues => return self.sim.hide_values = !self.sim.hide_values,
             _ => {}
         }
         if matches!(action, Action::SchFindPart | Action::PcbFindPart) {
@@ -2812,8 +2811,7 @@ impl PcbApp {
             | Action::RunSimulation
             | Action::StopSimulation
             | Action::ShowSimNetlist
-            | Action::ShowSimPlot
-            | Action::ToggleSimValues => return,
+            | Action::ShowSimPlot => return,
         };
         let view = self.active;
         if key_action == KeyAction::Delete && !self.confirm_sheet_delete(&self.panes.selection(view)) {
@@ -2966,8 +2964,7 @@ impl PcbApp {
             | Action::RunSimulation
             | Action::StopSimulation
             | Action::ShowSimNetlist
-            | Action::ShowSimPlot
-            | Action::ToggleSimValues => None,
+            | Action::ShowSimPlot => None,
         };
         if let Some(m) = msg {
             self.set_status(m);
@@ -3035,7 +3032,6 @@ impl PcbApp {
             headless_command: self.headless_command(),
             move_to_sheet: !self.movable_to_sheet().is_empty(),
             erc_markers: self.doc().erc_markers(),
-            sim_values: !self.sim.hide_values,
             sim_running: self.sim.session.running().is_some(),
         })
     }

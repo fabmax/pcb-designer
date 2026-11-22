@@ -161,37 +161,47 @@ impl SimOverlay {
 
 const TAG_HEIGHT: Coord = 800_000;
 
+/// Where the overlay draws: probes and values on the schematic's Simulation layer (which
+/// the user can hide), the marks of hovered nets, pins and parts on the hover layer.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Layers {
+    pub sim: render::LayerId,
+    pub hover: render::LayerId,
+}
+
 /// The overlay on `sheet`. `here` tells whether a symbol is drawn on this sheet.
 pub(crate) fn draw(
     project: &Project,
     conn: &Connectivity,
     sheet: Id,
     o: &SimOverlay,
-    layer: render::LayerId,
+    layers: Layers,
     p: &mut Painter,
     bounds: &dyn Fn(ObjectId) -> Option<Rect>,
 ) {
     let sch = &project.schematic;
     let on_sheet = |symbol: Id| sch.symbols.get(symbol).is_some_and(|s| s.sheet == sheet);
     // Probed nets (and the hovered one): their wires, thick.
-    let hover: Vec<(String, Color)> = o.hover_nets.iter().map(|n| (n.clone(), pal().hover)).collect();
-    let nets: Vec<&(String, Color)> = o.nets.iter().chain(&hover).collect();
+    let probed = o.nets.iter().map(|(n, c)| (n, *c, layers.sim));
+    let hover = o.hover_nets.iter().map(|n| (n, pal().hover, layers.hover));
+    let nets: Vec<(&String, Color, render::LayerId)> = probed.chain(hover).collect();
     if !nets.is_empty() {
-        let color_of = |id: ObjectId| {
+        let style_of = |id: ObjectId| {
             let net = conn.net_of(id)?;
-            nets.iter().rev().find(|(n, _)| *n == net.name).map(|(_, c)| *c)
+            nets.iter().rev().find(|(n, ..)| **n == net.name).map(|&(_, c, l)| (c, l))
         };
         for w in sch.wires.iter().filter(|w| w.sheet == sheet) {
-            if let Some(color) = color_of(ObjectId::Wire(w.id)) {
+            if let Some((color, layer)) = style_of(ObjectId::Wire(w.id)) {
                 p.line(layer, w.a, w.b, WIRE_WIDTH * 3, color.with_alpha(0xc0));
             }
         }
         for l in sch.labels.iter().filter(|l| l.sheet == sheet) {
-            if let Some(color) = color_of(ObjectId::Label(l.id)) {
+            if let Some((color, layer)) = style_of(ObjectId::Label(l.id)) {
                 p.circle(layer, l.pos, WIRE_WIDTH * 2, color);
             }
         }
     }
+    let layer = layers.sim;
     // Probed pins: the pin in the colour, an arrow into the part.
     for &(symbol, pin, color) in o.pins.iter().filter(|(s, ..)| on_sheet(*s)) {
         if let Some((a, b)) = pin_ends(project, symbol, pin) {
@@ -201,13 +211,14 @@ pub(crate) fn draw(
     }
     for &(symbol, pin) in o.hover_pins.iter().filter(|(s, _)| on_sheet(*s)) {
         if let Some((a, b)) = pin_ends(project, symbol, pin) {
-            p.line(layer, a, b, WIRE_WIDTH * 3, pal().hover);
-            arrow(p, layer, a, b, mm(1.0), pal().hover);
+            p.line(layers.hover, a, b, WIRE_WIDTH * 3, pal().hover);
+            arrow(p, layers.hover, a, b, mm(1.0), pal().hover);
         }
     }
     // Parts whose power is probed (or hovered): a rounded frame around each unit.
-    let hover_parts: Vec<(Id, Color)> = o.hover_parts.iter().map(|c| (*c, pal().hover)).collect();
-    for &(component, color) in o.parts.iter().chain(&hover_parts) {
+    let probed = o.parts.iter().map(|&(c, color)| (c, color, layers.sim));
+    let hover = o.hover_parts.iter().map(|&c| (c, pal().hover, layers.hover));
+    for (component, color, layer) in probed.chain(hover) {
         for s in sch.symbols.iter().filter(|s| s.component == component && s.sheet == sheet) {
             if let Some(r) = bounds(ObjectId::Symbol(s.id)) {
                 let r = r.grow(mm(0.5));

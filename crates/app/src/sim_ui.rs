@@ -66,8 +66,6 @@ pub struct SimPanel {
     pub table_share: Option<f32>,
     /// The user closed the plot tab: runs don't open it again (until opened by hand).
     pub plot_closed: bool,
-    /// View → Simulation values is off.
-    pub hide_values: bool,
     /// What the Probe tool points at, or a signal hovered in a table: highlighted.
     pub hover: Option<ProbeTarget>,
     /// The overlay as last built, and what it was built from.
@@ -224,7 +222,7 @@ impl SimPanel {
     pub fn overlay(&mut self, doc: &Document, shown: bool) -> SimOverlay {
         let setup = &doc.project().schematic.simulation;
         let probes = shown.then(|| self.probe_analysis(setup)).flatten().map(|a| a.id);
-        let values = if shown && !self.hide_values { self.values_analysis(setup) } else { None };
+        let values = if shown { self.values_analysis(setup) } else { None };
         let key = OverlayKey {
             revision: doc.revision,
             probes,

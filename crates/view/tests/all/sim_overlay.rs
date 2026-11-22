@@ -78,3 +78,29 @@ fn the_overlay_draws_on_the_sheets_and_clears() {
     doc.set_sim_overlay(SimOverlay::default());
     assert_eq!(count(&doc), before);
 }
+
+/// Probes and values go on the Simulation layer (in the layer menu, never printed),
+/// hover marks on the hover overlay.
+#[test]
+fn the_overlay_draws_on_the_simulation_layer() {
+    let mut doc = Document::new(demo_project());
+    let wire = doc.project().schematic.wires.iter().next().unwrap().clone();
+    let net = doc.connectivity().net_of(ObjectId::Wire(wire.id)).unwrap().name.clone();
+    let id = view::ViewId::Sheet(wire.sheet);
+    let layer = {
+        let v = doc.view(id);
+        let layer = (0..v.scene.layer_count() as u16).find(|&i| v.scene.layer(i).name == "Simulation").unwrap();
+        assert!(v.layer_menu().iter().any(|e| e.layer == layer));
+        layer
+    };
+    // Freed slots stay behind as empty instances until the layer is compacted.
+    let on_layer = |doc: &Document| {
+        doc.view(id).scene.instances(layer).iter().filter(|i| i.kind != render::Instance::EMPTY.kind).count()
+    };
+    let printed = doc.view(id).drawing().len();
+    doc.set_sim_overlay(SimOverlay { voltages: vec![(net.clone(), "4.2 V".into())], ..Default::default() });
+    assert!(on_layer(&doc) > 0);
+    assert_eq!(doc.view(id).drawing().len(), printed);
+    doc.set_sim_overlay(SimOverlay { hover_nets: vec![net], ..Default::default() });
+    assert_eq!(on_layer(&doc), 0);
+}

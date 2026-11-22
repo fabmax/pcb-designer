@@ -125,10 +125,13 @@ The tip names what a click probes. Probes go to the analysis the panel shows if 
 transient, AC or DC sweep, else to the first one. Probed wires and pins show in their trace
 colours.
 
-**Values on the schematic** (**View → Simulation values**, with the panel or tab open):
+**Values on the schematic** (with the panel or tab open):
 after an operating point run, each net shows its voltage once per sheet, and two-pin parts
 their current with an arrow in its direction; hover a bigger part for each pin's voltage
 and current and its power. They dim when the schematic changed since the run.
+
+Probes and values are on the schematic's **Simulation** layer: hide it in the layer menu
+to see the schematic without them. Prints and PDFs never show it.
 
 ## Tuner
 

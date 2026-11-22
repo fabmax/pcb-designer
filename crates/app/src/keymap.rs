@@ -89,7 +89,6 @@ pub enum Action {
     StopSimulation,
     ShowSimNetlist,
     ShowSimPlot,
-    ToggleSimValues,
 }
 
 /// Where an action's shortcut applies. Actions of different contexts may share a key.
@@ -175,7 +174,6 @@ impl Action {
         Action::StopSimulation,
         Action::ShowSimNetlist,
         Action::ShowSimPlot,
-        Action::ToggleSimValues,
     ];
 
     pub fn label(self) -> &'static str {
@@ -255,7 +253,6 @@ impl Action {
             Action::StopSimulation => "Stop simulation",
             Action::ShowSimNetlist => "Show SPICE netlist and log",
             Action::ShowSimPlot => "Show simulation plot",
-            Action::ToggleSimValues => "Show/hide simulation values on the schematic",
         }
     }
 
@@ -608,7 +605,6 @@ mod tests {
             Action::PanelActivity,
             Action::ShowSimNetlist,
             Action::ShowSimPlot,
-            Action::ToggleSimValues,
             Action::ExportSchematicPdf,
         ];
         for a in Action::ALL.iter().filter(|a| !unbound.contains(a)) {

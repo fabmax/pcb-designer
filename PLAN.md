@@ -761,7 +761,9 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   current enters, text), `dim`, hovered net/pin) is built by `SimPanel::overlay`
   (cached on revision, run, probe analysis, hover and theme) and handed to
   `Document::set_sim_overlay`, which redraws each sheet's `SIM_ITEM` on change, with
-  the connectivity and on restyle. Everything shows only while the panel or tab is
+  the connectivity and on restyle. Probes and values go on the schematic's
+  "Simulation" layer (in the layer menu, so its visibility is saved with the
+  workspace; `View::drawing` leaves it out of prints), hover marks on the hover layer. Everything shows only while the panel or tab is
   open. Values come from the panel's operating point, else the last one run;
   voltage tags sit at a net's first label on the sheet, else the middle of its longest
   wire there; ground gets none; current tags reach away from the part body. Tags use

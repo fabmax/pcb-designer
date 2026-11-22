@@ -107,6 +107,8 @@ struct SchLayers {
     wires: RLayer,
     labels: RLayer,
     text: RLayer,
+    /// Probes and operating point values of a simulation (not printed).
+    sim: RLayer,
 }
 
 struct BoardLayers {
@@ -225,6 +227,7 @@ impl View {
                     wires: scene.add_layer("Wires"),
                     labels: scene.add_layer("Labels"),
                     text: scene.add_layer("Text"),
+                    sim: scene.add_layer("Simulation"),
                 };
                 scene.layer_mut(l.pin_text).min_zoom = 3.0;
                 Layers::Sch(l)
@@ -302,6 +305,7 @@ impl View {
                 e(l.labels, Some(p.sch_label), 1),
                 e(l.text, Some(p.sch_text), 1),
                 e(l.frame, Some(p.sch_frame), 2),
+                e(l.sim, Some(p.sim_value), 3),
             ],
             Layers::Board(b) => {
                 let board = |id: LayerId, group| e(b.map[&id], Some(board_layer_color(id)), group);
@@ -600,22 +604,27 @@ impl View {
     }
 
     /// The instances of the drawing, back to front, without the overlays (hover,
-    /// selection): what a print shows.
+    /// selection) and simulation results: what a print shows.
     pub fn drawing(&self) -> Vec<Instance> {
-        self.user_layers().flat_map(|l| self.scene.instances(l).iter().copied()).collect()
+        let sim = match &self.layers {
+            Layers::Sch(l) => Some(l.sim),
+            Layers::Board(_) => None,
+        };
+        self.user_layers().filter(|&l| Some(l) != sim).flat_map(|l| self.scene.instances(l).iter().copied()).collect()
     }
 
     /// Show a simulation's probes and values (schematic sheets; see
     /// [`crate::sim_overlay`]).
     pub fn set_sim(&mut self, project: &Project, c: &editor_core::connectivity::Connectivity, o: &SimOverlay) {
-        let Some(sheet) = self.id.sheet() else { return };
+        let (Some(sheet), Layers::Sch(l)) = (self.id.sheet(), &self.layers) else { return };
+        let layers = crate::sim_overlay::Layers { sim: l.sim, hover: self.hover_layer };
         if o.is_empty() {
             self.scene.remove_item(SIM_ITEM);
             return;
         }
         let mut p = Painter::default();
         let index = &self.index;
-        crate::sim_overlay::draw(project, c, sheet, o, self.hover_layer, &mut p, &|id| index.bounds(id));
+        crate::sim_overlay::draw(project, c, sheet, o, layers, &mut p, &|id| index.bounds(id));
         self.scene.set_item(SIM_ITEM, p.out);
     }
 
