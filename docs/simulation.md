@@ -38,9 +38,10 @@ response.
 
 ## Simulation panel
 
-One tab per analysis (operating point, transient, AC, DC sweep; **+** adds one,
-right-click renames, duplicates or deletes it; drag the tabs to reorder them) with its
-settings. Values take SI prefixes (`10m`, `1.5k`, `1meg`); text that isn't a value turns
+One tab per analysis (operating point, transient, AC for a frequency response, DC sweep
+for a transfer curve; **+** adds one, right-click renames, duplicates or deletes it; drag
+the tabs to reorder them) with its settings. Names are free text: the audio amplifier
+example calls its AC analysis "Frequency response". Values take SI prefixes (`10m`, `1.5k`, `1meg`); text that isn't a value turns
 red and isn't applied.
 
 - **Run** (⌘R) runs the analysis shown (with none, it adds an operating point). **Stop**

@@ -116,8 +116,14 @@ fn toggle(probes: &mut Vec<Probe>, probe: Probe, conn: &editor_core::connectivit
     }
 }
 
-/// The kinds of analyses, in the "+" menu's order.
-const KINDS: [&str; 4] = ["Operating point", "Transient", "AC", "DC sweep"];
+/// The kinds of analyses, in the "+" menu's order: the kind (also a new analysis' name)
+/// and its label, which says what the SPICE names mean.
+const KINDS: [(&str, &str); 4] = [
+    ("Operating point", "Operating point"),
+    ("Transient", "Transient"),
+    ("AC", "AC (frequency response)"),
+    ("DC sweep", "DC sweep (transfer curve)"),
+];
 
 impl SimPanel {
     /// A new project: no results, nothing selected.
@@ -439,8 +445,8 @@ impl SimPanel {
         if setup.analyses.is_empty() {
             hint(ui, "Add an analysis to simulate the schematic with ngspice:");
             ui.horizontal_wrapped(|ui| {
-                for kind in KINDS {
-                    if ui.button(format!("Add {kind}")).clicked() {
+                for (kind, label) in KINDS {
+                    if ui.button(format!("Add {label}")).clicked() {
                         self.add(&mut setup, doc.project(), kind, message);
                     }
                 }
@@ -545,8 +551,8 @@ impl SimPanel {
                 });
             }
             ui.menu_button("+", |ui| {
-                for kind in KINDS {
-                    if ui.button(kind).clicked() {
+                for (kind, label) in KINDS {
+                    if ui.button(label).clicked() {
                         self.add(setup, project, kind, message);
                     }
                 }
