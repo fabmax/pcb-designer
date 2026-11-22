@@ -681,3 +681,21 @@ fn l_arms_a_via_at_the_pointer_that_the_click_places() {
         assert_eq!(t2.settings.layer, top);
     }
 }
+
+#[test]
+fn routing_inside_a_zone_goes_on_after_each_leg() {
+    // The demo's bottom layer is a GND zone.
+    let mut doc = Document::new(view::demo::demo_project());
+    let mut t = PcbPlacer::default();
+    t.set_tool(PcbTool::Route);
+    t.settings.layer = LayerId::BOTTOM_COPPER;
+    let (a, b, c) = (Point::mm(20.0, 5.0), Point::mm(25.0, 5.0), Point::mm(25.0, 7.0));
+    t.hover(&mut doc, Some((a, a)), mm(0.0));
+    assert!(!t.click(&mut doc).unwrap());
+    assert_eq!(t.routing_net(), None, "free space in a zone is no net");
+    t.hover(&mut doc, Some((b, b)), mm(0.0));
+    assert!(!t.click(&mut doc).unwrap(), "the track goes on");
+    t.hover(&mut doc, Some((c, c)), mm(0.0));
+    assert!(!t.click(&mut doc).unwrap(), "and on");
+    assert!(t.ghosts(&doc).iter().all(|g| !matches!(g, PcbGhost::Target(_))), "no target in the zone");
+}

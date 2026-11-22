@@ -324,7 +324,7 @@ pub fn snap_to_copper(
             Some((id, a, b)) => (on_segment(snapped, a, b), Some(CopperItem::Track(id))),
             None => {
                 let copper = doc.route_copper();
-                (snapped, copper.at(snapped, layer).map(|c| c.item))
+                (snapped, copper.item_at(snapped, layer).map(|c| c.item))
             }
         },
     }
@@ -843,7 +843,7 @@ impl PcbPlacer {
                     self.via_to = None;
                     self.posture.start();
                     let copper = doc.route_copper();
-                    self.net = copper.at(p, layer).and_then(|c| copper.net_of(c.item)).map(str::to_string);
+                    self.net = copper.item_at(p, layer).and_then(|c| copper.net_of(c.item)).map(str::to_string);
                     return Ok(false);
                 };
                 if start == p {
@@ -858,7 +858,7 @@ impl PcbPlacer {
                     return Err(why.map_or("No room for a track here".into(), |c| format!("No room: {}", c.message)));
                 };
                 let p = end;
-                let ends = doc.route_copper().at(p, layer).is_some();
+                let ends = doc.route_copper().item_at(p, layer).is_some();
                 let points = std::iter::once(start).chain(segs.iter().map(|s| s.1)).collect();
                 let mids = segs.iter().map(|s| s.2).collect();
                 let width = Some(self.width(doc));
@@ -886,7 +886,7 @@ impl PcbPlacer {
                     if self.net.is_none() {
                         // Started in free space: the net is known once connected.
                         let copper = doc.current_copper();
-                        self.net = copper.at(p, layer).and_then(|c| copper.net_of(c.item)).map(str::to_string);
+                        self.net = copper.item_at(p, layer).and_then(|c| copper.net_of(c.item)).map(str::to_string);
                     }
                 }
                 Ok(ends)

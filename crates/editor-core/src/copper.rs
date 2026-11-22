@@ -528,6 +528,14 @@ impl BoardConnectivity {
         };
         self.query(Rect::around(p, 0)).filter(|c| c.layers & bit != 0 && c.geo.contains(p)).min_by_key(|c| rank(c))
     }
+
+    /// [`at`](Self::at) without zones: the pad, via or track a track ending at `p`
+    /// connects to. (A track's end inside a zone isn't joined to it by the router: the
+    /// zone's fill decides that.)
+    pub fn item_at(&self, p: Point, layer: LayerId) -> Option<&Copper> {
+        // `at` ranks zones last: anything else there comes first.
+        self.at(p, layer).filter(|c| !matches!(c.item, CopperItem::Zone { .. }))
+    }
 }
 
 /// Clearances by net (see [`BoardConnectivity::clearances`]).

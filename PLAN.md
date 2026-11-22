@@ -383,6 +383,10 @@ the current design of each area with the gotchas a change needs to know, the pla
     it came from, no via, else one from that layer to the new one (3+ layers). Gotcha:
     the taken-back via is on the redo stack until the next edit. With Pointer, L with
     the pointer on the leg's start does this too.
+- **Route tool and zones**: a leg ending, or a track starting, inside a zone isn't on
+  copper: the tool asks `BoardConnectivity::item_at` (`at` without zones) whether the
+  track ends there, which net it takes and whether to show the target. Zone tool:
+  starting on a zone does take its net (`at`).
 - **Route tool snapping** (`snap_to_copper`): pad and via centres and track ends within
   the tolerance, else the centre of a pad or via under the pointer, else the middle line
   of a straight track under (or within the tolerance of) the pointer, at the grid point
