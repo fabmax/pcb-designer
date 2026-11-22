@@ -39,6 +39,9 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           cargo build --release -p app
+          # The release profile's line tables are inside the binary on Linux (macOS and
+          # Windows keep them beside it): drop them, keep the symbols for backtraces.
+          strip --strip-debug target/release/pcb-designer
           mkdir dist
           tar -czf dist/pcb-designer-${{ matrix.name }}.tar.gz -C target/release pcb-designer
       - name: Package (Windows)
