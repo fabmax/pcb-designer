@@ -345,7 +345,7 @@ fn excluded_section(
     egui::CollapsingHeader::new(RichText::new(format!("Excluded ({excluded})")).color(theme::text_dim()))
         .id_salt(id)
         .default_open(false)
-        .show(ui, |ui| {
+        .show_unindented(ui, |ui| {
             rows(ui);
             if unused > 0 {
                 ui.horizontal(|ui| {

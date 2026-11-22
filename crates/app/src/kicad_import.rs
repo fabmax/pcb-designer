@@ -651,7 +651,7 @@ impl KicadImport {
         self.download_ui(ui, syms + fps == 0);
         egui::CollapsingHeader::new(RichText::new("Library folders").color(theme::text_dim()))
             .id_salt("kicad_paths")
-            .show(ui, |ui| {
+            .show_unindented(ui, |ui| {
                 let added = self.extra.len();
                 let mut remove = None;
                 let paths = self.paths();

@@ -452,7 +452,8 @@ pub fn collapsing_note(
 }
 
 /// A collapsing header and body that opens and closes on a click anywhere on the header
-/// (its arrow, title or whatever `header` adds), not just on the arrow.
+/// (its arrow, title or whatever `header` adds), not just on the arrow. The body isn't
+/// indented (no line on its left): open, it looks like a plain section.
 pub fn collapsing_header<R>(
     ui: &mut egui::Ui,
     id: egui::Id,
@@ -461,7 +462,8 @@ pub fn collapsing_header<R>(
     body: impl FnOnce(&mut egui::Ui),
 ) {
     use egui::collapsing_header::CollapsingState;
-    let (_, head, _) = CollapsingState::load_with_default_open(ui.ctx(), id, open).show_header(ui, header).body(body);
+    let (_, head, _) =
+        CollapsingState::load_with_default_open(ui.ctx(), id, open).show_header(ui, header).body_unindented(body);
     // Registered after the header's widgets, so on top of them (the arrow included): a
     // click toggles once wherever it lands.
     let r = ui.interact(head.response.rect, id.with("header"), egui::Sense::click());
