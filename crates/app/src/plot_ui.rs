@@ -146,6 +146,16 @@ impl PlotState {
     }
 }
 
+/// How to place the cursors, in the tool bar.
+const CURSOR_HINT: &str = "Click: cursor A · Shift+click: cursor B";
+
+/// Heights in the table under the plot: the Measure row, a table row (with the grid's
+/// spacing), the named nets hint, and the margin under it all.
+const MEASURE_ROW_H: f32 = 30.0;
+const ROW_H: f32 = 27.0;
+const HINT_H: f32 = 22.0;
+const TABLE_MARGIN: f32 = 12.0;
+
 /// The handle between plot and table, and the least height of each.
 const HANDLE: f32 = 8.0;
 const MIN_PLOT: f32 = 120.0;
@@ -222,6 +232,12 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
                 export = ui.button("Export CSV…").on_hover_text("The traces shown, every point of the run").clicked();
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // How to place the cursors, always there (a hint under the plot that
+                // went away with the first cursor changed the table's height).
+                if analysis.kind != AnalysisKind::Op {
+                    ui.label(RichText::new(CURSOR_HINT).color(theme::text_dim()));
+                    ui.add_space(12.0);
+                }
                 if running {
                     ui.label(RichText::new(running_text(panel.session.progress())).color(theme::text_dim()));
                     ui.spinner();
@@ -350,13 +366,14 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         panel.csv_dialog.open(ui.ctx(), dialog, Kind::Save, csv);
     }
 
-    // Plot above, readout table below: sized to its rows (header, traces, missing ones
-    // and up to two hint lines; at most 40 % of the height) until the user drags the
-    // handle between them.
+    // Plot above, readout table below: sized to its rows (the Measure row, header,
+    // traces, missing ones and the named nets hint; at most 40 % of the height) until
+    // the user drags the handle between them.
     let avail = ui.available_height();
     let top = ui.cursor().top();
-    let table_rows = data.traces.len() + data.missing.len() + 3;
-    let auto = (table_rows as f32 * 22.0 + 20.0).min(avail * 0.4);
+    let rows = 1 + data.traces.len() + data.missing.len();
+    let hint = if analysis.probes.is_empty() { HINT_H } else { 0.0 };
+    let auto = (MEASURE_ROW_H + rows as f32 * ROW_H + hint + TABLE_MARGIN).min(avail * 0.4);
     let table_h =
         panel.table_share.map_or(auto, |s| s * avail).clamp(MIN_TABLE, (avail - MIN_PLOT - HANDLE).max(MIN_TABLE));
     let plot_h = (avail - table_h - HANDLE).max(MIN_PLOT);
@@ -970,9 +987,6 @@ fn readout(
             "The named nets; tick signals in the Simulation panel to choose.".to_string()
         };
         crate::fields::hint(ui, &text);
-    }
-    if state.cursors.iter().all(Option::is_none) {
-        crate::fields::hint(ui, "Click the plot to place cursor A, Shift+click for B.");
     }
     (hover, remove)
 }

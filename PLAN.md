@@ -721,7 +721,9 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   million points draw as a few thousand). The view (`PlotState`, per analysis, in
   memory) fits y to the visible part while the user hasn't zoomed y; a rerun keeps the
   zoom when the x range is the same. The table under the plot is sized to its rows
-  (at most 40 %) until the handle between them is dragged: then `SimPanel::table_share`
+  (constant row heights in `plot_ui.rs`, so nothing in it may come and go with the
+  cursors: the cursor hint sits in the tool bar; at most 40 %) until the handle between
+  them is dragged: then `SimPanel::table_share`
   (a share of the height, for every analysis, in memory; double-click resets it).
   Cursors snap to samples, the hover readout
   interpolates. Box zoom starts at `press_origin` (egui reports drags some pixels
