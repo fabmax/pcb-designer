@@ -32,8 +32,14 @@ fn schematic_findings_at_their_markers() {
     assert!(found.iter().any(|f| f.message == problem.message), "{found:?}");
     // Nothing far from any marker.
     assert!(at(&doc, root, Point::mm(-500.0, -500.0), TOL, None).is_empty());
-    // Hidden markers: nothing.
-    doc.set_erc_markers(false);
+    // The markers are on the ERC markers layer (in the layer menu).
+    let v = doc.view(root);
+    let erc = (0..v.scene.layer_count() as u16).find(|&i| v.scene.layer(i).name == "ERC markers").unwrap();
+    assert!(v.layer_menu().iter().any(|e| e.layer == erc));
+    assert!(v.scene.instances(erc).iter().any(|i| i.kind != render::Instance::EMPTY.kind));
+    // The ERC markers layer hidden: nothing.
+    doc.view_mut(root).set_hidden_layers(&["ERC markers".into()]);
+    assert!(!doc.view(root).erc_markers_visible());
     assert!(at(&doc, root, pos, TOL, None).iter().all(|f| f.message != problem.message));
 }
 

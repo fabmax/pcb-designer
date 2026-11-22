@@ -224,7 +224,8 @@ things to do **later**.
   rules; an ERC change makes connectivity stale, a DRC change re-runs an existing report).
   `apply_settings` (both sides) sets severities, flags excluded findings (kept, listed
   last), drops ignored ones and sorts errors first; the unconnected-pin rings, the canvas
-  markers (`View::set_erc_markers`, View menu) and the live board shorts in Messages
+  markers (the schematic's "ERC markers" layer: hidden in the layer menu, they're
+  gone from the hover tip too; never printed) and the live board shorts in Messages
   follow it too. An exclusion keeps the message it was made for, so one that matches
   nothing any more is shown as unused and can be removed.
 - **Hover tip** (`view::findings::at`, shown by the app's `findings_tip` after the
@@ -1617,7 +1618,7 @@ defers.
 - KiCad's "unfold bus".
 - ERC/DRC review: importing KiCad's exclusions (their keys are KiCad's own; reported as
   skipped); the flagged-copper line in Messages ignores DRC severities (only shorts
-  follow them); the ERC markers toggle is per session.
+  follow them).
 - Pins lying on a moved wire's inside (not at its ends) are left behind.
 - Inner-layer footprint graphics.
 - Reference and value texts: re-sync fields when the library templates change; fields

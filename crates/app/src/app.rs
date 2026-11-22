@@ -2745,11 +2745,6 @@ impl PcbApp {
             Action::RoundCorners => return self.round_corners(),
             Action::ConvertToPolygon => return self.convert_to_polygon(),
             Action::MoveToSheet => return self.move_to_sheet(),
-            Action::ToggleErcMarkers => {
-                let on = !self.doc().erc_markers();
-                self.doc_mut().set_erc_markers(on);
-                return self.set_status(if on { "ERC markers shown" } else { "ERC markers hidden" });
-            }
             Action::CreateArray => {
                 return self.set_status("Select one pad or pin in a footprint or symbol to make an array of");
             }
@@ -2934,7 +2929,6 @@ impl PcbApp {
             | Action::SchNoConnect
             | Action::SchPowerFlag
             | Action::SchProbe
-            | Action::ToggleErcMarkers
             | Action::NextCorners
             | Action::RoundCorners
             | Action::MoveToSheet => None,
@@ -3031,7 +3025,6 @@ impl PcbApp {
             agent_port: self.agent.port,
             headless_command: self.headless_command(),
             move_to_sheet: !self.movable_to_sheet().is_empty(),
-            erc_markers: self.doc().erc_markers(),
             sim_running: self.sim.session.running().is_some(),
         })
     }

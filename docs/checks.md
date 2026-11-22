@@ -3,8 +3,9 @@
 The schematic is checked as you edit (ERC); the board's design rules when you press
 **Run DRC**. Findings are listed in the Messages panel (⌘3), errors before warnings, with a
 tab each for the schematic, the board, the libraries and the simulation. Errors and
-warnings are marked on the canvas (View → ERC markers turns the schematic's off). Click a
-message to show its objects.
+warnings are marked on the canvas (on the schematic, the **ERC markers** layer: hide it in
+the layer menu to turn them off; prints leave them out). Click a message to show its
+objects.
 
 - **Severities:** each rule is an error, a warning or ignored: ERC rules and the pin
   conflict matrix (which pin kinds may share a net, defaults as in KiCad) in the Schematic

@@ -39,8 +39,6 @@ pub struct Document {
     /// Library objects whose placed symbols and footprints still show the old version (see
     /// [`update_connectivity`](Self::update_connectivity)).
     stale_library: Vec<ObjectId>,
-    /// ERC markers are shown on the sheets.
-    erc_markers: bool,
     /// The DRC settings changed: the last check is redone with them.
     drc_settings_changed: bool,
     /// How long redrawing the users of a library edit took last time.
@@ -118,7 +116,6 @@ impl Document {
             copper_time: Duration::ZERO,
             drc: None,
             stale_library: Vec::new(),
-            erc_markers: true,
             drc_settings_changed: false,
             library_time: Duration::ZERO,
             busy: false,
@@ -470,19 +467,6 @@ impl Document {
         self.drc.as_ref()
     }
 
-    /// Show or hide the ERC markers on the schematic sheets.
-    pub fn set_erc_markers(&mut self, on: bool) {
-        self.erc_markers = on;
-        for view in &mut self.sheets {
-            view.set_erc_markers(on);
-            view.set_connectivity(&self.connectivity);
-        }
-    }
-
-    pub fn erc_markers(&self) -> bool {
-        self.erc_markers
-    }
-
     /// Forget the design rule check and its markers.
     pub fn clear_drc(&mut self) {
         self.drc = None;
@@ -794,7 +778,6 @@ impl Document {
             let has_view = self.sheets.iter().any(|v| v.id == id);
             if exists && !has_view {
                 let mut view = View::new(id, project);
-                view.set_erc_markers(self.erc_markers);
                 view.set_connectivity(&self.connectivity);
                 view.set_sim(project, &self.connectivity, &self.sim);
                 self.sheets.push(view);

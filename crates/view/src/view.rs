@@ -107,6 +107,8 @@ struct SchLayers {
     wires: RLayer,
     labels: RLayer,
     text: RLayer,
+    /// Markers of ERC findings (not printed).
+    erc: RLayer,
     /// Probes and operating point values of a simulation (not printed).
     sim: RLayer,
 }
@@ -144,8 +146,6 @@ pub struct View {
     nets: Vec<String>,
     /// Positions of design rule violations (board).
     drc: Vec<(Point, Severity)>,
-    /// Draw markers of ERC findings (schematic sheets).
-    erc_markers: bool,
     /// Cross-probed objects.
     probed: Vec<ObjectId>,
     /// What the net labels were drawn for (board); None: none drawn, or out of date.
@@ -206,7 +206,6 @@ impl View {
             hover: None,
             nets: Vec::new(),
             drc: Vec::new(),
-            erc_markers: true,
             probed: Vec::new(),
             labels: None,
         };
@@ -227,6 +226,7 @@ impl View {
                     wires: scene.add_layer("Wires"),
                     labels: scene.add_layer("Labels"),
                     text: scene.add_layer("Text"),
+                    erc: scene.add_layer("ERC markers"),
                     sim: scene.add_layer("Simulation"),
                 };
                 scene.layer_mut(l.pin_text).min_zoom = 3.0;
@@ -305,6 +305,7 @@ impl View {
                 e(l.labels, Some(p.sch_label), 1),
                 e(l.text, Some(p.sch_text), 1),
                 e(l.frame, Some(p.sch_frame), 2),
+                e(l.erc, Some(p.drc_marker), 3),
                 e(l.sim, Some(p.sim_value), 3),
             ],
             Layers::Board(b) => {
@@ -581,13 +582,10 @@ impl View {
             out.push((l.pins, Instance::circle_outline(mmf(p), 0.4, 0.12, pal().sch_pin)));
         }
         // Findings about objects drawn here (unconnected pins have their rings).
-        if self.erc_markers {
-            let layer = self.hover_layer;
-            for f in c.problems.iter().filter(|f| !f.excluded && f.rule != ErcRule::UnconnectedPin) {
-                let here = f.objects.iter().any(|&o| self.index.bounds(o).is_some());
-                if let (true, Some(p)) = (here, f.pos) {
-                    push_marker(&mut out, layer, p, f.severity);
-                }
+        for f in c.problems.iter().filter(|f| !f.excluded && f.rule != ErcRule::UnconnectedPin) {
+            let here = f.objects.iter().any(|&o| self.index.bounds(o).is_some());
+            if let (true, Some(p)) = (here, f.pos) {
+                push_marker(&mut out, l.erc, p, f.severity);
             }
         }
         self.scene.set_item(CONNECTIVITY_ITEM, out);
@@ -604,13 +602,13 @@ impl View {
     }
 
     /// The instances of the drawing, back to front, without the overlays (hover,
-    /// selection) and simulation results: what a print shows.
+    /// selection), ERC markers and simulation results: what a print shows.
     pub fn drawing(&self) -> Vec<Instance> {
-        let sim = match &self.layers {
-            Layers::Sch(l) => Some(l.sim),
-            Layers::Board(_) => None,
+        let skip = match &self.layers {
+            Layers::Sch(l) => vec![l.erc, l.sim],
+            Layers::Board(_) => Vec::new(),
         };
-        self.user_layers().filter(|&l| Some(l) != sim).flat_map(|l| self.scene.instances(l).iter().copied()).collect()
+        self.user_layers().filter(|l| !skip.contains(l)).flat_map(|l| self.scene.instances(l).iter().copied()).collect()
     }
 
     /// Show a simulation's probes and values (schematic sheets; see
@@ -628,9 +626,9 @@ impl View {
         self.scene.set_item(SIM_ITEM, p.out);
     }
 
-    /// Show or hide the ERC markers (call [`View::set_connectivity`] afterwards).
-    pub fn set_erc_markers(&mut self, on: bool) {
-        self.erc_markers = on;
+    /// The ERC markers layer is shown (schematic sheets).
+    pub fn erc_markers_visible(&self) -> bool {
+        matches!(&self.layers, Layers::Sch(l) if self.scene.layer(l.erc).visible)
     }
 
     /// Show what a schematic creation tool would add (empty slice clears).

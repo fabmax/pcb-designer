@@ -29,7 +29,7 @@ pub fn at(doc: &Document, view: ViewId, p: Point, tol: Coord, hovered: Option<Ob
     match view {
         ViewId::Sheet(_) => {
             let v = doc.view(view);
-            let markers = doc.erc_markers();
+            let markers = v.erc_markers_visible();
             for f in doc.connectivity().problems.iter().filter(|f| !f.excluded) {
                 if !f.objects.iter().any(|&o| v.index.bounds(o).is_some()) {
                     continue;
