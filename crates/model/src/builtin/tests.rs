@@ -164,6 +164,10 @@ fn every_part_simulates() {
         assert_eq!(part.category, "Simulation");
         assert!(part.variants.iter().all(|v| v.footprint.is_none()), "{} is off the board", part.name);
     }
+    // The simulation passives share the board parts' symbols.
+    for (sim, board) in [(PART_RESISTOR_SIM, PART_RESISTOR), (PART_CAPACITOR_SIM, PART_CAPACITOR)] {
+        assert_eq!(lib.parts.get(sim).unwrap().units, lib.parts.get(board).unwrap().units);
+    }
 }
 
 #[test]
@@ -236,9 +240,9 @@ fn categories() {
     let lib = builtin_library();
     for part in lib.parts.iter() {
         assert!(!part.category.is_empty(), "{} has no category", part.name);
-        for u in &part.units {
-            assert_eq!(lib.symbols.get(u.symbol).unwrap().category, part.category, "{}'s symbol", part.name);
-        }
+    }
+    for s in lib.symbols.iter() {
+        assert!(!s.category.is_empty(), "symbol {} has no category", s.name);
     }
     for f in lib.footprints.iter() {
         let tht = f.pads.iter().any(|p| matches!(p.kind, PadKind::ThroughHole { .. }));

@@ -46,7 +46,8 @@ things to do **later**.
   them (parts and symbols share one vocabulary, footprints have their own).
   `Transaction::normalized` trims them, so they match exactly. A part's category is part
   of its content, so "Update from library" takes it. KiCad imports leave all three
-  empty. A part made from a symbol (`LibraryDoc::new_part`) takes the symbol's category.
+  empty. A part made from a symbol (`LibraryDoc::new_part`) takes the symbol's category; after
+  that they're independent (several parts may share a symbol across categories).
 - Schematic: design-wide `Component`s (refdes, value, part, variant), units placed as
   `SymbolInstance`s; every graphic carries its sheet id. A unit of a part with several
   units shows its reference as `U1-A` (`Part::unit_reference`: the unit's name, its
@@ -672,8 +673,8 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   2N7002/BSS84 as VDMOS, a Butterworth–Van Dyke crystal with `f=${VALUE}`, ferrite and
   fuse as 0.1 Ω) and adds `VSource` / `ISource` and `Resistor_Sim` / `Capacitor_Sim` /
   `Inductor_Sim` (Simulation category, a "No footprint" variant only, so off the board by
-  the existing rule). The `_Sim` passives get copies of the passive symbols, renamed:
-  a symbol is in its part's category (test `categories`). The hand-made parts' texts
+  the existing rule). The `_Sim` passives share the board passives' symbols (a
+  symbol's category needn't match its parts': it stays in Passives). The hand-made parts' texts
   (behavioural op amp, LM358, regulators, quad NAND) are `pub` there and stored in the
   file; changing one means setting it again on the part (a one-off program or the app),
   then `gen_builtin`. `every_part_simulates` checks every part has a model with real

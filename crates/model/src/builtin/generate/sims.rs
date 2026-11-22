@@ -196,18 +196,15 @@ pub(super) fn add(b: &mut Builder) {
             source: None,
         });
     }
-    // The passives again without footprint, e.g. as a load on a test bench sheet. Their
-    // symbols are copies of the board parts' (a symbol is in its part's category).
-    for (symbol, prefix, value, device, what) in [
-        (sym::resistor(), "R", "1k", SimDevice::Resistor, "Resistor"),
-        (sym::capacitor(), "C", "100n", SimDevice::Capacitor, "Capacitor"),
-        (sym::inductor(), "L", "10u", SimDevice::Inductor, "Inductor"),
+    // The passives again without footprint, e.g. as a load on a test bench sheet, with
+    // the board parts' symbols (which stay in Passives).
+    for (what, prefix, value, device) in [
+        ("Resistor", "R", "1k", SimDevice::Resistor),
+        ("Capacitor", "C", "100n", SimDevice::Capacitor),
+        ("Inductor", "L", "10u", SimDevice::Inductor),
     ] {
-        let name = format!("{}_Sim", symbol.name);
-        let pins =
-            symbol.pins.iter().map(|p| Pin { id: gid(&format!("sym/{name}/pin/{}", p.number)), ..p.clone() }).collect();
-        let unit = gid(&format!("sym/{name}"));
-        b.symbol(Symbol { id: unit, name: name.clone(), category: "Simulation".into(), pins, ..symbol });
+        let unit = *b.symbols.get(what).unwrap_or_else(|| panic!("no symbol {what}"));
+        let name = format!("{what}_Sim");
         b.lib.parts.insert(Part {
             id: gid(&format!("part/{name}")),
             name: name.clone(),
