@@ -380,8 +380,17 @@ fn the_library_streams_and_stops() {
     assert_eq!(live.range, Some((0.0, 100.0)));
     assert!(live.result.voltage("OUT").is_some());
     assert_eq!(live.result.scale().unwrap().name, "time");
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    let p = s.progress().unwrap();
+    // ngspice reports progress in 0.1% steps, at most every 100 ms: the first can come
+    // a while after the first points (about 250 ms here, longer on a slow CI runner).
+    let t = std::time::Instant::now();
+    let p = loop {
+        if let Some(p) = s.progress() {
+            break p;
+        }
+        assert!(s.poll().is_none(), "{:?}", s.attempt());
+        assert!(t.elapsed().as_secs() < 30, "no progress");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
     assert!((0.0..0.5).contains(&p), "{p}");
     s.stop();
     let t = std::time::Instant::now();
