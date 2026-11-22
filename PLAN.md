@@ -1594,6 +1594,12 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   the scene. Gotcha: a new canvas only receives the scene's incremental uploads, so it
   must start with a scene that wasn't uploaded elsewhere (a fresh `ItemView`, or keep
   the canvas with its scene).
+  - **Crosshairs** (View → Crosshairs, Shift+X, `Settings::crosshairs`): `Canvas::ui`
+    draws them with egui at the raw pointer (not snapped) while the canvas is hovered,
+    under the overlays drawn after it. The switch is a global (`canvas::set_crosshairs`,
+    set each frame) so every `Canvas::ui` (editors, Gerber viewer) follows it without
+    threading the setting through; previews only `paint` and never show them. Colour:
+    `Palette::crosshair`, the 45° lines at half strength, one physical pixel wide.
 - **Previews** (`preview.rs`): `Preview` is a view-only `ItemView` + `Canvas` in a box
   (fitted every frame to `ItemView::content_bounds`, no grid, axis or origin, square
   corners with a border, a hint or error text when empty). It restyles itself on a

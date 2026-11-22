@@ -1,6 +1,6 @@
 //! Canvas widget: hosts a GPU rendered [`Scene`] inside egui and handles navigation.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use egui_wgpu::{CallbackResources, CallbackTrait, ScreenDescriptor};
@@ -10,6 +10,12 @@ use render::{Camera, Scene, SceneUpload};
 /// Ids of dropped canvases whose GPU scenes are freed by the next `prepare`.
 static RELEASED: Mutex<Vec<u64>> = Mutex::new(Vec::new());
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+/// Canvases draw crosshairs at the pointer (View → Crosshairs).
+static CROSSHAIRS: AtomicBool = AtomicBool::new(false);
+
+pub fn set_crosshairs(on: bool) {
+    CROSSHAIRS.store(on, Ordering::Relaxed);
+}
 
 /// Shared GPU state, stored in egui-wgpu's callback resources.
 pub struct CanvasResources {
@@ -93,6 +99,11 @@ impl Canvas {
         }
         self.handle_input(ui, &response, rect);
         self.paint(ui, rect, scene);
+        if CROSSHAIRS.load(Ordering::Relaxed)
+            && let Some(at) = response.hover_pos()
+        {
+            draw_crosshairs(ui, rect, at);
+        }
         response
     }
 
@@ -257,6 +268,23 @@ pub fn pointer_input(
 
 /// Draw the interaction's selection box: solid blue for "inside", dashed green for
 /// "crossing".
+/// Crosshairs through `at` across `clip`: horizontal and vertical lines, and fainter 45°
+/// ones.
+fn draw_crosshairs(ui: &egui::Ui, clip: egui::Rect, at: egui::Pos2) {
+    use egui::{Stroke, vec2};
+    let color = crate::theme::color(view::style::pal().crosshair);
+    let painter = ui.painter_at(clip);
+    // One physical pixel wide.
+    let width = 1.0 / ui.ctx().pixels_per_point();
+    let stroke = Stroke::new(width, color);
+    painter.hline(clip.x_range(), at.y, stroke);
+    painter.vline(at.x, clip.y_range(), stroke);
+    let faint = Stroke::new(width, color.gamma_multiply(0.5));
+    let d = clip.width() + clip.height();
+    painter.line_segment([at - vec2(d, d), at + vec2(d, d)], faint);
+    painter.line_segment([at - vec2(d, -d), at + vec2(d, -d)], faint);
+}
+
 pub fn draw_box(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, r: model::Rect, crossing: bool) {
     use crate::theme;
     let a = canvas.world_to_screen(r.min.to_mm());

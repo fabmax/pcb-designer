@@ -2673,6 +2673,11 @@ impl PcbApp {
             Action::StopSimulation => return self.sim.session.stop(),
             Action::ShowSimNetlist => return self.sim.show_window(false),
             Action::ShowSimPlot => return self.open_sim_tab(true),
+            Action::ToggleCrosshairs => {
+                self.settings.crosshairs = !self.settings.crosshairs;
+                canvas::set_crosshairs(self.settings.crosshairs);
+                return self.save_settings();
+            }
             _ => {}
         }
         if matches!(action, Action::SchFindPart | Action::PcbFindPart) {
@@ -2806,7 +2811,8 @@ impl PcbApp {
             | Action::RunSimulation
             | Action::StopSimulation
             | Action::ShowSimNetlist
-            | Action::ShowSimPlot => return,
+            | Action::ShowSimPlot
+            | Action::ToggleCrosshairs => return,
         };
         let view = self.active;
         if key_action == KeyAction::Delete && !self.confirm_sheet_delete(&self.panes.selection(view)) {
@@ -2958,7 +2964,8 @@ impl PcbApp {
             | Action::RunSimulation
             | Action::StopSimulation
             | Action::ShowSimNetlist
-            | Action::ShowSimPlot => None,
+            | Action::ShowSimPlot
+            | Action::ToggleCrosshairs => None,
         };
         if let Some(m) = msg {
             self.set_status(m);
@@ -3026,6 +3033,7 @@ impl PcbApp {
             headless_command: self.headless_command(),
             move_to_sheet: !self.movable_to_sheet().is_empty(),
             sim_running: self.sim.session.running().is_some(),
+            crosshairs: self.settings.crosshairs,
         })
     }
 
@@ -5403,6 +5411,7 @@ impl eframe::App for PcbApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.track_window(&ctx);
+        canvas::set_crosshairs(self.settings.crosshairs);
         self.sync_tool_memory();
         self.sync_libraries();
         self.handle_close(&ctx);

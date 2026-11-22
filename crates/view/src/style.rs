@@ -36,6 +36,8 @@ pub struct Palette {
     pub background: Color,
     pub grid: Color,
     pub axis: Color,
+    /// Crosshairs at the pointer; the 45° lines at half its alpha.
+    pub crosshair: Color,
 
     pub sch_wire: Color,
     pub sch_body: Color,
@@ -117,6 +119,7 @@ pub static DARK: Palette = Palette {
     background: Color::rgb(0x16, 0x18, 0x1d),
     grid: Color::rgba(0x5a, 0x60, 0x70, 0xb0),
     axis: Color::rgba(0x80, 0x88, 0x98, 0x90),
+    crosshair: Color::rgba(0xc8, 0xd0, 0xdc, 0xa0),
 
     sch_wire: Color::rgb(0x5f, 0xd3, 0xa0),
     sch_body: Color::rgb(0xe0, 0xa0, 0x60),
@@ -184,6 +187,7 @@ pub static LIGHT: Palette = Palette {
     background: Color::rgb(0xf5, 0xf4, 0xef),
     grid: Color::rgba(0x8a, 0x8f, 0x9a, 0xa0),
     axis: Color::rgba(0x60, 0x66, 0x74, 0x90),
+    crosshair: Color::rgba(0x30, 0x36, 0x44, 0xa0),
 
     sch_wire: Color::rgb(0x0f, 0x7a, 0x4a),
     sch_body: Color::rgb(0x8c, 0x1c, 0x1c),

@@ -19,6 +19,12 @@ open in tabs, which can be split side by side by dragging them. Projects are fol
   it simulates its bias point, a 1 kHz sine into the speaker and its frequency response
   (about 12 dB from 35 Hz to 70 kHz).
 
+## Crosshairs
+
+**View → Crosshairs** (Shift+X) draws thin lines across the editor through the pointer:
+horizontal, vertical and, fainter, at 45°. They help line things up across the view.
+The setting is remembered.
+
 ## Panels
 
 Tool windows sit in narrow icon bars on the window edges, IntelliJ style. Click an icon (or
