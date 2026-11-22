@@ -233,8 +233,7 @@ impl PartsPanel {
             self.query.clear();
         }
         let field_keys = nav_list::field_keys(ui, search_id());
-        let field = egui::TextEdit::singleline(&mut self.query).id(search_id()).hint_text("Search parts");
-        crate::fields::search_field(ui, field);
+        crate::fields::search_field(ui, &mut self.query, |e| e.id(search_id()).hint_text("Search parts"));
         if std::mem::take(&mut self.focus_search) {
             ui.memory_mut(|m| m.request_focus(search_id()));
             if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), search_id()) {

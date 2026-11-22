@@ -1457,7 +1457,10 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   last, since the tool sets its help), `section` (bold 14 pt, no space at the panel
   top), `collapsing` (long lists), `hint` (one line), `info_button` (help longer than
   a line: hover shows it, a click pins it), `check_row` (boolean: label left, bare
-  box), `search_field` + `summary` (list panels). The Settings window keeps its own
+  box), `search_field` + `summary` (list panels). Every search or filter field is
+  `clearable`: a round × inside its right end while it has text (the field's right
+  margin keeps text clear of it; added after the field so it gets the click; a click
+  clears, keeps the focus and marks the field changed). The Settings window keeps its own
   wide layout (`Rows`), the part form its own field widths. Panel titles, tab titles and
   section titles share `theme::TITLE_SIZE`; panel title rows and the tab bar have the
   `panel_header` shade and `TITLE_ROW_HEIGHT` (the dock paints the shade behind the row

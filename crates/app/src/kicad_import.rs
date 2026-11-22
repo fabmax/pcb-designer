@@ -803,8 +803,7 @@ impl KicadImport {
         };
         // Arrows and Enter in the field move and add in the results.
         let field_keys = nav_list::field_keys(ui, search_id());
-        let field = egui::TextEdit::singleline(&mut self.query).id(search_id());
-        crate::fields::search_field(ui, field.hint_text(hint_text));
+        crate::fields::search_field(ui, &mut self.query, |e| e.id(search_id()).hint_text(hint_text));
         let key = (self.query.clone(), self.kind);
         if self.results_for.as_ref() != Some(&key) {
             let q = self.query.trim().to_string();

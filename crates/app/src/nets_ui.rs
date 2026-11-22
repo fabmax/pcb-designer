@@ -140,7 +140,7 @@ impl NetsPanel {
             self.cache = Some((doc.revision, rows(doc)));
         }
         let all = &self.cache.as_ref().expect("filled").1;
-        crate::fields::search_field(ui, egui::TextEdit::singleline(&mut self.query).hint_text("Filter nets"));
+        crate::fields::search_field(ui, &mut self.query, |e| e.hint_text("Filter nets"));
         let q = self.query.to_lowercase();
         let shown: Vec<&NetRow> = all.iter().filter(|r| q.is_empty() || r.name.to_lowercase().contains(&q)).collect();
         let unrouted: usize = all.iter().filter(|r| matches!(r.routing, Routing::Unrouted(_))).count();

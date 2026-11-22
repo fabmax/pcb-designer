@@ -811,7 +811,7 @@ impl SimPanel {
         if stale {
             ui.label(RichText::new("Changed since the run · run again to update").color(theme::warn()).small());
         }
-        crate::fields::search_field(ui, egui::TextEdit::singleline(&mut self.filter).hint_text("Filter"));
+        crate::fields::search_field(ui, &mut self.filter, |e| e.hint_text("Filter"));
         ui.checkbox(&mut self.show_all, "Show all nets");
         let conn = doc.connectivity();
         let probed: HashSet<&str> = a

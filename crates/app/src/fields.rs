@@ -459,16 +459,59 @@ pub fn check_row(ui: &mut egui::Ui, k: &str, value: &mut bool) -> egui::Response
 /// Size of a list panel's summary line.
 const SUMMARY_SIZE: f32 = 12.0;
 
-/// A list panel's search field: a search icon and the field `edit` (full width).
-pub fn search_field(ui: &mut egui::Ui, edit: egui::TextEdit) -> egui::Response {
+/// A list panel's search field: a search icon and a [`clearable`] field over `text`
+/// (full width), set up by `edit` (id, hint, keys).
+pub fn search_field(
+    ui: &mut egui::Ui,
+    text: &mut String,
+    edit: impl FnOnce(egui::TextEdit<'_>) -> egui::TextEdit<'_>,
+) -> egui::Response {
     use crate::icons::{self, Icon};
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         let (r, _) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
         icons::paint(ui.painter(), r, Icon::Search, theme::text_dim());
-        ui.add(edit.desired_width(f32::INFINITY))
+        clearable(ui, text, |e| edit(e).desired_width(f32::INFINITY))
     })
     .inner
+}
+
+/// Size of the clear button in a [`clearable`] field.
+const CLEAR: f32 = 14.0;
+
+/// A single-line field over `text` (set up by `edit`) with a round × at its right end
+/// while it has text: a click clears it, keeps the focus in the field and counts as a
+/// change of the field's response.
+pub fn clearable(
+    ui: &mut egui::Ui,
+    text: &mut String,
+    edit: impl FnOnce(egui::TextEdit<'_>) -> egui::TextEdit<'_>,
+) -> egui::Response {
+    let pad = ui.spacing().button_padding;
+    // Room for the button at the right, so text never runs under it.
+    let margin =
+        egui::Margin { left: pad.x as i8, right: (CLEAR + 2.0 * 5.0) as i8, top: pad.y as i8, bottom: pad.y as i8 };
+    let mut r = ui.add(edit(egui::TextEdit::singleline(text)).margin(margin));
+    if text.is_empty() {
+        return r;
+    }
+    // Added after the field: on top of it, so it gets the click.
+    let center = egui::pos2(r.rect.right() - 5.0 - CLEAR / 2.0, r.rect.center().y);
+    let rect = egui::Rect::from_center_size(center, egui::vec2(CLEAR, CLEAR));
+    let button = ui.interact(rect, r.id.with("clear"), egui::Sense::click());
+    let painter = ui.painter();
+    let fill = if button.hovered() { ui.visuals().text_color() } else { theme::text_dim() };
+    painter.circle_filled(center, CLEAR / 2.0, fill.gamma_multiply(0.8));
+    let d = CLEAR * 0.18;
+    let stroke = egui::Stroke::new(1.5, ui.visuals().extreme_bg_color);
+    painter.line_segment([center + egui::vec2(-d, -d), center + egui::vec2(d, d)], stroke);
+    painter.line_segment([center + egui::vec2(-d, d), center + egui::vec2(d, -d)], stroke);
+    if button.on_hover_text("Clear").on_hover_cursor(egui::CursorIcon::Default).clicked() {
+        text.clear();
+        r.request_focus();
+        r.mark_changed();
+    }
+    r
 }
 
 /// A list panel's summary line ("5 nets, 2 not fully routed"), below its search field.

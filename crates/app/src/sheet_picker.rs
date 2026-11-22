@@ -39,9 +39,9 @@ impl SheetPicker {
         let n = self.ids.len();
         let title = if n == 1 { "Move 1 object to sheet".to_string() } else { format!("Move {n} objects to sheet") };
         let modal = theme::dialog(ctx, egui::Id::unique("sheet_picker"), &title, 360.0, |ui| {
-            let edit = ui.add(
-                egui::TextEdit::singleline(&mut self.filter).hint_text("Filter sheets").desired_width(f32::INFINITY),
-            );
+            let edit = crate::fields::clearable(ui, &mut self.filter, |e| {
+                e.hint_text("Filter sheets").desired_width(f32::INFINITY)
+            });
             if !self.focused {
                 edit.request_focus();
                 self.focused = true;

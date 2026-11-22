@@ -974,17 +974,17 @@ impl ProjectPanel {
         let before = self.state.query().unwrap_or_default().to_string();
         let changed;
         {
-            let edit = egui::TextEdit::singleline(self.state.query_mut())
-                .id(search_id())
-                .hint_text("Search")
-                // Esc and ↑/↓ stay with the field (they go to the tree, see above).
-                .event_filter(egui::EventFilter {
-                    horizontal_arrows: true,
-                    vertical_arrows: true,
-                    escape: true,
-                    tab: false,
-                });
-            let r = crate::fields::search_field(ui, edit);
+            let r = crate::fields::search_field(ui, self.state.query_mut(), |e| {
+                e.id(search_id())
+                    .hint_text("Search")
+                    // Esc and ↑/↓ stay with the field (they go to the tree, see above).
+                    .event_filter(egui::EventFilter {
+                        horizontal_arrows: true,
+                        vertical_arrows: true,
+                        escape: true,
+                        tab: false,
+                    })
+            });
             if std::mem::take(&mut self.focus_search) {
                 r.request_focus();
                 // Typing in the tree started the search: continue after its text.

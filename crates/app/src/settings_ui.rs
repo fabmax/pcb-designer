@@ -307,11 +307,9 @@ impl SettingsWindow {
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
                     ui.set_width(190.0);
-                    let field = egui::TextEdit::singleline(&mut self.query)
-                        .id(search_id())
-                        .hint_text("Search settings")
-                        .desired_width(f32::INFINITY);
-                    let r = ui.add(field);
+                    let r = crate::fields::clearable(ui, &mut self.query, |e| {
+                        e.id(search_id()).hint_text("Search settings").desired_width(f32::INFINITY)
+                    });
                     if std::mem::take(&mut self.focus_search) {
                         r.request_focus();
                     }

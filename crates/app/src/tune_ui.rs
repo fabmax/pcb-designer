@@ -193,7 +193,7 @@ fn add_menu(ui: &mut Ui, project: &Project, rows: &[TuneRow]) -> Option<TunePara
     ui.menu_button("Tune…", |ui| {
         let id = egui::Id::unique("tune_filter");
         let mut filter = ui.data_mut(|d| d.get_temp::<String>(id).unwrap_or_default());
-        let r = ui.add(egui::TextEdit::singleline(&mut filter).hint_text("Filter").desired_width(180.0));
+        let r = crate::fields::clearable(ui, &mut filter, |e| e.hint_text("Filter").desired_width(180.0));
         if !r.has_focus() && filter.is_empty() {
             r.request_focus();
         }
