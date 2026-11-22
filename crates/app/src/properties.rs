@@ -1230,12 +1230,15 @@ fn exclude_many(ui: &mut egui::Ui, cx: &mut Ctx, ids: &[ObjectId]) {
         }
     }
     let mut all = comps.iter().all(|c| c.sim.exclude);
-    crate::fields::section(ui, "Simulation", None);
+    let note = if all { "excluded" } else { "" };
     let mut changed = false;
-    grid(ui, |ui| {
-        changed = crate::fields::check_row(ui, "Exclude", &mut all)
-            .on_hover_text("Left out of the netlist, as if they weren't there")
-            .changed();
+    // Closed at first, like a single component's (shares its open state).
+    crate::fields::collapsing_note(ui, "Simulation", note, "sim_component", false, |ui| {
+        grid(ui, |ui| {
+            changed = crate::fields::check_row(ui, "Exclude", &mut all)
+                .on_hover_text("Left out of the netlist, as if they weren't there")
+                .changed();
+        });
     });
     if changed {
         let objects = comps

@@ -414,18 +414,65 @@ fn label_at(ui: &mut egui::Ui, text: &str, top: bool) {
     ui.painter().galley(egui::pos2(rect.left(), y), galley, color);
 }
 
-/// A collapsible section (long lists): its header looks like a [`section`] title.
+/// A collapsible section (long lists), closed at first: its header looks like a
+/// [`section`] title.
 pub fn collapsing(
     ui: &mut egui::Ui,
     title: &str,
     salt: impl std::hash::Hash + std::fmt::Debug,
     add: impl FnOnce(&mut egui::Ui),
 ) {
+    collapsing_note(ui, title, "", salt, false, add);
+}
+
+/// A collapsible section whose header looks like a [`section_note`] title (the note says
+/// what's inside while it's closed).
+pub fn collapsing_note(
+    ui: &mut egui::Ui,
+    title: &str,
+    note: &str,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    open: bool,
+    add: impl FnOnce(&mut egui::Ui),
+) {
     space_above_section(ui);
     let id = ui.make_persistent_id(salt);
-    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false)
-        .show_header(ui, |ui| theme::bold_label(ui, title, SECTION_SIZE, ui.visuals().strong_text_color()))
-        .body(add);
+    collapsing_header(
+        ui,
+        id,
+        open,
+        |ui| {
+            theme::bold_label(ui, title, SECTION_SIZE, ui.visuals().strong_text_color());
+            if !note.is_empty() {
+                ui.label(RichText::new(note).color(theme::text_dim()));
+            }
+        },
+        add,
+    );
+}
+
+/// A collapsing header and body that opens and closes on a click anywhere on the header
+/// (its arrow, title or whatever `header` adds), not just on the arrow.
+pub fn collapsing_header<R>(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    open: bool,
+    header: impl FnOnce(&mut egui::Ui) -> R,
+    body: impl FnOnce(&mut egui::Ui),
+) {
+    use egui::collapsing_header::CollapsingState;
+    let (_, head, _) = CollapsingState::load_with_default_open(ui.ctx(), id, open).show_header(ui, header).body(body);
+    // Registered after the header's widgets, so on top of them (the arrow included): a
+    // click toggles once wherever it lands.
+    let r = ui.interact(head.response.rect, id.with("header"), egui::Sense::click());
+    if r.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    if r.clicked() {
+        let mut state = CollapsingState::load_with_default_open(ui.ctx(), id, open);
+        state.toggle(ui);
+        state.store(ui.ctx());
+    }
 }
 
 /// A read-only row.

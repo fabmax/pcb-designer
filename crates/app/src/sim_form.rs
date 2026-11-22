@@ -356,8 +356,36 @@ impl ComponentForm {
     /// component.
     pub fn ui(&mut self, ui: &mut egui::Ui, project: &Project, c: &Component) -> Option<Component> {
         let part = project.library.parts.get(c.part)?;
+        let unit = |m: &SimModel| if m.device == SimDevice::VoltageSource { "V" } else { "A" };
+        // What's inside, for the header of the (usually closed) section.
+        let note = match &part.sim {
+            None => "no model".to_string(),
+            Some(m) if m.device == SimDevice::Ignore => "not simulated".to_string(),
+            _ if c.sim.exclude => "excluded".to_string(),
+            Some(m) if matches!(m.device, SimDevice::VoltageSource | SimDevice::CurrentSource) => {
+                c.sim.source.clone().unwrap_or_default().describe(unit(m))
+            }
+            _ => match c.sim.params.len() {
+                0 => String::new(),
+                1 => "1 override".to_string(),
+                n => format!("{n} overrides"),
+            },
+        };
+        let mut out = None;
+        fields::collapsing_note(ui, "Simulation", &note, "sim_component", false, |ui| {
+            out = self.body(ui, part, c, unit);
+        });
+        out
+    }
+
+    fn body(
+        &mut self,
+        ui: &mut egui::Ui,
+        part: &Part,
+        c: &Component,
+        unit: impl Fn(&SimModel) -> &'static str,
+    ) -> Option<Component> {
         let mut new = c.clone();
-        fields::section(ui, "Simulation", None);
         let Some(model) = &part.sim else {
             hint(ui, "No model: edit the part to add one. Left out of simulations, with a warning.");
             return None;
@@ -372,9 +400,8 @@ impl ComponentForm {
         });
         match &model.device {
             SimDevice::VoltageSource | SimDevice::CurrentSource => {
-                let unit = if model.device == SimDevice::VoltageSource { "V" } else { "A" };
                 let source = new.sim.source.get_or_insert_with(Source::default);
-                self.source_ui(ui, c.id, source, unit);
+                self.source_ui(ui, c.id, source, unit(model));
                 if new.sim.source == Some(Source::default()) {
                     new.sim.source = None;
                 }

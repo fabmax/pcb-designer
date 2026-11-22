@@ -192,8 +192,10 @@ Model problems show in the library's issues.
 
 ### A component's model
 
-Properties → **Simulation**: **Exclude from simulation**, parameter overrides (empty: the
-part's value, shown greyed), and for sources the waveform with its fields and a preview.
+Properties → **Simulation** (closed until you open it; its title says what's set:
+*excluded*, a source's waveform, the number of overrides): **Exclude from simulation**,
+parameter overrides (empty: the part's value, shown greyed), and for sources the waveform
+with its fields and a preview.
 
 ## Problems
 

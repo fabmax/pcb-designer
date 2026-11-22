@@ -57,17 +57,19 @@ pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, url: Option<&str>, err
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (i, e) in entries.iter().enumerate().rev() {
             let id = ui.make_persistent_id(("activity", i, e.at));
-            let state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false);
-            state
-                .show_header(ui, |ui| {
+            crate::fields::collapsing_header(
+                ui,
+                id,
+                false,
+                |ui| {
                     let when = ago(now.duration_since(e.at).as_secs());
                     cols.cell(ui, cols.when, RichText::new(when).color(theme::text_dim()).size(SMALL));
                     cols.cell(ui, cols.tool, RichText::new(&e.tool).monospace().size(TOOL));
                     let (status, color) = status(e);
                     cols.cell(ui, cols.result, RichText::new(status).color(color));
                     ui.add(egui::Label::new(what(ui, e)).truncate());
-                })
-                .body(|ui| {
+                },
+                |ui| {
                     ui.label(RichText::new("Arguments").strong());
                     ui.label(RichText::new(&e.args).monospace().size(11.5));
                     match &e.result {
@@ -81,7 +83,8 @@ pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, url: Option<&str>, err
                         }
                         None => {}
                     }
-                });
+                },
+            );
         }
     });
     act

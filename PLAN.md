@@ -1542,8 +1542,12 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   these, not `egui::ComboBox` / `ui.add(DragValue)`, in grids. Text: `subject` (a section
   title with a dim subtitle: the selection or tool; Tool settings reserve it with `reserve_subject` and draw it
   last, since the tool sets its help), `section` (bold 14 pt, no space at the panel
-  top), `collapsing` (long lists), `hint` (one line), `info_button` (help longer than
-  a line: hover shows it, a click pins it), `check_row` (boolean: label left, bare
+  top), `collapsing` / `collapsing_note` (long lists, rarely edited sections such
+  as a component's Simulation; closed at first, with a note saying what's inside), `hint` (one line), `info_button` (help longer than
+  a line: hover shows it, a click pins it). Every `CollapsingState` header goes through
+  `collapsing_header`, which toggles on a click anywhere on the header (a click area
+  registered after it, so on top of its widgets and the arrow; egui's own toggles on the
+  arrow only); `egui::CollapsingHeader` already does. `check_row` (boolean: label left, bare
   box), `search_field` + `summary` (list panels). Every search or filter field is
   `clearable`: a round × inside its right end while it has text (the field's right
   margin keeps text clear of it; added after the field so it gets the click; a click
