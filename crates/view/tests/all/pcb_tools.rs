@@ -510,3 +510,32 @@ fn a_via_added_while_routing_pushes_tracks_aside() {
     let after: Vec<Track> = doc.project().board.tracks.iter().cloned().collect();
     assert_eq!(after, before);
 }
+
+#[test]
+fn shove_mode_keeps_square_corners_where_nothing_is_walked_round() {
+    // Nothing in the way, and a track the leg pushes: either way the corner stays 90°.
+    for wall in [false, true] {
+        let mut doc = Document::new(Project::new("T"));
+        if wall {
+            // Below the first leg, its ends well clear of it: pushed down.
+            let t = Track::straight(LayerId::TOP_COPPER, Point::mm(-5.0, -0.3), Point::mm(20.0, -0.3), mm(0.25));
+            doc.execute(Command::Insert { objects: vec![Object::Track(t)] }).unwrap();
+        }
+        let mut t = PcbPlacer::default();
+        t.set_tool(PcbTool::Route);
+        t.settings.corners = view::bend::Corners::Deg90;
+        let (a, b) = (Point::mm(0.0, 0.0), Point::mm(10.0, 5.0));
+        t.hover(&mut doc, Some((a, a)), mm(0.0));
+        t.click(&mut doc).unwrap();
+        t.hover(&mut doc, Some((b, b)), mm(0.0));
+        t.click(&mut doc).unwrap();
+        let new: Vec<&Track> = doc.project().board.tracks.iter().filter(|t| t.a == a || t.b == b).collect();
+        assert_eq!(new.len(), 2, "two legs (wall: {wall}): {new:?}");
+        if wall {
+            assert!(doc.project().board.tracks.len() > 3, "the wall was pushed");
+        }
+        for t in new {
+            assert!(t.a.x == t.b.x || t.a.y == t.b.y, "horizontal or vertical (wall: {wall}): {t:?}");
+        }
+    }
+}

@@ -253,10 +253,12 @@ fn lay(
     // Each way, checked exactly (hulls are a little larger than the copper, and the board
     // edge isn't one); the one getting furthest wins, then the shorter.
     let mut best: Option<(Vec<Point>, bool)> = None;
+    let asked = walk::simplify(points.to_vec());
     for w in walks {
-        // Without the outline's steps where nothing needs them.
+        // Without the outline's steps where nothing needs them. A leg the walk left as it
+        // is keeps its corners (the Route tool's corner style, 90° ones included).
         let clear = &mut |way: &[Point]| check(project, copper, layer, width, net, start, way, &skip).is_none();
-        let path = smooth::smooth(w.path, clear);
+        let path = if w.path == asked { w.path } else { smooth::smooth(w.path, clear) };
         let (path, ok) = checked(project, copper, layer, width, net, start, path, &skip);
         let reached = w.reached && ok;
         let better = match &best {

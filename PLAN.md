@@ -313,7 +313,9 @@ the current design of each area with the gotchas a change needs to know, the pla
   passes for the new segments, never turning sharper than 90° where it joins; then cuts
   90° corners at 45° (whole shorter side, ½, ¼); up to 4 passes. Ends stay. A plain
   dog-leg stays as it is (the other way round is no shorter), so the posture holds.
-  Used on the head's walks (both modes) and on pushed lines. Cost: ~+1.5 ms on a
+  Used on the head's walks (both modes) and on pushed lines. Gotcha: a walk that left
+  the leg as it was isn't smoothed, so the Route tool's corner style holds (90° corners
+  would be chamfered) unless the leg had to go round something. Cost: ~+1.5 ms on a
   40-line cascade.
 - **Shove** (`router::shove`): the head first walks round what can't move
   (`lay(…, fixed_only)`: pads, locked vias and tracks, arcs, keepouts; checks skip
