@@ -67,6 +67,15 @@ impl<T> Dialog<T> {
         true
     }
 
+    /// Answer at once with `path` instead of showing a dialog (scripted runs).
+    pub fn answered(&mut self, ctx: &egui::Context, path: Option<PathBuf>, then: T) -> bool {
+        if self.is_open() {
+            return false;
+        }
+        self.wait(ctx, Box::pin(std::future::ready(path)), then);
+        true
+    }
+
     fn wait(&mut self, ctx: &egui::Context, answer: Answer, then: T) {
         self.pending = Some((then, answer, Waker::from(Arc::new(Repaint(ctx.clone())))));
     }

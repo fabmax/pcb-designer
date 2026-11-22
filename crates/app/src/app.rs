@@ -1374,7 +1374,12 @@ impl PcbApp {
     }
 
     fn show_file_dialog(&mut self, dialog: rfd::AsyncFileDialog, kind: Kind, then: Chosen) {
-        if !self.file_dialog.open(&self.egui_ctx, dialog, kind, then) {
+        // A script's `dialog` step answers it.
+        let shown = match self.script.as_mut().and_then(Script::take_dialog) {
+            Some(path) => self.file_dialog.answered(&self.egui_ctx, path, then),
+            None => self.file_dialog.open(&self.egui_ctx, dialog, kind, then),
+        };
+        if !shown {
             self.set_status("Another file dialog is still open");
         }
     }
@@ -1388,9 +1393,11 @@ impl PcbApp {
             Chosen::NewLibrary => return self.create_library(&path),
             Chosen::AddLibrary => return self.add_library_file(&project_libs::absolute(&path), true),
             Chosen::LocateLibrary(from) => return self.relink_library(from, &path),
-            Chosen::SaveProject(then) => then.filter(|_| self.save_to(&path)),
-            Chosen::SaveLibrary(key, then) => then.filter(|_| self.save_library_to(key, &path)),
-            Chosen::SaveBuiltinCopy(key, then) => then.filter(|_| self.save_builtin_copy(key, &path)),
+            // Save, then (if it worked) what was waiting for it. (Not `then.filter(…)`:
+            // that skips the save when nothing waits.)
+            Chosen::SaveProject(then) => self.save_to(&path).then_some(then).flatten(),
+            Chosen::SaveLibrary(key, then) => self.save_library_to(key, &path).then_some(then).flatten(),
+            Chosen::SaveBuiltinCopy(key, then) => self.save_builtin_copy(key, &path).then_some(then).flatten(),
         };
         if let Some(then) = then {
             then(self);

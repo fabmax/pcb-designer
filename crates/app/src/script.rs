@@ -48,6 +48,9 @@ enum Step {
     Scroll(f32),
     /// Hold modifiers for the following pointer steps (`hold Alt`; `hold` lets go).
     Hold(Modifiers),
+    /// The answer to the next file dialog (`dialog PATH`; `dialog cancel`: none), given
+    /// instead of showing it.
+    Dialog(Option<std::path::PathBuf>),
 }
 
 #[derive(Debug, Default)]
@@ -64,6 +67,8 @@ pub struct Script {
     run: Option<String>,
     /// Later steps wait for the simulation (`run`, not `start`).
     wait_run: bool,
+    /// Answers for the next file dialogs (`dialog` steps).
+    dialogs: VecDeque<Option<std::path::PathBuf>>,
 }
 
 /// Frames between steps (lets the camera fit and the UI settle).
@@ -144,10 +149,30 @@ impl Script {
                     steps.push_back(Step::Hold(m));
                 }
                 "wait" => steps.push_back(Step::Wait(arg.trim().parse().map_err(|e| format!("{cmd:?}: {e}"))?)),
+                "dialog" => steps.push_back(Step::Dialog(match arg.trim() {
+                    "cancel" => None,
+                    "" => return Err("dialog: a path, or cancel".into()),
+                    path => Some(path.into()),
+                })),
                 _ => return Err(format!("unknown script step {cmd:?}")),
             }
         }
-        Ok(Script { steps, held: Modifiers::NONE, wait: 0, board: false, switched: true, run: None, wait_run: true })
+        Ok(Script {
+            steps,
+            held: Modifiers::NONE,
+            wait: 0,
+            board: false,
+            switched: true,
+            run: None,
+            wait_run: true,
+            dialogs: VecDeque::new(),
+        })
+    }
+
+    /// The answer a `dialog` step gave for the file dialog about to open, if any (`Some(None)`:
+    /// cancelled).
+    pub fn take_dialog(&mut self) -> Option<Option<std::path::PathBuf>> {
+        self.dialogs.pop_front()
     }
 
     /// The simulation a `run` step asked for: an analysis name, empty for the panel's.
@@ -243,6 +268,11 @@ impl Script {
                 self.wait = n;
                 Vec::new()
             }
+            Step::Dialog(answer) => {
+                self.dialogs.push_back(answer);
+                self.wait = 0;
+                Vec::new()
+            }
             Step::Run(name, wait) => {
                 self.run = Some(name);
                 self.wait_run = wait;
@@ -261,6 +291,19 @@ impl Script {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dialog_steps_queue_answers() {
+        let mut s = Script::parse("dialog /tmp/a.pcblib; dialog cancel; key Cmd+S").unwrap();
+        assert!(Script::parse("dialog").is_err());
+        assert_eq!(s.take_dialog(), None, "not reached yet");
+        while !s.is_done() {
+            s.events(|_, _| Pos2::ZERO);
+        }
+        assert_eq!(s.take_dialog(), Some(Some("/tmp/a.pcblib".into())));
+        assert_eq!(s.take_dialog(), Some(None), "cancelled");
+        assert_eq!(s.take_dialog(), None);
+    }
 
     #[test]
     fn parse_steps() {

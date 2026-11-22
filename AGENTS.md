@@ -145,7 +145,9 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
     a simulation; later steps wait for it; `start [ANALYSIS]` doesn't wait), and `zoom F` (zooms the canvas under the
     pointer, after a `move` / `ui-move`) and `scroll DY` (scrolls a panel or form under
     the pointer down by DY points), and `hold Alt` (modifiers held for the pointer steps
-    that follow, e.g. an Alt-click; `hold` lets go). Hover the canvas
+    that follow, e.g. an Alt-click; `hold` lets go), and `dialog PATH` / `dialog cancel`
+    (answers the next file dialog instead of showing it: put it before the step that
+    opens one, e.g. `dialog /tmp/x.pcblib; key Cmd+Shift+S`). Hover the canvas
     (`move X,Y`) before keys meant for it; after a click in a panel, keys go to the
     panel (click a tool bar button instead of its key). Keys take modifiers
     (`key Cmd+D`); `key Cmd+C` / `Cmd+V` use the real system clipboard. Put a `wait 30` before a

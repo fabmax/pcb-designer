@@ -1459,7 +1459,10 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   `rfd::AsyncFileDialog` (a sheet on macOS) and its owner polls it each frame; `T` says
   what to do with the path (`Chosen` in the app). A save that needs a dialog (an
   unsaved project, Save As) takes a `Then`: what the save interrupted (an export,
-  opening another project, quitting) runs again once it saved. Alerts
+  opening another project, quitting) runs again once it saved (gotcha: save first,
+  then run the `Then` if it worked; `then.filter(|_| save())` never saved when nothing
+  waited). A script's `dialog PATH` / `dialog cancel` step answers the next dialog
+  (`Dialog::answered`) instead of showing it, so saves can be tested headlessly. Alerts
   (`rfd::MessageDialog`) stay blocking: they run in the modal panel run loop mode,
   which winit's queued events don't run in.
 - **GPU canvases** (`canvas.rs`): each `Canvas` takes a unique id and its own `GpuScene`
