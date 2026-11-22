@@ -44,7 +44,11 @@ impl Editor {
     pub fn execute_grouped(&mut self, command: Command, group: Option<u64>) -> Result<ChangeSet, CommandError> {
         let label = command.label();
         let mut tx = Transaction::new(&mut self.project);
-        let result = command.apply(&mut tx).and_then(|()| sync_board(&mut tx));
+        let tidy = command.wire_tidy();
+        let result = command
+            .apply(&mut tx)
+            .and_then(|()| tidy.map_or(Ok(()), |keep| crate::wire_tidy::tidy(&mut tx, &keep)))
+            .and_then(|()| sync_board(&mut tx));
         match result {
             Ok(()) => {
                 let changes = tx.finish();

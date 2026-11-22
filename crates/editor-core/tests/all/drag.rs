@@ -22,6 +22,21 @@ fn wires(ed: &mut Editor, points: &[Point]) -> Vec<Id> {
     c.ids().filter_map(|id| if let ObjectId::Wire(w) = id { Some(w) } else { None }).collect()
 }
 
+fn label(ed: &mut Editor, pos: Point) -> Id {
+    let c = ed
+        .execute(Command::AddLabel {
+            sheet: None,
+            pos,
+            name: "N".into(),
+            kind: LabelKind::Local,
+            shape: LabelShape::Passive,
+            style: None,
+            rotation: Angle::ZERO,
+        })
+        .unwrap();
+    c.ids().find_map(|id| if let ObjectId::Label(l) = id { Some(l) } else { None }).unwrap()
+}
+
 fn mv(ed: &mut Editor, ids: Vec<ObjectId>, delta: Point) {
     ed.execute(Command::Move { ids, delta, keep_connected: true }).unwrap();
 }
@@ -93,7 +108,9 @@ fn wire_end_on_a_pin_is_held_by_a_dogleg() {
 #[test]
 fn collinear_neighbour_stays_and_a_dogleg_joins() {
     let mut ed = editor();
+    // The label keeps the two wires apart (else they'd be joined into one).
     let w = wires(&mut ed, &[p(0.0, 0.0), p(10.0, 0.0)]);
+    label(&mut ed, p(10.0, 0.0));
     let o = wires(&mut ed, &[p(10.0, 0.0), p(20.0, 0.0)]);
     mv(&mut ed, vec![ObjectId::Wire(w[0])], p(0.0, 5.0));
     let s = &ed.project().schematic;
@@ -103,28 +120,31 @@ fn collinear_neighbour_stays_and_a_dogleg_joins() {
 }
 
 #[test]
-fn tees_and_labels_on_a_moved_wire_slide_along() {
+fn labels_on_a_moved_wire_slide_along() {
     let mut ed = editor();
     let h = wires(&mut ed, &[p(0.0, 0.0), p(20.0, 0.0)])[0];
-    let v = wires(&mut ed, &[p(10.0, -10.0), p(10.0, 0.0)])[0];
-    let c = ed
-        .execute(Command::AddLabel {
-            sheet: None,
-            pos: p(5.0, 0.0),
-            name: "N".into(),
-            kind: LabelKind::Local,
-            shape: LabelShape::Passive,
-            style: None,
-            rotation: Angle::ZERO,
-        })
-        .unwrap();
-    let label = c.ids().find_map(|id| if let ObjectId::Label(l) = id { Some(l) } else { None }).unwrap();
+    let label = label(&mut ed, p(5.0, 0.0));
     mv(&mut ed, vec![ObjectId::Wire(h)], p(3.0, 5.0));
     let s = &ed.project().schematic;
     assert_eq!(s.wires.get(h).map(|w| (w.a, w.b)), Some((p(3.0, 5.0), p(23.0, 5.0))));
-    // Only the part across the wire: the tee stays vertical, the label stays put along it.
-    assert_eq!(s.wires.get(v).map(|w| (w.a, w.b)), Some((p(10.0, -10.0), p(10.0, 5.0))));
+    // Only the part across the wire: the label stays put along it.
     assert_eq!(s.labels.get(label).unwrap().pos, p(5.0, 5.0));
+}
+
+#[test]
+fn a_tee_onto_a_moved_line_stretches() {
+    let mut ed = editor();
+    wires(&mut ed, &[p(0.0, 0.0), p(20.0, 0.0)]);
+    let v = wires(&mut ed, &[p(10.0, -10.0), p(10.0, 0.0)])[0];
+    // The tee split the line; move both of its pieces.
+    let line: Vec<ObjectId> =
+        ed.project().schematic.wires.iter().filter(|w| w.id != v).map(|w| ObjectId::Wire(w.id)).collect();
+    assert_eq!(line.len(), 2);
+    mv(&mut ed, line, p(0.0, 5.0));
+    assert_eq!(
+        wire_set(&ed),
+        [(p(0.0, 5.0), p(10.0, 5.0)), (p(10.0, -10.0), p(10.0, 5.0)), (p(10.0, 5.0), p(20.0, 5.0))]
+    );
 }
 
 #[test]

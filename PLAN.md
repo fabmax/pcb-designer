@@ -105,9 +105,8 @@ things to do **later**.
   label, junction, entry, sheet pin, branch, a collinear or diagonal neighbour, a wire's
   inside) is *held*: an orthogonal wire keeps its direction and a dogleg joins it back,
   others stretch; a single perpendicular neighbour follows instead. Unmoved wire ends,
-  labels and junctions on a moved wire's inside slide across with it. Afterwards
-  collinear wires meeting with nothing else there are merged (the moved one's id wins,
-  then an untouched one's). `track_band`: track ends inside moved pad/via copper
+  labels and junctions on a moved wire's inside slide across with it. Merging what the
+  move left collinear is `wire_tidy`'s (below). `track_band`: track ends inside moved pad/via copper
   (`copper::footprint_copper`, grid-indexed ends) follow; a straight follower moves
   along and its far end slides along a single straight, non-parallel, unmoved neighbour
   (`slide_point`, refused if either would turn around), else it stretches; ends of
@@ -115,6 +114,18 @@ things to do **later**.
   track. Sheet symbols drag their pins' wires. Gotcha: everything scanned per command
   is limited to the points involved (`attach_counts` with a `wanted` set) — a full pin
   scan per step made symbol drags 10× slower.
+- **Wire tidy** (`wire_tidy`, run by `Editor::execute_grouped` after every command,
+  wires and buses alike): around the points the command changed, overlapping collinear
+  segments become one, a segment is split where another's end or a junction lies inside
+  it, and collinear segments meeting with nothing else attached (`attach_counts`, no tee)
+  are joined. So a T always ends wires, and four ends meeting stay four (joined they'd
+  only cross, unconnected). `Command::wire_tidy` says which ids survive: a move's moved
+  segments are never split or dropped (a drag replays its Rotate and Move with the ids it
+  started with); moves without `keep_connected` (a carried paste's steps) skip the tidy.
+  The kept id: moved, else untouched, else changed, else new. Gotcha: only segments
+  reaching into the box around the changed points are indexed, and `attach_counts` skips
+  symbols farther than the library's longest pin reach from it; a full scan per command
+  made the 10k stress sheet 8× slower to build and drags 3× slower.
 - `Document::read_only` (Built-in Library) makes every command fail with a reason.
 - Sync (`sync.rs`): a component is on the board exactly when its variant has a footprint.
   It checks changed components *and* the components of changed parts (a part edit can
@@ -1584,7 +1595,7 @@ Budget: about 10k footprints at 60 fps, an edit → board → GPU update within 
 | DRC | 8.5 ms (2k) / 13 ms (10k) |
 | Redraw users of one library edit (3,333 capacitors) | ~21 ms + 18 ms (old full rebuild ~200 ms) |
 | Drag step | ~0.035 ms |
-| Drag step, symbol with wires (replayed from the start) | ~2.2 ms |
+| Drag step, symbol with wires (replayed from the start) | ~0.5 ms |
 | Drag step, footprint with tracks (connectivity deferred while dragging) | ~0.2 ms |
 | Both canvases animated, ~3 M primitives (stroke font era) | 90–170 fps uncapped |
 | GPU frame, 10k board at 3200×2000 offscreen: TrueType texts (~2.9 M instances) / stroke font (0.6 M) | 3.9 ms / 1.1–1.4 ms |

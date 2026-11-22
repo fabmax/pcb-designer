@@ -24,6 +24,7 @@ mod sync;
 mod track_band;
 pub mod transaction;
 mod union_find;
+mod wire_tidy;
 pub mod zones;
 
 pub use command::Command;

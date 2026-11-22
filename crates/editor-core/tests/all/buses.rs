@@ -83,7 +83,7 @@ const P: fn(f64, f64) -> Point = Point::mm;
 fn touching_bus_wires_form_one_bus_named_by_its_labels() {
     let mut ed = editor();
     // An L, a T-joint onto it, and a separate bus.
-    let l = bus(&mut ed, &[P(0.0, 0.0), P(20.32, 0.0), P(20.32, -20.32)]);
+    bus(&mut ed, &[P(0.0, 0.0), P(20.32, 0.0), P(20.32, -20.32)]);
     let t = bus(&mut ed, &[P(10.16, 0.0), P(10.16, 10.16)]);
     let other = bus(&mut ed, &[P(0.0, 30.48), P(20.32, 30.48)]);
     let named = label(&mut ed, P(5.08, 0.0), "D[0..3]");
@@ -95,7 +95,8 @@ fn touching_bus_wires_form_one_bus_named_by_its_labels() {
     let main = c.bus_of(ObjectId::BusWire(t[0])).unwrap();
     assert_eq!(main.name, "D[0..3]");
     assert_eq!(main.members, ["D0", "D1", "D2", "D3", "CLK"]);
-    assert_eq!(main.wires.len(), l.len() + t.len());
+    // The L's two legs, the first split by the T-joint, and the T.
+    assert_eq!(main.wires.len(), 4);
     assert_eq!(c.bus_of(ObjectId::Label(named)), Some(main));
     let i2c = c.bus_of(ObjectId::BusWire(other[0])).unwrap();
     assert_eq!(i2c.members, ["I2C.SDA", "I2C.SCL"]);

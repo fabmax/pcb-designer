@@ -408,6 +408,25 @@ impl Command {
         Ok(Command::UpdateParts { parts })
     }
 
+    /// Whether wires are tidied after this command (`wire_tidy`), and which segments keep
+    /// their ids: those a move moves. Moves without `keep_connected` (a carried paste's
+    /// steps) leave wires as they are.
+    pub(crate) fn wire_tidy(&self) -> Option<std::collections::HashSet<Id>> {
+        match self {
+            Command::Move { ids, keep_connected, .. }
+            | Command::Rotate { ids, keep_connected, .. }
+            | Command::Mirror { ids, keep_connected, .. } => keep_connected.then(|| {
+                ids.iter()
+                    .filter_map(|&id| match id {
+                        ObjectId::Wire(i) | ObjectId::BusWire(i) => Some(i),
+                        _ => None,
+                    })
+                    .collect()
+            }),
+            _ => Some(Default::default()),
+        }
+    }
+
     pub(crate) fn apply(self, tx: &mut Transaction) -> Result<(), CommandError> {
         match self {
             Command::ImportParts { parts } => import_parts(tx, parts),

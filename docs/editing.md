@@ -17,6 +17,14 @@ widely as the legs allow).
 Routing has more to it (design rules, vias, push and shove): see
 [PCB](pcb.md#routing).
 
+Schematic wires and buses tidy themselves after every edit:
+
+- A wire ending on another wire's middle, or a junction placed on a wire, splits that
+  wire there, so each piece ends where something connects.
+- Wires in a straight line that meet end to end, with nothing else at the joint (no other
+  wire, pin, label or junction), become one wire.
+- A wire drawn on top of another one merges with it into a single wire.
+
 ## Selecting and dragging
 
 Dragging keeps things connected, in the schematic and on the board:
@@ -29,7 +37,8 @@ Dragging keeps things connected, in the schematic and on the board:
 - On the board, tracks follow a moved footprint or via, and a dragged track segment moves
   across itself; track ends slide along the next track to keep 45° and 90° corners.
   Tracks in the way are pushed aside ([Drag with shove](pcb.md#drag-with-shove)).
-- Collinear wires a drag leaves end to end become one.
+- Wires a drag leaves end to end in a straight line become one, and a wire dropped onto
+  another one's middle splits it.
 - Esc cancels a drag.
 
 Double-click a wire to select its whole run up to branches and pins, or a track up to

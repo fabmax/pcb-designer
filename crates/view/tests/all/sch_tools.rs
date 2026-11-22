@@ -194,7 +194,8 @@ fn draw_a_bus_with_entries() {
     t.hover(&mut doc, Some(p(0.0, 10.16)));
     assert!(t.ghosts().contains(&SchGhost::Target(p(0.0, 10.16))), "the bus is a target");
     assert!(t.click(&mut doc, p(0.0, 10.16)).unwrap().finished, "ends on the bus");
-    assert_eq!(doc.project().schematic.bus_wires.len(), 2);
+    // The branch split the first bus where it ends.
+    assert_eq!(doc.project().schematic.bus_wires.len(), 3);
     assert!(doc.project().schematic.wires.is_empty());
 
     // Entries: R turns them counter-clockwise, X mirrors.

@@ -26,8 +26,8 @@
 //!   back to the point; other wires (and rotations) stretch to the point.
 //!
 //! Unmoved wire ends, labels and junctions on the inside of a moved wire (T connections)
-//! slide along with it. Wires that become zero-length are deleted, and two collinear
-//! wires the move touched are merged when nothing else is at their shared point.
+//! slide along with it. Wires that become zero-length are deleted; joining collinear
+//! wires afterwards is `wire_tidy`'s, which runs after every command.
 //!
 //! Bus wires follow the same rules, separately: they attach to bus wires, bus entries'
 //! bus ends, labels and junctions; wires attach to pins, wires, entries' wire ends,
@@ -89,7 +89,7 @@ impl Kind {
         }
     }
 
-    fn object(self, w: Seg) -> Object {
+    pub(crate) fn object(self, w: Seg) -> Object {
         let Seg { id, sheet, a, b } = w;
         match self {
             Kind::Wire => Object::Wire(Wire { id, sheet, a, b }),
@@ -106,9 +106,21 @@ impl Kind {
             return out;
         }
         let sheets: HashSet<Id> = wanted.iter().map(|w| w.0).collect();
+        // The box around the wanted points: what's outside is skipped before hashing, and
+        // symbols whose pins can't reach it (by the longest pin reach in the library).
+        let region = Rect::union_all(wanted.iter().map(|w| Rect::from_points(w.1, w.1))).unwrap();
+        let reach = p
+            .library
+            .symbols
+            .iter()
+            .flat_map(|s| s.pins.iter())
+            .map(|pin| pin.pos.x.abs() + pin.pos.y.abs())
+            .max()
+            .unwrap_or(0);
+        let near = region.grow(reach);
         let s = &p.schematic;
         let mut add = |sheet: Id, pt: Point| {
-            if wanted.contains(&(sheet, pt)) {
+            if region.contains(pt) && wanted.contains(&(sheet, pt)) {
                 *out.entry((sheet, pt)).or_default() += 1;
             }
         };
@@ -116,7 +128,7 @@ impl Kind {
         s.junctions.iter().for_each(|j| add(j.sheet, j.pos));
         match self {
             Kind::Wire => {
-                for i in s.symbols.iter().filter(|i| sheets.contains(&i.sheet)) {
+                for i in s.symbols.iter().filter(|i| near.contains(i.pos) && sheets.contains(&i.sheet)) {
                     crate::query::pin_points(p, i.id).into_iter().for_each(|pt| add(i.sheet, pt));
                 }
                 s.bus_entries.iter().for_each(|e| add(e.sheet, e.wire_end()));
@@ -388,10 +400,8 @@ pub(crate) fn apply(tx: &mut Transaction, plan: Plan, t: &Transform) -> Result<(
             Ok(())
         })?;
     }
-    // Segments the move touched.
-    let touched: Vec<Id> =
-        tx.changes().iter().filter_map(|c| Kind::of(c.id)).filter(|&(k, _)| k == kind).map(|(_, i)| i).collect();
-    merge(tx, kind, touched, &plan.moved)
+    // `wire_tidy` merges what the move made collinear afterwards.
+    Ok(())
 }
 
 fn insert(tx: &mut Transaction, kind: Kind, sheet: Id, a: Point, b: Point) -> Result<Id, CommandError> {
@@ -506,83 +516,4 @@ fn one_end(
     }
     let (a, b) = if moving_a { (new, f_new) } else { (f_new, new) };
     set_wire(tx, kind, w, a, b)
-}
-
-/// Merge collinear segments meeting end to end where nothing else is attached, starting
-/// from the `touched` ones. The merged segment keeps the id of a `moved` one, else of an
-/// untouched one.
-fn merge(tx: &mut Transaction, kind: Kind, touched: Vec<Id>, moved: &HashSet<Id>) -> Result<(), CommandError> {
-    if touched.is_empty() {
-        return Ok(());
-    }
-    // Segment ends near the touched ones only (a drag of a few wires stays cheap on a big
-    // sheet).
-    let mut segs: HashMap<Id, Seg> = HashMap::new();
-    let mut ends: HashMap<(Id, Point), Vec<Id>> = HashMap::new();
-    let wanted: HashSet<(Id, Point)> = touched
-        .iter()
-        .filter_map(|&id| kind.get(tx.project(), id))
-        .flat_map(|s| [(s.sheet, s.a), (s.sheet, s.b)])
-        .collect();
-    for s in kind.segments(tx.project()) {
-        if wanted.contains(&(s.sheet, s.a)) || wanted.contains(&(s.sheet, s.b)) {
-            ends.entry((s.sheet, s.a)).or_default().push(s.id);
-            ends.entry((s.sheet, s.b)).or_default().push(s.id);
-            segs.insert(s.id, s);
-        }
-    }
-    let touched_set: HashSet<Id> = touched.iter().copied().collect();
-    let rank = |id: Id| {
-        if moved.contains(&id) {
-            0
-        } else if !touched_set.contains(&id) {
-            1
-        } else {
-            2
-        }
-    };
-    let mut work = touched;
-    while let Some(id) = work.pop() {
-        let Some(s) = segs.get(&id).cloned() else { continue };
-        for (q, far) in [(s.a, s.b), (s.b, s.a)] {
-            let at = ends.get(&(s.sheet, q)).map_or(&[][..], Vec::as_slice);
-            let [x, y] = at[..] else { continue };
-            let Some(o) = segs.get(&if x == s.id { y } else { x }).cloned() else { continue };
-            let o_far = if o.a == q { o.b } else { o.a };
-            let (u, v) = (far - q, o_far - q);
-            let cross = u.x as i128 * v.y as i128 - u.y as i128 * v.x as i128;
-            let dot = u.x as i128 * v.x as i128 + u.y as i128 * v.y as i128;
-            if cross != 0 || dot >= 0 || kind.attached_at(tx.project(), s.sheet, q) > 0 {
-                continue;
-            }
-            // A tee onto the point.
-            if kind.segments(tx.project()).iter().any(|x| x.sheet == s.sheet && on_segment_inside(q, x.a, x.b)) {
-                continue;
-            }
-            let (keep, drop) = if rank(o.id) < rank(s.id) { (o, s.clone()) } else { (s.clone(), o) };
-            let drop_far = if drop.a == q { drop.b } else { drop.a };
-            let (a, b) = if keep.a == q { (drop_far, keep.b) } else { (keep.a, drop_far) };
-            tx.remove(kind.object_id(drop.id))?;
-            set_wire(tx, kind, &keep, a, b)?;
-            for (pt, id) in [(q, keep.id), (q, drop.id), (drop_far, drop.id)] {
-                if let Some(v) = ends.get_mut(&(s.sheet, pt)) {
-                    v.retain(|&i| i != id);
-                }
-            }
-            segs.remove(&drop.id);
-            segs.insert(keep.id, Seg { a, b, ..keep.clone() });
-            // The kept segment now reaches the dropped one's far end: index what's there.
-            for o in kind.segments(tx.project()) {
-                if o.sheet == s.sheet && (o.a == drop_far || o.b == drop_far) && !segs.contains_key(&o.id) {
-                    ends.entry((o.sheet, o.a)).or_default().push(o.id);
-                    ends.entry((o.sheet, o.b)).or_default().push(o.id);
-                    segs.insert(o.id, o);
-                }
-            }
-            ends.entry((s.sheet, drop_far)).or_default().push(keep.id);
-            work.push(keep.id);
-            break;
-        }
-    }
-    Ok(())
 }
