@@ -95,6 +95,7 @@ icons! {
     Footprint => "footprint",
     Missing => "tabler/ban",
     Check => "tabler/check",
+    Copy => "tabler/copy",
     Spreadsheet => "tabler/file-spreadsheet",
     FileCode => "tabler/file-code",
     FilePdf => "tabler/file-type-pdf",

@@ -1334,9 +1334,10 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   undo step when the revision changed. Session only. The panel's header
   (`agent_switch.rs`) holds, after a gap behind the title: "Access", a switch that runs
   `Cmd::ToggleAgent` (a red dot and its tooltip tell why a start failed), and a
-  read-only text field filling the rest up to the hide button, with the URL the server
-  listens on or "Access is disabled". The body shows a failed start's error. While the
-  server runs, the panel's bar button has a green dot (`Badge::Live`, tooltip with the
+  read-only text field in the UI font, as wide as the URL in both states (shrinking in
+  a narrow panel), with the URL the server listens on or "Access is disabled", then a
+  copy button for the URL (disabled while off). The body shows a failed start's error.
+  While the server runs, the panel's bar button has a green dot (`Badge::Live`, tooltip with the
   URL; the status bar shows nothing).
 - **Properties** (`properties.rs`): a symbol and a footprint both have the component's
   Footprint variant combo (`variant_combo`); on the board it leaves out "no footprint"
