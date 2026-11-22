@@ -366,6 +366,12 @@ the current design of each area with the gotchas a change needs to know, the pla
   lays a chain along a new path (ids kept in order, extra segments copy the first
   track, left-overs deleted). `locked` on `Track` / `Via` (Properties, KiCad import;
   not serialized when false).
+- **L while routing** (`next_layer`): adds a via at the track's end (shoving in Shove
+  mode, one undo step with its pushes) and remembers it (`via_added`: position, layer
+  it came from, `route_revision` after it). The next L, if the track hasn't gone on
+  (same start, same revision: a route preview doesn't count), undoes it first; back on
+  the layer it came from, no via, else one from that layer to the new one (3+ layers).
+  Gotcha: the taken-back via is on the redo stack until the next edit.
 - **Route tool snapping** (`snap_to_copper`): pad and via centres and track ends within
   the tolerance, else the centre of a pad or via under the pointer, else the middle line
   of a straight track under (or within the tolerance of) the pointer, at the grid point

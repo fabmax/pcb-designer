@@ -236,6 +236,9 @@ pub struct PcbPlacer {
     checked: Option<ClashKey>,
     /// The leg as the router lays it (Walk around mode).
     routed: Option<Routed>,
+    /// The via the last L added: where, the layer the track came from and the document
+    /// revision after it (taken back by the next L if nothing changed since).
+    via_added: Option<(Point, LayerId, u64)>,
 }
 
 /// The inputs of a clash check: document revision, tool, net, layer, width, the leg's
@@ -267,6 +270,7 @@ impl Default for PcbPlacer {
             clash: None,
             checked: None,
             routed: None,
+            via_added: None,
         }
     }
 }
@@ -460,62 +464,89 @@ impl PcbPlacer {
 
     /// Switch to the next copper layer. While routing, a via joins the layers at the
     /// current end of the track (through, or just the two layers: [`PcbSettings::via_pair`]).
+    /// The via the last L added goes again if the track hasn't gone on since: back on the
+    /// layer it came from, the track needs none.
     pub fn next_layer(&mut self, doc: &mut Document) -> Result<(), String> {
         let layers: Vec<LayerId> = doc.project().board.copper_layers().map(|l| l.id).collect();
         let cur = self.settings.layer;
         let i = layers.iter().position(|&l| l == cur).unwrap_or(0);
         let next = layers[(i + 1) % layers.len().max(1)];
+        let pending = self.via_added.take();
         if self.tool == PcbTool::Route
             && let Some(p) = self.start
         {
-            // Not needed on a via or a through-hole pad joining both layers already.
-            let both = layer_bit(cur) | layer_bit(next);
-            let joined = doc.current_copper().items.iter().any(|c| {
-                matches!(c.item, CopperItem::Via(_) | CopperItem::Pad { .. })
-                    && c.anchors[0] == p
-                    && c.layers & both == both
-            });
-            if !joined {
-                let span = self.settings.via_pair.then_some([cur, next]).filter(|s| !is_through(s));
-                let diameter = Self::via_diameter(doc, self.net.as_deref());
-                let layers = span_mask(doc.project(), span);
-                let add = Command::AddVia { pos: p, diameter: None, drill: None, span };
-                if self.mode() == RouteMode::Shove {
-                    // The via pushes aside what it can.
-                    doc.drop_route_preview();
-                    doc.route_copper();
-                    let (project, copper) = doc.route_base();
-                    let shoved = router::shove_via(project, copper, cur, self.net.as_deref(), p, diameter, layers);
-                    let commands = match shoved {
-                        Ok(s) => s.commands(project),
-                        Err(c) if !self.allows_violations() => return Err(format!("No via here: {}", c.message)),
-                        Err(_) => Vec::new(),
-                    };
-                    let group = crate::interaction::new_group();
-                    let mut result = Ok(());
-                    for c in std::iter::once(add).chain(commands) {
-                        if let Err(e) = doc.execute_grouped(c, Some(group)) {
-                            result = Err(e.to_string());
-                            break;
-                        }
-                    }
-                    if result.is_err() {
-                        doc.retract(group);
-                    }
-                    doc.close_group();
-                    result?;
-                } else {
-                    let via = Probe::Via { pos: p, diameter, layers };
-                    if let Some(c) = doc.route_clash(&[via], self.net.as_deref(), &[(cur, p)])
-                        && !self.allows_violations()
-                    {
-                        return Err(format!("No via here: {}", c.message));
-                    }
-                    doc.execute(add).map_err(|e| e.to_string())?;
-                }
+            let mut from = cur;
+            if let Some((at, orig, revision)) = pending
+                && at == p
+                && doc.route_revision() == revision
+            {
+                // Take it back (with what it pushed aside): the track goes on from `orig`.
+                doc.undo();
+                from = orig;
+            }
+            if next != from
+                && let Err(e) = self.add_via(doc, p, from, next)
+            {
+                self.settings.layer = from;
+                return Err(e);
             }
         }
         self.settings.layer = next;
+        Ok(())
+    }
+
+    /// Join layers `from` and `to` at `p`, the end of the track being routed, with a via
+    /// (unless a via or pad there joins them already).
+    fn add_via(&mut self, doc: &mut Document, p: Point, from: LayerId, to: LayerId) -> Result<(), String> {
+        let (cur, next) = (from, to);
+        // Not needed on a via or a through-hole pad joining both layers already.
+        let both = layer_bit(cur) | layer_bit(next);
+        let joined = doc.current_copper().items.iter().any(|c| {
+            matches!(c.item, CopperItem::Via(_) | CopperItem::Pad { .. })
+                && c.anchors[0] == p
+                && c.layers & both == both
+        });
+        if joined {
+            return Ok(());
+        }
+        let span = self.settings.via_pair.then_some([cur, next]).filter(|s| !is_through(s));
+        let diameter = Self::via_diameter(doc, self.net.as_deref());
+        let layers = span_mask(doc.project(), span);
+        let add = Command::AddVia { pos: p, diameter: None, drill: None, span };
+        if self.mode() == RouteMode::Shove {
+            // The via pushes aside what it can.
+            doc.drop_route_preview();
+            doc.route_copper();
+            let (project, copper) = doc.route_base();
+            let shoved = router::shove_via(project, copper, cur, self.net.as_deref(), p, diameter, layers);
+            let commands = match shoved {
+                Ok(s) => s.commands(project),
+                Err(c) if !self.allows_violations() => return Err(format!("No via here: {}", c.message)),
+                Err(_) => Vec::new(),
+            };
+            let group = crate::interaction::new_group();
+            let mut result = Ok(());
+            for c in std::iter::once(add).chain(commands) {
+                if let Err(e) = doc.execute_grouped(c, Some(group)) {
+                    result = Err(e.to_string());
+                    break;
+                }
+            }
+            if result.is_err() {
+                doc.retract(group);
+            }
+            doc.close_group();
+            result?;
+        } else {
+            let via = Probe::Via { pos: p, diameter, layers };
+            if let Some(c) = doc.route_clash(&[via], self.net.as_deref(), &[(cur, p)])
+                && !self.allows_violations()
+            {
+                return Err(format!("No via here: {}", c.message));
+            }
+            doc.execute(add).map_err(|e| e.to_string())?;
+        }
+        self.via_added = Some((p, from, doc.route_revision()));
         Ok(())
     }
 

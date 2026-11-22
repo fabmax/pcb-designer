@@ -568,3 +568,35 @@ fn the_route_tool_snaps_to_the_middle_of_off_grid_tracks() {
     assert_eq!(snap(&mut doc, Point::mm(0.1, 1.3), Point::mm(0.0, 1.5)).0, Point::mm(0.0, 1.27));
     assert_eq!(snap(&mut doc, Point::mm(10.1, 3.1), Point::mm(10.0, 3.0)).0, Point::mm(10.0, 3.0));
 }
+
+#[test]
+fn switching_back_to_the_layer_takes_the_via_back() {
+    for mode in [view::pcb_tools::RouteMode::Shove, view::pcb_tools::RouteMode::Highlight] {
+        let mut doc = Document::new(Project::new("T"));
+        let mut t = PcbPlacer::default();
+        t.set_tool(PcbTool::Route);
+        t.settings.route_mode = mode;
+        let (a, b, c) = (Point::mm(0.0, 0.0), Point::mm(10.0, 0.0), Point::mm(10.0, 8.0));
+        t.hover(&mut doc, Some((a, a)), mm(0.0));
+        t.click(&mut doc).unwrap();
+        t.hover(&mut doc, Some((b, b)), mm(0.0));
+        t.click(&mut doc).unwrap();
+        let top = t.settings.layer;
+        t.next_layer(&mut doc).unwrap();
+        assert_eq!(doc.project().board.vias.len(), 1, "{mode:?}");
+        assert_ne!(t.settings.layer, top);
+        // The pointer moves on (a route preview in Shove mode), then L again.
+        t.hover(&mut doc, Some((c, c)), mm(0.0));
+        t.next_layer(&mut doc).unwrap();
+        assert_eq!(t.settings.layer, top, "{mode:?}");
+        assert_eq!(doc.project().board.vias.len(), 0, "the via goes again ({mode:?})");
+        assert_eq!(doc.project().board.tracks.len(), 1, "the track stays ({mode:?})");
+        // And L once more brings it back; a leg after it keeps it.
+        t.next_layer(&mut doc).unwrap();
+        assert_eq!(doc.project().board.vias.len(), 1, "{mode:?}");
+        t.hover(&mut doc, Some((c, c)), mm(0.0));
+        t.click(&mut doc).unwrap();
+        t.next_layer(&mut doc).unwrap();
+        assert_eq!(doc.project().board.vias.len(), 2, "a new via at the leg's end, the old one stays ({mode:?})");
+    }
+}
