@@ -60,7 +60,7 @@ pub enum Startup {
     Open(PathBuf),
     /// Import a KiCad project (`.kicad_pro`) as a new, unsaved project.
     ImportKicad(PathBuf),
-    Demo,
+    Example(view::demo::Example),
     Empty,
     Stress(usize),
 }
@@ -442,7 +442,7 @@ impl PcbApp {
                     Document::new(Project::new("Untitled"))
                 }
             },
-            Startup::Demo => demo_document(),
+            Startup::Example(example) => example_document(example),
             Startup::Empty => Document::new(Project::new("Untitled")),
             Startup::Stress(n) => {
                 let t = Instant::now();
@@ -3053,9 +3053,9 @@ impl PcbApp {
                 self.settings.recent.clear();
                 self.save_settings();
             }
-            Cmd::OpenDemo => {
-                if self.confirm_discard(|a| a.replace_document(demo_document())) {
-                    self.replace_document(demo_document());
+            Cmd::OpenExample(example) => {
+                if self.confirm_discard(move |a| a.replace_document(example_document(example))) {
+                    self.replace_document(example_document(example));
                 }
             }
             Cmd::NewLibrary => self.new_library(),
@@ -5734,10 +5734,13 @@ fn sheet_node(p: &Project, id: Id) -> TreeNode {
         .with_children(children.into_iter().map(|c| sheet_node(p, c.id)).collect())
 }
 
-/// The demo project, with a demo library file (written to the temp folder) in its
-/// External Libraries.
-fn demo_document() -> Document {
-    let mut project = view::demo::demo_project();
+/// An example project. The LED demo gets a demo library file (written to the temp
+/// folder) in its External Libraries.
+fn example_document(example: view::demo::Example) -> Document {
+    let mut project = example.project();
+    if example != view::demo::Example::Led {
+        return Document::new(project);
+    }
     let path = std::env::temp_dir().join("pcb-designer-demo").join("Demo parts.pcblib");
     let written = std::fs::create_dir_all(path.parent().unwrap())
         .map_err(|e| e.to_string())

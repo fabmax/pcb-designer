@@ -6,6 +6,19 @@ The schematic sheets, the board, library items, the Gerber viewer and the simula
 open in tabs, which can be split side by side by dragging them. Projects are folders
 (`<name>.pcbproj/`) of JSON files; **File → Open** (⌘O) opens one, ⌘S saves it.
 
+## Example projects
+
+**File → Open example** opens one as a new, unsaved project (`--example NAME` on the
+[command line](command-line.md)):
+
+- **LED demo** (`led`, also `--demo`): a few parts on two sheets, a routed board, a demo
+  library of its own and a simulation test bench.
+- **Audio amplifier** (`amp`): a discrete class-AB amplifier for an 8 Ω speaker from
+  12 V: a common-emitter driver, a diode-biased complementary output pair (SOT-223) and
+  emitter resistors. Its two-layer board is routed with a ground pour on the bottom, and
+  it simulates its bias point, a 1 kHz sine into the speaker and its frequency response
+  (about 12 dB from 35 Hz to 70 kHz).
+
 ## Panels
 
 Tool windows sit in narrow icon bars on the window edges, IntelliJ style. Click an icon (or

@@ -1,13 +1,13 @@
 //! PCB Designer desktop application.
 //!
-//! Usage: pcb-designer [PROJECT_DIR | PROJECT.kicad_pro | --demo | --stress N] [--no-vsync]
+//! Usage: pcb-designer [PROJECT_DIR | PROJECT.kicad_pro | --demo | --example NAME | --stress N] [--no-vsync]
 //!                     [--keymap FILE.json] [--mcp] [--mcp-port PORT] [--side-by-side]
 //!                     [--library FILE.pcblib]... [--show [part:|symbol:|footprint:]NAME]...
 //!                     [--kicad DIR]... [--kicad-pick [footprint:]LIB:NAME]... [--kicad-import]
 //!                     [--kicad-search [footprint:]TEXT]
 //!                     [--screenshot FILE.png [--frames N] [--select all|REFDES]]
 //!                     [--panel NAME]... [--script STEPS]
-//!        pcb-designer --mcp-stdio [PROJECT_DIR | --demo]
+//!        pcb-designer --mcp-stdio [PROJECT_DIR | --demo | --example NAME]
 //!        pcb-designer export-gerber PROJECT_DIR [--assembly generic|jlcpcb|pcbway]
 //!        pcb-designer export-schematic-pdf PROJECT_DIR
 //!        pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR
@@ -40,7 +40,8 @@
 //! `--kicad-pick` adds symbols/footprints to the KiCad import window, `--kicad-import`
 //! imports them right away into a new library.
 //!
-//! Without a project or `--demo` an empty, unsaved project is opened.
+//! Without a project or an example an empty, unsaved project is opened. `--demo` is
+//! `--example led`; the examples are `led` and `amp` (a discrete audio amplifier).
 
 mod activity_ui;
 mod agent;
@@ -93,6 +94,7 @@ mod units;
 mod workspace;
 
 use app::{Options, Startup};
+use view::demo::Example;
 
 fn main() -> eframe::Result {
     env_logger::init();
@@ -173,7 +175,16 @@ fn main() -> eframe::Result {
     }
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--demo" => opts.startup = Startup::Demo,
+            "--demo" => opts.startup = Startup::Example(Example::Led),
+            "--example" => {
+                let name = args.next().unwrap_or_default();
+                let Some(example) = Example::parse(&name) else {
+                    let names: Vec<_> = Example::ALL.iter().map(|e| e.name()).collect();
+                    eprintln!("pcb-designer: no example {name:?} (examples: {})", names.join(", "));
+                    std::process::exit(2);
+                };
+                opts.startup = Startup::Example(example);
+            }
             "--mcp-stdio" => stdio = true,
             "--stress" => opts.startup = Startup::Stress(args.next().and_then(|v| v.parse().ok()).unwrap_or(2_000)),
             "--no-vsync" => vsync = false,
@@ -374,7 +385,7 @@ fn run_stdio(startup: Startup, kicad_paths: Vec<std::path::PathBuf>) -> Result<(
             }
             Document::new(import.project)
         }
-        Startup::Demo => Document::new(view::demo::demo_project()),
+        Startup::Example(example) => Document::new(example.project()),
         Startup::Empty => Document::new(Project::new("Untitled")),
         Startup::Stress(n) => Document::new(view::demo::stress_project(n)),
     };

@@ -57,6 +57,7 @@ With a current stable [Rust](https://rustup.rs):
 cargo run --release -p app                 # an empty project
 cargo run --release -p app -- my.pcbproj   # open a project folder
 cargo run --release -p app -- --demo       # the demo project
+cargo run --release -p app -- --example amp  # a discrete audio amplifier
 cargo test --workspace
 ```
 

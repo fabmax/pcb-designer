@@ -131,6 +131,7 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
   with `{"theme": "light"}` there for the light theme.
 - More flags:
   - `--side-by-side`
+  - `--example amp` (instead of `--demo`, which is `--example led`): the audio amplifier
   - `--select R1`
   - `--show footprint:SOT-23` (opens an item by name, searching the libraries from the
     last loaded one: with `--demo` the demo parts, then the built-in library, e.g.
@@ -158,6 +159,6 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
     a tab) and on `board` / `schematic` steps; clicks may switch tabs afterwards.
   - `ui-click` on menus is unreliable.
 - Without a window: `cargo run -p mcp --example render_board -- out.png [w h] [--light]
-  [--schematic] [--show-layer "Top Solder Mask"]`.
+  [--schematic] [--example amp] [--show-layer "Top Solder Mask"]`.
 - Gerber files of the demo: `cargo run -p view --example export_demo -- DIR`.
 - Call a running app's MCP tool: `cargo run -p mcp --example mcp_call -- URL TOOL '{…}'`.

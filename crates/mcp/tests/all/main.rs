@@ -3,6 +3,7 @@
 
 mod checks;
 mod end_to_end;
+mod examples;
 mod gerber_export;
 mod kicad_headless;
 mod kicad_project;

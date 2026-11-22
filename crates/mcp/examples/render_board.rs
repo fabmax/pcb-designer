@@ -1,6 +1,6 @@
 //! Render the demo board offscreen (no window needed), after running the design rule
 //! check: `cargo run -p mcp --example render_board -- out.png [width height] [--light]
-//! [--schematic | --sheet NAME] [--show-layer NAME]…` (shows a board layer hidden by
+//! [--example NAME] [--schematic | --sheet NAME] [--show-layer NAME]…` (shows a board layer hidden by
 //! default, e.g. "Top Solder Mask") [--gerber [LAYER]…]` (exports the demo into a
 //! temporary folder and renders the files read back, optionally only some of them). Development aid for screenshots.
 
@@ -18,6 +18,11 @@ fn main() {
     let light = flag("--light");
     let gerber = flag("--gerber");
     let schematic = flag("--schematic");
+    let example = args.iter().position(|a| a == "--example").map(|i| {
+        args.remove(i);
+        let name = args.remove(i);
+        view::demo::Example::parse(&name).unwrap_or_else(|| panic!("no example {name:?}"))
+    });
     let sheet = args.iter().position(|a| a == "--sheet").map(|i| {
         args.remove(i);
         args.remove(i)
@@ -33,7 +38,8 @@ fn main() {
     let out = args.first().cloned().unwrap_or_else(|| "board.png".into());
     let w = args.get(1).and_then(|v| v.parse().ok()).unwrap_or(1200);
     let h = args.get(2).and_then(|v| v.parse().ok()).unwrap_or(900);
-    let mut host = HeadlessHost::new(Document::new(view::demo::demo_project()));
+    let project = example.unwrap_or(view::demo::Example::Led).project();
+    let mut host = HeadlessHost::new(Document::new(project));
     let report = host.doc.run_drc();
     for v in &report.violations {
         println!("{:?}: {}", v.kind, v.message);

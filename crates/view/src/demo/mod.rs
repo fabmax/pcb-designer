@@ -1,4 +1,49 @@
-//! Generated projects: a small demo circuit and large stress-test designs.
+//! Generated projects: the examples (a small LED demo, an audio amplifier) and large
+//! stress-test designs.
+
+mod amp;
+
+pub use amp::amp_project;
+
+/// The example projects (File → Open example, `--example NAME`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Example {
+    /// [`demo_project`]: an LED on a sub-sheet, a test bench, a small routed board.
+    Led,
+    /// [`amp_project`]: a discrete class-AB audio amplifier, routed.
+    Amp,
+}
+
+impl Example {
+    pub const ALL: [Example; 2] = [Example::Led, Example::Amp];
+
+    /// The name `--example` takes.
+    pub fn name(self) -> &'static str {
+        match self {
+            Example::Led => "led",
+            Example::Amp => "amp",
+        }
+    }
+
+    /// The menu entry.
+    pub fn label(self) -> &'static str {
+        match self {
+            Example::Led => "LED demo",
+            Example::Amp => "Audio amplifier",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Example> {
+        Example::ALL.into_iter().find(|e| e.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    pub fn project(self) -> Project {
+        match self {
+            Example::Led => demo_project(),
+            Example::Amp => amp_project(),
+        }
+    }
+}
 
 use editor_core::query::{pad_positions, pin_positions};
 use editor_core::{Command, Editor};

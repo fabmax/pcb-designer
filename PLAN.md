@@ -1040,6 +1040,17 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   `after_save` relinks or adds a saved library; `copy_for` copies with a new id.
 - `tree`: toolkit-independent tree model (`Node`, `TreeState`, keyboard, search that
   restores the expansion afterwards).
+- Example projects (`demo/`, `demo::Example`: File → Open example, `--example NAME`)
+  are generated in code, not stored as files, so they follow format changes for free.
+  `led` (`demo_project`, plus a demo library the app writes to the temp folder) and
+  `amp` (`demo/amp.rs`: a discrete class-AB amplifier). The amplifier is built through
+  `Command`s like a user would: the schematic on a 2.54 mm grid (`g`), then the board:
+  placement, then tracks laid by the walkaround router leg by leg between waypoints
+  (`track` panics if one is blocked, so a part moved in the way fails the tests rather
+  than leaving a broken board), vias after the track that gives them
+  their net, a bottom GND pour last. `mcp/tests/all/examples.rs` keeps it ERC and DRC
+  clean (fully routed) and, with ngspice, checks its bias (OUT ≈ 6.6 V) and gain (≈ 11.7
+  dB at 1 kHz). Look at the board with `render_board --example amp`.
 
 ## Libraries and KiCad (`kicad`)
 

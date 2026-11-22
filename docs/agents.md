@@ -28,7 +28,8 @@ port and whether it starts on launch.
 
 Agents can also use the editor without a window: `pcb-designer --mcp-stdio [PROJECT_DIR]`
 serves MCP on stdin/stdout. A folder that doesn't exist yet becomes a new project, saved
-there by `save_project`; `--demo` starts from the demo project. For Claude Code:
+there by `save_project`; `--demo` or `--example NAME` starts from an
+[example project](user-interface.md#example-projects). For Claude Code:
 
 ```sh
 claude mcp add pcb-designer -- /path/to/pcb-designer --mcp-stdio ~/boards/my.pcbproj

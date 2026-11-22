@@ -31,7 +31,10 @@ written for those simulators work.
 4. Click wires and pins with the **Probe** tool (**O**) to plot more.
 5. Change a value and run again; results of an older schematic dim until then.
 
-The demo project (`--demo`) has a supply, an operating point and a test bench sheet to try.
+The [example projects](user-interface.md#example-projects) have test bench sheets and
+analyses to try: the LED demo an operating point, a transient and AC; the audio amplifier
+its bias point, the output into an 8 Ω load (a SPICE line in Extra) and its frequency
+response.
 
 ## Simulation panel
 
