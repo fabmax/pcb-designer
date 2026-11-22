@@ -26,11 +26,15 @@ pub enum Act {
     Clear,
 }
 
-/// `error`: why the server didn't start.
-pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, running: bool, error: Option<&str>) -> Option<Act> {
+/// `url`: where the server listens, while it runs. `error`: why it didn't start.
+pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, url: Option<&str>, error: Option<&str>) -> Option<Act> {
     let mut act = None;
-    if !running {
-        crate::fields::summary(ui, "Agent access is off: turn it on with the switch in the title bar.");
+    let running = url.is_some();
+    if let Some(url) = url {
+        crate::agent_switch::url_ui(ui, url);
+        ui.add_space(4.0);
+    } else {
+        crate::fields::summary(ui, "Agent access is off: turn it on with the switch above.");
         if let Some(e) = error {
             ui.label(RichText::new(e).color(theme::error()));
         }

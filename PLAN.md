@@ -1331,14 +1331,11 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   request name (snake case of the `Request` variant, not always the tool's name), its
   `describe`, the `Debug` arguments and `mcp::Outcome` (`handle` returns it: the result
   text, truncated, the error, or `Deferred` for calls the app answers later), plus the
-  undo step when the revision changed. Session only. While the server is off the panel
-  points at the switch (and shows the error of a failed start); while it's on, its bar
-  button has a green dot (`Badge::Live`, tooltip with the URL; the status bar shows
-  nothing).
-- **Agent access switch** (`agent_switch.rs`): at the right end of the title strip
-  (macOS) or the menu bar (elsewhere): a switch that runs `Cmd::ToggleAgent`, and while
-  the server runs its URL in a read-only text field with a copy button. Red label and
-  tooltip after a failed start. Not shown in full screen on macOS (no strip; Tools menu).
+  undo step when the revision changed. Session only. A switch in the panel's header
+  (`agent_switch.rs`, next to the hide button) runs `Cmd::ToggleAgent`; a red dot and
+  its tooltip tell why a start failed. While the server runs, the panel's first row is
+  its URL in a read-only text field with a copy button, and the panel's bar button has
+  a green dot (`Badge::Live`, tooltip with the URL; the status bar shows nothing).
 - **Properties** (`properties.rs`): a symbol and a footprint both have the component's
   Footprint variant combo (`variant_combo`); on the board it leaves out "no footprint"
   variants, which would delete the selected footprint. Text fields keep their typed
@@ -1366,9 +1363,7 @@ What's ahead (UI, probing, MCP, KiCad import, the shared library) is in
   and typing rules still apply). The native menu syncs every frame, in place when only
   texts or states change. winit's default menu is off.
 - **macOS window** (`title_bar.rs`): transparent title bar with full-size content; our
-  strip shows the icon, the project name and "— Edited" (centred, but kept left of the
-  widgets at its right end: `show`'s `right`, added after the drag area so they get
-  the clicks). Height and button extent come
+  strip shows the icon, the project name and "— Edited". Height and button extent come
   from the `NSWindow` (32 pt on macOS 26). Drag → `StartDrag`; double-click follows
   `AppleActionOnDoubleClick`; no strip in full screen; `setDocumentEdited` for the dot.
   The window appearance follows the app theme. Gotcha: `theme::apply` pins egui's theme,

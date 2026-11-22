@@ -104,17 +104,8 @@ pub struct TitleBar {
 }
 
 impl TitleBar {
-    /// Draws the strip as a top panel `chrome.height` high, with `right` laid out right
-    /// to left at its right end.
-    pub fn show(
-        &mut self,
-        ui: &mut egui::Ui,
-        frame: &eframe::Frame,
-        chrome: Chrome,
-        name: &str,
-        edited: bool,
-        right: &mut dyn FnMut(&mut egui::Ui),
-    ) {
+    /// Draws the strip as a top panel `chrome.height` high.
+    pub fn show(&mut self, ui: &mut egui::Ui, frame: &eframe::Frame, chrome: Chrome, name: &str, edited: bool) {
         let icon = self.icon(ui.ctx()).id();
         egui::Panel::top("title bar")
             .frame(egui::Frame::NONE.fill(theme::window_bg()))
@@ -129,11 +120,6 @@ impl TitleBar {
                 if response.double_clicked() {
                     double_click(frame);
                 }
-                // Added after the drag area: its widgets win the clicks.
-                let layout = egui::Layout::right_to_left(egui::Align::Center);
-                let inner = rect.shrink2(vec2(10.0, 0.0));
-                let used = ui.scope_builder(egui::UiBuilder::new().max_rect(inner).layout(layout), |ui| right(ui));
-                let right_edge = used.response.rect.left().min(rect.right());
 
                 let (name, edited) = title_parts(name, edited);
                 let font = egui::FontId::proportional(13.0);
@@ -144,9 +130,7 @@ impl TitleBar {
                 let gap = 6.0;
                 let width = ICON + gap + name.size().x + edited.as_ref().map_or(0.0, |g| g.size().x);
                 // Centred in the window like a native title, but clear of the buttons.
-                let left = (rect.center().x - width / 2.0)
-                    .min(right_edge - 16.0 - width)
-                    .max(rect.left() + chrome.buttons_right + 12.0);
+                let left = (rect.center().x - width / 2.0).max(rect.left() + chrome.buttons_right + 12.0);
                 let cy = rect.center().y;
                 let icon_rect = egui::Rect::from_min_size(pos2(left, cy - ICON / 2.0), vec2(ICON, ICON));
                 let uv = egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
