@@ -366,6 +366,12 @@ the current design of each area with the gotchas a change needs to know, the pla
   lays a chain along a new path (ids kept in order, extra segments copy the first
   track, left-overs deleted). `locked` on `Track` / `Via` (Properties, KiCad import;
   not serialized when false).
+- **Route tool snapping** (`snap_to_copper`): pad and via centres and track ends within
+  the tolerance, else the centre of a pad or via under the pointer, else the middle line
+  of a straight track under (or within the tolerance of) the pointer, at the grid point
+  projected onto it (geometry from the router's connectivity, so a route preview's
+  pushes don't move it), else the grid point. Gotcha: tracks between header pins are
+  off the grid, so the grid point alone never lands on them.
 - **Route tool and the router**: in Shove and Walk around (`PcbPlacer::routed`, Shift
   forces Highlight) the router's path is the ghost and what a click adds (straight
   segments; the leg's own, arcs included, if unchanged); stopping short shows a marker

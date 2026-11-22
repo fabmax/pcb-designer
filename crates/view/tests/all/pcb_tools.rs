@@ -539,3 +539,32 @@ fn shove_mode_keeps_square_corners_where_nothing_is_walked_round() {
         }
     }
 }
+
+#[test]
+fn the_route_tool_snaps_to_the_middle_of_off_grid_tracks() {
+    let mut doc = Document::new(Project::new("T"));
+    let l = LayerId::TOP_COPPER;
+    // Off the 0.5 mm grid (as between header pins), and a wide one.
+    let thin = Track::straight(l, Point::mm(0.0, 1.27), Point::mm(20.0, 1.27), mm(0.25));
+    let wide = Track::straight(l, Point::mm(0.0, 5.19), Point::mm(20.0, 5.19), mm(0.4));
+    let diag = Track::straight(l, Point::mm(0.0, 10.0), Point::mm(5.0, 15.0), mm(0.25));
+    let ids = [thin.id, wide.id, diag.id];
+    doc.execute(Command::Insert { objects: [thin, wide, diag].map(Object::Track).to_vec() }).unwrap();
+    let snap =
+        |doc: &mut Document, raw: Point, grid: Point| view::pcb_tools::snap_to_copper(doc, raw, grid, l, mm(0.3));
+    // On the thin one: no grid point lies on it.
+    let (p, item) = snap(&mut doc, Point::mm(10.1, 1.3), Point::mm(10.0, 1.5));
+    assert_eq!(p, Point::mm(10.0, 1.27));
+    assert_eq!(item, Some(editor_core::copper::CopperItem::Track(ids[0])));
+    // Beside it, within the tolerance: still its middle.
+    assert_eq!(snap(&mut doc, Point::mm(10.0, 1.6), Point::mm(10.0, 1.5)).0, Point::mm(10.0, 1.27));
+    // On the wide one, a grid point at its edge: its middle, not the edge.
+    assert_eq!(snap(&mut doc, Point::mm(10.0, 5.05), Point::mm(10.0, 5.0)).0, Point::mm(10.0, 5.19));
+    // A diagonal one: the grid point projected onto it.
+    let (p, item) = snap(&mut doc, Point::mm(2.6, 12.5), Point::mm(2.5, 12.5));
+    assert_eq!(item, Some(editor_core::copper::CopperItem::Track(ids[2])));
+    assert_eq!(p.y - p.x, mm(10.0), "on the line: {p:?}");
+    // Track ends still win, and free space keeps the grid point.
+    assert_eq!(snap(&mut doc, Point::mm(0.1, 1.3), Point::mm(0.0, 1.5)).0, Point::mm(0.0, 1.27));
+    assert_eq!(snap(&mut doc, Point::mm(10.1, 3.1), Point::mm(10.0, 3.0)).0, Point::mm(10.0, 3.0));
+}

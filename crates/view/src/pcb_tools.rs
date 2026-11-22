@@ -273,7 +273,8 @@ impl Default for PcbPlacer {
 
 /// Where a click at `raw` (grid-snapped: `snapped`) attaches on `layer`: the nearest pad
 /// or via center or track end within `tol`, else the center of a pad or via under the
-/// cursor, else the snapped point (on a track there, or in free space). Also the copper
+/// cursor, else the middle of a straight track under (or within `tol` of) the cursor
+/// across it, the snapped point along it, else the snapped point. Also the copper
 /// there.
 pub fn snap_to_copper(
     doc: &mut Document,
@@ -288,8 +289,43 @@ pub fn snap_to_copper(
     }
     match copper.at(raw, layer) {
         Some(c) if matches!(c.item, CopperItem::Pad { .. } | CopperItem::Via(_)) => (c.anchors[0], Some(c.item)),
-        _ => (snapped, copper.at(snapped, layer).map(|c| c.item)),
+        _ => match track_near(doc, raw, layer, tol) {
+            // Off-grid tracks (between pads 2.54 mm apart) have no grid point on them.
+            Some((id, a, b)) => (on_segment(snapped, a, b), Some(CopperItem::Track(id))),
+            None => {
+                let copper = doc.route_copper();
+                (snapped, copper.at(snapped, layer).map(|c| c.item))
+            }
+        },
     }
+}
+
+/// The straight track on `layer` whose middle line passes nearest `raw`, if `raw` is on
+/// its copper or within `tol` of it: its id and ends.
+fn track_near(doc: &mut Document, raw: Point, layer: LayerId, tol: Coord) -> Option<(Id, Point, Point)> {
+    let bit = layer_bit(layer);
+    doc.route_copper()
+        .query(Rect::around(raw, tol))
+        .filter(|c| c.layers & bit != 0)
+        .filter_map(|c| match (c.item, &c.geo) {
+            (CopperItem::Track(id), &editor_core::copper::Geo::Capsule { a, b, r }) => Some((id, a, b, r)),
+            _ => None,
+        })
+        .map(|(id, a, b, r)| (editor_core::copper::point_seg_dist(raw, a, b), id, a, b, r))
+        .filter(|&(d, .., r)| d <= (r + tol) as f64)
+        .min_by(|x, y| x.0.total_cmp(&y.0))
+        .map(|(_, id, a, b, _)| (id, a, b))
+}
+
+/// The point of segment `a`–`b` nearest to `p`.
+fn on_segment(p: Point, a: Point, b: Point) -> Point {
+    let (dx, dy) = ((b.x - a.x) as f64, (b.y - a.y) as f64);
+    let len2 = dx * dx + dy * dy;
+    if len2 == 0.0 {
+        return a;
+    }
+    let t = (((p.x - a.x) as f64 * dx + (p.y - a.y) as f64 * dy) / len2).clamp(0.0, 1.0);
+    Point::new(a.x + (dx * t).round() as Coord, a.y + (dy * t).round() as Coord)
 }
 
 impl PcbPlacer {
