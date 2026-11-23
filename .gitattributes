@@ -1,0 +1,3 @@
+# Data embedded with include_str! and compared as text: the same bytes on every platform.
+crates/view/demo/** text eol=lf
+crates/model/library/*.pcblib text eol=lf

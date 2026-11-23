@@ -1145,7 +1145,8 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   It opens as a new, unsaved project, so it must use no external library files.
   `demo::tests` checks every stored example loads, validates, its net classes name
   existing nets (a renamed label leaves stale names), and that saving it writes its files
-  unchanged (current format). After a format change, `cargo run -p view --example
+  unchanged (current format; `.gitattributes` keeps them LF, since Windows checkouts
+  would otherwise get CRLF and embed it). After a format change, `cargo run -p view --example
   save_examples` re-saves them. To change one: open it, edit, Save As anywhere, and copy
   the four files over (not the `.pcb-designer` folder). `mcp/tests/all/examples.rs`
   keeps the amplifier ERC and DRC clean and, with ngspice, checks its bias (OUT ≈ 6.6 V),

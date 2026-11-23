@@ -432,8 +432,9 @@ mod tests {
                 (model::io::BOARD_FILE, files.board),
             ] {
                 let saved = std::fs::read_to_string(out.path().join(name)).unwrap();
+                // A Windows checkout may have CRLF line ends (`.gitattributes` asks for LF).
                 assert!(
-                    saved == text,
+                    saved == text.replace("\r\n", "\n"),
                     "{dir}/{name} changes when saved: run `cargo run -p view --example save_examples`"
                 );
             }
