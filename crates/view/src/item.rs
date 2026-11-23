@@ -454,8 +454,8 @@ pub struct ItemView {
     item: Option<Item>,
     content: Option<Content>,
     index: SpatialIndex<Elem>,
-    /// Document revision drawn (`None`: needs drawing).
-    drawn: Option<u64>,
+    /// Document revision and theme drawn (`None`: needs drawing).
+    drawn: Option<(u64, crate::style::Theme)>,
     selection: Vec<Elem>,
     hover: Option<Elem>,
     /// The text being edited in place, as drawn.
@@ -507,6 +507,15 @@ impl ItemView {
         self.item
     }
 
+    /// The editor whose theme it draws in: a symbol the schematic's, a footprint the
+    /// PCB's.
+    pub fn editor(&self) -> crate::style::Editor {
+        match self.item {
+            Some(Item::Footprint(_)) => crate::style::Editor::Pcb,
+            _ => crate::style::Editor::Schematic,
+        }
+    }
+
     pub fn content(&self) -> Option<&Content> {
         self.content.as_ref()
     }
@@ -523,6 +532,7 @@ impl ItemView {
 
     /// The layers of the shown item for the layer menu, with their colours.
     pub fn layer_menu(&self) -> Vec<LayerEntry> {
+        let _theme = crate::style::scope(self.editor());
         let (l, p) = (&self.layers, pal());
         let e = |layer, color, group| LayerEntry { layer, color, group };
         match self.item {
@@ -557,10 +567,12 @@ impl ItemView {
 
     /// Redraw if the document changed since the last call.
     pub fn sync(&mut self, doc: &Document) {
-        if self.drawn == Some(doc.revision) {
+        let _theme = crate::style::scope(self.editor());
+        let key = (doc.revision, crate::style::theme());
+        if self.drawn == Some(key) {
             return;
         }
-        self.drawn = Some(doc.revision);
+        self.drawn = Some(key);
         self.content = self.item.and_then(|item| Content::get(doc.project(), item));
         self.layers.rules = doc.project().board.rules.clone();
         if self.content.is_none() {
@@ -616,6 +628,7 @@ impl ItemView {
 
     /// Show the text being edited in place (`None`: no edit). Redrawn only if it changed.
     pub fn set_text_edit(&mut self, edit: Option<(crate::text_edit::EditGeometry, Color)>) {
+        let _theme = crate::style::scope(self.editor());
         if edit == self.edit {
             return;
         }
@@ -631,6 +644,7 @@ impl ItemView {
     }
 
     pub fn set_highlight(&mut self, selection: &[Elem], hover: Option<Elem>) {
+        let _theme = crate::style::scope(self.editor());
         for &e in &self.selection {
             if !selection.contains(&e) {
                 self.scene.remove_item(overlay_key(e, false));
@@ -668,6 +682,7 @@ impl ItemView {
 
     /// Show creation-tool ghosts (empty slice clears).
     pub fn set_preview(&mut self, ghosts: &[Ghost]) {
+        let _theme = crate::style::scope(self.editor());
         if ghosts.is_empty() {
             self.scene.remove_item(PREVIEW_KEY);
             return;

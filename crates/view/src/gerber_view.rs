@@ -100,6 +100,7 @@ impl GerberView {
     /// Read the files of an export folder: those listed in its manifest, else every
     /// `.gbr`, `.gtl`, … and `.drl` file in it.
     pub fn load(dir: &Path) -> std::io::Result<GerberView> {
+        let _theme = crate::style::scope(crate::style::Editor::Pcb);
         let manifest = dir.parent().and_then(Path::parent).and_then(read_manifest);
         let mut listed: Vec<(String, Option<String>, Option<FileKind>)> = match &manifest {
             Some(m) => m
@@ -157,6 +158,7 @@ impl GerberView {
 
     /// Draw everything again (after a theme change); layer visibility is kept.
     pub fn rebuild(&mut self) {
+        let _theme = crate::style::scope(crate::style::Editor::Pcb);
         let visible: Vec<bool> = (0..self.scene.layer_count() as u16).map(|i| self.scene.layer(i).visible).collect();
         let mut scene = Scene::new();
         let area = self.board_area();
@@ -199,6 +201,7 @@ impl GerberView {
 
     /// The layers popup: one entry per file, in stacking order from the top.
     pub fn layer_menu(&self) -> Vec<LayerEntry> {
+        let _theme = crate::style::scope(crate::style::Editor::Pcb);
         let mut v: Vec<LayerEntry> = self
             .files
             .iter()
@@ -215,6 +218,7 @@ impl GerberView {
 
     /// Show only the file `name` (or all files for `None`).
     pub fn show_only(&mut self, name: Option<&str>) {
+        let _theme = crate::style::scope(crate::style::Editor::Pcb);
         for f in &self.files {
             self.scene.layer_mut(f.render_layer).visible = name.is_none_or(|n| n == f.name);
         }

@@ -296,11 +296,12 @@ pub trait Host {
     fn set_selection(&mut self, view: ViewId, ids: Vec<ObjectId>);
     /// PNG of a view: everything (`fit`) or what the user currently sees.
     fn render_view(&mut self, view: ViewId, fit: bool, width: u32, height: u32) -> Result<Vec<u8>, String>;
-    /// Render any scene offscreen, on the board background, seen by `camera` (`None`:
+    /// Render any scene offscreen, on `editor`'s background, seen by `camera` (`None`:
     /// fitted).
     fn render_scene(
         &mut self,
         scene: &Scene,
+        editor: view::style::Editor,
         camera: Option<Camera>,
         width: u32,
         height: u32,
@@ -682,11 +683,12 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             let conn = doc.connectivity();
             let signals = sim::plot::signals(a, &done.result, conn).0;
             let (w, h) = (width.clamp(64, 4096), height.clamp(64, 4096));
-            let (scene, camera) = crate::simulation::plot_scene(doc.project(), done, &signals, conn, spectrum, w, h)
-                .ok_or_else(|| {
-                    format!("{} is an operating point: it has no plot; simulate answers its values", a.name)
-                })?;
-            return host.render_scene(&scene, Some(camera), w, h).map(Reply::Png);
+            let editor = view::style::Editor::Simulation;
+            let (scene, camera) = view::style::with_editor(editor, || {
+                crate::simulation::plot_scene(doc.project(), done, &signals, conn, spectrum, w, h)
+            })
+            .ok_or_else(|| format!("{} is an operating point: it has no plot; simulate answers its values", a.name))?;
+            return host.render_scene(&scene, editor, Some(camera), w, h).map(Reply::Png);
         }
         Request::Execute { commands } => execute_json(host.document_mut(), commands)?,
         Request::ExcludeFindings { keys, comment, include } => {
@@ -755,7 +757,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
                 }
             }
             let (w, h) = (width.clamp(64, 4096), height.clamp(64, 4096));
-            return host.render_scene(&gv.scene, None, w, h).map(Reply::Png);
+            return host.render_scene(&gv.scene, view::style::Editor::Pcb, None, w, h).map(Reply::Png);
         }
         Request::Save { path } => {
             let doc = host.document_mut();

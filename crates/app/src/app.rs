@@ -162,7 +162,7 @@ impl Pane {
             ViewKind::Schematic => 1.27,
             ViewKind::Board => 0.5,
         };
-        let canvas = Canvas::new(view::style::background(grid as f32));
+        let canvas = Canvas::new(view::view::editor_of(view.kind()), grid as f32);
         Pane { view, canvas, it: Interaction::new(mm(grid)), text_drag: false, grip_hover: None, grip_drag: None }
     }
 }
@@ -408,6 +408,9 @@ impl PcbApp {
         let mut settings = Settings::load();
         settings.dock.normalize();
         view::style::set_theme(settings.theme);
+        for e in view::style::Editor::ALL {
+            view::style::set_editor_theme(e, settings.editor_themes.get(&e).copied());
+        }
         view::style::set_layer_colors(settings.layer_colors());
         units::set_unit(settings.unit);
         // ⌘+ / ⌘− zoom the canvases, not the UI (Settings → Appearance → UI scale).
@@ -1341,19 +1344,29 @@ impl PcbApp {
     fn restyle(&mut self, ctx: &egui::Context) {
         theme::apply(ctx);
         theme::apply_to_window(ctx);
-        for pane in self.panes.iter_mut() {
-            pane.canvas.background = view::style::background(pane.canvas.background.grid);
+        for e in view::style::Editor::ALL {
+            self.restyle_editor(e);
         }
-        self.doc_mut().restyle();
+    }
+
+    /// Redraw what `editor`'s theme shows in its current colours.
+    fn restyle_editor(&mut self, editor: view::style::Editor) {
+        use view::style::Editor;
+        for pane in self.panes.iter_mut().filter(|p| view::view::editor_of(p.view.kind()) == editor) {
+            pane.canvas.restyle(editor);
+        }
+        if editor == Editor::Simulation {
+            return;
+        }
+        self.doc_mut().restyle_editor(editor);
         for l in self.libraries.iter_mut() {
-            l.lib.doc.restyle();
+            l.lib.doc.restyle_editor(editor);
         }
-        for t in self.all_libs_mut().flat_map(|l| l.tabs.iter_mut()) {
-            t.canvas.background = view::style::background(t.canvas.background.grid);
-            t.view.restyle();
+        // Item tabs and previews redraw by themselves when their theme changes.
+        if editor == Editor::Pcb {
+            self.gerber.restyle();
         }
-        self.gerber.restyle();
-        self.parts.restyle();
+        // Cross-probe marks are drawn again.
         self.probe_key = None;
     }
 
@@ -3126,7 +3139,7 @@ impl PcbApp {
             undo: h.undo_label().map(|l| format!("Undo {l}")),
             redo: h.redo_label().map(|l| format!("Redo {l}")),
             side_by_side: self.is_side_by_side(),
-            theme: view::style::theme(),
+            theme: view::style::app_theme(),
             agent_running: self.agent.is_running(),
             agent_error: self.agent.error.clone(),
             agent_url: self.agent.url(),
@@ -3167,7 +3180,7 @@ impl PcbApp {
                 }
             }
             Cmd::Theme(t) => {
-                if t != view::style::theme() {
+                if t != view::style::app_theme() {
                     self.set_theme(ctx, t);
                 }
             }
@@ -3217,6 +3230,16 @@ impl PcbApp {
         let c = self.settings_win.ui(ctx, &mut self.settings, &self.keymap, &status);
         if let Some(t) = c.theme {
             self.set_theme(ctx, t);
+        }
+        if c.editor_theme.is_some() {
+            // Each editor whose setting changed (one, or all on a reset).
+            for e in view::style::Editor::ALL {
+                let t = self.settings.editor_themes.get(&e).copied();
+                if view::style::editor_theme_setting(e) != t {
+                    view::style::set_editor_theme(e, t);
+                    self.restyle_editor(e);
+                }
+            }
         }
         if c.ui_scale {
             ctx.set_zoom_factor(self.settings.ui_scale());
@@ -5404,6 +5427,10 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                 if ui.rect_contains_pointer(ui.max_rect()) && ui.input(|i| i.pointer.any_pressed()) {
                     self.deferred.push(Deferred::Plot(PlotAct::Focus(a)));
                 }
+                // All of it in the Simulation theme: the canvas colours, the chrome colours
+                // (`theme`) and egui's widgets.
+                let _theme = view::style::scope(view::style::Editor::Simulation);
+                ui.style_mut().visuals = theme::visuals();
                 let act = ui.push_id(a, |ui| crate::plot_ui::ui(ui, self.sim, &self.project.lib.doc, a, self.keymap));
                 if let Some(act) = act.inner {
                     self.deferred.push(Deferred::Plot(act));

@@ -214,11 +214,6 @@ impl PartsPanel {
         self.focus_search = true;
     }
 
-    /// The colours changed: redraw the preview.
-    pub fn restyle(&mut self) {
-        self.preview.invalidate();
-    }
-
     pub fn ui(&mut self, ui: &mut Ui, kind: Kind, sources: &[Source], kicad: KicadMatches) -> Option<PartsAct> {
         // The list may overflow (and widen the ui); the preview keeps the panel's width.
         let width = ui.available_width();

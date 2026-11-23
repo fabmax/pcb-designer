@@ -18,6 +18,9 @@ const RECENT: usize = 10;
 #[serde(default)]
 pub struct Settings {
     pub theme: Theme,
+    /// Editors with a theme of their own (the others follow `theme`).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub editor_themes: BTreeMap<view::style::Editor, Theme>,
     /// Display unit of lengths.
     pub unit: Unit,
     /// Recently opened or saved projects, newest first.
@@ -214,7 +217,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sub/settings.json");
         assert_eq!(Settings::load_from(&path), Settings::default());
-        let mut s = Settings { theme: Theme::Light, unit: Unit::Mil, ..Default::default() };
+        let mut s = Settings {
+            theme: Theme::Light,
+            unit: Unit::Mil,
+            editor_themes: BTreeMap::from([(view::style::Editor::Pcb, Theme::Dark)]),
+            ..Default::default()
+        };
         for i in 0..12 {
             s.add_recent(&dir.path().join(format!("p{i}")));
         }

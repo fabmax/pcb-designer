@@ -87,3 +87,39 @@ fn layer_colors_override_per_theme() {
     assert!(colors(doc.view(ViewId::Board)).iter().any(|l| l.contains_key(&red.0)), "silkscreen redrawn");
     set_layer_colors(LayerColors::new());
 }
+
+#[test]
+fn editors_draw_in_their_own_theme() {
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    use style::Editor;
+    style::set_theme(Theme::Dark);
+    let mut doc = Document::new(demo_project());
+    let sheet = colors(doc.view(doc.root()));
+    let board = colors(doc.view(ViewId::Board));
+
+    // A light PCB in the dark app: only the board changes.
+    style::set_editor_theme(Editor::Pcb, Some(Theme::Light));
+    assert_eq!(style::editor_theme(Editor::Pcb), Theme::Light);
+    assert_eq!(style::editor_theme(Editor::Schematic), Theme::Dark, "follows the app");
+    doc.restyle_editor(Editor::Pcb);
+    assert_eq!(colors(doc.view(doc.root())), sheet);
+    assert_ne!(colors(doc.view(ViewId::Board)), board);
+    style::set_theme(Theme::Light);
+    let light_board = colors(Document::new(doc.project().clone()).view(ViewId::Board));
+    style::set_theme(Theme::Dark);
+    assert_eq!(colors(doc.view(ViewId::Board)), light_board, "as in the light app");
+
+    // Scopes nest and end; a forced palette (prints) wins over them.
+    assert_eq!(style::pal().background, style::DARK.background);
+    style::with_editor(Editor::Pcb, || {
+        assert_eq!(style::theme(), Theme::Light);
+        assert_eq!(style::with_editor(Editor::Schematic, style::theme), Theme::Dark);
+        assert_eq!(style::theme(), Theme::Light);
+    });
+    assert_eq!(style::theme(), Theme::Dark);
+    style::with_palette(&style::DARK, || assert_eq!(style::with_editor(Editor::Pcb, style::theme), Theme::Dark));
+
+    style::set_editor_theme(Editor::Pcb, None);
+    doc.restyle_editor(Editor::Pcb);
+    assert_eq!(colors(doc.view(ViewId::Board)), board);
+}

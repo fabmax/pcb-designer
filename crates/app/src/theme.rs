@@ -1,5 +1,7 @@
-//! Application chrome themes (dark and light). The active theme is the canvas palette's
-//! ([`view::style::theme`]), so chrome and canvases always match.
+//! Application chrome themes (dark and light). The colours follow the theme in effect
+//! ([`view::style::theme`]): the app's, or an editor's inside its
+//! [`view::style::scope`] (the simulation tabs draw their widgets in the Simulation
+//! theme).
 
 use egui::{Color32, CornerRadius, Frame, Margin, Painter, Rect, Stroke, Visuals, pos2, style::Selection};
 use view::style::Theme;
@@ -239,7 +241,6 @@ pub fn round_corners(painter: &Painter, rect: Rect) {
     painter.rect_stroke(rect, RADIUS, Stroke::new(1.0, bg), egui::StrokeKind::Middle);
 }
 
-/// Apply the theme to egui (call after [`view::style::set_theme`]).
 /// egui's fonts plus JetBrains Mono (embedded for canvas text anyway) as the last
 /// fallback of both families: egui's defaults lack arrows and the key symbols ⌘ ⇧ ⌥.
 pub fn install_fonts(ctx: &egui::Context) {
@@ -252,7 +253,23 @@ pub fn install_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
+/// Apply the app's theme to egui.
 pub fn apply(ctx: &egui::Context) {
+    let dark = dark();
+    // Pin egui's theme: it would otherwise follow the system (or window) appearance and
+    // swap these visuals for its defaults.
+    ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
+    ctx.set_visuals(visuals());
+
+    ctx.global_style_mut(|s| {
+        s.spacing.item_spacing = egui::vec2(8.0, 6.0);
+        s.spacing.button_padding = egui::vec2(10.0, 4.0);
+        s.spacing.interact_size.y = 24.0;
+    });
+}
+
+/// egui's visuals in the theme in effect (an editor's inside its scope).
+pub fn visuals() -> Visuals {
     let dark = dark();
     let mut v = if dark { Visuals::dark() } else { Visuals::light() };
     let (accent, panel, inset) = (accent(), panel(), panel_dark());
@@ -288,16 +305,7 @@ pub fn apply(ctx: &egui::Context) {
         v.widgets.hovered.weak_bg_fill = Color32::from_rgb(0xd6, 0xd9, 0xe0);
     }
     v.widgets.active.weak_bg_fill = accent.gamma_multiply(0.6);
-    // Pin egui's theme: it would otherwise follow the system (or window) appearance and
-    // swap these visuals for its defaults.
-    ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
-    ctx.set_visuals(v);
-
-    ctx.global_style_mut(|s| {
-        s.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        s.spacing.button_padding = egui::vec2(10.0, 4.0);
-        s.spacing.interact_size.y = 24.0;
-    });
+    v
 }
 
 /// macOS: the window's appearance (native buttons, edge highlight) follows the app theme,

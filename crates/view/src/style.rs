@@ -253,40 +253,133 @@ pub static LIGHT: Palette = Palette {
 
 static THEME: AtomicU8 = AtomicU8::new(0);
 
-/// Select the palette used for drawing from now on.
+/// Select the app's theme from now on (the editors set to follow it, and the chrome).
 pub fn set_theme(theme: Theme) {
     THEME.store(theme as u8, Ordering::Relaxed);
 }
 
-pub fn theme() -> Theme {
-    match THEME.load(Ordering::Relaxed) {
+/// The app's theme (the chrome's), whatever is drawn right now.
+pub fn app_theme() -> Theme {
+    theme_of(THEME.load(Ordering::Relaxed))
+}
+
+fn theme_of(n: u8) -> Theme {
+    match n {
         1 => Theme::Light,
         _ => Theme::Dark,
     }
 }
 
+/// The theme in effect: an editor's in its [`scope`], the forced one of
+/// [`with_palette`], else the app's.
+pub fn theme() -> Theme {
+    match OVERRIDE.get() {
+        Some((p, _)) if std::ptr::eq(p, &LIGHT) => Theme::Light,
+        Some(_) => Theme::Dark,
+        None => app_theme(),
+    }
+}
+
+/// The palette of a theme.
+pub fn palette(theme: Theme) -> &'static Palette {
+    match theme {
+        Theme::Dark => &DARK,
+        Theme::Light => &LIGHT,
+    }
+}
+
+/// The kinds of editors that can have a theme of their own. Symbols draw in the
+/// schematic's, footprints and Gerber files in the PCB's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Editor {
+    Schematic,
+    Pcb,
+    Simulation,
+}
+
+impl Editor {
+    pub const ALL: [Editor; 3] = [Editor::Schematic, Editor::Pcb, Editor::Simulation];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Editor::Schematic => "Schematic",
+            Editor::Pcb => "PCB",
+            Editor::Simulation => "Simulation",
+        }
+    }
+}
+
+/// Per editor: 0 follows the app, else 1 + the theme.
+static EDITOR_THEMES: [AtomicU8; 3] = [AtomicU8::new(0), AtomicU8::new(0), AtomicU8::new(0)];
+
+/// An editor's own theme (`None`: the app's).
+pub fn set_editor_theme(editor: Editor, theme: Option<Theme>) {
+    EDITOR_THEMES[editor as usize].store(theme.map_or(0, |t| t as u8 + 1), Ordering::Relaxed);
+}
+
+/// An editor's own theme, if it has one.
+pub fn editor_theme_setting(editor: Editor) -> Option<Theme> {
+    match EDITOR_THEMES[editor as usize].load(Ordering::Relaxed) {
+        0 => None,
+        n => Some(theme_of(n - 1)),
+    }
+}
+
+/// The theme an editor draws in.
+pub fn editor_theme(editor: Editor) -> Theme {
+    editor_theme_setting(editor).unwrap_or_else(app_theme)
+}
+
 thread_local! {
-    /// A palette that wins over the theme on this thread ([`with_palette`]).
-    static OVERRIDE: std::cell::Cell<Option<&'static Palette>> = const { std::cell::Cell::new(None) };
+    /// A palette that wins over the app's theme on this thread, and whether it was forced
+    /// ([`with_palette`]: editor scopes inside keep it).
+    static OVERRIDE: std::cell::Cell<Option<(&'static Palette, bool)>> = const { std::cell::Cell::new(None) };
 }
 
 /// Draw with `palette` in `f` (on this thread only: the app's theme and other threads
-/// keep theirs), e.g. a print in the light palette from the dark theme.
+/// keep theirs), e.g. a print in the light palette from the dark theme. Editor
+/// [`scope`]s inside keep it.
 pub fn with_palette<R>(palette: &'static Palette, f: impl FnOnce() -> R) -> R {
-    let outer = OVERRIDE.replace(Some(palette));
+    let outer = OVERRIDE.replace(Some((palette, true)));
     let r = f();
     OVERRIDE.set(outer);
     r
 }
 
+/// Until dropped, this thread draws in `editor`'s theme (unless [`with_palette`] forces
+/// one). Views open one in each method that draws.
+#[must_use]
+pub fn scope(editor: Editor) -> Scope {
+    let outer = OVERRIDE.get();
+    if !outer.is_some_and(|(_, forced)| forced) {
+        OVERRIDE.set(Some((palette(editor_theme(editor)), false)));
+    }
+    Scope { outer }
+}
+
+/// Run `f` in `editor`'s theme ([`scope`]).
+pub fn with_editor<R>(editor: Editor, f: impl FnOnce() -> R) -> R {
+    let _scope = scope(editor);
+    f()
+}
+
+/// An editor's theme in effect ([`scope`]); dropping it restores the one before.
+pub struct Scope {
+    outer: Option<(&'static Palette, bool)>,
+}
+
+impl Drop for Scope {
+    fn drop(&mut self) {
+        OVERRIDE.set(self.outer);
+    }
+}
+
 /// The active palette.
 pub fn pal() -> &'static Palette {
-    if let Some(p) = OVERRIDE.get() {
-        return p;
-    }
-    match theme() {
-        Theme::Dark => &DARK,
-        Theme::Light => &LIGHT,
+    match OVERRIDE.get() {
+        Some((p, _)) => p,
+        None => palette(app_theme()),
     }
 }
 

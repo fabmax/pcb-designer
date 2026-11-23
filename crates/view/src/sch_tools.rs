@@ -613,7 +613,12 @@ impl SchPlacer {
                 let t = SchText { id: Id::new(), sheet, text: self.new_text(p) };
                 let shape = t.text.clone();
                 let target = crate::text_edit::TextTarget::NewSchText(t);
-                doc.begin_new_text(crate::view::ViewId::Sheet(sheet), target, shape, crate::style::pal().sch_text);
+                doc.begin_new_text(
+                    crate::view::ViewId::Sheet(sheet),
+                    target,
+                    shape,
+                    crate::style::with_editor(crate::style::Editor::Schematic, || crate::style::pal().sch_text),
+                );
                 return Ok(placed);
             }
             SchTool::NoConnect => {

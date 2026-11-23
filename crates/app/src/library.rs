@@ -259,7 +259,7 @@ impl ItemTab {
             used: 0,
             navigate: None,
             view: ItemView::new(),
-            canvas: Canvas::new(view::style::background(1.27)),
+            canvas: Canvas::new(view::style::Editor::Schematic, 1.27),
             it: Interaction::new(mm(1.27)),
             placer: Placer::default(),
             part_form: PartForm::default(),
@@ -646,6 +646,8 @@ impl ItemEditor<'_> {
     fn item_ui(&mut self, ui: &mut egui::Ui, item: Item, keymap: &Keymap) {
         // The canvas fills the rest of the tab; the tool bars float over it.
         let rect = ui.available_rect_before_wrap();
+        // In its editor's theme (a symbol the schematic's, a footprint the PCB's).
+        self.tab.canvas.restyle(self.tab.view.editor());
         let scene = &mut self.tab.view.scene;
         let canvas = &mut self.tab.canvas;
         let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;

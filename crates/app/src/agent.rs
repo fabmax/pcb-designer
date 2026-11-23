@@ -205,11 +205,12 @@ impl Host for AppHost<'_> {
     fn render_scene(
         &mut self,
         scene: &render::Scene,
+        editor: view::style::Editor,
         camera: Option<render::Camera>,
         width: u32,
         height: u32,
     ) -> Result<Vec<u8>, String> {
-        let background = mcp::headless::background(view::ViewKind::Board);
+        let background = mcp::headless::editor_background(editor);
         render_png(self.offscreen, scene, camera, &background, width, height)
     }
 

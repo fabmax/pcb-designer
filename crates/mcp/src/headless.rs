@@ -136,12 +136,18 @@ impl HeadlessHost {
     }
 }
 
+/// The canvas background of a view, in its editor's theme.
 pub fn background(view: ViewKind) -> Background {
     let grid = match view {
         ViewKind::Schematic => 2.54,
         ViewKind::Board => 1.0,
     };
-    view::style::background(grid)
+    view::style::with_editor(view::view::editor_of(view), || view::style::background(grid))
+}
+
+/// The background of other scenes (plots, Gerber files) in `editor`'s theme.
+pub fn editor_background(editor: view::style::Editor) -> Background {
+    view::style::with_editor(editor, || view::style::background(1.0))
 }
 
 impl Host for HeadlessHost {
@@ -175,11 +181,12 @@ impl Host for HeadlessHost {
     fn render_scene(
         &mut self,
         scene: &Scene,
+        editor: view::style::Editor,
         camera: Option<Camera>,
         width: u32,
         height: u32,
     ) -> Result<Vec<u8>, String> {
-        render_png(&mut self.offscreen, scene, camera, &background(ViewKind::Board), width, height)
+        render_png(&mut self.offscreen, scene, camera, &editor_background(editor), width, height)
     }
 
     fn sim_result(&self, analysis: Id) -> Option<&sim::Finished> {

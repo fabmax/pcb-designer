@@ -215,7 +215,7 @@ pub struct GerberPane {
 impl Default for GerberPane {
     fn default() -> Self {
         GerberPane {
-            canvas: Canvas::new(view::style::background(0.5)),
+            canvas: Canvas::new(view::style::Editor::Pcb, 0.5),
             view: None,
             error: None,
             grid: model::mm(0.5),
@@ -277,7 +277,7 @@ impl GerberPane {
     }
 
     pub fn restyle(&mut self) {
-        self.canvas.background = view::style::background(self.canvas.background.grid);
+        self.canvas.restyle(view::style::Editor::Pcb);
         if let Some(v) = &mut self.view {
             v.rebuild();
         }

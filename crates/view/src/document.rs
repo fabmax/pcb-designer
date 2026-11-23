@@ -177,11 +177,19 @@ impl Document {
         self.commit_text_edit().ok();
         let (text, color) = match Content::get(self.editor.project(), item) {
             Some(Content::Symbol(s)) => match s.texts.get(index) {
-                Some(t) => (t.clone(), crate::style::pal().sch_text),
+                Some(t) => (
+                    t.clone(),
+                    crate::style::with_editor(crate::style::Editor::Schematic, || crate::style::pal().sch_text),
+                ),
                 None => return false,
             },
             Some(Content::Footprint(f)) => match f.texts.get(index) {
-                Some(t) => (t.text.clone(), crate::style::board_layer_color(t.board_layer(model::Side::Top))),
+                Some(t) => {
+                    let layer = t.board_layer(model::Side::Top);
+                    let color =
+                        crate::style::with_editor(crate::style::Editor::Pcb, || crate::style::board_layer_color(layer));
+                    (t.text.clone(), color)
+                }
                 None => return false,
             },
             None => return false,
@@ -486,21 +494,34 @@ impl Document {
         self.board.set_drc(&[]);
     }
 
-    /// Redraw both views and their overlays in the current palette (after
+    /// Redraw both views and their overlays in their editors' palettes (after
     /// [`crate::style::set_theme`]).
     pub fn restyle(&mut self) {
+        self.restyle_editor(crate::style::Editor::Schematic);
+        self.restyle_editor(crate::style::Editor::Pcb);
+        // Every view is redrawn: library changes waiting for theirs are in.
+        self.stale_library.clear();
+    }
+
+    /// Redraw the views of one editor (the sheets, or the board) with their overlays
+    /// (after [`crate::style::set_editor_theme`]).
+    pub fn restyle_editor(&mut self, editor: crate::style::Editor) {
         let project = self.editor.project();
-        for view in self.sheets.iter_mut().chain([&mut self.board]) {
+        for view in self.sheets.iter_mut().chain([&mut self.board]).filter(|v| v.editor() == editor) {
             let probed = view.probed().to_vec();
             view.rebuild(project);
             view.set_probe(project, &probed);
         }
-        self.stale_library.clear();
-        for view in &mut self.sheets {
-            view.set_connectivity(&self.connectivity);
+        match editor {
+            crate::style::Editor::Schematic => {
+                for view in &mut self.sheets {
+                    view.set_connectivity(&self.connectivity);
+                }
+                self.draw_sim();
+            }
+            crate::style::Editor::Pcb => self.board.set_copper(project, &self.copper),
+            crate::style::Editor::Simulation => {}
         }
-        self.board.set_copper(project, &self.copper);
-        self.draw_sim();
     }
 
     /// Show a simulation's probes and values on the sheets (redrawn when it changes and

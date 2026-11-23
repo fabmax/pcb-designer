@@ -35,6 +35,9 @@ pub struct Canvas {
     id: u64,
     pub camera: Camera,
     pub background: Background,
+    /// The editor whose theme it shows (the crosshair's colour; callers set the
+    /// background, see [`Canvas::restyle`]).
+    pub editor: view::style::Editor,
     /// Uploads not yet consumed by the GPU (applied in order during `prepare`).
     pending: Arc<Mutex<Vec<SceneUpload>>>,
     fit_requested: bool,
@@ -44,17 +47,26 @@ pub struct Canvas {
 }
 
 impl Canvas {
-    pub fn new(background: Background) -> Self {
+    /// A canvas of `editor` with a grid of `grid` world units.
+    pub fn new(editor: view::style::Editor, grid: f32) -> Self {
+        let background = view::style::with_editor(editor, || view::style::background(grid));
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             camera: Camera::default(),
             background,
+            editor,
             pending: Default::default(),
             fit_requested: true,
             cursor_world: None,
             viewport: [1.0, 1.0],
             rect: egui::Rect::NOTHING,
         }
+    }
+
+    /// Show `editor`'s theme: its background (keeping the grid).
+    pub fn restyle(&mut self, editor: view::style::Editor) {
+        self.editor = editor;
+        self.background = view::style::with_editor(editor, || view::style::background(self.background.grid));
     }
 
     pub fn request_fit(&mut self) {
@@ -102,7 +114,8 @@ impl Canvas {
         if CROSSHAIR.load(Ordering::Relaxed)
             && let Some(at) = response.hover_pos()
         {
-            draw_crosshair(ui, rect, at);
+            let color = view::style::palette(view::style::editor_theme(self.editor)).crosshair;
+            draw_crosshair(ui, rect, at, crate::theme::color(color));
         }
         response
     }
@@ -273,9 +286,8 @@ const CROSSHAIR_GAP: f32 = 24.0;
 
 /// Crosshair through `at` across `clip`: dashed horizontal and vertical lines, and
 /// fainter 45° ones, leaving a hole around the pointer.
-fn draw_crosshair(ui: &egui::Ui, clip: egui::Rect, at: egui::Pos2) {
+fn draw_crosshair(ui: &egui::Ui, clip: egui::Rect, at: egui::Pos2, color: egui::Color32) {
     use egui::{Shape, Stroke, vec2};
-    let color = crate::theme::color(view::style::pal().crosshair);
     let painter = ui.painter_at(clip);
     // One physical pixel wide.
     let width = 1.0 / ui.ctx().pixels_per_point();

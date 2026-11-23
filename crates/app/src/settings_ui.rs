@@ -89,9 +89,12 @@ const COLOR_KEYWORDS: &str = "colour color layer board pcb";
 
 const ENTRIES: &[Entry] = &[
     entry(Page::Appearance, "Theme", "dark light mode colour color"),
+    entry(Page::Appearance, "Schematic", "theme dark light mode colour color editor symbol"),
+    entry(Page::Appearance, "PCB", "theme dark light mode colour color editor board footprint gerber"),
+    entry(Page::Appearance, "Simulation", "theme dark light mode colour color editor plot"),
     entry(Page::Appearance, "Length units", "mm mil inch metric imperial unit"),
     entry(Page::Appearance, "UI scale", "size zoom font text bigger smaller interface percent"),
-    entry(Page::LayerColors, "Theme", "dark light mode"),
+    entry(Page::LayerColors, "Colours of", "theme dark light mode"),
     entry(Page::Tools, "Remembered tool settings", "corner width size layer forget reset drawing style"),
     entry(Page::Agent, "Server", "mcp status start stop running url"),
     entry(Page::Agent, "Port", "mcp server network tcp"),
@@ -188,6 +191,8 @@ pub struct Changes {
     /// Settings changed: save them.
     pub save: bool,
     pub theme: Option<Theme>,
+    /// An editor's theme changed (`Settings::editor_themes` is up to date).
+    pub editor_theme: Option<view::style::Editor>,
     pub ui_scale: bool,
     pub layer_colors: bool,
     /// The key bindings changed (`Settings::keymap` is up to date).
@@ -222,6 +227,8 @@ pub struct AgentStatus {
 pub struct SettingsWindow {
     pub open: bool,
     query: String,
+    /// The theme whose layer colours the Layer colours page edits (`None`: the PCB's).
+    colors_of: Option<Theme>,
     /// Focus the search field next frame (just opened, ⌘F).
     focus_search: bool,
     /// The action whose new shortcut is being recorded.
@@ -379,14 +386,35 @@ impl SettingsWindow {
     }
 
     fn appearance(&mut self, ui: &mut Ui, rows: &mut Rows, settings: &mut Settings, changes: &mut Changes) {
-        rows.row(ui, "Theme", None, |ui| {
-            let current = view::style::theme();
+        rows.row(ui, "Theme", Some("The app's: panels, menus and the editors that follow it."), |ui| {
+            let current = view::style::app_theme();
             for &t in Theme::ALL {
                 if ui.selectable_label(current == t, t.label()).clicked() && current != t {
                     changes.theme = Some(t);
                 }
             }
         });
+        for editor in view::style::Editor::ALL {
+            let tip = match editor {
+                view::style::Editor::Schematic => "Sheets, symbols and their previews.",
+                view::style::Editor::Pcb => "The board, footprints, their previews and the Gerber files.",
+                view::style::Editor::Simulation => "The simulation tabs: plots and their tables.",
+            };
+            rows.row(ui, editor.label(), Some(tip), |ui| {
+                let current = settings.editor_themes.get(&editor).copied();
+                let options = [(None, "App")].into_iter().chain(Theme::ALL.iter().map(|&t| (Some(t), t.label())));
+                for (t, label) in options {
+                    if ui.selectable_label(current == t, label).clicked() && current != t {
+                        match t {
+                            Some(t) => _ = settings.editor_themes.insert(editor, t),
+                            None => _ = settings.editor_themes.remove(&editor),
+                        }
+                        changes.editor_theme = Some(editor);
+                        changes.save = true;
+                    }
+                }
+            });
+        }
         rows.row(ui, "UI scale", Some("Panels, menus and tool bars; the canvases keep their zoom."), |ui| {
             let current = settings.ui_scale();
             for s in UI_SCALES {
@@ -411,6 +439,11 @@ impl SettingsWindow {
         });
         reset(ui, rows, || {
             changes.theme = Some(Theme::default());
+            if !settings.editor_themes.is_empty() {
+                settings.editor_themes.clear();
+                // Every editor follows the app again (the theme change restyles them all).
+                changes.editor_theme = Some(view::style::Editor::Schematic);
+            }
             units::set_unit(Unit::default());
             settings.unit = Unit::default();
             settings.ui_scale = None;
@@ -420,18 +453,20 @@ impl SettingsWindow {
     }
 
     fn layer_colors(&mut self, ui: &mut Ui, rows: &mut Rows, settings: &mut Settings, changes: &mut Changes) {
-        let current = view::style::theme();
-        rows.row(ui, "Theme", Some("Each theme has its own layer colours; these are the shown theme's."), |ui| {
+        let current = self.colors_of.unwrap_or_else(|| view::style::editor_theme(view::style::Editor::Pcb));
+        rows.row(ui, "Colours of", Some("Each theme has its own layer colours."), |ui| {
             for &t in Theme::ALL {
-                if ui.selectable_label(current == t, t.label()).clicked() && current != t {
-                    changes.theme = Some(t);
+                if ui.selectable_label(current == t, t.label()).clicked() {
+                    self.colors_of = Some(t);
                 }
             }
         });
-        let palette = view::style::pal();
+        let palette = view::style::palette(current);
+        // The colour in the theme edited (not the one the chrome is drawn in).
+        let layer_color = |c| view::style::with_palette(palette, || view::style::layer_color(c));
         for c in LayerColor::ALL {
             let default = c.default_in(palette);
-            let mut color = view::style::layer_color(c);
+            let mut color = layer_color(c);
             let changed = color != default;
             rows.row_with(ui, c.label(), COLOR_KEYWORDS, None, |ui| {
                 crate::color_edit::color_edit(ui, &mut color.0);
@@ -439,7 +474,7 @@ impl SettingsWindow {
                     color = default;
                 }
             });
-            if color != view::style::layer_color(c) {
+            if color != layer_color(c) {
                 let map = settings.layer_colors.entry(current).or_default();
                 if color == default {
                     map.remove(&c);

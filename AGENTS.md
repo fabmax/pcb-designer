@@ -128,7 +128,8 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
 ```
 
 - `PCB_DESIGNER_CONFIG` points at a throwaway settings folder. Add a `settings.json`
-  with `{"theme": "light"}` there for the light theme.
+  with `{"theme": "light"}` there for the light theme, plus e.g. `"editor_themes":
+  {"pcb": "dark"}` to give an editor its own (`schematic`, `pcb`, `simulation`).
 - More flags:
   - `--side-by-side`
   - `--example amp` (instead of `--demo`, which is `--example led`): the audio amplifier

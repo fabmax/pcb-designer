@@ -194,8 +194,22 @@ fn overlay_item(id: ObjectId, hover: bool) -> u64 {
     item(id) | if hover { 2 << 62 } else { 1 << 62 }
 }
 
+/// The editor whose theme a view draws in.
+pub fn editor_of(kind: ViewKind) -> crate::style::Editor {
+    match kind {
+        ViewKind::Schematic => crate::style::Editor::Schematic,
+        ViewKind::Board => crate::style::Editor::Pcb,
+    }
+}
+
 impl View {
+    /// The editor whose theme it draws in.
+    pub fn editor(&self) -> crate::style::Editor {
+        editor_of(self.kind)
+    }
+
     pub fn new(id: ViewId, project: &Project) -> Self {
+        let _theme = crate::style::scope(editor_of(id.kind()));
         let kind = id.kind();
         let (scene, layers, hover_layer, selection_layer) = Self::create_scene(kind, project);
         let mut v = View {
@@ -309,6 +323,7 @@ impl View {
     /// The user-facing layers in menu order with their colours: copper top to bottom,
     /// then top and bottom technical layers, the outline and the overlays.
     pub fn layer_menu(&self) -> Vec<LayerEntry> {
+        let _theme = crate::style::scope(self.editor());
         let p = pal();
         let e = |layer, color, group| LayerEntry { layer, color, group };
         match &self.layers {
@@ -370,6 +385,7 @@ impl View {
 
     /// Recreate everything (after library or layer stack changes).
     pub fn rebuild(&mut self, project: &Project) {
+        let _theme = crate::style::scope(self.editor());
         let visible: FxHashMap<String, bool> = (0..self.scene.layer_count() as u16)
             .map(|i| (self.scene.layer(i).name.clone(), self.scene.layer(i).visible))
             .collect();
@@ -448,12 +464,14 @@ impl View {
     /// Update after a command, undo or redo: [`apply_objects`](Self::apply_objects), then
     /// [`redraw_users`](Self::redraw_users) of the library edits.
     pub fn apply(&mut self, project: &Project, changes: &ChangeSet) {
+        let _theme = crate::style::scope(self.editor());
         self.apply_objects(project, changes);
         self.redraw_users(project, &drawn_library_changes(changes));
     }
 
     /// Redraw the changed schematic or board objects (library edits aside).
     pub fn apply_objects(&mut self, project: &Project, changes: &ChangeSet) {
+        let _theme = crate::style::scope(self.editor());
         self.labels = None;
         if changes.board_setup_changed() && self.kind == ViewKind::Board {
             // Layers come and go.
@@ -518,6 +536,7 @@ impl View {
 
     /// Redraw the placed symbols or footprints drawn from these library objects.
     pub fn redraw_users(&mut self, project: &Project, library: &[ObjectId]) {
+        let _theme = crate::style::scope(self.editor());
         if library.is_empty() {
             return;
         }
@@ -592,6 +611,7 @@ impl View {
 
     /// Draw automatic junction dots and unconnected pin markers (schematic only).
     pub fn set_connectivity(&mut self, c: &editor_core::connectivity::Connectivity) {
+        let _theme = crate::style::scope(self.editor());
         let Layers::Sch(l) = &self.layers else { return };
         let mut out = Vec::with_capacity(c.dots.len() + c.unconnected.len());
         for &(_, p) in c.dots.iter().filter(|d| Some(d.0) == self.id.sheet()) {
@@ -613,6 +633,7 @@ impl View {
 
     /// Only the junction dots of `c` (a print: no unconnected pin rings, no findings).
     pub fn set_junctions(&mut self, c: &editor_core::connectivity::Connectivity) {
+        let _theme = crate::style::scope(self.editor());
         let Layers::Sch(l) = &self.layers else { return };
         let dots = c.dots.iter().filter(|d| Some(d.0) == self.id.sheet());
         let out: Vec<_> = dots
@@ -634,6 +655,7 @@ impl View {
     /// Show a simulation's probes and values (schematic sheets; see
     /// [`crate::sim_overlay`]).
     pub fn set_sim(&mut self, project: &Project, c: &editor_core::connectivity::Connectivity, o: &SimOverlay) {
+        let _theme = crate::style::scope(self.editor());
         let (Some(sheet), Layers::Sch(l)) = (self.id.sheet(), &self.layers) else { return };
         let layers = crate::sim_overlay::Layers { sim: l.sim, hover: self.hover_layer };
         if o.is_empty() {
@@ -658,6 +680,7 @@ impl View {
 
     /// Show what a schematic creation tool would add (empty slice clears).
     pub fn set_preview(&mut self, project: &Project, ghosts: &[SchGhost]) {
+        let _theme = crate::style::scope(self.editor());
         let Layers::Sch(l) = &self.layers else { return };
         if ghosts.is_empty() {
             self.scene.remove_item(PREVIEW_ITEM);
@@ -729,6 +752,7 @@ impl View {
 
     /// Show what a board tool would create (empty slice clears).
     pub fn set_board_preview(&mut self, project: &Project, ghosts: &[PcbGhost]) {
+        let _theme = crate::style::scope(self.editor());
         if ghosts.is_empty() {
             self.scene.remove_item(PREVIEW_ITEM);
             return;
@@ -806,6 +830,7 @@ impl View {
 
     /// Draw the ratsnest and refresh net highlights (board only).
     pub fn set_copper(&mut self, _project: &Project, c: &BoardConnectivity) {
+        let _theme = crate::style::scope(self.editor());
         self.labels = None;
         let Layers::Board(l) = &self.layers else { return };
         let mut out: Vec<(RLayer, Instance)> = Vec::new();
@@ -841,6 +866,7 @@ impl View {
     /// step, before the board, its copper or a layer's visibility changed. Board only;
     /// call it every frame. Returns true if they were redrawn.
     pub fn update_net_labels(&mut self, project: &Project, c: &BoardConnectivity, visible: Rect, zoom: f64) -> bool {
+        let _theme = crate::style::scope(self.editor());
         use crate::net_labels::{LABEL_ZOOM, PAD_LABEL_ZOOM, pad_labels, track_labels};
         let Layers::Board(l) = &self.layers else { return false };
         if zoom < LABEL_ZOOM || !zoom.is_finite() {
@@ -902,6 +928,7 @@ impl View {
 
     /// Mark design rule violations (board only; empty clears).
     pub fn set_drc(&mut self, violations: &[editor_core::drc::Violation]) {
+        let _theme = crate::style::scope(self.editor());
         self.drc = violations.iter().filter(|v| !v.excluded).map(|v| (v.pos, v.severity)).collect();
         self.draw_drc();
     }
@@ -922,6 +949,7 @@ impl View {
 
     /// Highlight all copper of these nets (board only; empty clears).
     pub fn set_nets(&mut self, c: &BoardConnectivity, nets: &[String]) {
+        let _theme = crate::style::scope(self.editor());
         self.nets = nets.to_vec();
         let indices: Vec<u32> = nets.iter().filter_map(|n| c.net_index(n)).collect();
         if indices.is_empty() {
@@ -970,6 +998,7 @@ impl View {
 
     /// Highlight objects selected in the other view (cross-probing; empty clears).
     pub fn set_probe(&mut self, project: &Project, ids: &[ObjectId]) {
+        let _theme = crate::style::scope(self.editor());
         self.probed = ids.to_vec();
         if ids.is_empty() {
             self.scene.remove_item(PROBE_ITEM);
@@ -1002,6 +1031,7 @@ impl View {
 
     /// Show `selection` and `hover`. Only changed overlays are redrawn.
     pub fn set_highlight(&mut self, project: &Project, selection: &[ObjectId], hover: Option<ObjectId>) {
+        let _theme = crate::style::scope(self.editor());
         let new: FxHashSet<ObjectId> = selection.iter().copied().collect();
         let removed: Vec<ObjectId> = self.selection.difference(&new).copied().collect();
         let added: Vec<ObjectId> = new.difference(&self.selection).copied().collect();
@@ -1161,6 +1191,7 @@ impl View {
 
     /// The object's own text as drawn (a label's name, a field's reference) and its colour.
     pub fn object_text(&self, project: &Project, id: ObjectId) -> Option<(Text, Color)> {
+        let _theme = crate::style::scope(self.editor());
         let mut p = Painter::default();
         self.draw_object(project, id, &mut p);
         p.texts.into_iter().next()
@@ -1169,6 +1200,7 @@ impl View {
     /// Show a text being edited in place (`None` clears): a box over the original, the
     /// selection, the text and the caret.
     pub fn set_text_edit(&mut self, edit: Option<(&crate::text_edit::EditGeometry, Color)>) {
+        let _theme = crate::style::scope(self.editor());
         let Some((g, color)) = edit else {
             self.scene.remove_item(TEXT_EDIT_ITEM);
             return;

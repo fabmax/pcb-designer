@@ -1115,8 +1115,23 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   instead of upside down or reading downwards).
 - `cross_probe` (pure): selection ↔ symbols/footprints, wires ↔ copper of their nets;
   the routed net wins. Probes from the board go to every sheet view.
-- Themes: `style::Palette` (`DARK`, `LIGHT`), a global baked into scene instances;
-  `Document::restyle` / `ItemView::restyle` rebuild everything with overlays.
+- Themes: `style::Palette` (`DARK`, `LIGHT`), baked into scene instances. The app's
+  theme is a global (`set_theme`, `app_theme`); each `style::Editor` (Schematic, Pcb,
+  Simulation) may have its own (`set_editor_theme`, `None` follows the app). Drawing
+  code reads `pal()` / `theme()`, the palette in effect on the thread: a forced
+  `with_palette` (prints), else an editor's `scope` (an RAII guard), else the app's.
+  Every `View`, `ItemView` (a symbol the schematic's, a footprint the PCB's) and
+  `GerberView` method that draws opens its editor's scope, so callers needn't; code
+  outside them that bakes colours (text edits started by tools, `SimPanel::overlay`)
+  uses `with_editor`. `layer_color` reads the theme in effect, so a light board in a dark
+  app gets the light theme's layer colours. `Document::restyle_editor` rebuilds one
+  editor's views with their overlays (`restyle` both, and only then drops the pending
+  library redraws); `ItemView::sync` redraws by itself when its theme changed (its
+  drawn key is revision and theme). Gotcha: the chrome colours (`app/src/theme.rs`)
+  follow `theme()` too, so a scope must wrap only canvas drawing, never egui widgets
+  meant to stay in the app's theme (the simulation tab is the one place that wants
+  both: it sets `theme::visuals()` on its `Ui` inside the Simulation scope; popups use
+  the context's, the app's).
 - `project_libs::sync` loads listed library files (failures become `MissingLibrary`),
   keeps unsaved or file-less ones, refuses duplicate library ids (`check_new`);
   `after_save` relinks or adds a saved library; `copy_for` copies with a new id.
@@ -1541,6 +1556,8 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   colours per theme, global, read through `board_layer_color` (so board, footprint
   editor, Gerber viewer and MCP renders in the app follow); a change calls
   `PcbApp::restyle`. Stored as hex strings in the settings. Schematic colours are fixed.
+  The page edits one theme's (`SettingsWindow::colors_of`, at first the PCB editor's),
+  reading them under `with_palette` (the chrome keeps the app's).
   Edited with `color_edit` (app): a swatch with our own picker popup (egui's has a copy
   button whose glyph our fonts lack) and the hex code, editable (pasted codes apply while
   typing, `#` optional).
@@ -1633,7 +1650,8 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
     dashed rays from a hole around the pointer (`CROSSHAIR_*` constants).
 - **Previews** (`preview.rs`): `Preview` is a view-only `ItemView` + `Canvas` in a box
   (fitted every frame to `ItemView::content_bounds`, no grid, axis or origin, square
-  corners with a border, a hint or error text when empty). It restyles itself on a
+  corners with a border, a hint or error text when empty), in its item's editor theme
+  (`Canvas::editor` also gives the crosshair its colour). It restyles itself on a
   theme change. Previews switch items instead of being recreated, so their count stays
   fixed (two per part form, two in the import window). The part form shows the symbol
   of a chosen unit and the footprint of a chosen variant (`view::item::PartPreview`,

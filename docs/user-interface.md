@@ -62,8 +62,13 @@ to find a setting by name or keyword, or a shortcut by action or key. Changes ap
 once; each page has a **Reset to defaults**.
 
 - **Appearance:** theme (dark or light), UI scale (80–200 %), length units (mm, mil or
-  inch).
-- **Layer colours:** the board layers' colours, separately for each theme (with alpha).
+  inch). **Schematic**, **PCB** and **Simulation** give an editor a theme of its own
+  (**App** follows the theme above), e.g. a dark PCB in a light app. The schematic's
+  covers symbols and their previews, the PCB's footprints, their previews and the Gerber
+  files; panels, menus, the part editor and the tool bars floating over a canvas keep the
+  app's.
+- **Layer colours:** the board layers' colours, separately for each theme (with alpha);
+  **Colours of** picks the theme whose colours you edit.
 - **Keymap:** click `+` next to an action and press the new shortcut, × removes one.
 - **Tools:** the drawing tools' style choices (corner styles, widths, sizes, layers, array
   layouts) are remembered across sessions; rotation, the next name and the routing layer

@@ -917,7 +917,10 @@ impl PcbPlacer {
             PcbTool::Zone => self.zone_click(doc, p),
             PcbTool::Text => {
                 let t = BoardText { id: Id::new(), layer: self.settings.text_layer, text: self.new_text(p) };
-                let (shape, color) = (t.text.clone(), crate::style::board_layer_color(t.layer));
+                let (shape, color) = (
+                    t.text.clone(),
+                    crate::style::with_editor(crate::style::Editor::Pcb, || crate::style::board_layer_color(t.layer)),
+                );
                 doc.begin_new_text(
                     crate::view::ViewId::Board,
                     crate::text_edit::TextTarget::NewBoardText(t),

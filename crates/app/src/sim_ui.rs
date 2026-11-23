@@ -248,6 +248,8 @@ impl SimPanel {
     /// analysis' probes in their trace colours, the operating point's voltages and the
     /// currents of two-pin parts, and the hovered target.
     pub fn overlay(&mut self, doc: &Document, shown: bool) -> SimOverlay {
+        // Its colours are the schematic's.
+        let _theme = view::style::scope(view::style::Editor::Schematic);
         let setup = &doc.project().schematic.simulation;
         let probes = shown.then(|| self.probe_analysis(setup)).flatten().map(|a| a.id);
         let values = if shown { self.values_analysis(setup) } else { None };
