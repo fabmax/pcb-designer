@@ -277,7 +277,11 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         } else {
             "Run the analysis (⌘R) to plot it."
         };
-        centered_hint(ui, text);
+        if running {
+            centered_hint(ui, text);
+        } else if hint_with_run(ui, text) {
+            act = Some(PlotAct::Run(analysis.id));
+        }
         return act;
     };
     let dim = (stale || running) && done.range.is_none();
@@ -471,6 +475,23 @@ pub fn stopped_at(done: &sim::Finished) -> Option<String> {
 
 fn centered_hint(ui: &mut Ui, text: &str) {
     ui.centered_and_justified(|ui| ui.label(RichText::new(text).color(theme::text_dim())));
+}
+
+/// A hint in the middle of the rest of `ui` with a Run button centred below it. Returns
+/// whether Run was clicked.
+fn hint_with_run(ui: &mut Ui, text: &str) -> bool {
+    let rect = ui.available_rect_before_wrap();
+    let layout = egui::Layout::top_down(egui::Align::Center);
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink(16.0)).layout(layout));
+    // About centred: the hint's line or two and the button are some 60 points tall.
+    child.add_space((rect.height() / 2.0 - 46.0).max(0.0));
+    child.label(RichText::new(text).color(theme::text_dim()));
+    child.add_space(8.0);
+    let run = crate::sim_ui::icon_button(&mut child, crate::icons::Icon::Play, "Run", theme::success())
+        .on_hover_text("Run this analysis (⌘R)")
+        .clicked();
+    ui.advance_cursor_after_rect(rect);
+    run
 }
 
 /// Fits the view where needed, and applies the pointer to it.

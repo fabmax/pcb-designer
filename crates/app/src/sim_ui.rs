@@ -1197,7 +1197,7 @@ fn not_found(ui: &mut Ui, error: &str, act: &mut Option<SimAct>) {
 }
 
 /// A button with an icon tinted `color` and a label.
-fn icon_button(ui: &mut Ui, icon: Icon, text: &str, color: egui::Color32) -> egui::Response {
+pub fn icon_button(ui: &mut Ui, icon: Icon, text: &str, color: egui::Color32) -> egui::Response {
     let r = ui.add(egui::Button::new(format!("     {text}")).min_size(egui::vec2(64.0, 22.0)));
     let rect =
         egui::Rect::from_center_size(egui::pos2(r.rect.left() + 14.0, r.rect.center().y), egui::vec2(14.0, 14.0));

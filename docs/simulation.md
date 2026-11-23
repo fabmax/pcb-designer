@@ -82,7 +82,8 @@ Every change undoes like any other edit.
 
 Each simulation has a tab of its own (from the Project panel, a run, **Show** in the panel,
 or **Simulation → Show simulation output**), so several can be side by side. It plots the
-signals ticked in the panel's result table, or the named nets while none are ticked.
+signals ticked in the panel's result table, or the named nets while none are ticked. Until
+the simulation has run, the tab says so and has a **Run** button.
 
 - AC shows the magnitude in dB and, dashed on the right axis, the phase. Volts, amperes and
   watts each get an axis (a third one on the far right).
