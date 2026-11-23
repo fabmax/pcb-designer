@@ -1,17 +1,30 @@
-//! Generated projects: the examples (a small LED demo, an audio amplifier) and large
-//! stress-test designs.
+//! The example projects (a small LED demo built in code, an audio amplifier stored as
+//! project files) and generated stress-test designs.
 
-mod amp;
-
-pub use amp::amp_project;
+use model::io::ProjectFiles;
 
 /// The example projects (File → Open example, `--example NAME`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Example {
     /// [`demo_project`]: an LED on a sub-sheet, a test bench, a small routed board.
     Led,
-    /// [`amp_project`]: a discrete class-AB audio amplifier, routed.
+    /// A discrete class-AB audio amplifier, routed (stored in `demo/amp.pcbproj`).
     Amp,
+}
+
+/// The folder of the stored examples, in the source tree (embedded in the binary).
+pub const STORED_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/demo");
+
+/// The files of a project folder in [`STORED_DIR`], embedded.
+macro_rules! stored {
+    ($dir:literal) => {
+        ProjectFiles {
+            project: include_str!(concat!("../../demo/", $dir, "/project.json")),
+            library: include_str!(concat!("../../demo/", $dir, "/library.json")),
+            schematic: include_str!(concat!("../../demo/", $dir, "/schematic.json")),
+            board: include_str!(concat!("../../demo/", $dir, "/board.json")),
+        }
+    };
 }
 
 impl Example {
@@ -37,10 +50,25 @@ impl Example {
         Example::ALL.into_iter().find(|e| e.name().eq_ignore_ascii_case(name.trim()))
     }
 
-    pub fn project(self) -> Project {
+    /// A stored example: its folder in [`STORED_DIR`] and its files. `None` for one
+    /// built in code.
+    pub fn stored(self) -> Option<(&'static str, ProjectFiles<'static>)> {
         match self {
-            Example::Led => demo_project(),
-            Example::Amp => amp_project(),
+            Example::Led => None,
+            Example::Amp => Some(("amp.pcbproj", stored!("amp.pcbproj"))),
+        }
+    }
+
+    /// Load a stored example (`None` for one built in code).
+    pub fn load_stored(self) -> Option<Result<Project, model::io::FileError>> {
+        let (dir, files) = self.stored()?;
+        Some(model::io::project_from_files(&files, &std::path::Path::new(STORED_DIR).join(dir)))
+    }
+
+    pub fn project(self) -> Project {
+        match self.load_stored() {
+            Some(loaded) => loaded.expect("the bundled example loads"),
+            None => demo_project(),
         }
     }
 }
@@ -365,6 +393,51 @@ mod tests {
         assert_eq!(p.schematic.components.len(), 6, "five parts and the test bench source");
         assert_eq!(p.board.footprints.len(), 5);
         assert!(p.board.tracks.len() >= 4);
+    }
+
+    #[test]
+    fn stored_examples_load() {
+        let stored: Vec<Example> = Example::ALL.into_iter().filter(|e| e.stored().is_some()).collect();
+        assert!(!stored.is_empty());
+        for e in stored {
+            let p = e.load_stored().unwrap().unwrap_or_else(|err| panic!("{}: {err}", e.name()));
+            assert_eq!(p.validate(), Vec::<String>::new(), "{}", e.name());
+            // Opened without a folder, so library paths would point nowhere.
+            assert_eq!(p.libraries, Vec::<std::path::PathBuf>::new(), "{}: uses library files", e.name());
+            assert!(!p.schematic.components.is_empty() && !p.board.footprints.is_empty(), "{}", e.name());
+            // Net classes name nets that exist (a label renamed in the schematic leaves
+            // its old net name behind).
+            let nets = editor_core::connectivity::Connectivity::build(&p);
+            for class in &p.board.rules.net_classes {
+                for net in &class.nets {
+                    assert!(nets.net(net).is_some(), "{}: net class {} names no net {net}", e.name(), class.name);
+                }
+            }
+        }
+    }
+
+    /// Saving a stored example writes its files unchanged, so they are in the current
+    /// format (a field renamed or dropped shows up here). After a format change, re-save
+    /// them with `cargo run -p view --example save_examples`.
+    #[test]
+    fn stored_examples_are_in_the_current_format() {
+        for e in Example::ALL {
+            let Some((dir, files)) = e.stored() else { continue };
+            let out = tempfile::tempdir().unwrap();
+            model::io::save_project(&e.project(), out.path()).unwrap();
+            for (name, text) in [
+                (model::io::PROJECT_FILE, files.project),
+                (model::io::LIBRARY_FILE, files.library),
+                (model::io::SCHEMATIC_FILE, files.schematic),
+                (model::io::BOARD_FILE, files.board),
+            ] {
+                let saved = std::fs::read_to_string(out.path().join(name)).unwrap();
+                assert!(
+                    saved == text,
+                    "{dir}/{name} changes when saved: run `cargo run -p view --example save_examples`"
+                );
+            }
+        }
     }
 
     #[test]

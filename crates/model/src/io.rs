@@ -103,12 +103,43 @@ pub fn save_project(project: &Project, dir: impl AsRef<Path>) -> Result<(), File
 
 pub fn load_project(dir: impl AsRef<Path>) -> Result<Project, FileError> {
     let dir = dir.as_ref();
-    let meta: ProjectFile = read_file(&dir.join(PROJECT_FILE), FileKind::Project, MIGRATIONS)?;
+    let read = |name: &str| {
+        let path = dir.join(name);
+        std::fs::read_to_string(&path).map_err(|e| FileError::Io { path, source: e })
+    };
+    let files = ProjectFiles {
+        project: &read(PROJECT_FILE)?,
+        library: &read(LIBRARY_FILE)?,
+        schematic: &read(SCHEMATIC_FILE)?,
+        board: &read(BOARD_FILE)?,
+    };
+    project_from_files(&files, dir)
+}
+
+/// The texts of a project folder's files (for projects embedded in the binary, such as
+/// the examples).
+#[derive(Clone, Copy, Debug)]
+pub struct ProjectFiles<'a> {
+    pub project: &'a str,
+    pub library: &'a str,
+    pub schematic: &'a str,
+    pub board: &'a str,
+}
+
+/// Parse a project from its files' texts. `dir` is the folder they stand for: library
+/// paths are relative to it, and errors name files in it.
+pub fn project_from_files(files: &ProjectFiles, dir: &Path) -> Result<Project, FileError> {
+    let meta: ProjectFile = from_file_str(files.project, FileKind::Project, MIGRATIONS, &dir.join(PROJECT_FILE))?;
     Ok(Project {
         name: meta.name,
-        library: read_file(&dir.join(LIBRARY_FILE), FileKind::Library, MIGRATIONS)?,
-        schematic: read_file::<Schematic>(&dir.join(SCHEMATIC_FILE), FileKind::Schematic, MIGRATIONS)?,
-        board: read_file::<Board>(&dir.join(BOARD_FILE), FileKind::Board, MIGRATIONS)?,
+        library: from_file_str(files.library, FileKind::Library, MIGRATIONS, &dir.join(LIBRARY_FILE))?,
+        schematic: from_file_str::<Schematic>(
+            files.schematic,
+            FileKind::Schematic,
+            MIGRATIONS,
+            &dir.join(SCHEMATIC_FILE),
+        )?,
+        board: from_file_str::<Board>(files.board, FileKind::Board, MIGRATIONS, &dir.join(BOARD_FILE))?,
         libraries: meta.libraries.iter().map(|p| normalize(&absolute(dir).join(p))).collect(),
     })
 }

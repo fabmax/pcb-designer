@@ -1137,17 +1137,20 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   `after_save` relinks or adds a saved library; `copy_for` copies with a new id.
 - `tree`: toolkit-independent tree model (`Node`, `TreeState`, keyboard, search that
   restores the expansion afterwards).
-- Example projects (`demo/`, `demo::Example`: File → Open example, `--example NAME`)
-  are generated in code, not stored as files, so they follow format changes for free.
-  `led` (`demo_project`, plus a demo library the app writes to the temp folder) and
-  `amp` (`demo/amp.rs`: a discrete class-AB amplifier). The amplifier is built through
-  `Command`s like a user would: the schematic on a 2.54 mm grid (`g`), then the board:
-  placement, then tracks laid by the walkaround router leg by leg between waypoints
-  (`track` panics if one is blocked, so a part moved in the way fails the tests rather
-  than leaving a broken board), vias after the track that gives them
-  their net, a bottom GND pour last. `mcp/tests/all/examples.rs` keeps it ERC and DRC
-  clean (fully routed) and, with ngspice, checks its bias (OUT ≈ 6.6 V) and gain (≈ 11.7
-  dB at 1 kHz). Look at the board with `render_board --example amp`.
+- Example projects (`demo::Example`: File → Open example, `--example NAME`).
+  `led` (`demo_project`, plus a demo library the app writes to the temp folder) is built
+  in code. `amp` (a discrete class-AB amplifier) is **stored**: a project folder
+  `crates/view/demo/amp.pcbproj` (the four JSON files, no `.pcb-designer/`), embedded
+  with `include_str!` (`Example::stored`) and parsed by `model::io::project_from_files`.
+  It opens as a new, unsaved project, so it must use no external library files.
+  `demo::tests` checks every stored example loads, validates, its net classes name
+  existing nets (a renamed label leaves stale names), and that saving it writes its files
+  unchanged (current format). After a format change, `cargo run -p view --example
+  save_examples` re-saves them. To change one: open it, edit, Save As anywhere, and copy
+  the four files over (not the `.pcb-designer` folder). `mcp/tests/all/examples.rs`
+  keeps the amplifier ERC and DRC clean and, with ngspice, checks its bias (OUT ≈ 6.6 V),
+  gain (≈ 12 dB at 1 kHz) and distortion. Look at the board with
+  `render_board --example amp`.
 
 ## Libraries and KiCad (`kicad`)
 

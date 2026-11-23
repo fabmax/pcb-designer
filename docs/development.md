@@ -44,6 +44,14 @@ publishes them as a GitHub Release:
 1. Set the version in the workspace `Cargo.toml` (`version = "0.3.0"`) and commit.
 2. `git tag -a v0.3.0 -m "pcb-designer 0.3.0"`, then push `main` and the tag.
 
+## Example projects
+
+The audio amplifier example is a project folder, `crates/view/demo/amp.pcbproj`, built
+into the app. To change it, open it (`--example amp`), edit, save it anywhere, and copy
+`project.json`, `library.json`, `schematic.json` and `board.json` over the stored ones.
+After a file format change, `cargo run -p view --example save_examples` re-saves the
+stored examples (a test fails until then).
+
 ## Calling MCP tools by hand
 
 `cargo run -p mcp --example mcp_call -- URL TOOL '{"json":"args"}'` calls a tool of a

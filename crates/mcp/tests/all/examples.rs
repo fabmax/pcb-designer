@@ -61,12 +61,12 @@ fn amp_simulates_with_ngspice() {
     let out = v["values"][0]["value"].as_f64().unwrap();
     assert!((5.5..7.5).contains(&out), "{v}");
     // About 12 dB of gain into the 8 Ω load at 1 kHz.
-    let v = simulate(&mut host, "Frequency response", &["/SPK"], &[1e3]);
+    let v = simulate(&mut host, "Frequency response", &["SPK"], &[1e3]);
     let db = v["signals"][0]["at"][0][1].as_f64().unwrap_or(f64::NAN);
     assert!((10.0..14.0).contains(&db), "{v}");
     // The 1 kHz sine into the speaker: about 1.5 % distortion, mostly the 2nd harmonic
     // (the output pair's halves differ); the input is clean.
-    let v = simulate(&mut host, "Transient", &["/SPK", "IN"], &[]);
+    let v = simulate(&mut host, "Transient", &["SPK", "IN"], &[]);
     let d = &v["signals"][0]["distortion"];
     assert!((d["fundamental"].as_f64().unwrap() - 1e3).abs() < 1.0, "{d}");
     assert!((0.5..3.0).contains(&d["thd_percent"].as_f64().unwrap()), "{d}");

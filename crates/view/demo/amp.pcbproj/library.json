@@ -1,0 +1,7113 @@
+{
+  "format": "pcb-designer/library",
+  "version": 1,
+  "id": null,
+  "name": "Project Library",
+  "symbols": [
+    {
+      "id": "5ce10000-0000-4000-9000-8f631552da92",
+      "name": "Resistor",
+      "category": "Passives",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -900000],
+          "b": [2540000, 900000],
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 1400000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -1400000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-521e1320a0e6",
+          "name": "1",
+          "number": "1",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-511e13209f33",
+          "name": "2",
+          "number": "2",
+          "pos": [5080000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-81aceab07f5b",
+      "name": "Capacitor",
+      "category": "Passives",
+      "graphics": [
+        {
+          "type": "line",
+          "a": [-500000, -2000000],
+          "b": [-500000, 2000000],
+          "width": 400000
+        },
+        {
+          "type": "line",
+          "a": [500000, -2000000],
+          "b": [500000, 2000000],
+          "width": 400000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 2500000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -2500000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-51864f4e96d7",
+          "name": "1",
+          "number": "1",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 4580000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-52864f4e988a",
+          "name": "2",
+          "number": "2",
+          "pos": [5080000, 0],
+          "direction": 180.0,
+          "length": 4580000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-c114db275bf2",
+      "name": "Capacitor_Polarized",
+      "category": "Passives",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-900000, -2000000],
+          "b": [-300000, 2000000],
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "rect",
+          "a": [300000, -2000000],
+          "b": [900000, 2000000],
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "line",
+          "a": [600000, -1800000],
+          "b": [600000, 1800000],
+          "width": 400000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 2500000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -2500000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        },
+        {
+          "text": "+",
+          "pos": [-1700000, 1700000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "center"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-df43c672bfc6",
+          "name": "+",
+          "number": "1",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 4180000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-de43c672be13",
+          "name": "-",
+          "number": "2",
+          "pos": [5080000, 0],
+          "direction": 180.0,
+          "length": 4180000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-df5f0dcd40b4",
+      "name": "Diode",
+      "category": "Diodes",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-1000000, 1200000],
+            [-1000000, -1200000],
+            [1000000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "line",
+          "a": [1000000, 1200000],
+          "b": [1000000, -1200000],
+          "width": 254000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 1800000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -1800000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-f3f6e635dc2d",
+          "name": "A",
+          "number": "2",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 4080000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f0f6e635d714",
+          "name": "K",
+          "number": "1",
+          "pos": [5080000, 0],
+          "direction": 180.0,
+          "length": 4080000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-86397a23f4cb",
+      "name": "NPN",
+      "category": "Transistors",
+      "graphics": [
+        {
+          "type": "circle",
+          "center": [600000, 0],
+          "radius": 2000000,
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "line",
+          "a": [0, -1200000],
+          "b": [0, 1200000],
+          "width": 400000
+        },
+        {
+          "type": "line",
+          "a": [0, 500000],
+          "b": [2540000, 2540000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [0, -500000],
+          "b": [2540000, -2540000],
+          "width": 254000
+        },
+        {
+          "type": "polygon",
+          "points": [
+            [2540000, -2540000],
+            [1300000, -2300000],
+            [2100000, -1400000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3300000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3300000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-a17f065f3a2a",
+          "name": "B",
+          "number": "B",
+          "pos": [-2540000, 0],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-a27f065f3bdd",
+          "name": "C",
+          "number": "C",
+          "pos": [2540000, 5080000],
+          "direction": 270.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-9c7f065f31ab",
+          "name": "E",
+          "number": "E",
+          "pos": [2540000, -5080000],
+          "direction": 90.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-c638e6e2e195",
+      "name": "PNP",
+      "category": "Transistors",
+      "graphics": [
+        {
+          "type": "circle",
+          "center": [600000, 0],
+          "radius": 2000000,
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "line",
+          "a": [0, -1200000],
+          "b": [0, 1200000],
+          "width": 400000
+        },
+        {
+          "type": "line",
+          "a": [0, 500000],
+          "b": [2540000, 2540000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [0, -500000],
+          "b": [2540000, -2540000],
+          "width": 254000
+        },
+        {
+          "type": "polygon",
+          "points": [
+            [250000, -600000],
+            [1200000, -700000],
+            [750000, -1400000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3300000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3300000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-e19d7f842eb4",
+          "name": "B",
+          "number": "B",
+          "pos": [-2540000, 0],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-e29d7f843067",
+          "name": "C",
+          "number": "C",
+          "pos": [2540000, 5080000],
+          "direction": 270.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-e09d7f842d01",
+          "name": "E",
+          "number": "E",
+          "pos": [2540000, -5080000],
+          "direction": 90.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-a394becad65f",
+      "name": "Conn_01x02",
+      "category": "Connectors",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -3810000],
+          "b": [2540000, 1270000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 1800000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4340000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-053b670ebc53",
+          "name": "1",
+          "number": "1",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-063b670ebe06",
+          "name": "2",
+          "number": "2",
+          "pos": [-5080000, -2540000],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-42abe4f268b8",
+      "name": "VSource",
+      "category": "Simulation",
+      "graphics": [
+        {
+          "type": "circle",
+          "center": [0, 0],
+          "radius": 2540000,
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "line",
+          "a": [-500000, 1200000],
+          "b": [500000, 1200000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [0, 700000],
+          "b": [0, 1700000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-500000, -1200000],
+          "b": [500000, -1200000],
+          "width": 254000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3340000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3340000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-22fe35998f60",
+          "name": "+",
+          "number": "1",
+          "pos": [0, 5080000],
+          "direction": 270.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-25fe35999479",
+          "name": "-",
+          "number": "2",
+          "pos": [0, -5080000],
+          "direction": 90.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    }
+  ],
+  "footprints": [
+    {
+      "id": "5ce10000-0000-4000-9000-e2e4cb0d746e",
+      "name": "Chip_0603_1608Metric",
+      "category": "SMD",
+      "description": "SMD chip, 0603 (1608 metric), IPC-7351B nominal",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-4979a3a490f3",
+          "name": "1",
+          "pos": [-825000, 0],
+          "rotation": 0.0,
+          "size": [800000, 950000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-4879a3a48f40",
+          "name": "2",
+          "pos": [825000, 0],
+          "rotation": 0.0,
+          "size": [800000, 950000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-800000, -400000],
+            "b": [800000, 400000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-165000, -510000],
+            "b": [165000, -510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-165000, 510000],
+            "b": [165000, 510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-1500000, -750000],
+            "b": [1500000, 750000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 950000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-6835660428bc",
+      "name": "Chip_0402_1005Metric",
+      "category": "SMD",
+      "description": "SMD chip, 0402 (1005 metric), IPC-7351B nominal",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-5342096478e9",
+          "name": "1",
+          "pos": [-510000, 0],
+          "rotation": 0.0,
+          "size": [540000, 640000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-524209647736",
+          "name": "2",
+          "pos": [510000, 0],
+          "rotation": 0.0,
+          "size": [540000, 640000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-500000, -250000],
+            "b": [500000, 250000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-1050000, -600000],
+            "b": [1050000, 600000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 800000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-9794df35a178",
+      "name": "Chip_0805_2012Metric",
+      "category": "SMD",
+      "description": "SMD chip, 0805 (2012 metric), IPC-7351B nominal",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-e49676be614d",
+          "name": "1",
+          "pos": [-912500, 0],
+          "rotation": 0.0,
+          "size": [1025000, 1400000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-e39676be5f9a",
+          "name": "2",
+          "pos": [912500, 0],
+          "rotation": 0.0,
+          "size": [1025000, 1400000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1000000, -625000],
+            "b": [1000000, 625000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-140000, -735000],
+            "b": [140000, -735000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-140000, 735000],
+            "b": [140000, 735000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-1700000, -1000000],
+            "b": [1700000, 1000000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1200000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-4fe01ff4549d",
+      "name": "Chip_1206_3216Metric",
+      "category": "SMD",
+      "description": "SMD chip, 1206 (3216 metric), IPC-7351B nominal",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-284cd0ef9568",
+          "name": "1",
+          "pos": [-1462500, 0],
+          "rotation": 0.0,
+          "size": [1125000, 1750000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-294cd0ef971b",
+          "name": "2",
+          "pos": [1462500, 0],
+          "rotation": 0.0,
+          "size": [1125000, 1750000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1600000, -800000],
+            "b": [1600000, 800000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-640000, -910000],
+            "b": [640000, -910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-640000, 910000],
+            "b": [640000, 910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2300000, -1150000],
+            "b": [2300000, 1150000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1350000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-83d4296ea97c",
+      "name": "Chip_2512_6332Metric",
+      "category": "SMD",
+      "description": "SMD chip, 2512 (6332 metric), IPC-7351B nominal",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-141c2f03c829",
+          "name": "1",
+          "pos": [-2962500, 0],
+          "rotation": 0.0,
+          "size": [1525000, 3350000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-131c2f03c676",
+          "name": "2",
+          "pos": [2962500, 0],
+          "rotation": 0.0,
+          "size": [1525000, 3350000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-3150000, -1600000],
+            "b": [3150000, 1600000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1940000, -1710000],
+            "b": [1940000, -1710000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1940000, 1710000],
+            "b": [1940000, 1710000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4000000, -1950000],
+            "b": [4000000, 1950000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2150000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-296c05ced8c3",
+      "name": "R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+      "category": "Through hole",
+      "description": "Resistor, axial DIN0207 (1/4 W), lying, 10.16 mm pitch",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-8ded8bd06536",
+          "name": "1",
+          "pos": [-5080000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-8eed8bd066e9",
+          "name": "2",
+          "pos": [5080000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-3150000, -1250000],
+            "b": [3150000, 1250000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3270000, -1370000],
+            "b": [3270000, -1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3270000, 1370000],
+            "b": [3270000, 1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3270000, -1370000],
+            "b": [-3270000, 1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3270000, -1370000],
+            "b": [3270000, 1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [-5080000, 0],
+            "b": [-3150000, 0],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4020000, 0],
+            "b": [-3270000, 0],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [5080000, 0],
+            "b": [3150000, 0],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3270000, 0],
+            "b": [4020000, 0],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-6400000, -1800000],
+            "b": [6400000, 1800000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2000000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-ba32e6749ab0",
+      "name": "R_Axial_DIN0207_L6.3mm_D2.5mm_P2.54mm_Vertical",
+      "category": "Through hole",
+      "description": "Resistor, axial DIN0207 (1/4 W), standing, 2.54 mm pitch",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-f69b362d4f65",
+          "name": "1",
+          "pos": [-1270000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f59b362d4db2",
+          "name": "2",
+          "pos": [1270000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "circle",
+            "center": [-1270000, 0],
+            "radius": 1250000,
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "circle",
+            "center": [-1270000, 0],
+            "radius": 1370000,
+            "width": 120000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-3150000, -1900000],
+            "b": [2600000, 1900000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2100000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-5f8e935ab8ba",
+      "name": "Chip_1210_3225Metric",
+      "category": "SMD",
+      "description": "SMD chip, 1210 (3225 metric), IPC-7351B nominal",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-a9e799ab2bb7",
+          "name": "1",
+          "pos": [-1462500, 0],
+          "rotation": 0.0,
+          "size": [1125000, 2650000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-a8e799ab2a04",
+          "name": "2",
+          "pos": [1462500, 0],
+          "rotation": 0.0,
+          "size": [1125000, 2650000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1600000, -1250000],
+            "b": [1600000, 1250000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-640000, -1360000],
+            "b": [640000, -1360000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-640000, 1360000],
+            "b": [640000, 1360000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2300000, -1600000],
+            "b": [2300000, 1600000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1800000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-57f5fd76f4d2",
+      "name": "C_Disc_D5.0mm_W2.5mm_P2.54mm",
+      "category": "Through hole",
+      "description": "Ceramic disc capacitor, 2.54 mm pitch",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-1ad6e445172f",
+          "name": "1",
+          "pos": [-1270000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-19d6e445157c",
+          "name": "2",
+          "pos": [1270000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-2500000, -1250000],
+            "b": [2500000, 1250000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2620000, -1370000],
+            "b": [2620000, -1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2620000, 1370000],
+            "b": [2620000, 1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2620000, -1370000],
+            "b": [-2620000, 1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2620000, -1370000],
+            "b": [2620000, 1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-3050000, -1800000],
+            "b": [3050000, 1800000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2000000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-c6fd4fee5d0f",
+      "name": "C_Disc_D7.5mm_W2.5mm_P5.08mm",
+      "category": "Through hole",
+      "description": "Ceramic disc capacitor, 5.08 mm pitch",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-5fe217a7150a",
+          "name": "1",
+          "pos": [-2540000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-60e217a716bd",
+          "name": "2",
+          "pos": [2540000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-3750000, -1250000],
+            "b": [3750000, 1250000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3870000, -1370000],
+            "b": [3870000, -1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3870000, 1370000],
+            "b": [3870000, 1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3870000, -1370000],
+            "b": [-3870000, 1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3870000, -1370000],
+            "b": [3870000, 1370000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4300000, -1800000],
+            "b": [4300000, 1800000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2000000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e30fa22e35c6",
+      "name": "CP_Tantalum_Case-A_EIA-3216-18",
+      "category": "SMD",
+      "description": "Tantalum capacitor, case A (EIA 3216-18), pad 1 is +",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-40686650b96b",
+          "name": "1",
+          "pos": [-1350000, 0],
+          "rotation": 0.0,
+          "size": [1400000, 1300000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-3f686650b7b8",
+          "name": "2",
+          "pos": [1350000, 0],
+          "rotation": 0.0,
+          "size": [1400000, 1300000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1600000, -800000],
+            "b": [1600000, 800000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1710000, -910000],
+            "b": [1710000, -910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1710000, 910000],
+            "b": [1710000, 910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2350000, -800000],
+            "b": [-2350000, 800000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2750000, -1100000],
+            "b": [2350000, 1100000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1300000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-99d27183182f",
+      "name": "CP_Tantalum_Case-B_EIA-3528-21",
+      "category": "SMD",
+      "description": "Tantalum capacitor, case B (EIA 3528-21), pad 1 is +",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-d4dc1c08232a",
+          "name": "1",
+          "pos": [-1500000, 0],
+          "rotation": 0.0,
+          "size": [1450000, 2350000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-d5dc1c0824dd",
+          "name": "2",
+          "pos": [1500000, 0],
+          "rotation": 0.0,
+          "size": [1450000, 2350000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1750000, -1400000],
+            "b": [1750000, 1400000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1860000, -1510000],
+            "b": [1860000, -1510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1860000, 1510000],
+            "b": [1860000, 1510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2525000, -1400000],
+            "b": [-2525000, 1400000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2900000, -1700000],
+            "b": [2500000, 1700000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1900000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-19ceeb67a9a0",
+      "name": "CP_Tantalum_Case-C_EIA-6032-28",
+      "category": "SMD",
+      "description": "Tantalum capacitor, case C (EIA 6032-28), pad 1 is +",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-ea25b02650d5",
+          "name": "1",
+          "pos": [-2450000, 0],
+          "rotation": 0.0,
+          "size": [2250000, 2350000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-e925b0264f22",
+          "name": "2",
+          "pos": [2450000, 0],
+          "rotation": 0.0,
+          "size": [2250000, 2350000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-3000000, -1600000],
+            "b": [3000000, 1600000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3110000, -1710000],
+            "b": [3110000, -1710000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3110000, 1710000],
+            "b": [3110000, 1710000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3110000, -1710000],
+            "b": [-3110000, -1435000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3110000, 1435000],
+            "b": [-3110000, 1710000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3110000, -1710000],
+            "b": [3110000, -1435000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3110000, 1435000],
+            "b": [3110000, 1710000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3875000, -1600000],
+            "b": [-3875000, 1600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4250000, -1900000],
+            "b": [3850000, 1900000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2100000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-94176c021f93",
+      "name": "CP_Tantalum_Case-D_EIA-7343-31",
+      "category": "SMD",
+      "description": "Tantalum capacitor, case D (EIA 7343-31), pad 1 is +",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-b93e6f747406",
+          "name": "1",
+          "pos": [-3100000, 0],
+          "rotation": 0.0,
+          "size": [2250000, 2550000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-ba3e6f7475b9",
+          "name": "2",
+          "pos": [3100000, 0],
+          "rotation": 0.0,
+          "size": [2250000, 2550000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-3650000, -2150000],
+            "b": [3650000, 2150000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3760000, -2260000],
+            "b": [3760000, -2260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3760000, 2260000],
+            "b": [3760000, 2260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3760000, -2260000],
+            "b": [-3760000, -1535000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3760000, 1535000],
+            "b": [-3760000, 2260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3760000, -2260000],
+            "b": [3760000, -1535000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3760000, 1535000],
+            "b": [3760000, 2260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4525000, -2150000],
+            "b": [-4525000, 2150000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4900000, -2450000],
+            "b": [4500000, 2450000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2650000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-b7c661d7c8e7",
+      "name": "CP_Elec_4x5.4",
+      "category": "SMD",
+      "description": "SMD aluminium electrolytic capacitor, Ø4 × 5.4 mm, pad 1 is +; generic land pattern, check the capacitor's datasheet",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-bddc99edafa2",
+          "name": "1",
+          "pos": [-1800000, 0],
+          "rotation": 0.0,
+          "size": [2400000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-bedc99edb155",
+          "name": "2",
+          "pos": [1800000, 0],
+          "rotation": 0.0,
+          "size": [2400000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-2150000, -2150000],
+            "b": [2150000, 2150000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, -2260000],
+            "b": [2260000, -2260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, 2260000],
+            "b": [2260000, 2260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, -2260000],
+            "b": [-2260000, -1060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, 1060000],
+            "b": [-2260000, 2260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2260000, -2260000],
+            "b": [2260000, -1060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2260000, 1060000],
+            "b": [2260000, 2260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3250000, 1950000],
+            "b": [-2450000, 1950000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2850000, 1550000],
+            "b": [-2850000, 2350000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-3550000, -2450000],
+            "b": [3300000, 2650000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2850000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-39a28e82cb00",
+      "name": "CP_Elec_5x5.4",
+      "category": "SMD",
+      "description": "SMD aluminium electrolytic capacitor, Ø5 × 5.4 mm, pad 1 is +; generic land pattern, check the capacitor's datasheet",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-b0b2c1a85bb5",
+          "name": "1",
+          "pos": [-2200000, 0],
+          "rotation": 0.0,
+          "size": [2600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-afb2c1a85a02",
+          "name": "2",
+          "pos": [2200000, 0],
+          "rotation": 0.0,
+          "size": [2600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-2650000, -2650000],
+            "b": [2650000, 2650000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2760000, -2760000],
+            "b": [2760000, -2760000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2760000, 2760000],
+            "b": [2760000, 2760000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2760000, -2760000],
+            "b": [-2760000, -1060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2760000, 1060000],
+            "b": [-2760000, 2760000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2760000, -2760000],
+            "b": [2760000, -1060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2760000, 1060000],
+            "b": [2760000, 2760000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3750000, 2450000],
+            "b": [-2950000, 2450000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3350000, 2050000],
+            "b": [-3350000, 2850000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4050000, -2950000],
+            "b": [3800000, 3150000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3350000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-5a6272830cde",
+      "name": "CP_Elec_6.3x5.4",
+      "category": "SMD",
+      "description": "SMD aluminium electrolytic capacitor, Ø6.3 × 5.4 mm, pad 1 is +; generic land pattern, check the capacitor's datasheet",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-495939ca90a3",
+          "name": "1",
+          "pos": [-2700000, 0],
+          "rotation": 0.0,
+          "size": [3000000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-485939ca8ef0",
+          "name": "2",
+          "pos": [2700000, 0],
+          "rotation": 0.0,
+          "size": [3000000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-3300000, -3300000],
+            "b": [3300000, 3300000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3410000, -3410000],
+            "b": [3410000, -3410000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3410000, 3410000],
+            "b": [3410000, 3410000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3410000, -3410000],
+            "b": [-3410000, -1060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3410000, 1060000],
+            "b": [-3410000, 3410000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3410000, -3410000],
+            "b": [3410000, -1060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3410000, 1060000],
+            "b": [3410000, 3410000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4400000, 3100000],
+            "b": [-3600000, 3100000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4000000, 2700000],
+            "b": [-4000000, 3500000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4700000, -3600000],
+            "b": [4500000, 3800000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 4000000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-63da878f302f",
+      "name": "CP_Elec_8x10",
+      "category": "SMD",
+      "description": "SMD aluminium electrolytic capacitor, Ø8 × 10 mm, pad 1 is +; generic land pattern, check the capacitor's datasheet",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-b550f7497b2a",
+          "name": "1",
+          "pos": [-3450000, 0],
+          "rotation": 0.0,
+          "size": [3500000, 2500000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b650f7497cdd",
+          "name": "2",
+          "pos": [3450000, 0],
+          "rotation": 0.0,
+          "size": [3500000, 2500000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-4150000, -4150000],
+            "b": [4150000, 4150000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4260000, -4260000],
+            "b": [4260000, -4260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4260000, 4260000],
+            "b": [4260000, 4260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4260000, -4260000],
+            "b": [-4260000, -1510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4260000, 1510000],
+            "b": [-4260000, 4260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [4260000, -4260000],
+            "b": [4260000, -1510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [4260000, 1510000],
+            "b": [4260000, 4260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5250000, 3950000],
+            "b": [-4450000, 3950000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4850000, 3550000],
+            "b": [-4850000, 4350000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-5550000, -4450000],
+            "b": [5500000, 4650000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 4850000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-9c6cd4027914",
+      "name": "CP_Elec_10x10",
+      "category": "SMD",
+      "description": "SMD aluminium electrolytic capacitor, Ø10 × 10 mm, pad 1 is +; generic land pattern, check the capacitor's datasheet",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-d08f3bbccea1",
+          "name": "1",
+          "pos": [-4250000, 0],
+          "rotation": 0.0,
+          "size": [4000000, 2500000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-cf8f3bbcccee",
+          "name": "2",
+          "pos": [4250000, 0],
+          "rotation": 0.0,
+          "size": [4000000, 2500000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-5150000, -5150000],
+            "b": [5150000, 5150000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5260000, -5260000],
+            "b": [5260000, -5260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5260000, 5260000],
+            "b": [5260000, 5260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5260000, -5260000],
+            "b": [-5260000, -1510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5260000, 1510000],
+            "b": [-5260000, 5260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [5260000, -5260000],
+            "b": [5260000, -1510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [5260000, 1510000],
+            "b": [5260000, 5260000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-6250000, 4950000],
+            "b": [-5450000, 4950000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5850000, 4550000],
+            "b": [-5850000, 5350000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-6550000, -5450000],
+            "b": [6550000, 5650000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 5850000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e542a6015a32",
+      "name": "CP_Radial_D5.0mm_P2.00mm",
+      "category": "Through hole",
+      "description": "Radial electrolytic capacitor, Ø5 mm, 2 mm pitch, pad 1 is +",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-29c646b3be0f",
+          "name": "1",
+          "pos": [-1000000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-28c646b3bc5c",
+          "name": "2",
+          "pos": [1000000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "circle",
+            "center": [0, 0],
+            "radius": 2500000,
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "circle",
+            "center": [0, 0],
+            "radius": 2620000,
+            "width": 120000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3500000, 2100000],
+            "b": [-2700000, 2100000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3100000, 1700000],
+            "b": [-3100000, 2500000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4050000, -3150000],
+            "b": [3150000, 3150000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3350000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-b008a8a90cb7",
+      "name": "CP_Radial_D6.3mm_P2.50mm",
+      "category": "Through hole",
+      "description": "Radial electrolytic capacitor, Ø6.3 mm, 2.5 mm pitch, pad 1 is +",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-364b134bd1f2",
+          "name": "1",
+          "pos": [-1250000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-374b134bd3a5",
+          "name": "2",
+          "pos": [1250000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "circle",
+            "center": [0, 0],
+            "radius": 3150000,
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "circle",
+            "center": [0, 0],
+            "radius": 3270000,
+            "width": 120000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4150000, 2750000],
+            "b": [-3350000, 2750000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3750000, 2350000],
+            "b": [-3750000, 3150000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4700000, -3800000],
+            "b": [3800000, 3800000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 4000000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-27b372a5c5e1",
+      "name": "CP_Radial_D8.0mm_P3.50mm",
+      "category": "Through hole",
+      "description": "Radial electrolytic capacitor, Ø8 mm, 3.5 mm pitch, pad 1 is +",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-699f5cb98ec4",
+          "name": "1",
+          "pos": [-1750000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-6a9f5cb99077",
+          "name": "2",
+          "pos": [1750000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "circle",
+            "center": [0, 0],
+            "radius": 4000000,
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "circle",
+            "center": [0, 0],
+            "radius": 4120000,
+            "width": 120000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5000000, 3600000],
+            "b": [-4200000, 3600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4600000, 3200000],
+            "b": [-4600000, 4000000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-5550000, -4650000],
+            "b": [4650000, 4650000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 4850000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-accb5bfe1c67",
+      "name": "CP_Radial_D10.0mm_P5.00mm",
+      "category": "Through hole",
+      "description": "Radial electrolytic capacitor, Ø10 mm, 5 mm pitch, pad 1 is +",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-6dd40c8b4722",
+          "name": "1",
+          "pos": [-2500000, 0],
+          "rotation": 0.0,
+          "size": [2000000, 2000000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1000000, 1000000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-6ed40c8b48d5",
+          "name": "2",
+          "pos": [2500000, 0],
+          "rotation": 0.0,
+          "size": [2000000, 2000000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1000000, 1000000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "circle",
+            "center": [0, 0],
+            "radius": 5000000,
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "circle",
+            "center": [0, 0],
+            "radius": 5120000,
+            "width": 120000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-6000000, 4600000],
+            "b": [-5200000, 4600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5600000, 4200000],
+            "b": [-5600000, 5000000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-6550000, -5650000],
+            "b": [5650000, 5650000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 5850000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-20aa303949f4",
+      "name": "D_SOD-123",
+      "category": "SMD",
+      "description": "Diode, SOD-123, pad 1 is the cathode",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-d23fca7e0c81",
+          "name": "1",
+          "pos": [-1635000, 0],
+          "rotation": 0.0,
+          "size": [910000, 1220000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-d13fca7e0ace",
+          "name": "2",
+          "pos": [1635000, 0],
+          "rotation": 0.0,
+          "size": [910000, 1220000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1350000, -800000],
+            "b": [1350000, 800000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1460000, -910000],
+            "b": [1460000, -910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1460000, 910000],
+            "b": [1460000, 910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2390000, -800000],
+            "b": [-2390000, 800000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2750000, -1100000],
+            "b": [2350000, 1100000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1300000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-f2aa395ba3ba",
+      "name": "D_SOD-323",
+      "category": "SMD",
+      "description": "Diode, SOD-323, pad 1 is the cathode",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-d3e080a17eb7",
+          "name": "1",
+          "pos": [-1150000, 0],
+          "rotation": 0.0,
+          "size": [600000, 450000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-d2e080a17d04",
+          "name": "2",
+          "pos": [1150000, 0],
+          "rotation": 0.0,
+          "size": [600000, 450000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-850000, -625000],
+            "b": [850000, 625000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-960000, -735000],
+            "b": [960000, -735000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-960000, 735000],
+            "b": [960000, 735000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-960000, -735000],
+            "b": [-960000, -485000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-960000, 485000],
+            "b": [-960000, 735000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [960000, -735000],
+            "b": [960000, -485000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [960000, 485000],
+            "b": [960000, 735000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1750000, -625000],
+            "b": [-1750000, 625000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2150000, -900000],
+            "b": [1750000, 900000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1100000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-c03ce26a1bf6",
+      "name": "D_MiniMELF",
+      "category": "SMD",
+      "description": "Diode, MiniMELF, pad 1 is the cathode",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-a43a7236fc9b",
+          "name": "1",
+          "pos": [-1750000, 0],
+          "rotation": 0.0,
+          "size": [900000, 1700000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-a33a7236fae8",
+          "name": "2",
+          "pos": [1750000, 0],
+          "rotation": 0.0,
+          "size": [900000, 1700000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1750000, -750000],
+            "b": [1750000, 750000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1040000, -860000],
+            "b": [1040000, -860000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1040000, 860000],
+            "b": [1040000, 860000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2500000, -850000],
+            "b": [-2500000, 850000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2900000, -1150000],
+            "b": [2500000, 1150000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1350000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-f3cff1a3dcb4",
+      "name": "D_SMA",
+      "category": "SMD",
+      "description": "Diode, SMA, pad 1 is the cathode",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-5883f8e669c1",
+          "name": "1",
+          "pos": [-2000000, 0],
+          "rotation": 0.0,
+          "size": [2500000, 1700000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-5783f8e6680e",
+          "name": "2",
+          "pos": [2000000, 0],
+          "rotation": 0.0,
+          "size": [2500000, 1700000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-2150000, -1300000],
+            "b": [2150000, 1300000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, -1410000],
+            "b": [2260000, -1410000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, 1410000],
+            "b": [2260000, 1410000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, -1410000],
+            "b": [-2260000, -1110000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, 1110000],
+            "b": [-2260000, 1410000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2260000, -1410000],
+            "b": [2260000, -1110000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2260000, 1110000],
+            "b": [2260000, 1410000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3550000, -1300000],
+            "b": [-3550000, 1300000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-3950000, -1600000],
+            "b": [3550000, 1600000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1800000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-f6cff1a3e1cd",
+      "name": "D_SMB",
+      "category": "SMD",
+      "description": "Diode, SMB, pad 1 is the cathode",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-367b9c0ddc58",
+          "name": "1",
+          "pos": [-2150000, 0],
+          "rotation": 0.0,
+          "size": [2500000, 2300000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-377b9c0dde0b",
+          "name": "2",
+          "pos": [2150000, 0],
+          "rotation": 0.0,
+          "size": [2500000, 2300000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-2150000, -1800000],
+            "b": [2150000, 1800000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, -1910000],
+            "b": [2260000, -1910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, 1910000],
+            "b": [2260000, 1910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, -1910000],
+            "b": [-2260000, -1410000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2260000, 1410000],
+            "b": [-2260000, 1910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2260000, -1910000],
+            "b": [2260000, -1410000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2260000, 1410000],
+            "b": [2260000, 1910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3700000, -1800000],
+            "b": [-3700000, 1800000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4100000, -2100000],
+            "b": [3700000, 2100000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2300000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-f5cff1a3e01a",
+      "name": "D_SMC",
+      "category": "SMD",
+      "description": "Diode, SMC, pad 1 is the cathode",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-33e5b4caef17",
+          "name": "1",
+          "pos": [-3400000, 0],
+          "rotation": 0.0,
+          "size": [2500000, 3300000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-32e5b4caed64",
+          "name": "2",
+          "pos": [3400000, 0],
+          "rotation": 0.0,
+          "size": [2500000, 3300000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-3450000, -2950000],
+            "b": [3450000, 2950000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3560000, -3060000],
+            "b": [3560000, -3060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3560000, 3060000],
+            "b": [3560000, 3060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3560000, -3060000],
+            "b": [-3560000, -1910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3560000, 1910000],
+            "b": [-3560000, 3060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3560000, -3060000],
+            "b": [3560000, -1910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3560000, 1910000],
+            "b": [3560000, 3060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4950000, -2950000],
+            "b": [-4950000, 2950000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-5350000, -3250000],
+            "b": [4950000, 3250000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3450000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-7718ce74e8fe",
+      "name": "D_DO-35_SOD27_P7.62mm_Horizontal",
+      "category": "Through hole",
+      "description": "Diode, DO-35, lying, 7.62 mm pitch, pad 1 is the cathode",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-ddaf3bc025c3",
+          "name": "1",
+          "pos": [-3810000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-dcaf3bc02410",
+          "name": "2",
+          "pos": [3810000, 0],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-2000000, -1000000],
+            "b": [2000000, 1000000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2120000, -1120000],
+            "b": [2120000, -1120000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2120000, 1120000],
+            "b": [2120000, 1120000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2120000, -1120000],
+            "b": [-2120000, 1120000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2120000, -1120000],
+            "b": [2120000, 1120000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [-3810000, 0],
+            "b": [-2000000, 0],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2750000, 0],
+            "b": [-2120000, 0],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [3810000, 0],
+            "b": [2000000, 0],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2120000, 0],
+            "b": [2750000, 0],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1400000, -1120000],
+            "b": [-1400000, 1120000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [-1400000, -1000000],
+            "b": [-1400000, 1000000],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-5150000, -1550000],
+            "b": [5150000, 1550000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1750000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-f3c774008aec",
+      "name": "D_DO-41_SOD81_P10.16mm_Horizontal",
+      "category": "Through hole",
+      "description": "Diode, DO-41, lying, 10.16 mm pitch, pad 1 is the cathode",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-193be2803559",
+          "name": "1",
+          "pos": [-5080000, 0],
+          "rotation": 0.0,
+          "size": [2200000, 2200000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1100000, 1100000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-183be28033a6",
+          "name": "2",
+          "pos": [5080000, 0],
+          "rotation": 0.0,
+          "size": [2200000, 2200000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1100000, 1100000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-2600000, -1350000],
+            "b": [2600000, 1350000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2720000, -1470000],
+            "b": [2720000, -1470000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2720000, 1470000],
+            "b": [2720000, 1470000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2720000, -1470000],
+            "b": [-2720000, 1470000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2720000, -1470000],
+            "b": [2720000, 1470000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [-5080000, 0],
+            "b": [-2600000, 0],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3720000, 0],
+            "b": [-2720000, 0],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [5080000, 0],
+            "b": [2600000, 0],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2720000, 0],
+            "b": [3720000, 0],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1820000, -1470000],
+            "b": [-1820000, 1470000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [-1820000, -1350000],
+            "b": [-1820000, 1350000],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-6700000, -1900000],
+            "b": [6700000, 1900000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2100000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-7c98ef36e553",
+      "name": "D_DO-201AD_P15.24mm_Horizontal",
+      "category": "Through hole",
+      "description": "Diode, DO-201AD, lying, 15.24 mm pitch, pad 1 is the cathode",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-c23c9779cb46",
+          "name": "1",
+          "pos": [-7620000, 0],
+          "rotation": 0.0,
+          "size": [3200000, 3200000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1600000, 1600000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c33c9779ccf9",
+          "name": "2",
+          "pos": [7620000, 0],
+          "rotation": 0.0,
+          "size": [3200000, 3200000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1600000, 1600000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-4750000, -2650000],
+            "b": [4750000, 2650000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4870000, -2770000],
+            "b": [4870000, -2770000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4870000, 2770000],
+            "b": [4870000, 2770000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4870000, -2770000],
+            "b": [-4870000, 2770000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [4870000, -2770000],
+            "b": [4870000, 2770000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [-7620000, 0],
+            "b": [-4750000, 0],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5760000, 0],
+            "b": [-4870000, 0],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [7620000, 0],
+            "b": [4750000, 0],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [4870000, 0],
+            "b": [5760000, 0],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3325000, -2770000],
+            "b": [-3325000, 2770000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [-3325000, -2650000],
+            "b": [-3325000, 2650000],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-9750000, -3200000],
+            "b": [9750000, 3200000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3400000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-80bf7693372e",
+      "name": "SOT-23",
+      "category": "SMD",
+      "description": "SOT-23, 3 pins",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-f8a160a3ac33",
+          "name": "1",
+          "pos": [-1137500, 950000],
+          "rotation": 0.0,
+          "size": [1325000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f7a160a3aa80",
+          "name": "2",
+          "pos": [-1137500, -950000],
+          "rotation": 0.0,
+          "size": [1325000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-faa160a3af99",
+          "name": "3",
+          "pos": [1137500, 0],
+          "rotation": 0.0,
+          "size": [1325000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-650000, -1450000],
+            "b": [650000, 1450000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-760000, -1560000],
+            "b": [760000, -1560000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-760000, 1560000],
+            "b": [760000, 1560000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-760000, -390000],
+            "b": [-760000, 390000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [760000, -1560000],
+            "b": [760000, -560000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [760000, 560000],
+            "b": [760000, 1560000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2100000, -1750000],
+            "b": [2100000, 1750000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 1950000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-24d205358141",
+      "name": "SOT-223-3_TabPin2",
+      "category": "SMD",
+      "description": "SOT-223, 3 pins, the tab is pin 2",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-3c44b69de324",
+          "name": "1",
+          "pos": [-3150000, 2300000],
+          "rotation": 0.0,
+          "size": [2000000, 1500000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-3d44b69de4d7",
+          "name": "2",
+          "pos": [-3150000, 0],
+          "rotation": 0.0,
+          "size": [2000000, 1500000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-3e44b69de68a",
+          "name": "3",
+          "pos": [-3150000, -2300000],
+          "rotation": 0.0,
+          "size": [2000000, 1500000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-3f44b69de83d",
+          "name": "2",
+          "pos": [3150000, 0],
+          "rotation": 0.0,
+          "size": [2000000, 3800000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1750000, -3250000],
+            "b": [1750000, 3250000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1860000, -3360000],
+            "b": [1860000, -3360000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1860000, 3360000],
+            "b": [1860000, 3360000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1860000, -3360000],
+            "b": [-1860000, 3360000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [1860000, -3360000],
+            "b": [1860000, 3360000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4450000, -3550000],
+            "b": [4450000, 3550000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3750000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-de3ea4839031",
+      "name": "TO-92_Inline",
+      "category": "Through hole",
+      "description": "TO-92, pins in line, 1.27 mm pitch",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-99a48df8b414",
+          "name": "1",
+          "pos": [-1270000, 0],
+          "rotation": 0.0,
+          "size": [1050000, 1500000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [750000, 750000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-9aa48df8b5c7",
+          "name": "2",
+          "pos": [0, 0],
+          "rotation": 0.0,
+          "size": [1050000, 1500000],
+          "shape": {
+            "type": "oval"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [750000, 750000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-9ba48df8b77a",
+          "name": "3",
+          "pos": [1270000, 0],
+          "rotation": 0.0,
+          "size": [1050000, 1500000],
+          "shape": {
+            "type": "oval"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [750000, 750000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "arc",
+            "center": [0, 0],
+            "radius": 2600000,
+            "start": 314.7,
+            "sweep": 270.6,
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1830000, -1850000],
+            "b": [1830000, -1850000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [-2000000, -1600000],
+            "b": [2000000, -1600000],
+            "width": 100000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "arc",
+            "center": [0, 0],
+            "radius": 2400000,
+            "start": 318.2,
+            "sweep": 263.6,
+            "width": 100000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-3150000, -2400000],
+            "b": [3150000, 3150000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3350000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-b16963518553",
+      "name": "PinHeader_1x02_P2.54mm_Vertical",
+      "category": "Through hole",
+      "description": "1×2 pin header, 2.54 mm pitch, 2 pins",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-f1a3a9276b46",
+          "name": "1",
+          "pos": [0, 1270000],
+          "rotation": 0.0,
+          "size": [1700000, 1700000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1000000, 1000000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f2a3a9276cf9",
+          "name": "2",
+          "pos": [0, -1270000],
+          "rotation": 0.0,
+          "size": [1700000, 1700000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1000000, 1000000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1270000, -2540000],
+            "b": [1270000, 2540000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1330000, -2600000],
+            "b": [1330000, -2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1330000, 2600000],
+            "b": [1330000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1330000, -2600000],
+            "b": [-1330000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [1330000, -2600000],
+            "b": [1330000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1670000, 670000],
+            "b": [-1670000, 1870000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2300000, -3050000],
+            "b": [1800000, 3050000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3250000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-69f10c1791b1",
+      "name": "PinHeader_1x02_P2.54mm_Horizontal",
+      "category": "Through hole",
+      "description": "1×2 right-angle pin header, 2.54 mm pitch, 2 pins",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-833300960994",
+          "name": "1",
+          "pos": [0, 1270000],
+          "rotation": 0.0,
+          "size": [1700000, 1700000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1000000, 1000000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-843300960b47",
+          "name": "2",
+          "pos": [0, -1270000],
+          "rotation": 0.0,
+          "size": [1700000, 1700000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1000000, 1000000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [1500000, -2540000],
+            "b": [4040000, 2540000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [1440000, -2600000],
+            "b": [4100000, -2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [1440000, 2600000],
+            "b": [4100000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [1440000, -2600000],
+            "b": [1440000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [4100000, -2600000],
+            "b": [4100000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [4040000, 1270000],
+            "b": [10040000, 1270000],
+            "width": 640000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "line",
+            "a": [4040000, -1270000],
+            "b": [10040000, -1270000],
+            "width": 640000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1670000, 670000],
+            "b": [-1670000, 1870000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2300000, -3050000],
+            "b": [10550000, 3050000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3250000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-8005f7f9c9f3",
+      "name": "PinSocket_1x02_P2.54mm_Vertical",
+      "category": "Through hole",
+      "description": "1×2 pin socket, 2.54 mm pitch, 2 pins",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-553a09de45e6",
+          "name": "1",
+          "pos": [0, 1270000],
+          "rotation": 0.0,
+          "size": [1700000, 1700000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1000000, 1000000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-563a09de4799",
+          "name": "2",
+          "pos": [0, -1270000],
+          "rotation": 0.0,
+          "size": [1700000, 1700000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1000000, 1000000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1270000, -2540000],
+            "b": [1270000, 2540000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1330000, -2600000],
+            "b": [1330000, -2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1330000, 2600000],
+            "b": [1330000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1330000, -2600000],
+            "b": [-1330000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [1330000, -2600000],
+            "b": [1330000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1670000, 670000],
+            "b": [-1670000, 1870000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2300000, -3050000],
+            "b": [1800000, 3050000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3250000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-8c2e7454112a",
+      "name": "PinHeader_1x02_P2.54mm_Vertical_SMD_Pin1Left",
+      "category": "SMD",
+      "description": "1×2 SMD pin header, 2.54 mm pitch, 2 pins",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-4e72d9633567",
+          "name": "1",
+          "pos": [-1655000, 1270000],
+          "rotation": 0.0,
+          "size": [2510000, 1000000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-4d72d96333b4",
+          "name": "2",
+          "pos": [1655000, -1270000],
+          "rotation": 0.0,
+          "size": [2510000, 1000000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1270000, -2540000],
+            "b": [1270000, 2540000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1330000, -2600000],
+            "b": [1330000, -2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1330000, 2600000],
+            "b": [1330000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1330000, -2600000],
+            "b": [-1330000, 510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-1330000, 2030000],
+            "b": [-1330000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [1330000, -2600000],
+            "b": [1330000, -2030000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [1330000, -510000],
+            "b": [1330000, 2600000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3320000, 670000],
+            "b": [-3320000, 1870000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-3700000, -2800000],
+            "b": [3200000, 2800000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3000000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-7819b4f1a21c",
+      "name": "JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical",
+      "category": "Through hole",
+      "description": "JST PH connector B2B-PH-K, 2 pins, 2 mm pitch, vertical",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-a73d1a87d349",
+          "name": "1",
+          "pos": [-1000000, 0],
+          "rotation": 0.0,
+          "size": [1200000, 1750000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [750000, 750000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-a63d1a87d196",
+          "name": "2",
+          "pos": [1000000, 0],
+          "rotation": 0.0,
+          "size": [1200000, 1750000],
+          "shape": {
+            "type": "oval"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [750000, 750000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-2950000, -2800000],
+            "b": [2950000, 1700000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3060000, -2910000],
+            "b": [3060000, -2910000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3060000, 1810000],
+            "b": [3060000, 1810000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3060000, -2910000],
+            "b": [-3060000, 1810000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3060000, -2910000],
+            "b": [3060000, 1810000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "circle",
+            "center": [-3400000, 0],
+            "radius": 150000,
+            "width": 0,
+            "fill": true
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4150000, -3350000],
+            "b": [3500000, 2250000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2450000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-1d84b56d1265",
+      "name": "JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+      "category": "Through hole",
+      "description": "JST XH connector B2B-XH-A, 2 pins, 2.5 mm pitch, vertical",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-1abf713c8770",
+          "name": "1",
+          "pos": [-1250000, 0],
+          "rotation": 0.0,
+          "size": [1700000, 2000000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1000000, 1000000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-1bbf713c8923",
+          "name": "2",
+          "pos": [1250000, 0],
+          "rotation": 0.0,
+          "size": [1700000, 2000000],
+          "shape": {
+            "type": "oval"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1000000, 1000000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-3700000, -3400000],
+            "b": [3700000, 2350000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3810000, -3510000],
+            "b": [3810000, -3510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3810000, 2460000],
+            "b": [3810000, 2460000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3810000, -3510000],
+            "b": [-3810000, 2460000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3810000, -3510000],
+            "b": [3810000, 2460000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "circle",
+            "center": [-4150000, 0],
+            "radius": 150000,
+            "width": 0,
+            "fill": true
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4900000, -3950000],
+            "b": [4250000, 2900000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3100000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2ff2a7974777",
+      "name": "JST_SH_SM02B-SRSS-TB_1x02-1MP_P1.00mm_Horizontal",
+      "category": "SMD",
+      "description": "JST SH connector SM02B-SRSS-TB, 2 pins, 1.00 mm pitch, side entry",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-c1cb3f5efa32",
+          "name": "1",
+          "pos": [-500000, 2000000],
+          "rotation": 0.0,
+          "size": [600000, 1550000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c2cb3f5efbe5",
+          "name": "2",
+          "pos": [500000, 2000000],
+          "rotation": 0.0,
+          "size": [600000, 1550000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-bfcb3f5ef6cc",
+          "name": "MP",
+          "pos": [-1800000, -1875000],
+          "rotation": 0.0,
+          "size": [1200000, 1800000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c0cb3f5ef87f",
+          "name": "MP",
+          "pos": [1800000, -1875000],
+          "rotation": 0.0,
+          "size": [1200000, 1800000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-2000000, -2400000],
+            "b": [2000000, 1200000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-940000, -2510000],
+            "b": [940000, -2510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2110000, 1310000],
+            "b": [-1060000, 1310000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [1060000, 1310000],
+            "b": [2110000, 1310000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2110000, -715000],
+            "b": [-2110000, 1310000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2110000, -715000],
+            "b": [2110000, 1310000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "circle",
+            "center": [-1150000, 2600000],
+            "radius": 150000,
+            "width": 0,
+            "fill": true
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-2700000, -3050000],
+            "b": [2700000, 3050000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 3250000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-06f789d63783",
+      "name": "TerminalBlock_1x02_P5.00mm",
+      "category": "Through hole",
+      "description": "Screw terminal block, 2 positions, 5 mm pitch; generic, check the terminal's datasheet",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-4fdc48e8d976",
+          "name": "1",
+          "pos": [-2500000, 0],
+          "rotation": 0.0,
+          "size": [2600000, 2600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1300000, 1300000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-50dc48e8db29",
+          "name": "2",
+          "pos": [2500000, 0],
+          "rotation": 0.0,
+          "size": [2600000, 2600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1300000, 1300000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-5000000, -4000000],
+            "b": [5000000, 4500000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5110000, -4110000],
+            "b": [5110000, -4110000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5110000, 4610000],
+            "b": [5110000, 4610000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-5110000, -4110000],
+            "b": [-5110000, 4610000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [5110000, -4110000],
+            "b": [5110000, 4610000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-5550000, -4550000],
+            "b": [5550000, 5050000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 5250000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-cb668e8c6d40",
+      "name": "TerminalBlock_1x02_P3.50mm",
+      "category": "Through hole",
+      "description": "Screw terminal block, 2 positions, 3.5 mm pitch; generic, check the terminal's datasheet",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-7b916c1dcb75",
+          "name": "1",
+          "pos": [-1750000, 0],
+          "rotation": 0.0,
+          "size": [2200000, 2200000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1200000, 1200000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-7a916c1dc9c2",
+          "name": "2",
+          "pos": [1750000, 0],
+          "rotation": 0.0,
+          "size": [2200000, 2200000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1200000, 1200000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-3500000, -3400000],
+            "b": [3500000, 3900000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3610000, -3510000],
+            "b": [3610000, -3510000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3610000, 4010000],
+            "b": [3610000, 4010000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-3610000, -3510000],
+            "b": [-3610000, 4010000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [3610000, -3510000],
+            "b": [3610000, 4010000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4050000, -3950000],
+            "b": [4050000, 4450000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 4650000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    }
+  ],
+  "parts": [
+    {
+      "id": "5ce10000-0000-4000-9000-1596e0022042",
+      "name": "Resistor",
+      "category": "Passives",
+      "description": "Resistor: chip 0402 to 2512, axial through-hole",
+      "prefix": "R",
+      "default_value": "10k",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-8f631552da92"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-6c81ba07e676",
+          "name": "0603",
+          "footprint": "5ce10000-0000-4000-9000-e2e4cb0d746e",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-4979a3a490f3",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-521e1320a0e6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-4879a3a48f40",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-511e13209f33"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-bf81c2c20c33",
+          "name": "0402",
+          "footprint": "5ce10000-0000-4000-9000-6835660428bc",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-5342096478e9",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-521e1320a0e6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-524209647736",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-511e13209f33"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b081af7ea7ee",
+          "name": "0805",
+          "footprint": "5ce10000-0000-4000-9000-9794df35a178",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-e49676be614d",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-521e1320a0e6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-e39676be5f9a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-511e13209f33"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-d17b61b4f7f8",
+          "name": "1206",
+          "footprint": "5ce10000-0000-4000-9000-4fe01ff4549d",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-284cd0ef9568",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-521e1320a0e6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-294cd0ef971b",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-511e13209f33"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-629307483f33",
+          "name": "2512",
+          "footprint": "5ce10000-0000-4000-9000-83d4296ea97c",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-141c2f03c829",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-521e1320a0e6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-131c2f03c676",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-511e13209f33"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-137d4171bcb6",
+          "name": "Axial DIN0207, 10.16 mm",
+          "footprint": "5ce10000-0000-4000-9000-296c05ced8c3",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-8ded8bd06536",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-521e1320a0e6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-8eed8bd066e9",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-511e13209f33"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-3125416ac7d3",
+          "name": "Axial DIN0207, standing 2.54 mm",
+          "footprint": "5ce10000-0000-4000-9000-ba32e6749ab0",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-f69b362d4f65",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-521e1320a0e6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-f59b362d4db2",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-511e13209f33"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "resistor"
+        }
+      },
+      "source": {
+        "library": "5ce10000-0000-4000-8000-000000000001",
+        "library_name": "Built-in",
+        "part": "5ce10000-0000-4000-9000-1596e0022042",
+        "content_hash": "e5cedc1d37c23aa8"
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-f5f6c40b8a2b",
+      "name": "Capacitor",
+      "category": "Passives",
+      "description": "Ceramic capacitor: chip 0402 to 1210, through-hole disc",
+      "prefix": "C",
+      "default_value": "100n",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-81aceab07f5b"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-66ec8b36d1f5",
+          "name": "0603",
+          "footprint": "5ce10000-0000-4000-9000-e2e4cb0d746e",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-4979a3a490f3",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-51864f4e96d7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-4879a3a48f40",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-52864f4e988a"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b7ec956288cc",
+          "name": "0402",
+          "footprint": "5ce10000-0000-4000-9000-6835660428bc",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-5342096478e9",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-51864f4e96d7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-524209647736",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-52864f4e988a"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-eaeca902fc1d",
+          "name": "0805",
+          "footprint": "5ce10000-0000-4000-9000-9794df35a178",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-e49676be614d",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-51864f4e96d7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-e39676be5f9a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-52864f4e988a"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-e9f30a102d3b",
+          "name": "1206",
+          "footprint": "5ce10000-0000-4000-9000-4fe01ff4549d",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-284cd0ef9568",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-51864f4e96d7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-294cd0ef971b",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-52864f4e988a"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-69f30a0d1de4",
+          "name": "1210",
+          "footprint": "5ce10000-0000-4000-9000-5f8e935ab8ba",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-a9e799ab2bb7",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-51864f4e96d7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a8e799ab2a04",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-52864f4e988a"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-116f320e235c",
+          "name": "Disc, 2.54 mm",
+          "footprint": "5ce10000-0000-4000-9000-57f5fd76f4d2",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-1ad6e445172f",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-51864f4e96d7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-19d6e445157c",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-52864f4e988a"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b4fdfae11286",
+          "name": "Disc, 5.08 mm",
+          "footprint": "5ce10000-0000-4000-9000-c6fd4fee5d0f",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-5fe217a7150a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-51864f4e96d7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-60e217a716bd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-52864f4e988a"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "capacitor"
+        }
+      },
+      "source": {
+        "library": "5ce10000-0000-4000-8000-000000000001",
+        "library_name": "Built-in",
+        "part": "5ce10000-0000-4000-9000-f5f6c40b8a2b",
+        "content_hash": "deac03dedca982f4"
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-a47b041f5342",
+      "name": "Capacitor_Polarized",
+      "category": "Passives",
+      "description": "Polarised capacitor (tantalum, electrolytic); pin 1 is +",
+      "prefix": "C",
+      "default_value": "10u",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-c114db275bf2"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-2dced11cc089",
+          "name": "Tantalum A (3216)",
+          "footprint": "5ce10000-0000-4000-9000-e30fa22e35c6",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-40686650b96b",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-3f686650b7b8",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-1f4bbb761bce",
+          "name": "Tantalum B (3528)",
+          "footprint": "5ce10000-0000-4000-9000-99d27183182f",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-d4dc1c08232a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-d5dc1c0824dd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-45bb3a621110",
+          "name": "Tantalum C (6032)",
+          "footprint": "5ce10000-0000-4000-9000-19ceeb67a9a0",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-ea25b02650d5",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-e925b0264f22",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c5cacc11d727",
+          "name": "Tantalum D (7343)",
+          "footprint": "5ce10000-0000-4000-9000-94176c021f93",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-b93e6f747406",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ba3e6f7475b9",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-6f8aea5ed784",
+          "name": "Electrolytic SMD Ø4 × 5.4",
+          "footprint": "5ce10000-0000-4000-9000-b7c661d7c8e7",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-bddc99edafa2",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bedc99edb155",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c79b103ed929",
+          "name": "Electrolytic SMD Ø5 × 5.4",
+          "footprint": "5ce10000-0000-4000-9000-39a28e82cb00",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-b0b2c1a85bb5",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-afb2c1a85a02",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-ffe681bbfeff",
+          "name": "Electrolytic SMD Ø6.3 × 5.4",
+          "footprint": "5ce10000-0000-4000-9000-5a6272830cde",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-495939ca90a3",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-485939ca8ef0",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-19b2ce303342",
+          "name": "Electrolytic SMD Ø8 × 10",
+          "footprint": "5ce10000-0000-4000-9000-63da878f302f",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-b550f7497b2a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b650f7497cdd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-216e10df5d7d",
+          "name": "Electrolytic SMD Ø10 × 10",
+          "footprint": "5ce10000-0000-4000-9000-9c6cd4027914",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-d08f3bbccea1",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-cf8f3bbcccee",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-aaba0da851f8",
+          "name": "Radial Ø5, 2 mm",
+          "footprint": "5ce10000-0000-4000-9000-e542a6015a32",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-29c646b3be0f",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-28c646b3bc5c",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-2e8effc85a59",
+          "name": "Radial Ø6.3, 2.5 mm",
+          "footprint": "5ce10000-0000-4000-9000-b008a8a90cb7",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-364b134bd1f2",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-374b134bd3a5",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-98245556f56d",
+          "name": "Radial Ø8, 3.5 mm",
+          "footprint": "5ce10000-0000-4000-9000-27b372a5c5e1",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-699f5cb98ec4",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-6a9f5cb99077",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-2ebb8539db13",
+          "name": "Radial Ø10, 5 mm",
+          "footprint": "5ce10000-0000-4000-9000-accb5bfe1c67",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-6dd40c8b4722",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df43c672bfc6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-6ed40c8b48d5",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-de43c672be13"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "capacitor"
+        }
+      },
+      "source": {
+        "library": "5ce10000-0000-4000-8000-000000000001",
+        "library_name": "Built-in",
+        "part": "5ce10000-0000-4000-9000-a47b041f5342",
+        "content_hash": "4690417c6d9f5c3d"
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-7d4165cb34a4",
+      "name": "Diode",
+      "category": "Diodes",
+      "description": "General purpose rectifier or signal diode: SOD, MiniMELF, SMA/SMB/SMC, DO-35/41/201AD",
+      "prefix": "D",
+      "default_value": "1N4148W",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-df5f0dcd40b4"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-d0337db525ca",
+          "name": "SOD-123",
+          "footprint": "5ce10000-0000-4000-9000-20aa303949f4",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-d23fca7e0c81",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f0f6e635d714"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-d13fca7e0ace",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f3f6e635dc2d"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-fe337492cc04",
+          "name": "SOD-323",
+          "footprint": "5ce10000-0000-4000-9000-f2aa395ba3ba",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-d3e080a17eb7",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f0f6e635d714"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-d2e080a17d04",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f3f6e635dc2d"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-22985a5a6200",
+          "name": "MiniMELF",
+          "footprint": "5ce10000-0000-4000-9000-c03ce26a1bf6",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-a43a7236fc9b",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f0f6e635d714"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a33a7236fae8",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f3f6e635dc2d"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-a6d9bf47b696",
+          "name": "SMA",
+          "footprint": "5ce10000-0000-4000-9000-f3cff1a3dcb4",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-5883f8e669c1",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f0f6e635d714"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-5783f8e6680e",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f3f6e635dc2d"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-a5d9bf47b4e3",
+          "name": "SMB",
+          "footprint": "5ce10000-0000-4000-9000-f6cff1a3e1cd",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-367b9c0ddc58",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f0f6e635d714"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-377b9c0dde0b",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f3f6e635dc2d"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-a4d9bf47b330",
+          "name": "SMC",
+          "footprint": "5ce10000-0000-4000-9000-f5cff1a3e01a",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-33e5b4caef17",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f0f6e635d714"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-32e5b4caed64",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f3f6e635dc2d"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-34cdcc216c5d",
+          "name": "DO-35",
+          "footprint": "5ce10000-0000-4000-9000-7718ce74e8fe",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-ddaf3bc025c3",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f0f6e635d714"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-dcaf3bc02410",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f3f6e635dc2d"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-30cdcc12f25e",
+          "name": "DO-41",
+          "footprint": "5ce10000-0000-4000-9000-f3c774008aec",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-193be2803559",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f0f6e635d714"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-183be28033a6",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f3f6e635dc2d"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-e3e602112d67",
+          "name": "DO-201AD",
+          "footprint": "5ce10000-0000-4000-9000-7c98ef36e553",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-c23c9779cb46",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f0f6e635d714"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-c33c9779ccf9",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f3f6e635dc2d"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "diode",
+          "model": ".model D1N4148 D(IS=2.52n RS=0.568 N=1.752 CJO=4p M=0.4 TT=20n BV=100 IBV=100u)"
+        }
+      },
+      "source": {
+        "library": "5ce10000-0000-4000-8000-000000000001",
+        "library_name": "Built-in",
+        "part": "5ce10000-0000-4000-9000-7d4165cb34a4",
+        "content_hash": "bcff7b49b8f9ecb8"
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-a4ce8e41411b",
+      "name": "NPN",
+      "category": "Transistors",
+      "description": "NPN bipolar transistor (BC847 in SOT-23; BCP56 in SOT-223, 2N3904 in TO-92)",
+      "prefix": "Q",
+      "default_value": "BC847",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-86397a23f4cb"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-668f714f9d80",
+          "name": "SOT-23",
+          "footprint": "5ce10000-0000-4000-9000-80bf7693372e",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-f8a160a3ac33",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a17f065f3a2a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-f7a160a3aa80",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-9c7f065f31ab"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-faa160a3af99",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a27f065f3bdd"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f8bd8a4b2d00",
+          "name": "SOT-223",
+          "footprint": "5ce10000-0000-4000-9000-24d205358141",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-3c44b69de324",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a17f065f3a2a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-3d44b69de4d7",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a27f065f3bdd"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-3f44b69de83d",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a27f065f3bdd"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-3e44b69de68a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-9c7f065f31ab"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-9b258412777e",
+          "name": "TO-92 (EBC)",
+          "footprint": "5ce10000-0000-4000-9000-de3ea4839031",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-99a48df8b414",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-9c7f065f31ab"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9aa48df8b5c7",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a17f065f3a2a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9ba48df8b77a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a27f065f3bdd"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "npn",
+          "model": ".model Q2N3904 NPN(IS=6.734f XTI=3 EG=1.11 VAF=74.03 BF=416.4 NE=1.259 ISE=6.734f IKF=66.78m XTB=1.5 BR=0.7371 NC=2 ISC=0 IKR=0 RC=1 CJC=3.638p MJC=0.3085 VJC=0.75 FC=0.5 CJE=4.493p MJE=0.2593 VJE=0.75 TR=239.5n TF=301.2p ITF=0.4 VTF=4 XTF=2 RB=10)"
+        },
+        "pins": [
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-a27f065f3bdd"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-a17f065f3a2a"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-9c7f065f31ab"
+          }
+        ]
+      },
+      "source": {
+        "library": "5ce10000-0000-4000-8000-000000000001",
+        "library_name": "Built-in",
+        "part": "5ce10000-0000-4000-9000-a4ce8e41411b",
+        "content_hash": "f65b23b08a8e8698"
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e4ce985c3205",
+      "name": "PNP",
+      "category": "Transistors",
+      "description": "PNP bipolar transistor (BC857 in SOT-23; BCP53, 2N3906)",
+      "prefix": "Q",
+      "default_value": "BC857",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-c638e6e2e195"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-f8ff03e858ea",
+          "name": "SOT-23",
+          "footprint": "5ce10000-0000-4000-9000-80bf7693372e",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-f8a160a3ac33",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e19d7f842eb4"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-f7a160a3aa80",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e09d7f842d01"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-faa160a3af99",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e29d7f843067"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-7a53a3d215aa",
+          "name": "SOT-223",
+          "footprint": "5ce10000-0000-4000-9000-24d205358141",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-3c44b69de324",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e19d7f842eb4"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-3d44b69de4d7",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e29d7f843067"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-3f44b69de83d",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e29d7f843067"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-3e44b69de68a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e09d7f842d01"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c7b99db565fc",
+          "name": "TO-92 (EBC)",
+          "footprint": "5ce10000-0000-4000-9000-de3ea4839031",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-99a48df8b414",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e09d7f842d01"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9aa48df8b5c7",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e19d7f842eb4"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9ba48df8b77a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e29d7f843067"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "primitive",
+          "kind": "pnp",
+          "model": ".model Q2N3906 PNP(IS=1.41f XTI=3 EG=1.11 VAF=18.7 BF=180.7 NE=1.5 ISE=0 IKF=80m XTB=1.5 BR=4.977 NC=2 ISC=0 IKR=0 RC=2.5 CJC=9.728p MJC=0.5776 VJC=0.75 FC=0.5 CJE=8.063p MJE=0.3677 VJE=0.75 TR=33.42n TF=179.3p ITF=0.4 VTF=4 XTF=6 RB=10)"
+        },
+        "pins": [
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-e29d7f843067"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-e19d7f842eb4"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-e09d7f842d01"
+          }
+        ]
+      },
+      "source": {
+        "library": "5ce10000-0000-4000-8000-000000000001",
+        "library_name": "Built-in",
+        "part": "5ce10000-0000-4000-9000-e4ce985c3205",
+        "content_hash": "0ccf13f32545a87d"
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-467040fc756f",
+      "name": "Conn_01x02",
+      "category": "Connectors",
+      "description": "Generic connector, 1 row, 2 pins: pin header or socket, JST, screw terminal",
+      "prefix": "J",
+      "default_value": "Conn_01x02",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-a394becad65f"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-2749d209d4c2",
+          "name": "Pin header",
+          "footprint": "5ce10000-0000-4000-9000-b16963518553",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-f1a3a9276b46",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-053b670ebc53"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-f2a3a9276cf9",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-063b670ebe06"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-02a1ecc3bf07",
+          "name": "Pin header, right angle",
+          "footprint": "5ce10000-0000-4000-9000-69f10c1791b1",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-833300960994",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-053b670ebc53"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-843300960b47",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-063b670ebe06"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-5af546996492",
+          "name": "Pin socket",
+          "footprint": "5ce10000-0000-4000-9000-8005f7f9c9f3",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-553a09de45e6",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-053b670ebc53"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-563a09de4799",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-063b670ebe06"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c2adb16a5be6",
+          "name": "Pin header SMD",
+          "footprint": "5ce10000-0000-4000-9000-8c2e7454112a",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-4e72d9633567",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-053b670ebc53"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-4d72d96333b4",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-063b670ebe06"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-3987672d2995",
+          "name": "JST PH",
+          "footprint": "5ce10000-0000-4000-9000-7819b4f1a21c",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-a73d1a87d349",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-053b670ebc53"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a63d1a87d196",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-063b670ebe06"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-798767445e0d",
+          "name": "JST XH",
+          "footprint": "5ce10000-0000-4000-9000-1d84b56d1265",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-1abf713c8770",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-053b670ebc53"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-1bbf713c8923",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-063b670ebe06"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-2f876731016e",
+          "name": "JST SH",
+          "footprint": "5ce10000-0000-4000-9000-2ff2a7974777",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-c1cb3f5efa32",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-053b670ebc53"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-c2cb3f5efbe5",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-063b670ebe06"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-3567be4d47dd",
+          "name": "Screw terminal 5.00 mm",
+          "footprint": "5ce10000-0000-4000-9000-06f789d63783",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-4fdc48e8d976",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-053b670ebc53"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-50dc48e8db29",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-063b670ebe06"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-db0edc757244",
+          "name": "Screw terminal 3.50 mm",
+          "footprint": "5ce10000-0000-4000-9000-cb668e8c6d40",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-7b916c1dcb75",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-053b670ebc53"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-7a916c1dc9c2",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-063b670ebe06"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "ignore"
+        }
+      },
+      "source": {
+        "library": "5ce10000-0000-4000-8000-000000000001",
+        "library_name": "Built-in",
+        "part": "5ce10000-0000-4000-9000-467040fc756f",
+        "content_hash": "f9a53319d6f930c7"
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-c2699b2b9768",
+      "name": "VSource",
+      "category": "Simulation",
+      "description": "Voltage source for simulation only (not on the board): DC, sine, pulse, piecewise linear or exponential, picked in its properties",
+      "prefix": "V",
+      "default_value": "DC 0 V",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-42abe4f268b8"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-b59e98b05d0d",
+          "name": "No footprint",
+          "connections": []
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "voltage_source"
+        }
+      },
+      "source": {
+        "library": "5ce10000-0000-4000-8000-000000000001",
+        "library_name": "Built-in",
+        "part": "5ce10000-0000-4000-9000-c2699b2b9768",
+        "content_hash": "b3813891fda07681"
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2317d9697b26",
+      "name": "Resistor_Sim",
+      "category": "Simulation",
+      "description": "Resistor for simulation only (not on the board), e.g. a load or a source's impedance on a test bench sheet",
+      "prefix": "R",
+      "default_value": "1k",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-8f631552da92"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-64d7d5ee737f",
+          "name": "No footprint",
+          "connections": []
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "resistor"
+        }
+      },
+      "source": {
+        "library": "5ce10000-0000-4000-8000-000000000001",
+        "library_name": "Built-in",
+        "part": "5ce10000-0000-4000-9000-2317d9697b26",
+        "content_hash": "3fff0bf1b4be2a26"
+      }
+    }
+  ]
+}
