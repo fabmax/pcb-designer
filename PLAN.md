@@ -719,17 +719,47 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   netlist, like moving a symbol, don't count), rebuilt once per document revision. The
   last `Attempt` (started or refused) keeps the netlist problems plus ngspice's errors
   and warnings (without objects) and the log; Messages' Simulation tab shows it.
-- **Panel** (`app/src/sim_ui.rs`): analysis tabs (right-click: rename, duplicate,
-  delete; no reordering), the form of the shown one, Run/Stop with the last attempt's
-  error count linking to Messages, the result table (named and probed nets, "Show all
-  nets", a filter; a click selects the net), and "Circuit" (ground, supplies,
-  temperature, extra lines, netlist and log window). Every edit is one `SetSimulation`;
-  value fields keep their own text buffer while focused and keep text that doesn't
-  parse (red, not committed). ⌘R with no analysis adds an operating point. ngspice is
+- **Simulations in the project tree** (`project_panel::simulation_node`): a
+  `NodeId::Simulations` node below the PCB, a `NodeId::Analysis(id)` per analysis in
+  setup order (no reordering). Add simulation is an `Entry::Sub` (on the node and the
+  header's +); rename (name dialog, `Naming::Analysis`), duplicate (right after,
+  `sim_ui::duplicate`) and delete are one `SetSimulation` each. Rows show
+  `SimPanel::tree_detail`: progress, "queued", the failed attempt's error count
+  (`SimPanel::failed`, per analysis: the session keeps only the last attempt),
+  "outdated". Staleness for all analyses is `check_stale`: at most once a second
+  (`STALE_EVERY`), only after an edit or a run, not while busy or with stale
+  connectivity (`is_stale` caches per revision, so stale connectivity would stick), and
+  only while the node is expanded or the panel or a simulation tab is open.
+- **Current simulation** (`SimPanel::current`, saved as the workspace's `sim_current`):
+  set by a click in the tree (`Act::PreviewAnalysis`), a press in its tab
+  (`PlotAct::Focus`), a tab button click, adding, running. No fallback to the first: the
+  panel then says to select one, and ⌘R refuses (it adds an operating point only when
+  there are none). Probes still fall back to the first sweep, MCP to the first analysis.
+- **Output tabs**: `Tab::Simulation(id)` / `Focus::Simulation(id)`, one per analysis,
+  `TabRef::Simulation { analysis, preview }` in the workspace. `SimPanel::preview` is the
+  analysis in the preview tab; there is one preview tab in the app (`take_preview_tile`
+  hands its tile over between library items and simulations). A Run brings its tab to
+  the front or shows it in the preview (`open_analysis(id, true, false)`; a preview stays
+  one); Run all opens none; agents' runs open none. New tabs go next to other simulation
+  tabs, else right of the schematic when it's alone in its group. Tabs of deleted
+  analyses close on the revision change (`close_deleted_analyses`). The focused tab's
+  analysis is the tree's selection (`focus_node`), as with item tabs.
+- **Run all** (`SimPanel::run_all`, ⇧⌘R): a queue that `next_in_queue` (each frame,
+  after `poll`) starts one at a time; a run it didn't start is replaced. Its outcomes
+  count into `Batch` (only runs it started) and end in one status line. Stop and a
+  single run (also the tuner's and an agent's) drop the queue.
+- **Panel** (`app/src/sim_ui.rs`): the current simulation's name, Run/Run all/Show/Stop
+  with the last attempt's error count linking to Messages, its form, the result table
+  (named and probed nets, "Show all nets", a filter; a click selects the net), and
+  "Circuit" collapsed (ground, supplies, temperature, extra lines, netlist and log
+  window); with the Simulation node selected, Circuit only. Every edit is one
+  `SetSimulation`; value fields keep their own text buffer while focused and keep text
+  that doesn't parse (red, not committed). ngspice is
   looked for once (when the panel shows or on Run; `SimPanel::engine`) and again when
   a setting changes; the Settings page caches its own lookup per `EngineSettings` and
   shows what's in use (and the executable sweeps use).
-- **Plot** (`sim::plot`, headless; drawn by `app/src/plot_ui.rs` in `Tab::Simulation`):
+- **Plot** (`sim::plot`, headless; drawn by `app/src/plot_ui.rs` in `Tab::Simulation(id)`,
+  under `push_id(id)` so tabs side by side keep their widget state apart):
   `signals` = the analysis' probes, or without any the named nets (at most 8, not
   saved). `Signal` is `Voltage`, `Diff`, `Current` or `Power`; `plot::vector` and
   `signal_label` read any of them from a result. `data` makes the traces: AC is dB left
@@ -815,8 +845,7 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   window is the time view's cursors, else its visible x, cached in the time state;
   Measure there shows `spectrum::table` of the time traces over that window
   (`Measuring`). MCP: `distortion` per transient signal, `screenshot` `spectrum`.
-- **Panel extras:** analysis tabs drag to reorder (egui drag-and-drop payloads, one
-  `SetSimulation`); `suggested_supplies` lists power port nets that no supply and no
+- **Panel extras:** `suggested_supplies` lists power port nets that no supply and no
   voltage source pin powers, with `supply_voltage` from the name (`None` for `VCC`, the
   user types it).
 - **Tuner** (`sim::tune`, `app/src/tune_ui.rs`): rows are `Simulation::tune`
@@ -1301,7 +1330,8 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   another item, except the preview: "Edit footprint" and "New part" in a tab ask for
   another tab (`ItemTab::navigate`).
   - `open_item` is the one way in: the item's tab if it has one, else the preview tab
-    (its tile gets a new `ItemTab`, even across libraries) or a new tab right after the
+    (its tile gets a new `ItemTab`, even across libraries; it may hold a simulation's
+    output, see "Output tabs" under Simulation) or a new tab right after the
     tab used last. A single click or arrow key in the Project panel previews
     (`project_panel::preview`), Enter and double-click open; everything else opens
     normal tabs; agents open none. A preview that covers the focused tab takes focus
@@ -1437,7 +1467,7 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   buffers are dropped each frame), and fields being edited are tracked explicitly (focus
   can move to a field drawn earlier in the frame before the edited one sees it go).
 - **Project tree** (`project_panel.rs`): project (the root sheet as "Schematic" with its
-  sub-sheets nested by name, PCB, Project Library, Outputs › Gerber), Built-in Library (read-only),
+  sub-sheets nested by name, PCB, Simulation, Project Library, Outputs › Gerber), Built-in Library (read-only),
   External Libraries; new sheets come from the + menu or a sheet's menu (name dialog,
   then the symbol follows the cursor); menus and activation are pure functions returning `Act`s.
   Inside a library's Parts, Symbols and Footprints groups, `categorized` puts a folder
@@ -1765,8 +1795,10 @@ defers.
 - Schematic values: placement that avoids other texts (tags can overlap a part's
   reference or another tag), values at the cursor of a sweep (scrubbing), currents of
   bigger parts as tags; a pinned "always" (they only show while the Simulation panel or
-  tab is open).
+  a simulation tab is open).
 - Expressions of signals (`V(OUT)/V(IN)`, `abs(I(R1.1))`); complex power for AC.
+- Simulation tree: drag to reorder simulations; an agent's run showing its tab (it only
+  marks the tree row today).
 - Per-unit models for multi-unit parts (a dual op amp as one subcircuit instance per
   unit): a model covers every unit's pins at once today.
 - Syntax highlighting in the model text field; an inline analysis for `simulate`

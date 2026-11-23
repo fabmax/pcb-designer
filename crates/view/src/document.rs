@@ -136,6 +136,11 @@ impl Document {
         &self.connectivity
     }
 
+    /// Whether [`connectivity`](Self::connectivity) is up to date with the schematic.
+    pub fn is_connectivity_current(&self) -> bool {
+        !self.connectivity_stale
+    }
+
     /// Up-to-date connectivity (recomputed if the schematic changed).
     pub fn current_connectivity(&mut self) -> &Connectivity {
         self.update_connectivity(false);

@@ -1,5 +1,6 @@
 //! The per-project workspace: the editor tabs and their splits, each view's camera and
-//! hidden layers, the library item tabs' cameras and recency, and the routing layer. Saved in the project folder as
+//! hidden layers, the library item tabs' cameras and recency, the routing layer and the
+//! simulation the Simulation panel shows. Saved in the project folder as
 //! `.pcb-designer/workspace.json`; the folder ignores itself for git (a `.gitignore`
 //! with `*`). It is written on save, when the project closes and on quit, and is never
 //! part of the project's edits or undo.
@@ -25,7 +26,12 @@ pub enum TabRef {
         preview: bool,
     },
     Gerber,
-    Simulation,
+    /// An analysis' output (plot or table).
+    Simulation {
+        analysis: Id,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        preview: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -84,6 +90,9 @@ pub struct Workspace {
     pub items: Vec<ItemState>,
     /// The board's active copper layer.
     pub layer: Option<LayerId>,
+    /// The simulation (analysis) the Simulation panel shows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sim_current: Option<Id>,
 }
 
 /// Where a project folder's workspace lives.
@@ -330,7 +339,19 @@ mod tests {
     fn saved_with_a_self_ignoring_folder() {
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(Workspace::load(dir.path()), None);
-        let ws = Workspace { layer: Some(LayerId::BOTTOM_COPPER), ..Default::default() };
+        let analysis = Id::new();
+        let ws = Workspace {
+            layer: Some(LayerId::BOTTOM_COPPER),
+            layout: Some(Node::Tabs {
+                tabs: vec![
+                    TabRef::Simulation { analysis, preview: true },
+                    TabRef::Simulation { analysis, preview: false },
+                ],
+                active: Some(0),
+            }),
+            sim_current: Some(analysis),
+            ..Default::default()
+        };
         ws.save(dir.path()).unwrap();
         assert_eq!(Workspace::load(dir.path()), Some(ws));
         let ignore = std::fs::read_to_string(dir.path().join(".pcb-designer/.gitignore")).unwrap();

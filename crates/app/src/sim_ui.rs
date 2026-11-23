@@ -1,13 +1,13 @@
-//! The Simulation panel: the analyses of the setup as tabs with their settings, Run and
-//! Stop, the last result of the analysis shown as a table, and the circuit settings
-//! (ground, supplies, temperature, extra SPICE lines). Also the SPICE netlist and log
-//! window.
+//! The Simulation panel: the settings of the simulation (analysis) selected last in the
+//! project tree or by its tab, Run and Stop, its last result as a table, and the circuit
+//! settings (ground, supplies, temperature, extra SPICE lines). Also the SPICE netlist
+//! and log window, and Run all's queue.
 //!
 //! Runs go through [`sim::Session`] (one at a time, on a worker thread). Every setup edit
 //! is one `SetSimulation` command.
 
-use std::collections::HashSet;
-use std::time::Duration;
+use std::collections::{HashSet, VecDeque};
+use std::time::{Duration, Instant};
 
 use editor_core::Command;
 use egui::{RichText, Ui};
@@ -24,12 +24,13 @@ use crate::theme;
 /// What the panel asks the app to do.
 pub enum SimAct {
     Run(Id),
+    RunAll,
     Stop,
     ShowNetlist,
     ShowLog,
     OpenSettings,
-    /// Open the Simulation tab.
-    ShowPlot,
+    /// Open the analysis' output tab.
+    ShowPlot(Id),
     /// Messages, on the Simulation tab.
     ShowMessages,
     SelectNet(String),
@@ -38,8 +39,19 @@ pub enum SimAct {
 #[derive(Default)]
 pub struct SimPanel {
     pub session: Session,
-    /// The analysis tab shown.
-    tab: Option<Id>,
+    /// The simulation the panel shows: selected last in the project tree, or by its tab.
+    pub current: Option<Id>,
+    /// The simulation whose output is in the preview tab.
+    pub preview: Option<Id>,
+    /// Run all: the simulations still to run, and how the batch went so far.
+    queue: VecDeque<Id>,
+    batch: Option<Batch>,
+    /// The error count of each simulation's last attempt that failed (cleared when it
+    /// runs through).
+    failed: FxHashMap<Id, usize>,
+    /// The stale simulations as last checked, and when (and at which revision) that was.
+    stale: HashSet<Id>,
+    stale_checked: Option<(Instant, u64)>,
     /// Text being typed into value fields, and those that didn't parse.
     texts: FxHashMap<egui::Id, String>,
     pub si: crate::fields::SiFields,
@@ -64,8 +76,6 @@ pub struct SimPanel {
     /// The table under the plot as a share of the plot tab's height, once the user
     /// dragged the handle between them (`None`: sized to its rows).
     pub table_share: Option<f32>,
-    /// The user closed the plot tab: runs don't open it again (until opened by hand).
-    pub plot_closed: bool,
     /// What the Probe tool points at, or a signal hovered in a table: highlighted.
     pub hover: Option<ProbeTarget>,
     /// The overlay as last built, and what it was built from.
@@ -83,6 +93,18 @@ pub struct SimPanel {
     /// when it ends.
     pub tune_pending: bool,
 }
+
+/// How a Run all went so far.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Batch {
+    ran: usize,
+    failed: usize,
+    /// The simulation it started last (a run going on that it didn't start is replaced).
+    started: Option<Id>,
+}
+
+/// At most this often the tree's outdated marks are checked (a netlist per simulation).
+const STALE_EVERY: Duration = Duration::from_secs(1);
 
 /// What the schematic overlay depends on.
 #[derive(Clone, Debug, PartialEq)]
@@ -114,9 +136,9 @@ fn toggle(probes: &mut Vec<Probe>, probe: Probe, conn: &editor_core::connectivit
     }
 }
 
-/// The kinds of analyses, in the "+" menu's order: the kind (also a new analysis' name)
-/// and its label, which says what the SPICE names mean.
-const KINDS: [(&str, &str); 4] = [
+/// The kinds of analyses, in the Add simulation menu's order: the kind (also a new
+/// analysis' name) and its label, which says what the SPICE names mean.
+pub const KINDS: [(&str, &str); 4] = [
     ("Operating point", "Operating point"),
     ("Transient", "Transient"),
     ("AC", "AC (frequency response)"),
@@ -136,7 +158,13 @@ impl SimPanel {
 
     pub fn clear(&mut self) {
         self.session.clear();
-        self.tab = None;
+        self.current = None;
+        self.preview = None;
+        self.queue.clear();
+        self.batch = None;
+        self.failed.clear();
+        self.stale.clear();
+        self.stale_checked = None;
         self.texts.clear();
         self.si.clear();
         self.netlist = None;
@@ -166,9 +194,9 @@ impl SimPanel {
             .or_else(|| (e.library.is_none() && e.process.is_none()).then(|| "ngspice is not installed".to_string()))
     }
 
-    /// The analysis shown (the tab picked, else the first).
+    /// The simulation shown, if it still exists.
     pub fn current<'a>(&self, setup: &'a Simulation) -> Option<&'a Analysis> {
-        self.tab.and_then(|id| setup.analyses.iter().find(|a| a.id == id)).or(setup.analyses.first())
+        self.current.and_then(|id| setup.analyses.iter().find(|a| a.id == id))
     }
 
     /// The analysis probes go to: the one shown if it's a sweep, else the first sweep.
@@ -345,15 +373,16 @@ impl SimPanel {
             .is_some_and(|f| f.duration < sim::tune::LIVE)
     }
 
-    pub fn show_tab(&mut self, id: Id) {
-        self.tab = Some(id);
+    /// Starts `analysis` (a single run: Run all's queue is dropped). Returns an error to
+    /// show when ngspice is missing or the netlist has errors.
+    pub fn run(&mut self, doc: &mut Document, analysis: Id, engine: &sim::EngineSettings) -> Result<(), String> {
+        self.queue.clear();
+        self.batch = None;
+        self.start(doc, analysis, engine)
     }
 
-    /// Starts `analysis`. Returns an error to show when ngspice is missing or the netlist
-    /// has errors.
-    pub fn run(&mut self, doc: &mut Document, analysis: Id, engine: &sim::EngineSettings) -> Result<(), String> {
+    fn start(&mut self, doc: &mut Document, analysis: Id, engine: &sim::EngineSettings) -> Result<(), String> {
         self.engine(engine);
-        self.tab = Some(analysis);
         doc.update_connectivity(false);
         let project = doc.project();
         let Some(a) = project.schematic.simulation.analyses.iter().find(|a| a.id == analysis) else {
@@ -364,8 +393,54 @@ impl SimPanel {
         if self.session.start_with(project, doc.connectivity(), a, &[], &overrides, backend) {
             Ok(())
         } else {
+            self.failed.insert(a.id, error_count(self.session.attempt()));
             Err(format!("{} not started: {}", a.name, errors_text(self.session.attempt())))
         }
+    }
+
+    /// Run all: every simulation in order, one after the other (replacing a Run all
+    /// going on). [`next_in_queue`](Self::next_in_queue) starts them.
+    pub fn run_all(&mut self, setup: &Simulation) {
+        self.queue = setup.analyses.iter().map(|a| a.id).collect();
+        self.batch = Some(Batch::default());
+    }
+
+    /// Whether a Run all is going on.
+    pub fn running_all(&self) -> bool {
+        self.batch.is_some()
+    }
+
+    /// Stops the run going on, and Run all's queue.
+    pub fn stop(&mut self) {
+        self.queue.clear();
+        self.batch = None;
+        self.session.stop();
+    }
+
+    /// Per frame, while nothing runs: starts Run all's next simulation (skipping those
+    /// that can't start). At the end, the status line: "Ran 4 simulations, 1 failed".
+    pub fn next_in_queue(&mut self, doc: &mut Document, engine: &sim::EngineSettings) -> Option<String> {
+        let batch = self.batch?;
+        if self.session.running().is_some() && batch.started.is_some() {
+            return None;
+        }
+        while let Some(id) = self.queue.pop_front() {
+            if !doc.project().schematic.simulation.analyses.iter().any(|a| a.id == id) {
+                continue;
+            }
+            let started = self.start(doc, id, engine);
+            let batch = self.batch.as_mut().expect("going on");
+            batch.started = Some(id);
+            match started {
+                Ok(()) => return None,
+                Err(_) => {
+                    batch.ran += 1;
+                    batch.failed += 1;
+                }
+            }
+        }
+        let b = self.batch.take()?;
+        Some(batch_text(b.ran, b.failed))
     }
 
     /// Starts an agent's run; [`poll`](Self::poll) answers it when it ends.
@@ -388,7 +463,8 @@ impl SimPanel {
                     return;
                 }
             };
-        self.tab = Some(job.analysis);
+        self.queue.clear();
+        self.batch = None;
         match mcp::simulation::start(&mut self.session, doc, &job, backend) {
             Ok(()) => self.agent = Some((job, reply)),
             Err(e) => _ = reply.send(Err(e)),
@@ -412,16 +488,82 @@ impl SimPanel {
         }
         let outcome = outcome?;
         let attempt = self.session.attempt()?;
+        let id = attempt.analysis;
+        match &outcome {
+            Outcome::Failed(_) => _ = self.failed.insert(id, error_count(Some(attempt))),
+            Outcome::Done => {
+                self.failed.remove(&id);
+                self.stale.remove(&id);
+            }
+            _ => {}
+        }
+        if let Some(b) = &mut self.batch
+            && b.started == Some(id)
+        {
+            b.ran += 1;
+            b.failed += usize::from(matches!(outcome, Outcome::Failed(_)));
+            // Run all says how it went at its end (`next_in_queue`).
+            return None;
+        }
         match outcome {
             Outcome::Failed(_) => {
                 Some(Err(format!("Simulation of {} failed: {}", attempt.name, errors_text(self.session.attempt()))))
             }
             Outcome::Done => {
-                let sweep = self.session.result(attempt.analysis).is_some_and(|f| f.result.scale().is_some());
+                let sweep = self.session.result(id).is_some_and(|f| f.result.scale().is_some());
                 Some(Ok(sweep))
             }
             _ => None,
         }
+    }
+
+    /// Checks which simulations are stale, at most once a second and only after an edit
+    /// or a run (a netlist per simulation).
+    pub fn check_stale(&mut self, doc: &Document) {
+        let now = Instant::now();
+        let runs: u64 = doc
+            .project()
+            .schematic
+            .simulation
+            .analyses
+            .iter()
+            .filter_map(|a| self.session.result(a.id).map(|f| f.run))
+            .sum();
+        let key = doc.revision.wrapping_add(runs.wrapping_mul(0x9e37_79b9));
+        if self.stale_checked.is_some_and(|(at, k)| k == key || now - at < STALE_EVERY) {
+            return;
+        }
+        self.stale_checked = Some((now, key));
+        let project = doc.project();
+        self.stale.clear();
+        for a in &project.schematic.simulation.analyses {
+            if self.session.result(a.id).is_none() {
+                continue;
+            }
+            let overrides = self.overrides(project, a);
+            if self.session.is_stale(project, doc.connectivity(), a, &overrides, doc.revision) {
+                self.stale.insert(a.id);
+            }
+        }
+    }
+
+    /// A simulation's state in the project tree (outdated as of [`check_stale`](Self::check_stale)).
+    pub fn tree_detail(&self, a: &Analysis) -> crate::project_panel::AnalysisDetail {
+        use crate::project_panel::{AnalysisDetail, OUTDATED};
+        if self.session.running().is_some_and(|(id, _)| id == a.id) {
+            let text = self.session.progress().map_or("running".into(), |p| format!("{:.0} %", p * 100.0));
+            return AnalysisDetail { text, warn: false };
+        }
+        if self.queue.contains(&a.id) {
+            return AnalysisDetail { text: "queued".into(), warn: false };
+        }
+        if let Some(&n) = self.failed.get(&a.id) {
+            return AnalysisDetail { text: plural(n.max(1), "error"), warn: true };
+        }
+        if self.stale.contains(&a.id) {
+            return AnalysisDetail { text: OUTDATED.into(), warn: true };
+        }
+        AnalysisDetail::default()
     }
 
     /// The status bar's text while running: "Simulating Transient… 3.2 s".
@@ -432,7 +574,16 @@ impl SimPanel {
         Some(format!("Simulating {name}…{percent} {:.1} s", elapsed.as_secs_f64()))
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, doc: &mut Document, message: &mut Option<String>) -> Option<SimAct> {
+    /// The panel: the current simulation's settings and results with the circuit
+    /// settings collapsed below, or (`circuit`: the Simulation node is selected) the
+    /// circuit settings only.
+    pub fn ui(
+        &mut self,
+        ui: &mut Ui,
+        doc: &mut Document,
+        circuit: bool,
+        message: &mut Option<String>,
+    ) -> Option<SimAct> {
         let mut act = None;
         if let Some(e) = self.engine_error() {
             not_found(ui, &e, &mut act);
@@ -440,19 +591,20 @@ impl SimPanel {
         }
         let mut setup = doc.project().schematic.simulation.clone();
         let before = setup.clone();
-        if setup.analyses.is_empty() {
-            hint(ui, "Add an analysis to simulate the schematic with ngspice:");
-            ui.horizontal_wrapped(|ui| {
-                for (kind, label) in KINDS {
-                    if ui.button(format!("Add {label}")).clicked() {
-                        self.add(&mut setup, doc.project(), kind, message);
-                    }
+        let current = self.current(&setup).and_then(|a| setup.analyses.iter().position(|b| b.id == a.id));
+        match current {
+            _ if circuit => {
+                crate::fields::section(ui, "Circuit", Some("The settings every simulation shares"));
+                self.circuit_grid(ui, &mut setup, doc, &mut act);
+                if !setup.analyses.is_empty() {
+                    ui.add_space(8.0);
+                    self.run_all_button(ui, &mut act);
                 }
-            });
-        } else {
-            self.tabs_ui(ui, &mut setup, doc.project(), message);
-            ui.add_space(4.0);
-            if let Some(i) = self.current(&setup).and_then(|a| setup.analyses.iter().position(|b| b.id == a.id)) {
+            }
+            Some(i) => {
+                let a = &setup.analyses[i];
+                let kind = if a.name.eq_ignore_ascii_case(a.kind.label()) { "" } else { a.kind.label() };
+                crate::fields::section_note(ui, &a.name, kind);
                 self.run_row(ui, &setup.analyses[i], &mut act);
                 ui.add_space(4.0);
                 self.analysis_ui(ui, &mut setup.analyses[i], doc.project());
@@ -461,10 +613,19 @@ impl SimPanel {
                 if let Some(probe) = self.results_ui(ui, doc, &a, &mut act) {
                     toggle(&mut setup.analyses[i].probes, probe, doc.connectivity());
                 }
+                ui.add_space(8.0);
+                crate::fields::collapsing(ui, "Circuit", "sim_circuit", |ui| {
+                    self.circuit_grid(ui, &mut setup, doc, &mut act)
+                });
+            }
+            None => {
+                hint(ui, "Create or select a simulation in the project tree.");
+                ui.add_space(4.0);
+                if setup.analyses.is_empty() {
+                    hint(ui, "Right-click its Simulation node, or use the + above the tree, to add one.");
+                }
             }
         }
-        ui.add_space(8.0);
-        self.circuit_ui(ui, &mut setup, doc, &mut act);
         if setup != before
             && let Err(e) = doc.execute(Command::SetSimulation { simulation: setup })
         {
@@ -473,113 +634,14 @@ impl SimPanel {
         act
     }
 
-    fn add(&mut self, setup: &mut Simulation, project: &Project, kind: &str, message: &mut Option<String>) {
-        let analysis = match kind {
-            "Transient" => AnalysisKind::Tran {
-                stop: sim::netlist::suggested_stop(project),
-                step: None,
-                start: 0.0,
-                max_step: None,
-            },
-            "AC" => AnalysisKind::Ac { start: 1.0, stop: 1e7, points_per_decade: 100 },
-            "DC sweep" => match sources(project).first() {
-                Some(&(id, _, _)) => AnalysisKind::Dc { source: id, start: 0.0, stop: 5.0, step: 0.05 },
-                None => {
-                    *message = Some("A DC sweep needs a source (VSource or ISource) to sweep".into());
-                    return;
-                }
-            },
-            _ => AnalysisKind::Op,
-        };
-        let a = Analysis::new(unique_name(setup, kind), analysis);
-        self.tab = Some(a.id);
+    /// Adds a simulation of `kind` ([`KINDS`]) to `setup` and makes it the current one.
+    /// Refuses a DC sweep without a source to sweep.
+    pub fn add(&mut self, setup: &mut Simulation, project: &Project, kind: &str) -> Result<Id, String> {
+        let a = new_analysis(setup, project, kind)?;
+        let id = a.id;
         setup.analyses.push(a);
-    }
-
-    /// The analysis tabs, with "+" to add one; right-click a tab to rename, duplicate or
-    /// delete it.
-    fn tabs_ui(&mut self, ui: &mut Ui, setup: &mut Simulation, project: &Project, message: &mut Option<String>) {
-        let current = self.current(setup).map(|a| a.id);
-        let mut remove = None;
-        let mut duplicate = None;
-        let mut rename: Option<(usize, String)> = None;
-        let mut moved: Option<(usize, usize)> = None;
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            for (i, a) in setup.analyses.iter().enumerate() {
-                let tab = egui::Button::selectable(Some(a.id) == current, &a.name).sense(egui::Sense::click_and_drag());
-                let r = ui.add(tab).on_hover_text(format!("{} · drag to reorder", a.kind.label()));
-                if r.clicked() {
-                    self.tab = Some(a.id);
-                }
-                r.dnd_set_drag_payload(i);
-                if let Some(from) = r.dnd_hover_payload::<usize>()
-                    && *from != i
-                {
-                    // Where it would go: before this tab when coming from the right.
-                    let x = if *from > i { r.rect.left() - 1.0 } else { r.rect.right() + 1.0 };
-                    ui.painter().vline(x, r.rect.y_range(), egui::Stroke::new(2.0, theme::accent()));
-                }
-                if let Some(from) = r.dnd_release_payload::<usize>() {
-                    moved = Some((*from, i));
-                }
-                r.context_menu(|ui| {
-                    let buf = egui::Id::unique(("sim_rename", a.id));
-                    let mut name: String =
-                        ui.data_mut(|d| d.get_temp_mut_or_insert_with(buf, || a.name.clone()).clone());
-                    let edit = ui.add(egui::TextEdit::singleline(&mut name).desired_width(160.0));
-                    let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    ui.data_mut(|d| d.insert_temp(buf, name.clone()));
-                    let done = |ui: &mut Ui| {
-                        ui.data_mut(|d| d.remove_temp::<String>(buf));
-                        ui.close();
-                    };
-                    if ui.button("Rename").clicked() || enter {
-                        rename = Some((i, name.trim().to_string()));
-                        done(ui);
-                    }
-                    if ui.button("Duplicate").clicked() {
-                        duplicate = Some(i);
-                        done(ui);
-                    }
-                    if ui.button("Delete").clicked() {
-                        remove = Some(i);
-                        done(ui);
-                    }
-                });
-            }
-            ui.menu_button("+", |ui| {
-                for (kind, label) in KINDS {
-                    if ui.button(label).clicked() {
-                        self.add(setup, project, kind, message);
-                    }
-                }
-            })
-            .response
-            .on_hover_text("Add an analysis");
-        });
-        if let Some((i, name)) = rename
-            && name != setup.analyses[i].name
-        {
-            setup.analyses[i].name = name;
-        }
-        if let Some(i) = duplicate {
-            let mut a = setup.analyses[i].clone();
-            a.id = Id::new();
-            a.name = unique_name(setup, &a.name);
-            self.tab = Some(a.id);
-            setup.analyses.insert(i + 1, a);
-        }
-        if let Some(i) = remove {
-            setup.analyses.remove(i);
-        }
-        if let Some((from, to)) = moved
-            && from != to
-            && from < setup.analyses.len()
-        {
-            let a = setup.analyses.remove(from);
-            setup.analyses.insert(to.min(setup.analyses.len()), a);
-        }
+        self.current = Some(id);
+        Ok(id)
     }
 
     /// Run or Stop, and how the last run went.
@@ -595,6 +657,7 @@ impl SimPanel {
                 }
                 ui.spinner();
                 let name = self.session.attempt().map_or("", |a| a.name.as_str());
+                let name = if self.running_all() { format!("Run all: {name}") } else { name.to_string() };
                 let percent = self.session.progress().map(|p| format!(" {:.0} %", p * 100.0)).unwrap_or_default();
                 ui.label(format!("{name}…{percent} {:.1} s", elapsed.as_secs_f64()));
                 ui.ctx().request_repaint_after(Duration::from_millis(100));
@@ -604,11 +667,13 @@ impl SimPanel {
             {
                 *act = Some(SimAct::Run(a.id));
             }
-            if a.kind != AnalysisKind::Op
-                && self.session.result(a.id).is_some()
-                && ui.button("Plot").on_hover_text("Show the Simulation tab").clicked()
+            if ui.button("Run all").on_hover_text("Run every simulation (⇧⌘R)").clicked() {
+                *act = Some(SimAct::RunAll);
+            }
+            if self.session.result(a.id).is_some()
+                && ui.button("Show").on_hover_text("Show its output in a tab").clicked()
             {
-                *act = Some(SimAct::ShowPlot);
+                *act = Some(SimAct::ShowPlot(a.id));
             }
             let Some(attempt) = self.session.attempt().filter(|t| t.analysis == a.id) else { return };
             let errors = attempt.problems.iter().filter(|p| p.level == Level::Error).count();
@@ -929,8 +994,8 @@ impl SimPanel {
 
     /// Ground, supplies, temperature and extra lines (for every analysis), and the netlist
     /// and log.
-    fn circuit_ui(&mut self, ui: &mut Ui, setup: &mut Simulation, doc: &Document, act: &mut Option<SimAct>) {
-        crate::fields::collapsing(ui, "Circuit", "sim_circuit", |ui| {
+    fn circuit_grid(&mut self, ui: &mut Ui, setup: &mut Simulation, doc: &Document, act: &mut Option<SimAct>) {
+        {
             let mut nets: Vec<String> = doc.connectivity().netlist().map(|n| n.name.clone()).collect();
             nets.sort_by(|a, b| natural_cmp(a, b));
             grid(ui, "sim_circuit_grid", |ui| {
@@ -1040,7 +1105,21 @@ impl SimPanel {
                     *act = Some(SimAct::ShowLog);
                 }
             });
-        });
+        }
+    }
+
+    /// Run all, or Stop while it goes.
+    fn run_all_button(&mut self, ui: &mut Ui, act: &mut Option<SimAct>) {
+        if self.running_all() {
+            if icon_button(ui, Icon::Stop, "Stop", theme::error()).on_hover_text("Stop Run all (⌘.)").clicked() {
+                *act = Some(SimAct::Stop);
+            }
+        } else if icon_button(ui, Icon::Play, "Run all", theme::success())
+            .on_hover_text("Run every simulation (⇧⌘R)")
+            .clicked()
+        {
+            *act = Some(SimAct::RunAll);
+        }
     }
 
     /// Opens the netlist window on its netlist or log tab.
@@ -1169,6 +1248,45 @@ fn errors_text(attempt: Option<&Attempt>) -> String {
     }
 }
 
+/// The number of errors of an attempt (at least one: it failed).
+fn error_count(attempt: Option<&Attempt>) -> usize {
+    attempt.map_or(0, |a| a.problems.iter().filter(|p| p.level == Level::Error).count()).max(1)
+}
+
+/// Run all's status line: "Ran 4 simulations, 1 failed".
+fn batch_text(ran: usize, failed: usize) -> String {
+    let ran = if ran == 1 { "Ran 1 simulation".to_string() } else { format!("Ran {ran} simulations") };
+    if failed == 0 { ran } else { format!("{ran}, {failed} failed") }
+}
+
+/// A new simulation of `kind` ([`KINDS`]) with its defaults and a name no other has. A DC
+/// sweep needs a source to sweep.
+pub fn new_analysis(setup: &Simulation, project: &Project, kind: &str) -> Result<Analysis, String> {
+    let analysis = match kind {
+        "Transient" => {
+            AnalysisKind::Tran { stop: sim::netlist::suggested_stop(project), step: None, start: 0.0, max_step: None }
+        }
+        "AC" => AnalysisKind::Ac { start: 1.0, stop: 1e7, points_per_decade: 100 },
+        "DC sweep" => match sources(project).first() {
+            Some(&(id, _, _)) => AnalysisKind::Dc { source: id, start: 0.0, stop: 5.0, step: 0.05 },
+            None => return Err("A DC sweep needs a source (VSource or ISource) to sweep".into()),
+        },
+        _ => AnalysisKind::Op,
+    };
+    Ok(Analysis::new(unique_name(setup, kind), analysis))
+}
+
+/// A copy of simulation `id` right after it, under a free name. Returns the copy's id.
+pub fn duplicate(setup: &mut Simulation, id: Id) -> Option<Id> {
+    let i = setup.analyses.iter().position(|a| a.id == id)?;
+    let mut a = setup.analyses[i].clone();
+    a.id = Id::new();
+    a.name = unique_name(setup, &a.name);
+    let copy = a.id;
+    setup.analyses.insert(i + 1, a);
+    Some(copy)
+}
+
 /// `kind`, or `kind 2`, … : a name no analysis has.
 pub fn unique_name(setup: &Simulation, kind: &str) -> String {
     let taken = |n: &str| setup.analyses.iter().any(|a| a.name.eq_ignore_ascii_case(n));
@@ -1264,6 +1382,59 @@ mod tests {
         s.analyses.push(Analysis::new("ac 2", AnalysisKind::Op));
         assert_eq!(unique_name(&s, "AC"), "AC 3");
         assert_eq!(unique_name(&s, "AC 2"), "AC 3");
+    }
+
+    #[test]
+    fn duplicates_go_right_after_their_original() {
+        let mut s = Simulation::default();
+        for name in ["Transient", "AC"] {
+            s.analyses.push(Analysis::new(name, AnalysisKind::Op));
+        }
+        let first = s.analyses[0].id;
+        let copy = duplicate(&mut s, first).unwrap();
+        let names: Vec<&str> = s.analyses.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["Transient", "Transient 2", "AC"]);
+        assert_eq!(s.analyses[1].id, copy);
+        assert_eq!(duplicate(&mut s, Id::new()), None);
+    }
+
+    #[test]
+    fn new_analyses_need_a_source_for_dc_sweeps() {
+        let project = view::demo::demo_project();
+        let setup = Simulation::default();
+        for (kind, _) in KINDS {
+            let a = new_analysis(&setup, &project, kind).unwrap();
+            assert_eq!(a.name, kind);
+            assert_eq!(a.kind.label(), kind);
+        }
+        let empty = Project::new("empty");
+        assert!(new_analysis(&setup, &empty, "DC sweep").is_err());
+    }
+
+    #[test]
+    fn tree_details_say_queued_failed_and_outdated() {
+        let mut panel = SimPanel::default();
+        let mut setup = Simulation::default();
+        let a = Analysis::new("Transient", AnalysisKind::Op);
+        let b = Analysis::new("AC", AnalysisKind::Op);
+        setup.analyses = vec![a.clone(), b.clone()];
+        assert_eq!(panel.tree_detail(&a).text, "", "never run");
+        panel.failed.insert(a.id, 2);
+        panel.stale.insert(b.id);
+        assert_eq!(panel.tree_detail(&a), crate::project_panel::AnalysisDetail { text: "2 errors".into(), warn: true });
+        assert_eq!(panel.tree_detail(&b).text, crate::project_panel::OUTDATED);
+        panel.run_all(&setup);
+        assert!(panel.running_all());
+        assert_eq!(panel.tree_detail(&a).text, "queued");
+        panel.stop();
+        assert!(!panel.running_all());
+        assert_eq!(panel.tree_detail(&b).text, crate::project_panel::OUTDATED);
+    }
+
+    #[test]
+    fn run_all_says_how_it_went() {
+        assert_eq!(batch_text(1, 0), "Ran 1 simulation");
+        assert_eq!(batch_text(4, 1), "Ran 4 simulations, 1 failed");
     }
 
     #[test]

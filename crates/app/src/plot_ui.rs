@@ -1,6 +1,6 @@
-//! The Simulation tab: the waveform plot of the analysis the Simulation panel shows (a
-//! table for an operating point), its tool bar and, under the plot, the traces with
-//! their values at cursors A and B.
+//! A simulation's output tab: the waveform plot of an analysis (a table for an operating
+//! point), its tool bar and, under the plot, the traces with their values at cursors A
+//! and B; the tuner below.
 //!
 //! The logic (scales, ticks, decimation, traces) is `sim::plot`; this draws it with
 //! egui's painter and handles the pointer: wheel zooms x around the pointer (Shift: y),
@@ -24,8 +24,8 @@ use crate::theme;
 
 /// What the tab asks the app to do.
 pub enum PlotAct {
-    /// The plot was clicked: it takes the keys.
-    Focus,
+    /// The tab was clicked: it takes the keys, and its simulation becomes the current one.
+    Focus(Id),
     Run(Id),
     /// Right-click → Remove probe: (analysis, probe index).
     RemoveProbe(Id, usize),
@@ -168,7 +168,7 @@ const RIGHT: f32 = 64.0;
 const BOTTOM: f32 = 36.0;
 const TOP: f32 = 10.0;
 
-pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, keymap: &Keymap) -> Option<PlotAct> {
+pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Id, keymap: &Keymap) -> Option<PlotAct> {
     // The tab has the canvas background, like the schematic; the chart sets itself off
     // from it (see `chart_bg`).
     ui.painter().rect_filled(ui.max_rect(), 0.0, theme::color(view::style::pal().background));
@@ -178,8 +178,8 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, keymap: &Keymap) ->
         log::warn!("can't write {}: {e}", path.display());
     }
     let setup = &doc.project().schematic.simulation;
-    let Some(analysis) = panel.current(setup).cloned() else {
-        centered_hint(ui, "Add an analysis in the Simulation panel (⌘2) to plot it.");
+    let Some(analysis) = setup.analyses.iter().find(|a| a.id == analysis).cloned() else {
+        centered_hint(ui, "This simulation was deleted.");
         return None;
     };
     // The plot (and its table) above, the tuner at the bottom.
@@ -199,7 +199,6 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, keymap: &Keymap) ->
 
 fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis, keymap: &Keymap) -> Option<PlotAct> {
     let mut act = None;
-    let setup = &doc.project().schematic.simulation;
     let overrides = panel.overrides(doc.project(), &analysis);
     let stale = panel.session.is_stale(doc.project(), doc.connectivity(), &analysis, &overrides, doc.revision);
     let running = panel.session.running().is_some_and(|(id, _)| id == analysis.id);
@@ -213,12 +212,8 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     let mut phase = !panel.no_phase;
     let log_default = ac || spectrum;
     let mut log_x = panel.plot_state(analysis.id).log_x.unwrap_or(log_default);
-    let mut picked = None;
     egui::Frame::new().inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
         ui.horizontal(|ui| {
-            let options: Vec<(Id, String)> = setup.analyses.iter().map(|a| (a.id, a.name.clone())).collect();
-            picked = crate::fields::combo(ui, "plot_analysis", &analysis.id, &options);
-            ui.separator();
             if analysis.kind != AnalysisKind::Op {
                 fit = ui.button("Fit").on_hover_text("Show the whole run (V, double-click)").clicked();
                 ui.checkbox(&mut log_x, "Log x");
@@ -253,9 +248,6 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
             });
         });
     });
-    if let Some(id) = picked {
-        panel.show_tab(id);
-    }
     panel.no_phase = !phase;
     let toggled = spectrum != (tran && panel.spectrum.contains(&analysis.id));
     let state = panel.plot_state(analysis.id);
@@ -394,7 +386,7 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         return act;
     }
     if response.clicked() || response.drag_started() || response.secondary_clicked() {
-        act = Some(PlotAct::Focus);
+        act = Some(PlotAct::Focus(analysis.id));
     }
     plot_view(ui, state, &data, rect, &response, log_x);
     // After the pointer: a double-click may just have cleared the view for a fit.

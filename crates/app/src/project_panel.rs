@@ -1,7 +1,8 @@
 //! The Project panel, IntelliJ style: a tree of
 //!
-//! * the project: the schematic (the root sheet, its sub-sheets below it), the PCB and the
-//!   Project Library (the parts the design uses);
+//! * the project: the schematic (the root sheet, its sub-sheets below it), the PCB, the
+//!   simulations (the analyses of the simulation setup) and the Project Library (the
+//!   parts the design uses);
 //! * the Built-in Library (read-only);
 //! * External Libraries: the project's library files, unsaved libraries, and files that
 //!   could not be loaded;
@@ -43,6 +44,10 @@ pub enum NodeId {
     /// A schematic sheet (the root sheet is the Schematic node).
     Sheet(Id),
     Board,
+    /// The simulation setup: its node shows the circuit settings in the Simulation panel.
+    Simulations,
+    /// A simulation (an analysis of the setup).
+    Analysis(Id),
     ExternalLibraries,
     /// `Owner::Project`: the Project Library.
     Library(Owner),
@@ -152,6 +157,17 @@ pub enum Act {
     OpenGerber(Option<PathBuf>),
     /// Delete the export folder (and its zip), after asking.
     DeleteOutputs,
+    /// Add a simulation of a kind ([`crate::sim_ui::KINDS`]).
+    AddAnalysis(&'static str),
+    /// Show a simulation in the panel and its output in the preview tab.
+    PreviewAnalysis(Id),
+    /// Show a simulation's output in a tab of its own.
+    OpenAnalysis(Id),
+    RenameAnalysis(Id),
+    DuplicateAnalysis(Id),
+    DeleteAnalysis(Id),
+    RunAnalysis(Id),
+    RunAllSimulations,
 }
 
 /// The library editor key of an owner (the Project Library has its own).
@@ -164,9 +180,15 @@ pub fn key(owner: Owner) -> u64 {
 
 /// The header's + menu.
 pub fn plus_menu() -> Vec<Entry> {
-    let mut out = vec![Entry::Act("New sheet…", Act::NewSheet(None)), Entry::Separator];
+    let mut out = vec![Entry::Act("New sheet…", Act::NewSheet(None)), add_simulation(), Entry::Separator];
     out.extend(add_menu());
     out
+}
+
+/// The Add simulation submenu: one entry per kind.
+pub fn add_simulation() -> Entry {
+    let kinds = crate::sim_ui::KINDS.iter().map(|&(kind, label)| Entry::Act(label, Act::AddAnalysis(kind))).collect();
+    Entry::Sub("Add simulation", kinds)
 }
 
 /// The External Libraries menu.
@@ -180,6 +202,8 @@ pub fn add_menu() -> Vec<Entry> {
 
 pub enum Entry {
     Act(&'static str, Act),
+    /// A submenu.
+    Sub(&'static str, Vec<Entry>),
     Separator,
 }
 
@@ -217,6 +241,21 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
             }
         }
         NodeId::Board => out.push(A("Open", Act::ShowView(ViewId::Board))),
+        NodeId::Simulations => {
+            out.push(add_simulation());
+            if info.count > 0 {
+                out.push(Separator);
+                out.push(A("Run all simulations", Act::RunAllSimulations));
+            }
+        }
+        NodeId::Analysis(a) => {
+            out.push(A("Open", Act::OpenAnalysis(a)));
+            out.push(A("Run", Act::RunAnalysis(a)));
+            out.push(Separator);
+            out.push(A("Rename…", Act::RenameAnalysis(a)));
+            out.push(A("Duplicate", Act::DuplicateAnalysis(a)));
+            out.push(A("Delete", Act::DeleteAnalysis(a)));
+        }
         NodeId::ExternalLibraries => out = add_menu(),
         NodeId::Library(Owner::Project) => {
             for g in [Group::Parts, Group::Symbols, Group::Footprints] {
@@ -347,6 +386,7 @@ pub fn activate(id: NodeId, info: &Info) -> Option<Act> {
     match id {
         NodeId::Sheet(s) => Some(Act::ShowView(ViewId::Sheet(s))),
         NodeId::Board => Some(Act::ShowView(ViewId::Board)),
+        NodeId::Analysis(a) => Some(Act::OpenAnalysis(a)),
         NodeId::Missing(_) => info.path.clone().map(Act::Locate),
         NodeId::Item(owner, item) => Some(Act::OpenItem(key(owner), open_of(item))),
         NodeId::Gerber if info.flag => Some(Act::OpenGerber(None)),
@@ -360,11 +400,64 @@ pub fn activate(id: NodeId, info: &Info) -> Option<Act> {
     }
 }
 
-/// What a single click or arrow key landing on a node does: items show in the preview tab.
+/// What a single click or arrow key landing on a node does: items and simulations show
+/// in the preview tab.
 pub fn preview(id: NodeId) -> Option<Act> {
     match id {
         NodeId::Item(owner, item) => Some(Act::PreviewItem(key(owner), open_of(item))),
+        NodeId::Analysis(a) => Some(Act::PreviewAnalysis(a)),
         _ => None,
+    }
+}
+
+/// A simulation's state in the tree: "42 %" while it runs, "outdated", "2 errors", or
+/// nothing (never run, or up to date).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AnalysisDetail {
+    pub text: String,
+    pub warn: bool,
+}
+
+/// The Simulation node: the setup's analyses in order (`detail` gives each one's
+/// state). Its detail is the count, or how many are outdated.
+pub fn simulation_node(setup: &model::Simulation, detail: impl Fn(&model::Analysis) -> AnalysisDetail) -> TreeNode {
+    let mut outdated = 0;
+    let children: Vec<TreeNode> = setup
+        .analyses
+        .iter()
+        .map(|a| {
+            let d = detail(a);
+            outdated += usize::from(d.text == OUTDATED);
+            let info =
+                Info { detail: d.text, warn: d.warn, tip: a.kind.label().into(), ..Info::icon(kind_icon(&a.kind)) };
+            TreeNode::new(NodeId::Analysis(a.id), a.name.clone(), info).with_keywords(a.kind.label())
+        })
+        .collect();
+    let (text, warn) = match (children.len(), outdated) {
+        (0, _) => (String::new(), false),
+        (n, 0) => (n.to_string(), false),
+        (_, o) => (format!("{o} {OUTDATED}"), true),
+    };
+    let info = Info {
+        detail: text,
+        warn,
+        count: children.len(),
+        tip: "Simulations of the schematic with ngspice; the circuit settings they share".into(),
+        ..Info::icon(Icon::Simulation)
+    };
+    TreeNode::new(NodeId::Simulations, "Simulation", info).with_children(children)
+}
+
+/// The detail of a stale simulation.
+pub const OUTDATED: &str = "outdated";
+
+/// The icon of an analysis kind.
+pub fn kind_icon(kind: &model::AnalysisKind) -> Icon {
+    match kind {
+        model::AnalysisKind::Op => Icon::OperatingPoint,
+        model::AnalysisKind::Dc { .. } => Icon::DcSweep,
+        model::AnalysisKind::Ac { .. } => Icon::AcSweep,
+        model::AnalysisKind::Tran { .. } => Icon::Simulation,
     }
 }
 
@@ -645,7 +738,7 @@ impl ProjectPanel {
                 self.focus_search = true;
             }
         }
-        let plus = header_button(ui, Icon::Plus, "Add a sheet or a library", false);
+        let plus = header_button(ui, Icon::Plus, "Add a sheet, a simulation or a library", false);
         egui::Popup::menu(&plus).show(|ui| {
             ui.set_min_width(170.0);
             act = menu_ui(ui, plus_menu());
@@ -892,7 +985,8 @@ impl ProjectPanel {
                 _ => None,
             })
         };
-        let delete = selected.and_then(|r| find(r, |a| matches!(a, Act::Delete(..) | Act::DeleteSheet(_))));
+        let delete = selected
+            .and_then(|r| find(r, |a| matches!(a, Act::Delete(..) | Act::DeleteSheet(_) | Act::DeleteAnalysis(_))));
         if let Some(d) = delete
             && (pressed(ui, Key::Delete) || pressed(ui, Key::Backspace))
         {
@@ -1018,6 +1112,12 @@ fn menu_ui(ui: &mut Ui, entries: Vec<Entry>) -> Option<Act> {
                     ui.close();
                 }
             }
+            Entry::Sub(label, entries) => {
+                if let Some(a) = ui.menu_button(label, |ui| menu_ui(ui, entries)).inner.flatten() {
+                    act = Some(a);
+                    ui.close();
+                }
+            }
         }
     }
     act
@@ -1058,6 +1158,7 @@ pub fn icon_color(icon: Icon) -> Color32 {
         Icon::Schematic | Icon::Symbol => c(pal.sch_wire),
         Icon::Board | Icon::Footprint | Icon::BoardPart => c(pal.top_copper),
         Icon::Library | Icon::Part => c(pal.sch_label),
+        Icon::Simulation | Icon::OperatingPoint | Icon::DcSweep | Icon::AcSweep => c(view::style::trace_color(0)),
         Icon::Missing => theme::warn(),
         _ => theme::text_dim(),
     }
@@ -1072,7 +1173,7 @@ mod tests {
             .into_iter()
             .filter_map(|e| match e {
                 Entry::Act(_, a) => Some(a),
-                Entry::Separator => None,
+                Entry::Sub(..) | Entry::Separator => None,
             })
             .collect()
     }
@@ -1107,6 +1208,47 @@ mod tests {
         assert!(menu(passives.id, &passives.data).is_empty());
         let editable = Info { editable: true, category: "Passives".into(), ..Default::default() };
         assert!(acts(menu(passives.id, &editable)).contains(&Act::RenameCategory(7, Group::Parts, "Passives".into())));
+    }
+
+    #[test]
+    fn simulations_list_the_analyses_and_count_the_outdated() {
+        let mut setup = model::Simulation::default();
+        let tran = model::Analysis::new(
+            "Transient",
+            model::AnalysisKind::Tran { stop: 1e-3, step: None, start: 0.0, max_step: None },
+        );
+        let op = model::Analysis::new("Bias", model::AnalysisKind::Op);
+        setup.analyses = vec![tran.clone(), op.clone()];
+        let node = simulation_node(&setup, |_| AnalysisDetail::default());
+        assert_eq!(node.label, "Simulation");
+        assert_eq!(node.data.detail, "2");
+        let labels: Vec<&str> = node.children.iter().map(|n| n.label.as_str()).collect();
+        assert_eq!(labels, ["Transient", "Bias"], "in the setup's order");
+        assert_eq!(node.children[1].data.icon, Some(Icon::OperatingPoint));
+
+        let stale = |a: &model::Analysis| AnalysisDetail {
+            text: if a.id == op.id { OUTDATED.into() } else { "42 %".into() },
+            warn: a.id == op.id,
+        };
+        let node = simulation_node(&setup, stale);
+        assert_eq!((node.data.detail.as_str(), node.data.warn), ("1 outdated", true));
+        assert_eq!(node.children[0].data.detail, "42 %");
+
+        // Add simulation › one per kind, and Run all once there is one.
+        let entries = menu(NodeId::Simulations, &node.data);
+        let Some(Entry::Sub(_, kinds)) = entries.first() else { panic!("a submenu first") };
+        assert_eq!(kinds.len(), crate::sim_ui::KINDS.len());
+        assert!(acts(entries).contains(&Act::RunAllSimulations));
+        let empty = simulation_node(&model::Simulation::default(), |_| AnalysisDetail::default());
+        assert_eq!(empty.data.detail, "");
+        assert!(!acts(menu(NodeId::Simulations, &empty.data)).contains(&Act::RunAllSimulations));
+        assert!(matches!(plus_menu()[1], Entry::Sub("Add simulation", _)));
+
+        // A click previews, a double click opens, Delete deletes.
+        let a = NodeId::Analysis(op.id);
+        assert_eq!(preview(a), Some(Act::PreviewAnalysis(op.id)));
+        assert_eq!(activate(a, &Info::default()), Some(Act::OpenAnalysis(op.id)));
+        assert!(acts(menu(a, &Info::default())).contains(&Act::DeleteAnalysis(op.id)));
     }
 
     #[test]

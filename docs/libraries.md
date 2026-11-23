@@ -10,7 +10,8 @@ The Project panel (⌘1) shows a tree, IntelliJ style:
 
 - **The project:** the Schematic with its [sheets](schematic.md#sheets) and the PCB
   (double-click to show them; their tabs can be closed like any other, and the tree opens
-  them again), the **Project Library**, and the [outputs](manufacturing.md#outputs-in-the-project-panel).
+  them again), the [simulations](simulation.md#simulations-in-the-project-panel), the
+  **Project Library**, and the [outputs](manufacturing.md#outputs-in-the-project-panel).
 - **Built-in Library:** generic parts that ship with the app (below).
 - **External Libraries:** the project's library files (`.pcblib`).
 
@@ -24,10 +25,10 @@ changed for this design only), create, duplicate, rename or delete items, and sa
 or remove libraries.
 
 - **Keys:** ↑/↓ move, ←/→ collapse and expand, P places the selected part, Delete deletes
-  an item.
+  an item, a sheet or a simulation.
 - **Search:** type, or click the search button, to filter the tree. ↑/↓ step through the
   matches and Esc ends the search.
-- **+ button:** New sheet…, New library… (asks for its file right away), Add library…,
+- **+ button:** New sheet…, Add simulation, New library… (asks for its file right away), Add library…,
   Import KiCad parts… (the library entries are also on right-click of External Libraries
   and in the File menu).
 

@@ -114,6 +114,8 @@ enum Naming {
     Sheet(Id),
     /// A new sheet below this one.
     NewSheet(Id),
+    /// A simulation (analysis).
+    Analysis(Id),
 }
 
 /// Content of a dock tab.
@@ -125,8 +127,8 @@ pub(crate) enum Tab {
     Item(u64),
     /// The Gerber export, read back from disk (read-only).
     Gerber,
-    /// The simulation plot of the analysis the Simulation panel shows.
-    Simulation,
+    /// A simulation's output (plot or table), by analysis.
+    Simulation(Id),
 }
 
 /// One editor pane: camera + interaction state for a view of the document.
@@ -288,8 +290,8 @@ enum Focus {
     Item(u64),
     /// The Gerber tab: it takes the measure keys; other view keys do nothing.
     Gerber,
-    /// The Simulation tab: fit and Esc; other view keys do nothing.
-    Simulation,
+    /// A simulation's output tab: fit and Esc; other view keys do nothing.
+    Simulation(Id),
 }
 
 impl Focus {
@@ -564,8 +566,19 @@ impl PcbApp {
             if name == "gerber" {
                 app.refresh_outputs();
                 app.open_gerber(None);
-            } else if name == "simulation" {
-                app.open_sim_tab(true);
+            } else if let Some(rest) = name.strip_prefix("simulation") {
+                let setup = &app.doc().project().schematic.simulation;
+                let a = match rest.strip_prefix(':') {
+                    Some(n) => setup.analyses.iter().find(|a| a.name == n),
+                    None => setup.analyses.first(),
+                };
+                match a.map(|a| a.id) {
+                    Some(id) => {
+                        app.sim.current = Some(id);
+                        app.open_analysis(id, false, true);
+                    }
+                    None => eprintln!("no simulation {name:?}"),
+                }
             } else if let Some(page) = name.strip_prefix("settings") {
                 let page = page.strip_prefix(':').and_then(SettingsPage::parse);
                 app.settings_win.show(page, &mut app.settings);
@@ -830,7 +843,7 @@ impl PcbApp {
         Some(match tab {
             Tab::View(v) => workspace::view_ref(v),
             Tab::Gerber => TabRef::Gerber,
-            Tab::Simulation => TabRef::Simulation,
+            Tab::Simulation(analysis) => TabRef::Simulation { analysis, preview: self.sim.preview == Some(analysis) },
             Tab::Item(id) => {
                 let l = self.lib_of_tab(id)?;
                 let t = l.tab(id)?;
@@ -872,7 +885,7 @@ impl PcbApp {
             Focus::Project => Some(Tab::View(self.active)),
             Focus::Item(id) => Some(Tab::Item(id)),
             Focus::Gerber => Some(Tab::Gerber),
-            Focus::Simulation => Some(Tab::Simulation),
+            Focus::Simulation(a) => Some(Tab::Simulation(a)),
         };
         Workspace {
             layout: workspace::layout_of(&self.tree, &|t| self.tab_ref(*t)),
@@ -880,6 +893,7 @@ impl PcbApp {
             views,
             items: items.into_iter().map(|(_, s)| s).collect(),
             layer: Some(self.pcb.settings.layer),
+            sim_current: self.sim.current,
         }
     }
 
@@ -904,7 +918,13 @@ impl PcbApp {
             }
             TabRef::Board => Some(Tab::View(ViewId::Board)),
             TabRef::Gerber => self.outputs.dir.is_some().then_some(Tab::Gerber),
-            TabRef::Simulation => Some(Tab::Simulation),
+            TabRef::Simulation { analysis, preview } => {
+                self.doc().project().schematic.simulation.analyses.iter().find(|a| a.id == *analysis)?;
+                if *preview {
+                    self.sim.preview = Some(*analysis);
+                }
+                Some(Tab::Simulation(*analysis))
+            }
             TabRef::Library { lib, item, preview } => {
                 let key = self.lib_key_of(lib)?;
                 let open = open_of_ref(*item);
@@ -963,6 +983,8 @@ impl PcbApp {
         if let Some(layer) = ws.layer.filter(|l| self.doc().project().board.layers.iter().any(|x| x.id == *l)) {
             self.pcb.settings.layer = layer;
         }
+        self.sim.current =
+            ws.sim_current.filter(|id| self.doc().project().schematic.simulation.analyses.iter().any(|a| a.id == *id));
         let active = ws.active.as_ref().and_then(|r| self.open_tab_ref(r));
         if let Some(tab) = active.filter(|t| self.tree.tiles.find_pane(t).is_some()) {
             let tile = self.tree.tiles.find_pane(&tab);
@@ -977,7 +999,7 @@ impl PcbApp {
                 }
                 Tab::Item(id) => self.focus = Focus::Item(id),
                 Tab::Gerber => self.focus = Focus::Gerber,
-                Tab::Simulation => self.focus = Focus::Simulation,
+                Tab::Simulation(a) => self.focus = Focus::Simulation(a),
             }
         }
         self.drop_orphan_tabs();
@@ -1020,6 +1042,38 @@ impl PcbApp {
         self.pcb = PcbPlacer::default();
         self.pcb.settings = PcbSettings { layer: LayerId::TOP_COPPER, ..settings };
         self.restore_workspace();
+    }
+
+    /// Close the tabs of simulations that no longer exist (deleted, undone, another
+    /// project), and forget them as current or preview.
+    fn close_deleted_analyses(&mut self) {
+        let setup = &self.project.lib.doc.project().schematic.simulation;
+        let exists = |id: Id| setup.analyses.iter().any(|a| a.id == id);
+        let gone: Vec<TileId> = (self.tree.tiles.iter())
+            .filter_map(|(&tile, t)| match t {
+                Tile::Pane(Tab::Simulation(a)) if !exists(*a) => Some(tile),
+                _ => None,
+            })
+            .collect();
+        self.sim.current = self.sim.current.filter(|a| exists(*a));
+        self.sim.preview = self.sim.preview.filter(|a| exists(*a));
+        if let Focus::Simulation(a) = self.focus
+            && !exists(a)
+        {
+            self.focus = Focus::Project;
+        }
+        if gone.is_empty() {
+            return;
+        }
+        for tile in gone {
+            self.tree.remove_recursively(tile);
+        }
+        self.follow_visible_tabs();
+    }
+
+    /// Whether a simulation's output tab is open.
+    fn sim_tab_open(&self) -> bool {
+        self.tree.tiles.iter().any(|(_, t)| matches!(t, Tile::Pane(Tab::Simulation(_))))
     }
 
     /// Close the tabs of sheets that no longer exist (deleted, undone, another project).
@@ -1429,29 +1483,83 @@ impl PcbApp {
         self.focus = Focus::Gerber;
     }
 
-    /// Show the Simulation tab. New: right of the schematic when its tab is alone in its
-    /// group, else a tab of the schematic's group. `front`: bring it to the front (and
-    /// give it the keys) when it was open already.
-    fn open_sim_tab(&mut self, front: bool) {
-        self.sim.plot_closed = false;
-        let tile = match self.tree.tiles.find_pane(&Tab::Simulation) {
-            Some(_) if !front => return,
-            Some(tile) => tile,
+    /// Show a simulation's output: in its tab if it has one (a normal open keeps a
+    /// preview), else in the preview tab (`preview`: it replaces the preview's, a library
+    /// item's too) or a new tab: next to the other simulation tabs, else right of the
+    /// schematic when its tab is alone in its group, else a tab of the schematic's group.
+    /// The tab comes to the front; `focus`: it takes the keys.
+    fn open_analysis(&mut self, analysis: Id, preview: bool, focus: bool) {
+        if !self.doc().project().schematic.simulation.analyses.iter().any(|a| a.id == analysis) {
+            return;
+        }
+        let tab = Tab::Simulation(analysis);
+        let tile = match self.tree.tiles.find_pane(&tab) {
+            Some(tile) => {
+                if !preview && self.sim.preview == Some(analysis) {
+                    self.sim.preview = None;
+                }
+                tile
+            }
             None => {
-                let sch = Tab::View(self.sheet_view());
-                let group = self.tree.tiles.find_pane(&sch).and_then(|t| Some((t, self.tree.tiles.parent_of(t)?)));
-                match group {
-                    Some((sch_tile, g)) if tabs_count(&self.tree, g) == 1 => {
-                        split_right(&mut self.tree, g, sch_tile, Tab::Simulation)
-                    }
-                    _ => insert_tab(&mut self.tree, Tab::Simulation, None, &[sch, Tab::View(ViewId::Board)]),
+                let replaced = if preview { self.take_preview_tile(tab) } else { None };
+                if preview {
+                    self.sim.preview = Some(analysis);
+                }
+                match replaced {
+                    Some(tile) => tile,
+                    None => self.insert_sim_tab(tab),
                 }
             }
         };
         self.tree.make_active(|id, _| id == tile);
-        if front {
-            self.focus = Focus::Simulation;
+        if focus {
+            self.focus = Focus::Simulation(analysis);
         }
+    }
+
+    /// Add a simulation tab to the tree (see [`open_analysis`](Self::open_analysis)).
+    fn insert_sim_tab(&mut self, tab: Tab) -> TileId {
+        let other = self.tree.tiles.iter().find_map(|(&id, t)| match t {
+            Tile::Pane(Tab::Simulation(_)) => Some(id),
+            _ => None,
+        });
+        if let Some(other) = other
+            && let Some(group) = self.tree.tiles.parent_of(other)
+        {
+            return insert_tab(&mut self.tree, tab, Some(group), &[]);
+        }
+        let sch = Tab::View(self.sheet_view());
+        let group = self.tree.tiles.find_pane(&sch).and_then(|t| Some((t, self.tree.tiles.parent_of(t)?)));
+        match group {
+            Some((sch_tile, g)) if tabs_count(&self.tree, g) == 1 => split_right(&mut self.tree, g, sch_tile, tab),
+            _ => insert_tab(&mut self.tree, tab, None, &[sch, Tab::View(ViewId::Board)]),
+        }
+    }
+
+    /// The preview tab's tile, handed over to `tab` (the tab it held goes: a library
+    /// item's or a simulation's), if there is a preview tab.
+    fn take_preview_tile(&mut self, tab: Tab) -> Option<TileId> {
+        let item = self.all_libs().flat_map(|l| &l.tabs).find(|t| t.preview && Tab::Item(t.id) != tab).map(|t| t.id);
+        let old = match (item, self.sim.preview) {
+            (Some(item), _) => Tab::Item(item),
+            (None, Some(a)) => Tab::Simulation(a),
+            (None, None) => return None,
+        };
+        let tile = self.tree.tiles.find_pane(&old)?;
+        self.tree.tiles.insert(tile, Tile::Pane(tab));
+        match old {
+            Tab::Item(id) => self.remove_item_tab(id),
+            _ => self.sim.preview = None,
+        }
+        let focused = match self.focus {
+            Focus::Item(id) => Some(Tab::Item(id)),
+            Focus::Simulation(a) => Some(Tab::Simulation(a)),
+            _ => None,
+        };
+        if focused == Some(old) {
+            self.focus = Focus::Project;
+        }
+        Some(tile)
     }
 
     /// Delete the export folders and the zip, after asking.
@@ -1512,18 +1620,12 @@ impl PcbApp {
         self.tab_clock
     }
 
-    /// The preview tab, if one is open.
-    fn preview_tab(&self) -> Option<u64> {
-        self.all_libs().flat_map(|l| &l.tabs).find(|t| t.preview).map(|t| t.id)
-    }
-
     /// Show a library item: in its tab if it has one (a normal open keeps a preview open),
     /// else in the preview tab (`preview`: the item replaces the preview's) or a new tab
     /// next to the item tab used last. The tab comes to the front; `focus`: it takes the
     /// keyboard. Returns the tab.
     fn open_item(&mut self, key: u64, open: Open, preview: bool, focus: bool) -> Option<u64> {
         self.commit_text_edit();
-        let old_preview = self.preview_tab();
         let last_used = self.all_libs().flat_map(|l| &l.tabs).max_by_key(|t| t.used).map(|t| t.id);
         let l = self.lib(key)?;
         if !l.exists(open) {
@@ -1537,12 +1639,7 @@ impl PcbApp {
             }
             None => {
                 let id = l.add_tab(open, preview);
-                let replaced = old_preview.filter(|_| preview).and_then(|old| {
-                    let tile = self.tree.tiles.find_pane(&Tab::Item(old))?;
-                    self.tree.tiles.insert(tile, Tile::Pane(Tab::Item(id)));
-                    self.remove_item_tab(old);
-                    Some(tile)
-                });
+                let replaced = if preview { self.take_preview_tile(Tab::Item(id)) } else { None };
                 (id, replaced)
             }
         };
@@ -2114,7 +2211,7 @@ impl PcbApp {
         match self.focus {
             Focus::Item(id) if !visible.contains(&Tab::Item(id)) => self.focus = Focus::Project,
             Focus::Gerber if !visible.contains(&Tab::Gerber) => self.focus = Focus::Project,
-            Focus::Simulation if !visible.contains(&Tab::Simulation) => self.focus = Focus::Project,
+            Focus::Simulation(a) if !visible.contains(&Tab::Simulation(a)) => self.focus = Focus::Project,
             _ => {}
         }
         if self.focus.item().is_none() && !visible.contains(&Tab::View(self.active)) {
@@ -2406,7 +2503,7 @@ impl PcbApp {
             self.copy_out = Some(text);
             return self.set_status("Copied the measurement");
         }
-        if self.gerber_focused() || self.focus == Focus::Simulation {
+        if self.gerber_focused() || matches!(self.focus, Focus::Simulation(_)) {
             return;
         }
         let result = if let Some(id) = self.focus.item() {
@@ -2670,9 +2767,10 @@ impl PcbApp {
         }
         match action {
             Action::RunSimulation => return self.run_simulation(None),
-            Action::StopSimulation => return self.sim.session.stop(),
+            Action::RunAllSimulations => return self.run_all_simulations(),
+            Action::StopSimulation => return self.sim.stop(),
             Action::ShowSimNetlist => return self.sim.show_window(false),
-            Action::ShowSimPlot => return self.open_sim_tab(true),
+            Action::ShowSimPlot => return self.show_sim_output(),
             Action::ToggleCrosshair => {
                 self.settings.crosshair = !self.settings.crosshair;
                 canvas::set_crosshair(self.settings.crosshair);
@@ -2701,18 +2799,19 @@ impl PcbApp {
         if gerber && self.gerber_action(action) {
             return;
         }
-        let plot = self.focus == Focus::Simulation && self.tree.tiles.find_pane(&Tab::Simulation).is_some();
-        if plot {
-            let setup = &self.project.lib.doc.project().schematic.simulation;
-            if let Some(a) = self.sim.current(setup).map(|a| a.id) {
-                let state = self.sim.plot_state(a);
-                match action {
-                    Action::FitView => return state.fit(),
-                    Action::Cancel => return state.clear_cursors(),
-                    _ => {}
-                }
+        let plot = match self.focus {
+            Focus::Simulation(a) => self.tree.tiles.find_pane(&Tab::Simulation(a)).map(|_| a),
+            _ => None,
+        };
+        if let Some(a) = plot {
+            let state = self.sim.plot_state(a);
+            match action {
+                Action::FitView => return state.fit(),
+                Action::Cancel => return state.clear_cursors(),
+                _ => {}
             }
         }
+        let plot = plot.is_some();
         // A closed view takes no keys (only the project-level actions below), nor does
         // one without focus while the Gerber tab has it.
         let view_keys = !gerber && !plot && (self.focus.item().is_some() || self.is_open(self.active));
@@ -2809,6 +2908,7 @@ impl PcbApp {
             | Action::PanelActivity
             | Action::PanelSimulation
             | Action::RunSimulation
+            | Action::RunAllSimulations
             | Action::StopSimulation
             | Action::ShowSimNetlist
             | Action::ShowSimPlot
@@ -2962,6 +3062,7 @@ impl PcbApp {
             | Action::PanelActivity
             | Action::PanelSimulation
             | Action::RunSimulation
+            | Action::RunAllSimulations
             | Action::StopSimulation
             | Action::ShowSimNetlist
             | Action::ShowSimPlot
@@ -3302,6 +3403,7 @@ impl PcbApp {
             vec![
                 schematic,
                 Some(TreeNode::new(NodeId::Board, "PCB", Info::icon(Icon::Board))),
+                Some(project_panel::simulation_node(&p.schematic.simulation, |a| self.sim.tree_detail(a))),
                 Some(project_lib),
                 Some(self.outputs.node(self.outputs_outdated)),
             ]
@@ -3376,6 +3478,9 @@ impl PcbApp {
 
     /// The tree node of the focused tab (the item open in a library tab).
     fn focus_node(&self) -> Option<NodeId> {
+        if let Focus::Simulation(a) = self.focus {
+            return Some(NodeId::Analysis(a));
+        }
         match self.focused_lib_ref().zip(self.focused_tab()) {
             Some((l, t)) => {
                 let owner = if l.is_project() { Owner::Project } else { Owner::Lib(l.key) };
@@ -3438,6 +3543,56 @@ impl PcbApp {
                 self.save(false, None);
             }
             Act::ExportGerber => self.export_gerber(),
+            Act::AddAnalysis(kind) => {
+                self.commit_text_edit();
+                let mut setup = self.doc().project().schematic.simulation.clone();
+                let added = self.sim.add(&mut setup, self.project.lib.doc.project(), kind);
+                match added {
+                    Ok(id) => match self.doc_mut().execute(Command::SetSimulation { simulation: setup }) {
+                        Ok(_) => {
+                            self.select_analysis(id);
+                            self.settings.dock.show(Panel::Simulation);
+                        }
+                        Err(e) => self.set_status(e.to_string()),
+                    },
+                    Err(e) => self.set_status(e),
+                }
+            }
+            Act::PreviewAnalysis(id) => {
+                self.sim.current = Some(id);
+                self.open_analysis(id, true, false);
+            }
+            Act::OpenAnalysis(id) => {
+                self.sim.current = Some(id);
+                self.open_analysis(id, false, true);
+            }
+            Act::RunAnalysis(id) => {
+                self.sim.current = Some(id);
+                self.run_simulation(Some(id));
+            }
+            Act::RunAllSimulations => self.run_all_simulations(),
+            Act::RenameAnalysis(id) => {
+                let setup = &self.doc().project().schematic.simulation;
+                if let Some(a) = setup.analyses.iter().find(|a| a.id == id) {
+                    self.rename = Some(Rename { what: Naming::Analysis(id), text: a.name.clone(), focused: false });
+                }
+            }
+            Act::DuplicateAnalysis(id) => {
+                let mut setup = self.doc().project().schematic.simulation.clone();
+                let Some(copy) = crate::sim_ui::duplicate(&mut setup, id) else { return };
+                match self.doc_mut().execute(Command::SetSimulation { simulation: setup }) {
+                    Ok(_) => self.select_analysis(copy),
+                    Err(e) => self.set_status(e.to_string()),
+                }
+            }
+            Act::DeleteAnalysis(id) => {
+                let mut setup = self.doc().project().schematic.simulation.clone();
+                setup.analyses.retain(|a| a.id != id);
+                if let Err(e) = self.doc_mut().execute(Command::SetSimulation { simulation: setup }) {
+                    self.set_status(e.to_string());
+                }
+                self.close_deleted_analyses();
+            }
             Act::ExportSchematicPdf => self.export_schematic_pdf(),
             Act::OpenGerber(file) => self.open_gerber(file),
             Act::DeleteOutputs => self.delete_outputs(),
@@ -3595,6 +3750,7 @@ impl PcbApp {
             Naming::Sheet(_) => ("Rename sheet", "Rename"),
             Naming::Item(..) => ("Rename", "Rename"),
             Naming::Category(..) => ("Rename category", "Rename"),
+            Naming::Analysis(_) => ("Rename simulation", "Rename"),
         };
         // Sheet names are checked as they are typed.
         let schematic = &self.project.lib.doc.project().schematic;
@@ -3602,6 +3758,20 @@ impl PcbApp {
             Naming::NewSheet(parent) => schematic.sheet_name_issue(Some(parent), &r.text, None),
             Naming::Sheet(s) => {
                 schematic.sheet_name_issue(schematic.sheets.get(s).and_then(|s| s.parent), &r.text, Some(s))
+            }
+            Naming::Analysis(id) => {
+                let taken = schematic
+                    .simulation
+                    .analyses
+                    .iter()
+                    .any(|a| a.id != id && a.name.trim().eq_ignore_ascii_case(r.text.trim()));
+                if r.text.trim().is_empty() {
+                    Some("A simulation needs a name".to_string())
+                } else if taken {
+                    Some("Another simulation has this name".to_string())
+                } else {
+                    None
+                }
             }
             Naming::Item(..) | Naming::Category(..) => None,
         };
@@ -3660,6 +3830,14 @@ impl PcbApp {
                 sh.name = text;
                 let objects = vec![Object::Sheet(sh)];
                 if let Err(e) = self.doc_mut().execute(Command::Update { objects }) {
+                    self.set_status(e.to_string());
+                }
+            }
+            Naming::Analysis(id) => {
+                let mut setup = self.doc().project().schematic.simulation.clone();
+                let Some(a) = setup.analyses.iter_mut().find(|a| a.id == id) else { return };
+                a.name = text.trim().to_string();
+                if let Err(e) = self.doc_mut().execute(Command::SetSimulation { simulation: setup }) {
                     self.set_status(e.to_string());
                 }
             }
@@ -4054,9 +4232,11 @@ impl PcbApp {
             Panel::Simulation => {
                 // Look for ngspice once the panel shows (its hint shows when missing).
                 _ = self.sim.engine(&self.settings.engine());
-                match self.sim.ui(ui, &mut self.project.lib.doc, &mut message) {
+                let circuit = self.project_tree.state.selected == Some(NodeId::Simulations);
+                match self.sim.ui(ui, &mut self.project.lib.doc, circuit, &mut message) {
                     Some(SimAct::Run(id)) => self.run_simulation(Some(id)),
-                    Some(SimAct::Stop) => self.sim.session.stop(),
+                    Some(SimAct::RunAll) => self.run_all_simulations(),
+                    Some(SimAct::Stop) => self.sim.stop(),
                     Some(SimAct::ShowNetlist) => self.sim.show_window(false),
                     Some(SimAct::ShowLog) => self.sim.show_window(true),
                     Some(SimAct::OpenSettings) => {
@@ -4068,7 +4248,7 @@ impl PcbApp {
                         self.settings.dock.show(Panel::Messages);
                     }
                     Some(SimAct::SelectNet(net)) => self.select_net(&net, false),
-                    Some(SimAct::ShowPlot) => self.open_sim_tab(true),
+                    Some(SimAct::ShowPlot(id)) => self.open_analysis(id, false, true),
                     None => {}
                 }
             }
@@ -4143,7 +4323,27 @@ impl PcbApp {
             rows.push(row);
             self.set_tune_rows(rows);
         }
-        self.open_sim_tab(true);
+        self.show_sim_output();
+    }
+
+    /// Show the output of the current simulation (else the first) in a tab of its own.
+    fn show_sim_output(&mut self) {
+        let setup = &self.doc().project().schematic.simulation;
+        let Some(id) = self.sim.current(setup).or(setup.analyses.first()).map(|a| a.id) else {
+            return self.set_status("No simulation yet: add one in the project tree");
+        };
+        self.sim.current = Some(id);
+        self.open_analysis(id, false, true);
+    }
+
+    /// Run every simulation, one after the other.
+    fn run_all_simulations(&mut self) {
+        self.commit_text_edit();
+        let setup = &self.project.lib.doc.project().schematic.simulation;
+        if setup.analyses.is_empty() {
+            return self.set_status("No simulation yet: add one in the project tree");
+        }
+        self.sim.run_all(setup);
     }
 
     fn run_simulation(&mut self, analysis: Option<Id>) {
@@ -4152,7 +4352,7 @@ impl PcbApp {
         let setup = &self.doc().project().schematic.simulation;
         let id = match analysis.or(self.sim.current(setup).map(|a| a.id)) {
             Some(id) => id,
-            None => {
+            None if setup.analyses.is_empty() => {
                 let mut setup = setup.clone();
                 let a = Analysis::new("Operating point", AnalysisKind::Op);
                 let id = a.id;
@@ -4160,13 +4360,25 @@ impl PcbApp {
                 if let Err(e) = self.doc_mut().execute(Command::SetSimulation { simulation: setup }) {
                     return self.set_status(e.to_string());
                 }
+                self.select_analysis(id);
                 id
             }
+            None => return self.set_status("Select the simulation to run in the project tree"),
         };
+        self.sim.current = Some(id);
         let engine = self.settings.engine();
-        if let Err(e) = self.sim.run(&mut self.project.lib.doc, id, &engine) {
-            self.set_status(e);
+        match self.sim.run(&mut self.project.lib.doc, id, &engine) {
+            // Its output comes to the front (in the preview tab when it has no tab).
+            Ok(()) => self.open_analysis(id, true, false),
+            Err(e) => self.set_status(e),
         }
+    }
+
+    /// Make a simulation the current one, selected in the project tree.
+    fn select_analysis(&mut self, id: Id) {
+        self.sim.current = Some(id);
+        self.project_tree.state.set_expanded(NodeId::Simulations, true);
+        self.project_tree.reveal(NodeId::Analysis(id));
     }
 
     /// Select a net (Nets panel): its wires, labels and junctions on the sheet worked on
@@ -5150,7 +5362,12 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                 if t.preview { text.italics().into() } else { text.into() }
             }
             Tab::Gerber => "Gerber".into(),
-            Tab::Simulation => "Simulation".into(),
+            Tab::Simulation(a) => {
+                let setup = &self.project.lib.doc.project().schematic.simulation;
+                let name = setup.analyses.iter().find(|x| x.id == *a).map_or("", |x| x.name.as_str());
+                let text = RichText::new(name);
+                if self.sim.preview == Some(*a) { text.italics().into() } else { text.into() }
+            }
         }
     }
 
@@ -5182,8 +5399,13 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                     self.deferred.push(Deferred::Gerber(act));
                 }
             }
-            Tab::Simulation => {
-                if let Some(act) = crate::plot_ui::ui(ui, self.sim, &self.project.lib.doc, self.keymap) {
+            Tab::Simulation(a) => {
+                // A press anywhere in the tab makes its simulation the current one.
+                if ui.rect_contains_pointer(ui.max_rect()) && ui.input(|i| i.pointer.any_pressed()) {
+                    self.deferred.push(Deferred::Plot(PlotAct::Focus(a)));
+                }
+                let act = ui.push_id(a, |ui| crate::plot_ui::ui(ui, self.sim, &self.project.lib.doc, a, self.keymap));
+                if let Some(act) = act.inner {
                     self.deferred.push(Deferred::Plot(act));
                 }
             }
@@ -5210,8 +5432,13 @@ impl Behavior<Tab> for TreeBehavior<'_> {
                 Some(Tab::Gerber) => {
                     *self.focus = Focus::Gerber;
                 }
-                Some(Tab::Simulation) => {
-                    *self.focus = Focus::Simulation;
+                Some(Tab::Simulation(a)) => {
+                    *self.focus = Focus::Simulation(a);
+                    self.sim.current = Some(a);
+                    // A double click keeps a preview tab.
+                    if response.double_clicked() && self.sim.preview == Some(a) {
+                        self.sim.preview = None;
+                    }
                 }
                 None => {}
             }
@@ -5285,7 +5512,14 @@ impl Behavior<Tab> for TreeBehavior<'_> {
             Some(Tab::View(ViewId::Sheet(_))) => Icon::Schematic,
             Some(Tab::View(ViewId::Board)) => Icon::Board,
             Some(Tab::Gerber) => Icon::Layers,
-            Some(Tab::Simulation) => Icon::Simulation,
+            Some(Tab::Simulation(a)) => {
+                let setup = &self.project.lib.doc.project().schematic.simulation;
+                setup
+                    .analyses
+                    .iter()
+                    .find(|x| x.id == a)
+                    .map_or(Icon::Simulation, |x| project_panel::kind_icon(&x.kind))
+            }
             Some(Tab::Item(id)) => self.item_icon(id),
             None => Icon::Library,
         };
@@ -5314,6 +5548,11 @@ impl Behavior<Tab> for TreeBehavior<'_> {
             let preview = l.tab(tab).is_some_and(|t| t.preview);
             let tip = if preview { format!("{}\nPreview — double-click to keep open", l.title()) } else { l.title() };
             response = response.on_hover_text(tip);
+        }
+        if let Some(Tab::Simulation(a)) = Self::tab_of(tiles, tile_id)
+            && self.sim.preview == Some(a)
+        {
+            response = response.on_hover_text("Preview — double-click to keep open");
         }
         if ui.is_rect_visible(rect) && !state.is_being_dragged {
             let v = ui.visuals();
@@ -5462,8 +5701,7 @@ impl eframe::App for PcbApp {
         self.hovered = None;
         // Set again by whatever hovers a probe target this frame (the Probe tool, a table).
         self.sim.hover = None;
-        let sim_shown =
-            self.settings.dock.is_open(Panel::Simulation) || self.tree.tiles.find_pane(&Tab::Simulation).is_some();
+        let sim_shown = self.settings.dock.is_open(Panel::Simulation) || self.sim_tab_open();
         let central = egui::Frame::NONE.fill(theme::window_bg()).inner_margin(egui::Margin {
             left: gap,
             right: gap,
@@ -5535,14 +5773,19 @@ impl eframe::App for PcbApp {
                 }
                 Deferred::Gerber(GerberAct::Reexport) => self.export_gerber(),
                 Deferred::Gerber(GerberAct::Focus) => self.focus = Focus::Gerber,
-                Deferred::Close(Tab::Simulation) => {
-                    if let Some(tile) = self.tree.tiles.find_pane(&Tab::Simulation) {
+                Deferred::Close(Tab::Simulation(a)) => {
+                    if let Some(tile) = self.tree.tiles.find_pane(&Tab::Simulation(a)) {
                         self.tree.remove_recursively(tile);
                     }
-                    self.sim.plot_closed = true;
+                    if self.sim.preview == Some(a) {
+                        self.sim.preview = None;
+                    }
                     self.follow_visible_tabs();
                 }
-                Deferred::Plot(PlotAct::Focus) => self.focus = Focus::Simulation,
+                Deferred::Plot(PlotAct::Focus(a)) => {
+                    self.focus = Focus::Simulation(a);
+                    self.sim.current = Some(a);
+                }
                 Deferred::Plot(PlotAct::Run(id)) => self.run_simulation(Some(id)),
                 Deferred::Plot(PlotAct::RemoveProbe(analysis, i)) => {
                     if let Err(e) = SimPanel::remove_probe(self.doc_mut(), analysis, i) {
@@ -5621,25 +5864,38 @@ impl eframe::App for PcbApp {
         if self.doc().revision != self.revision {
             self.revision = self.doc().revision;
             self.close_missing_sheets();
+            self.close_deleted_analyses();
             for pane in self.panes.iter_mut() {
                 pane.it.refresh(&mut self.project.lib.doc.target(pane.view));
             }
         }
         if let Some(name) = self.script.as_mut().and_then(Script::take_run) {
             let setup = &self.doc().project().schematic.simulation;
-            let id = setup.analyses.iter().find(|a| a.name == name).map(|a| a.id);
+            // No name: the current simulation, else the first.
+            let id = match name.as_str() {
+                "" => self.sim.current(setup).or(setup.analyses.first()),
+                _ => setup.analyses.iter().find(|a| a.name == name),
+            }
+            .map(|a| a.id);
             if id.is_none() && !name.is_empty() {
                 eprintln!("script: no analysis {name:?}");
             }
             self.run_simulation(id);
         }
-        match self.sim.poll(&self.project.lib.doc) {
-            Some(Err(m)) => self.set_status(m),
-            // A sweep's first plot opens the tab (unless the user closed it).
-            Some(Ok(true)) if !self.sim.plot_closed && self.tree.tiles.find_pane(&Tab::Simulation).is_none() => {
-                self.open_sim_tab(false);
-            }
-            _ => {}
+        let polled = self.sim.poll(&self.project.lib.doc);
+        if let Some(Err(m)) = polled {
+            self.set_status(m);
+        }
+        let engine = self.settings.engine();
+        if let Some(done) = self.sim.next_in_queue(&mut self.project.lib.doc, &engine) {
+            self.set_status(done);
+        }
+        // The tree's outdated marks (at most once a second; not while dragging).
+        let marks = self.sim_tab_open()
+            || self.settings.dock.is_open(Panel::Simulation)
+            || (self.settings.dock.is_open(Panel::Project) && self.project_tree.state.is_expanded(NodeId::Simulations));
+        if marks && !self.busy() && self.doc().is_connectivity_current() {
+            self.sim.check_stale(&self.project.lib.doc);
         }
         // A tuned value changed while the last run went: run it with the newest.
         if self.sim.tune_pending && self.sim.session.running().is_none() {

@@ -86,6 +86,7 @@ pub enum Action {
     PanelOverview,
     PanelSimulation,
     RunSimulation,
+    RunAllSimulations,
     StopSimulation,
     ShowSimNetlist,
     ShowSimPlot,
@@ -171,6 +172,7 @@ impl Action {
         Action::PanelOverview,
         Action::PanelSimulation,
         Action::RunSimulation,
+        Action::RunAllSimulations,
         Action::StopSimulation,
         Action::ShowSimNetlist,
         Action::ShowSimPlot,
@@ -250,9 +252,10 @@ impl Action {
             Action::PanelOverview => "Show/hide Overview panel",
             Action::PanelSimulation => "Show/hide Simulation panel",
             Action::RunSimulation => "Run simulation",
+            Action::RunAllSimulations => "Run all simulations",
             Action::StopSimulation => "Stop simulation",
             Action::ShowSimNetlist => "Show SPICE netlist and log",
-            Action::ShowSimPlot => "Show simulation plot",
+            Action::ShowSimPlot => "Show simulation output",
         }
     }
 
@@ -310,7 +313,13 @@ impl Action {
     fn works_while_typing(self) -> bool {
         matches!(
             self,
-            Action::New | Action::Open | Action::Save | Action::SaveAs | Action::RunSimulation | Action::StopSimulation
+            Action::New
+                | Action::Open
+                | Action::Save
+                | Action::SaveAs
+                | Action::RunSimulation
+                | Action::RunAllSimulations
+                | Action::StopSimulation
         ) || crate::dock::Panel::of_action(self).is_some()
     }
 
@@ -506,6 +515,7 @@ impl Default for Keymap {
             (Action::PanelParts, vec![S::cmd(Key::Num0)]),
             (Action::PanelSimulation, vec![S::cmd(Key::Num2)]),
             (Action::RunSimulation, vec![S::cmd(Key::R)]),
+            (Action::RunAllSimulations, vec![S::cmd_shift(Key::R)]),
             (Action::StopSimulation, vec![S::cmd(Key::Period)]),
         ];
         Keymap { bindings: bindings.into_iter().collect() }
@@ -620,7 +630,7 @@ mod tests {
         assert_eq!(map.lookup(Key::Z, Modifiers::COMMAND | Modifiers::SHIFT, sch), Some(Action::Redo));
         assert_eq!(map.lookup(Key::R, Modifiers::NONE, sch), Some(Action::Rotate));
         assert_eq!(map.lookup(Key::R, Modifiers::COMMAND, sch), Some(Action::RunSimulation));
-        assert_eq!(map.lookup(Key::R, Modifiers::COMMAND | Modifiers::SHIFT, sch), None);
+        assert_eq!(map.lookup(Key::R, Modifiers::COMMAND | Modifiers::SHIFT, sch), Some(Action::RunAllSimulations));
     }
 
     #[test]

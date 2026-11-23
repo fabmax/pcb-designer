@@ -24,10 +24,11 @@ written for those simulators work.
 1. Place a source (**VSource** or **ISource**, category Simulation in the
    [Parts panel](libraries.md#the-parts-panel)) and wire it in, or let a **supply** power
    a net (below). Ground is the net of the GND power ports.
-2. Open the **Simulation panel** (⌘2, or the **Simulation** menu) and pick or add an
-   analysis.
-3. **Run** (⌘R). Transient, AC and DC sweeps open the plot in the Simulation tab; an
-   operating point fills the panel's table and shows the values on the schematic.
+2. Add a simulation (an analysis): right-click **Simulation** in the
+   [Project panel](libraries.md#the-project-panel) (or use its **+** button) → **Add
+   simulation**. The **Simulation panel** (⌘2) shows its settings.
+3. **Run** (⌘R). Its output opens in a tab: the plot of a transient, AC or DC sweep, the
+   table of an operating point, whose values also show on the schematic.
 4. Click wires and pins with the **Probe** tool (**O**) to plot more.
 5. Change a value and run again; results of an older schematic dim until then.
 
@@ -36,17 +37,36 @@ analyses to try: the LED demo an operating point, a transient and AC; the audio 
 its bias point, the output into an 8 Ω load (a SPICE line in Extra) and its frequency
 response.
 
+## Simulations in the Project panel
+
+The project's **Simulation** node, below the PCB, lists its simulations: operating point,
+transient, AC for a frequency response, DC sweep for a transfer curve. Right-click the node
+(or use the panel's **+** button) → **Add simulation** to add one; right-click a simulation
+to open, run, rename, duplicate or delete it (Delete deletes the selected one too). Names
+are free text: the audio amplifier example calls its AC analysis "Frequency response".
+
+Each row says how its simulation stands: "42 %" while it runs, "outdated" when the
+schematic changed since its run, its error count when it failed. The node counts the
+outdated ones. **Run all simulations** (⇧⌘R, also on the node's menu and in the panel)
+runs every simulation in turn; the status bar says how many ran and failed.
+
+A click on a simulation shows its output in the preview tab (in italics), which the next
+click replaces (a library item's preview too); double-click (or Enter) opens it in a tab
+of its own, as does double-clicking the preview's tab.
+
 ## Simulation panel
 
-One tab per analysis (operating point, transient, AC for a frequency response, DC sweep
-for a transfer curve; **+** adds one, right-click renames, duplicates or deletes it; drag
-the tabs to reorder them) with its settings. Names are free text: the audio amplifier
-example calls its AC analysis "Frequency response". Values take SI prefixes (`10m`, `1.5k`, `1meg`); text that isn't a value turns
-red and isn't applied.
+The panel shows the settings of the simulation selected last in the Project panel (or
+whose tab you clicked last); it keeps showing it while you select other things. Selecting
+the **Simulation** node shows the **Circuit** settings that all simulations share. Values
+take SI prefixes (`10m`, `1.5k`, `1meg`); text that isn't a value turns red and isn't
+applied.
 
-- **Run** (⌘R) runs the analysis shown (with none, it adds an operating point). **Stop**
-  (⌘.) stops it and keeps what it computed so far ("Stopped at 3.2 ms"); the status bar
-  shows a running simulation and, with the shared library, how far it is.
+- **Run** (⌘R) runs the simulation shown (with none in the project, it adds an operating
+  point) and brings its tab to the front, or shows it in the preview tab. **Run all**
+  (⇧⌘R) runs all of them without opening tabs. **Stop** (⌘.) stops a run (and the rest of
+  Run all) and keeps what it computed so far ("Stopped at 3.2 ms"); the status bar shows a
+  running simulation and, with the shared library, how far it is.
 - The **result table** lists the named nets (all of them with **Show all nets**) and the
   measured currents; click a net to select it. An operating point measures the current
   into every pin (`I(R1.1)`) and each part's power (`P(R1)`). Tick signals to plot them.
@@ -58,12 +78,11 @@ red and isn't applied.
 
 Every change undoes like any other edit.
 
-## Simulation tab (the plot)
+## Simulation tabs (the plot)
 
-The first transient, AC or DC sweep that finishes opens a plot of the analysis the panel
-shows (also **Plot** in the panel, or **Simulation → Show simulation plot**; once you close
-it, runs don't reopen it). It plots the signals ticked in the panel's result table, or the
-named nets while none are ticked.
+Each simulation has a tab of its own (from the Project panel, a run, **Show** in the panel,
+or **Simulation → Show simulation output**), so several can be side by side. It plots the
+signals ticked in the panel's result table, or the named nets while none are ticked.
 
 - AC shows the magnitude in dB and, dashed on the right axis, the phase. Volts, amperes and
   watts each get an axis (a third one on the far right).
@@ -121,8 +140,8 @@ open):
 - Alt-click a part for the power it takes (`P(R1)`, negative when it delivers power);
 - click a probed one to remove it.
 
-The tip names what a click probes. Probes go to the analysis the panel shows if it's a
-transient, AC or DC sweep, else to the first one. Probed wires and pins show in their trace
+The tip names what a click probes. Probes go to the simulation the panel shows if it's a
+transient, AC or DC sweep, else to the first sweep. Probed wires and pins show in their trace
 colours.
 
 **Values on the schematic** (with the panel or tab open):

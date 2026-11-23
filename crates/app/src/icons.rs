@@ -73,6 +73,10 @@ icons! {
     Nets => "nets",
     Agent => "tabler/bot-id",
     Simulation => "tabler/wave-sine",
+    /// Analysis kinds (a transient is `Simulation`).
+    OperatingPoint => "tabler/gauge",
+    DcSweep => "tabler/chart-line",
+    AcSweep => "tabler/chart-bar",
     Probe => "probe",
     /// Run and stop a simulation.
     Play => "tabler/player-play",
