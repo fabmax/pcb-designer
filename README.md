@@ -16,6 +16,15 @@ work on the open project through MCP while you watch.
 - **Agents:** an MCP server in the app or headless; every edit an agent makes can be
   undone.
 
+![The audio amplifier example's schematic](docs/images/amplifier-schematic.png)
+
+![Its routed two-layer board](docs/images/amplifier-board.png)
+
+![The spectrum of its transient simulation: the 1 kHz input and the speaker output with its harmonics](docs/images/amplifier-spectrum.png)
+
+The [audio amplifier example](docs/user-interface.md#example-projects) (`--example amp`):
+schematic, board, and the spectrum of a 1 kHz sine through it.
+
 ## Documentation
 
 - [User interface and settings](docs/user-interface.md)

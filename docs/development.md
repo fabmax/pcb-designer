@@ -52,6 +52,12 @@ into the app. To change it, open it (`--example amp`), edit, save it anywhere, a
 After a file format change, `cargo run -p view --example save_examples` re-saves the
 stored examples (a test fails until then).
 
+The README's screenshots (`docs/images/amplifier-*.png`) are of this example, in the
+light theme (a config folder with `{"theme": "light"}` in its `settings.json`), taken
+with `--example amp --screenshot FILE` and halved to 1600×1000: the schematic with
+`--script "ui-move 690,560; zoom 1.35; ui-move 1240,960"`, the board with `--script
+board`, the spectrum with `--show simulation:Transient --script "run; ui-click 430,85"`.
+
 ## Calling MCP tools by hand
 
 `cargo run -p mcp --example mcp_call -- URL TOOL '{"json":"args"}'` calls a tool of a
