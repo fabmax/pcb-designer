@@ -38,8 +38,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    # A hung test fails the job instead of running for hours.
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -49,3 +47,6 @@ jobs:
       # After rust-cache: its post step (cleaning target/) runs after this one saves.
       - uses: ./.github/actions/ngspice
       - run: cargo test --workspace --no-fail-fast
+        # A hung test fails the job instead of running for hours (on the step: building
+        # ngspice uncached takes a while on Windows).
+        timeout-minutes: 30

@@ -18,10 +18,20 @@ if [ "${1:-}" != "--force" ] && [ "$(cat "$out/VERSION" 2>/dev/null)" = "$NGSPIC
     exit 0
 fi
 
+# Progress on stderr (stdout is the output folder), with the time: MSYS2 is slow.
+step() { echo "build-ngspice: $(date +%H:%M:%S) $*" >&2; }
+# Runs a build step quietly into LOG, showing the log's end if it fails.
+quiet() {
+    local log=$1
+    shift
+    "$@" >"$log" 2>&1 || { tail -60 "$log" >&2; [ "$log" = configure.log ] && tail -40 config.log >&2; exit 1; }
+}
+
 work="$PWD/target/ngspice/build-$NGSPICE_VERSION"
 rm -rf "$work" "$out"
 mkdir -p "$work"
 tarball="$work/ngspice-$NGSPICE_VERSION.tar.gz"
+step "downloading ngspice $NGSPICE_VERSION"
 curl -sSfL -o "$tarball" \
     "https://downloads.sourceforge.net/project/ngspice/ng-spice-rework/$NGSPICE_VERSION/ngspice-$NGSPICE_VERSION.tar.gz"
 if command -v sha256sum >/dev/null; then sum=$(sha256sum "$tarball"); else sum=$(shasum -a 256 "$tarball"); fi
@@ -45,11 +55,14 @@ esac
 # readline and X11 (the interactive program).
 mkdir -p "$work/build"
 cd "$work/build"
-"$src/configure" --prefix="$out" --with-ngshared --enable-xspice --disable-osdi \
-    --disable-openmp --with-fftw3=no --with-readline=no --without-x --disable-debug \
-    >configure.log
-make -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)" >make.log 2>&1 || { tail -40 make.log >&2; exit 1; }
-make install >install.log 2>&1 || { tail -40 install.log >&2; exit 1; }
+step "configure"
+quiet configure.log "$src/configure" --prefix="$out" --with-ngshared --enable-xspice --disable-osdi \
+    --disable-openmp --with-fftw3=no --with-readline=no --without-x --disable-debug
+jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+step "make -j$jobs"
+quiet make.log make -j"$jobs"
+step "make install"
+quiet install.log make install
 
 # Only what the app loads. table.cm is GPL (the rest BSD, LGPL or public domain) and
 # loads into the app's process: not shipped.
@@ -72,4 +85,5 @@ esac
 cp "$src/COPYING" "$out/COPYING"
 echo "$NGSPICE_VERSION" >"$out/VERSION"
 rm -rf "$work"
+step "done: $out"
 echo "$out"
