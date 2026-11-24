@@ -30,6 +30,11 @@ Schematic wires and buses, and tracks on the board, tidy themselves after every 
 
 ## Selecting and dragging
 
+Click selects, Shift+click adds to the selection and Cmd+click (Ctrl elsewhere) toggles.
+Dragging from empty space draws a box that selects what lies entirely inside it; hold
+Shift while dragging to select everything the box touches. Cmd adds the box's items to
+the selection.
+
 Dragging keeps things connected, in the schematic and on the board:
 
 - Wires attached to a moved symbol follow it, and horizontal and vertical wires stay so.

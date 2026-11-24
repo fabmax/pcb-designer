@@ -82,21 +82,33 @@ fn box_select_inside_and_crossing() {
     let r1 = symbol(&doc, "R1");
     // R1 is on the demo's Indicator sheet.
     let v = ViewId::Sheet(r1.sheet);
-    // Empty area far away from everything, dragging left to right around R1 only.
+    // A box around R1 only, from empty space.
     let a = r1.pos + Point::mm(-6.5, 6.0);
     let b = r1.pos + Point::mm(6.5, -6.0);
-    press(&mut it, &mut doc.target(v), a);
-    drag(&mut it, &mut doc.target(v), b);
-    assert!(it.box_rect().is_some_and(|(_, crossing)| !crossing));
-    release(&mut it, &mut doc.target(v), b);
-    assert!(it.selection.contains(&ObjectId::Symbol(r1.id)));
-    let window = it.selection.len();
+    // Without Shift, either direction selects what the box encloses.
+    let mut inside = Vec::new();
+    for (from, to) in [(a, b), (b, a)] {
+        press(&mut it, &mut doc.target(v), from);
+        drag(&mut it, &mut doc.target(v), to);
+        assert!(it.box_rect().is_some_and(|(_, crossing)| !crossing));
+        release(&mut it, &mut doc.target(v), to);
+        assert!(it.selection.contains(&ObjectId::Symbol(r1.id)));
+        inside.push(it.selection.clone());
+    }
+    assert_eq!(inside[0], inside[1]);
 
-    // Crossing (right to left) selects at least as much.
-    press(&mut it, &mut doc.target(v), b);
-    drag(&mut it, &mut doc.target(v), a);
-    release(&mut it, &mut doc.target(v), a);
-    assert!(it.selection.len() >= window);
+    // A thin box across R1's middle encloses nothing; with Shift it touches R1.
+    let (c, d) = (r1.pos + Point::mm(-0.3, 6.0), r1.pos + Point::mm(0.3, -6.0));
+    press(&mut it, &mut doc.target(v), c);
+    drag(&mut it, &mut doc.target(v), d);
+    release(&mut it, &mut doc.target(v), d);
+    assert!(!it.selection.contains(&ObjectId::Symbol(r1.id)));
+    let shift = |p| PointerInput { shift: true, ..input(p) };
+    press(&mut it, &mut doc.target(v), c);
+    it.pointer(&mut doc.target(v), &PointerInput { down: true, ..shift(d) });
+    assert!(it.box_rect().is_some_and(|(_, crossing)| crossing));
+    it.pointer(&mut doc.target(v), &PointerInput { released: true, ..shift(d) });
+    assert!(it.selection.contains(&ObjectId::Symbol(r1.id)));
 
     // Clicking empty space clears.
     let far = Point::mm(500.0, 500.0);

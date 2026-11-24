@@ -996,7 +996,7 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   sheet returns an empty view. `LibraryDoc` wraps a document whose
   project holds only a library; the Project Library's `LibraryDoc` wraps the project
   document itself (one undo history).
-- `Interaction`: click/shift/cmd select, box (left→right inside, right→left crossing),
+- `Interaction`: click/shift/cmd select, box (inside, or touching with Shift held at the release; so only Cmd adds),
   drag with snap of the grabbed reference point (one undo step; R rotates while
   dragging), `snap` toggle. Locked footprints don't move. A press becomes a drag when
   the *hand* moves the pointer 4 points on screen (`PointerInput::screen`), not when the

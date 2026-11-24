@@ -16,7 +16,7 @@ pub struct PointerInput {
     pub released: bool,
     /// Primary button is held.
     pub down: bool,
-    /// Add to the selection.
+    /// Add to the selection on a click; a box selects what it touches.
     pub shift: bool,
     /// Toggle in the selection (Cmd on macOS, Ctrl elsewhere).
     pub command: bool,
@@ -127,6 +127,8 @@ enum State<I> {
     Boxing {
         start: Point,
         current: Point,
+        /// Shift is held: the box selects what it touches, not only what it encloses.
+        crossing: bool,
     },
 }
 
@@ -226,10 +228,10 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
         self.refresh(t);
     }
 
-    /// Active box selection: rectangle and whether it is a crossing (right-to-left) box.
+    /// Active box selection: rectangle and whether it is a crossing (Shift held) box.
     pub fn box_rect(&self) -> Option<(Rect, bool)> {
         match self.state {
-            State::Boxing { start, current } => Some((Rect::from_points(start, current), current.x < start.x)),
+            State::Boxing { start, current, crossing } => Some((Rect::from_points(start, current), crossing)),
             _ => None,
         }
     }
@@ -307,7 +309,7 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                         // Grabbed where the pointer is now, less the hand's motion: if the
                         // view moved meanwhile, the object doesn't jump with it.
                         Some(h) => self.start_drag(t, p - moved, h).map_or(State::Idle, State::Dragging),
-                        None => State::Boxing { start, current: p },
+                        None => State::Boxing { start, current: p, crossing: input.shift },
                     }
                 } else {
                     State::Pressed { start, start_screen, hit, was_selected }
@@ -332,13 +334,15 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                     State::Dragging(drag)
                 }
             }
-            (State::Boxing { start, current }, p) => {
+            (State::Boxing { start, current, .. }, p) => {
                 let current = p.unwrap_or(current);
+                // Shift may go down or up during the drag; its state at the release counts.
+                let crossing = input.shift;
                 if input.released || !input.down {
-                    let crossing = current.x < start.x;
                     let mut found = t.in_rect(Rect::from_points(start, current), crossing);
                     found.sort();
-                    if !(input.shift || input.command) {
+                    // Shift picks the box's mode, so only Cmd adds to the selection.
+                    if !input.command {
                         self.selection.clear();
                     }
                     for id in found {
@@ -348,7 +352,7 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                     }
                     State::Idle
                 } else {
-                    State::Boxing { start, current }
+                    State::Boxing { start, current, crossing }
                 }
             }
         };
