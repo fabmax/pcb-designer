@@ -16,6 +16,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # The simulation tests fail instead of skipping without ngspice (sim::skip_without_ngspice).
+  REQUIRE_NGSPICE: 1
 
 jobs:
   lint:

@@ -206,9 +206,12 @@ fn kicad_simulation_demos_match_kicad() {
         eprintln!("KICAD_CLI not set; skipped");
         return;
     };
-    let Ok(library) = sim::Libngspice::find(None) else {
-        eprintln!("ngspice not found; skipped");
-        return;
+    let library = match sim::Libngspice::find(None) {
+        Ok(l) => l,
+        Err(e) => {
+            sim::skip_without_ngspice(e);
+            return;
+        }
     };
     let Some(dir) = demos() else { return };
     let mut list = Vec::new();

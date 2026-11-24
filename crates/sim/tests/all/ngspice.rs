@@ -1,6 +1,7 @@
 //! Circuits run by ngspice, checked against what they should do: by every backend (the
 //! shared library in this process and in a worker process), which must agree. Skipped (with a note)
-//! when ngspice isn't installed, so a fresh checkout's tests pass.
+//! when ngspice isn't installed, so a fresh checkout's tests pass
+//! ([`sim::skip_without_ngspice`]).
 
 use model::*;
 use sim::{Backend, Cancel, Libngspice, SimError, SimResult, Worker, WorkerCommand};
@@ -18,7 +19,7 @@ fn library() -> Option<Libngspice> {
     match Libngspice::find(None) {
         Ok(n) => Some(n),
         Err(e) => {
-            eprintln!("skipped: {e}");
+            sim::skip_without_ngspice(e);
             None
         }
     }
@@ -610,7 +611,7 @@ fn a_parameter_sweep_in_parallel_processes() {
 fn the_bundled_library_comes_first() {
     // scripts/build-ngspice.sh's build counts as bundled in development.
     let Some(bundled) = sim::bundled_library() else {
-        eprintln!("skipped: no bundled libngspice (scripts/build-ngspice.sh)");
+        sim::skip_without_ngspice("no bundled libngspice (scripts/build-ngspice.sh)");
         return;
     };
     if std::env::var_os("NGSPICE_LIBRARY").is_some() {

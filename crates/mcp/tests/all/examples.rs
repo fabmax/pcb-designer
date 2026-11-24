@@ -43,7 +43,7 @@ fn amp_passes_erc_and_drc() {
 fn amp_simulates_with_ngspice() {
     let engine = sim::Engine::find(&sim::EngineSettings::default());
     if engine.library.is_none() {
-        eprintln!("skipped: ngspice not found");
+        sim::skip_without_ngspice("ngspice not found");
         return;
     }
     let mut host = amp();

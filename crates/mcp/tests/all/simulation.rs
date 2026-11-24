@@ -243,7 +243,7 @@ fn ngspice() -> bool {
     let engine = sim::Engine::find(&sim::EngineSettings::default());
     let found = engine.library.is_some();
     if !found {
-        eprintln!("skipped: ngspice not found");
+        sim::skip_without_ngspice("ngspice not found");
     }
     found
 }

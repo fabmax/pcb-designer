@@ -22,7 +22,7 @@ sudo apt install libwayland-dev libxkbcommon-dev libx11-dev libxcursor-dev libxi
 ```
 
 The simulation tests run against ngspice (in the test process and in worker processes)
-and skip without it. Build the version the app bundles once with
+and skip without it (with `REQUIRE_NGSPICE` set, as in CI, they fail instead). Build the version the app bundles once with
 `scripts/build-ngspice.sh` (a C compiler, make, bison, flex and patch; on Windows in an
 MSYS2 UCRT64 shell): it goes to `target/ngspice/`, where tests and `cargo run` find it.
 Without it, an installed libngspice is used. Tests that render

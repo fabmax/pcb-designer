@@ -235,6 +235,17 @@ impl Engine {
 
 /// Builds the netlist of `analysis` and runs it. Netlist errors stop it before the
 /// backend starts; warnings stay in the result's netlist.
+/// For tests that need ngspice: without it they skip with a note, so a fresh checkout's
+/// tests pass. CI, which builds the bundled one, sets `REQUIRE_NGSPICE`: there a skip
+/// would hide a broken build, so it fails instead.
+#[doc(hidden)]
+pub fn skip_without_ngspice(why: impl std::fmt::Display) {
+    if std::env::var_os("REQUIRE_NGSPICE").is_some() {
+        panic!("ngspice is required (REQUIRE_NGSPICE): {why}");
+    }
+    eprintln!("skipped: {why}");
+}
+
 pub fn simulate(
     project: &Project,
     conn: &Connectivity,
