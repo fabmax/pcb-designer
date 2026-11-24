@@ -348,7 +348,7 @@ fn track_near(doc: &mut Document, raw: Point, layer: LayerId, tol: Coord) -> Opt
 }
 
 /// The point of segment `a`–`b` nearest to `p`.
-fn on_segment(p: Point, a: Point, b: Point) -> Point {
+pub(crate) fn on_segment(p: Point, a: Point, b: Point) -> Point {
     let (dx, dy) = ((b.x - a.x) as f64, (b.y - a.y) as f64);
     let len2 = dx * dx + dy * dy;
     if len2 == 0.0 {

@@ -398,6 +398,60 @@ pub fn on_bus(project: &Project, sheet: Id, p: Point) -> bool {
         || s.bus_entries.iter().any(|e| e.sheet == sheet && e.pos == p)
 }
 
+/// Where `raw` snaps for a tool connecting to wires (`bus`: to buses) on `sheet`, `tol`
+/// the snap radius (a few screen points): the nearest connection point within `tol`
+/// (pin end, wire end, label or power port, junction, bus entry end, sheet pin), else
+/// the grid point `grid` projected onto a wire under the pointer (off-grid wires have no
+/// grid point on them), else `grid`. Candidates come from the sheet view's R-tree.
+pub fn snap_to_connection(doc: &Document, sheet: Id, raw: Point, grid: Point, tol: Coord, bus: bool) -> Point {
+    let project = doc.project();
+    let s = &project.schematic;
+    let near = doc.view(crate::ViewId::Sheet(sheet)).index.in_rect(Rect::around(raw, tol), true);
+    let mut points = Vec::new();
+    let mut segments = Vec::new();
+    for id in near {
+        match id {
+            ObjectId::Wire(i) if !bus => {
+                if let Some(w) = s.wires.get(i) {
+                    points.extend([w.a, w.b]);
+                    segments.push((w.a, w.b));
+                }
+            }
+            ObjectId::BusWire(i) if bus => {
+                if let Some(w) = s.bus_wires.get(i) {
+                    points.extend([w.a, w.b]);
+                    segments.push((w.a, w.b));
+                }
+            }
+            ObjectId::BusEntry(i) => {
+                if let Some(e) = s.bus_entries.get(i) {
+                    points.push(if bus { e.pos } else { e.wire_end() });
+                }
+            }
+            ObjectId::Label(i) if !bus => points.extend(s.labels.get(i).map(|l| l.pos)),
+            ObjectId::Junction(i) if !bus => points.extend(s.junctions.get(i).map(|j| j.pos)),
+            ObjectId::Symbol(i) if !bus => points.extend(editor_core::query::pin_points(project, i)),
+            ObjectId::Sheet(child) => {
+                if let Some((_, pins)) = s.sheet_symbol(child) {
+                    points.extend(pins.iter().map(|p| p.pos));
+                }
+            }
+            _ => {}
+        }
+    }
+    let dist = |p: Point| (p - raw).length();
+    if let Some(p) = points.into_iter().filter(|&p| dist(p) <= tol as f64).min_by(|&a, &b| dist(a).total_cmp(&dist(b)))
+    {
+        return p;
+    }
+    segments
+        .into_iter()
+        .map(|(a, b)| (editor_core::copper::point_seg_dist(raw, a, b), a, b))
+        .filter(|&(d, ..)| d <= tol as f64)
+        .min_by(|x, y| x.0.total_cmp(&y.0))
+        .map_or(grid, |(_, a, b)| crate::pcb_tools::on_segment(grid, a, b))
+}
+
 impl Document {
     /// Is `p` a connection point on `sheet` (see [`connects`])?
     pub fn connects(&mut self, sheet: Id, p: Point) -> bool {
@@ -542,6 +596,23 @@ impl SchPlacer {
                 _ => false,
             };
         }
+    }
+
+    /// Where the raw cursor `raw` snaps (`grid`: its grid point, `tol`: the snap radius):
+    /// tools that connect snap to connection points and wires (buses for the bus tools,
+    /// see [`snap_to_connection`]), the others to the grid.
+    pub fn snap(&self, doc: &Document, raw: Point, grid: Point, tol: Coord) -> Point {
+        let bus = match self.tool {
+            SchTool::Bus | SchTool::BusEntry => true,
+            SchTool::Wire
+            | SchTool::Label
+            | SchTool::Power
+            | SchTool::Junction
+            | SchTool::NoConnect
+            | SchTool::PowerFlag => false,
+            _ => return grid,
+        };
+        snap_to_connection(doc, self.sheet_in(doc.project()), raw, grid, tol, bus)
     }
 
     /// A click at the snapped point `p`.

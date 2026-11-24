@@ -297,3 +297,53 @@ fn new_buses_and_signals_leaving_them_ask_for_a_name() {
     t.click(&mut doc, p(0.0, 10.16)).unwrap();
     assert_eq!(t.take_prompt(&mut doc, grid), None, "nothing leaves this one");
 }
+
+#[test]
+fn connecting_tools_snap_to_off_grid_pins_and_wires() {
+    let mut doc = doc_with(vec![PART_RESISTOR], builtin::builtin_library());
+    let mut t = SchPlacer::default();
+    let g = mm(1.27);
+    let grid = |p: Point| {
+        Point::new((p.x as f64 / g as f64).round() as Coord * g, (p.y as f64 / g as f64).round() as Coord * g)
+    };
+    // Placed off the grid, so its pins are too.
+    t.place(PART_RESISTOR);
+    t.click(&mut doc, Point::mm(0.4, 0.3)).unwrap();
+    let r = symbols(&doc)[0].id;
+    let (p1, p2) = (pin(&doc, r, "1"), pin(&doc, r, "2"));
+    assert_ne!(grid(p1), p1);
+    let tol = mm(0.5);
+
+    // Near a pin end, a wire snaps onto it; a bus doesn't; Alt (the grid only) is the
+    // caller passing the grid point instead.
+    t.set_tool(SchTool::Wire);
+    let raw = p1 + Point::mm(0.3, 0.2);
+    assert_eq!(t.snap(&doc, raw, grid(raw), tol), p1);
+    let far = p1 + Point::mm(3.0, 3.0);
+    assert_eq!(t.snap(&doc, far, grid(far), tol), grid(far), "out of reach: the grid");
+    t.set_tool(SchTool::Bus);
+    assert_eq!(t.snap(&doc, raw, grid(raw), tol), grid(raw));
+
+    // A wire from both pins out to the side, off the grid like them.
+    t.set_tool(SchTool::Wire);
+    // Straight on, away from the part.
+    let out = p1 + (p1 - p2);
+    let start = t.snap(&doc, raw, grid(raw), tol);
+    t.click(&mut doc, start).unwrap();
+    t.click(&mut doc, out).unwrap();
+    t.click(&mut doc, out).unwrap();
+    let w = doc.project().schematic.wires.iter().next().unwrap().clone();
+    assert!(w.a == p1 || w.b == p1, "the wire starts on the off-grid pin");
+    // Near the middle of it: the grid point projected onto the wire, which is on it.
+    let mid = Point::new((w.a.x + w.b.x) / 2, (w.a.y + w.b.y) / 2) + Point::mm(0.2, 0.2);
+    let on = t.snap(&doc, mid, grid(mid), tol);
+    assert_ne!(on, grid(mid));
+    assert!(editor_core::connectivity::on_segment_inside(on, w.a, w.b));
+
+    // Labels and no-connect flags snap too; free text doesn't.
+    t.set_tool(SchTool::NoConnect);
+    let near2 = p2 + Point::mm(-0.2, 0.3);
+    assert_eq!(t.snap(&doc, near2, grid(near2), tol), p2);
+    t.set_tool(SchTool::Text);
+    assert_eq!(t.snap(&doc, near2, grid(near2), tol), grid(near2));
+}

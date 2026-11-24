@@ -49,6 +49,12 @@ field wraps in the panel; only its line breaks start new lines in the frame.
 
 - **Wires and buses:** the Wire and Bus tools draw one leg per click; see
   [Drawing wires and tracks](editing.md#drawing-wires-and-tracks).
+- **Snapping:** wires only connect where their ends meet exactly, so the tools that
+  connect (wire, bus, bus entry, label, power port and flag, junction, no-connect) snap
+  to what's near the pointer, within a few screen pixels at any zoom: pin ends, wire
+  ends, labels, junctions and sheet pins, else onto a wire under the pointer (buses for
+  the bus tools), else to the grid. That makes pins off the grid easy to wire. Alt snaps
+  to the grid only.
 - **Labels:** local labels connect on their sheet only (nets are named `/Sheet/NAME`),
   global and power labels everywhere.
 - **Power ports** (Power tool, ⌘P) are drawn like KiCad's power symbols: pick the glyph

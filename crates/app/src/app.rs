@@ -5206,10 +5206,16 @@ impl TreeBehavior<'_> {
         } else if sheet.is_some() && self.sch.is_placing() {
             if tools_here {
                 let pixel = 1e6 / pane.canvas.camera.zoom;
+                // Snaps to pins, wires and labels within a few screen points, like
+                // routing does to copper; Alt: the grid only.
+                let tol = (8.0 * pixel) as Coord;
+                let grid_only = ui.input(|i| i.modifiers.alt);
                 let world = response.hover_pos().map(|p| {
                     let [x, y] = pane.canvas.screen_to_world(p);
-                    self.sch.steer(Point::mm(x, y), pixel);
-                    pane.it.snap(Point::mm(x, y))
+                    let raw = Point::mm(x, y);
+                    self.sch.steer(raw, pixel);
+                    let grid = pane.it.snap(raw);
+                    if grid_only { grid } else { self.sch.snap(doc, raw, grid, tol) }
                 });
                 self.sch.hover(doc, world);
                 if let Some(p) = world

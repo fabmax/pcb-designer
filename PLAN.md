@@ -1024,7 +1024,11 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   tools snap to `Content::snap_points`, Alt grid only), `sch_tools` (wire, bus, bus entry, label, power, junction, no connect, place;
   `bend` for corners; `SchPlacer::sheet` is the sheet they work on, `set_sheet` ends a
   wire begun elsewhere; the Sheet tool places a new sheet's symbol with one
-  `AddSheet`), `pcb_tools` (route with copper snapping and the checks above: a clash
+  `AddSheet`; the connecting tools snap like routing does, `SchPlacer::snap` →
+  `snap_to_connection`: the nearest pin end, wire end, label, junction, bus entry end
+  or sheet pin within 8 screen points, else the grid point projected onto a wire under
+  the pointer, else the grid; the bus tools take buses instead of wires; candidates
+  from the sheet view's R-tree; Alt grid only, decided by the app), `pcb_tools` (route with copper snapping and the checks above: a clash
   turns the ghost to the flagged colour with a marker and refuses the click unless
   `allow_violations`; L changes layer + via (through, or the two layers with
   `via_pair`); via (span `via_span`), outline, zone, text (layer, F → `LayerId::
