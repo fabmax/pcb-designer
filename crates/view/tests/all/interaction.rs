@@ -97,18 +97,31 @@ fn box_select_inside_and_crossing() {
     }
     assert_eq!(inside[0], inside[1]);
 
-    // A thin box across R1's middle encloses nothing; with Shift it touches R1.
+    // A thin box across R1's middle encloses nothing; with Alt it touches R1, which shows
+    // as selected while dragging.
     let (c, d) = (r1.pos + Point::mm(-0.3, 6.0), r1.pos + Point::mm(0.3, -6.0));
     press(&mut it, &mut doc.target(v), c);
     drag(&mut it, &mut doc.target(v), d);
     release(&mut it, &mut doc.target(v), d);
     assert!(!it.selection.contains(&ObjectId::Symbol(r1.id)));
-    let shift = |p| PointerInput { shift: true, ..input(p) };
+    let alt = |p| PointerInput { alt: true, ..input(p) };
     press(&mut it, &mut doc.target(v), c);
-    it.pointer(&mut doc.target(v), &PointerInput { down: true, ..shift(d) });
+    it.pointer(&mut doc.target(v), &PointerInput { down: true, ..alt(d) });
     assert!(it.box_rect().is_some_and(|(_, crossing)| crossing));
-    it.pointer(&mut doc.target(v), &PointerInput { released: true, ..shift(d) });
+    assert!(doc.view(v).is_highlighted(ObjectId::Symbol(r1.id)), "live preview");
+    assert!(it.selection.is_empty(), "the box replaces the selection");
+    it.pointer(&mut doc.target(v), &PointerInput { released: true, ..alt(d) });
     assert!(it.selection.contains(&ObjectId::Symbol(r1.id)));
+
+    // Shift adds to the selection; the preview shows both.
+    let selected = it.selection.clone();
+    let shift = |p| PointerInput { shift: true, ..input(p) };
+    let (e, f) = (a + Point::mm(30.0, 0.0), b + Point::mm(30.0, 0.0));
+    press(&mut it, &mut doc.target(v), e);
+    it.pointer(&mut doc.target(v), &PointerInput { down: true, ..shift(f) });
+    assert!(selected.iter().all(|id| doc.view(v).is_highlighted(*id)));
+    it.pointer(&mut doc.target(v), &PointerInput { released: true, ..shift(f) });
+    assert!(selected.iter().all(|id| it.selection.contains(id)));
 
     // Clicking empty space clears.
     let far = Point::mm(500.0, 500.0);

@@ -271,6 +271,7 @@ pub fn pointer_input(
             down: i.pointer.primary_down(),
             shift: i.modifiers.shift,
             command: i.modifiers.command,
+            alt: i.modifiers.alt,
             tolerance: px_to_nm(5.0),
             drag_threshold: px_to_nm(4.0),
             screen: pos.map(|p| [p.x as f64, p.y as f64]),

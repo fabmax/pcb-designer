@@ -32,8 +32,8 @@ Schematic wires and buses, and tracks on the board, tidy themselves after every 
 
 Click selects, Shift+click adds to the selection and Cmd+click (Ctrl elsewhere) toggles.
 Dragging from empty space draws a box that selects what lies entirely inside it; hold
-Shift while dragging to select everything the box touches. Cmd adds the box's items to
-the selection.
+Alt (Option) while dragging to select everything the box touches. With Shift or Cmd the
+box adds to the selection. What the box will select shows as selected while you drag.
 
 Dragging keeps things connected, in the schematic and on the board:
 

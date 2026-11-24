@@ -16,10 +16,12 @@ pub struct PointerInput {
     pub released: bool,
     /// Primary button is held.
     pub down: bool,
-    /// Add to the selection on a click; a box selects what it touches.
+    /// Add to the selection.
     pub shift: bool,
     /// Toggle in the selection (Cmd on macOS, Ctrl elsewhere).
     pub command: bool,
+    /// Alt (Option): a box selects what it touches, not only what it encloses.
+    pub alt: bool,
     /// Hit test tolerance (a few pixels, in nm).
     pub tolerance: Coord,
     /// Distance the pointer must move before a press becomes a drag (nm).
@@ -100,6 +102,7 @@ pub trait Target {
     /// Take back the open undo group `group` without a redo step (see
     /// [`Document::retract`](crate::Document::retract)).
     fn retract(&mut self, group: u64);
+    /// Show `selection` as selected (ids may repeat) and `hover` as hovered.
     fn highlight(&mut self, selection: &[Self::Id], hover: Option<Self::Id>);
     /// What a double click on `id` selects (a wire: its whole chain).
     fn chain(&self, id: Self::Id) -> Vec<Self::Id> {
@@ -127,8 +130,12 @@ enum State<I> {
     Boxing {
         start: Point,
         current: Point,
-        /// Shift is held: the box selects what it touches, not only what it encloses.
+        /// Alt is held: the box selects what it touches, not only what it encloses.
         crossing: bool,
+        /// Shift or Cmd is held: the box adds to the selection.
+        add: bool,
+        /// What the box selects as it stands, shown as selected while dragging.
+        found: Vec<I>,
     },
 }
 
@@ -228,10 +235,10 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
         self.refresh(t);
     }
 
-    /// Active box selection: rectangle and whether it is a crossing (Shift held) box.
+    /// Active box selection: rectangle and whether it is a crossing (Alt held) box.
     pub fn box_rect(&self) -> Option<(Rect, bool)> {
         match self.state {
-            State::Boxing { start, current, crossing } => Some((Rect::from_points(start, current), crossing)),
+            State::Boxing { start, current, crossing, .. } => Some((Rect::from_points(start, current), crossing)),
             _ => None,
         }
     }
@@ -256,7 +263,17 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
             self.hover = None;
         }
         let hover = if matches!(self.state, State::Idle) { self.hover } else { None };
-        t.highlight(&self.selection, hover);
+        match &mut self.state {
+            // The selection the box would leave, live.
+            State::Boxing { add, found, .. } => {
+                found.retain(|&id| t.exists(id));
+                // Ids may repeat: `highlight` takes them as a set.
+                let kept: &[I] = if *add { &self.selection } else { &[] };
+                let shown: Vec<I> = kept.iter().chain(found.iter()).copied().collect();
+                t.highlight(&shown, None);
+            }
+            _ => t.highlight(&self.selection, hover),
+        }
     }
 
     pub fn pointer<T: Target<Id = I>>(&mut self, t: &mut T, input: &PointerInput) {
@@ -309,7 +326,13 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                         // Grabbed where the pointer is now, less the hand's motion: if the
                         // view moved meanwhile, the object doesn't jump with it.
                         Some(h) => self.start_drag(t, p - moved, h).map_or(State::Idle, State::Dragging),
-                        None => State::Boxing { start, current: p, crossing: input.shift },
+                        None => State::Boxing {
+                            start,
+                            current: p,
+                            crossing: input.alt,
+                            add: input.shift || input.command,
+                            found: t.in_rect(Rect::from_points(start, p), input.alt),
+                        },
                     }
                 } else {
                     State::Pressed { start, start_screen, hit, was_selected }
@@ -334,15 +357,17 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                     State::Dragging(drag)
                 }
             }
-            (State::Boxing { start, current, .. }, p) => {
-                let current = p.unwrap_or(current);
-                // Shift may go down or up during the drag; its state at the release counts.
-                let crossing = input.shift;
+            (State::Boxing { start, current: old, crossing: was, mut found, .. }, p) => {
+                let current = p.unwrap_or(old);
+                // Modifiers may go down or up during the drag; their state at the release
+                // counts. The box is only searched again when it changed.
+                let (crossing, add) = (input.alt, input.shift || input.command);
+                if current != old || crossing != was {
+                    found = t.in_rect(Rect::from_points(start, current), crossing);
+                }
                 if input.released || !input.down {
-                    let mut found = t.in_rect(Rect::from_points(start, current), crossing);
                     found.sort();
-                    // Shift picks the box's mode, so only Cmd adds to the selection.
-                    if !input.command {
+                    if !add {
                         self.selection.clear();
                     }
                     for id in found {
@@ -352,7 +377,7 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                     }
                     State::Idle
                 } else {
-                    State::Boxing { start, current, crossing }
+                    State::Boxing { start, current, crossing, add, found }
                 }
             }
         };

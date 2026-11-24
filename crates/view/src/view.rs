@@ -1030,6 +1030,11 @@ impl View {
     // Highlights
 
     /// Show `selection` and `hover`. Only changed overlays are redrawn.
+    /// Whether `id` is drawn as selected (the selection, or a box selection's preview).
+    pub fn is_highlighted(&self, id: ObjectId) -> bool {
+        self.selection.contains(&id)
+    }
+
     pub fn set_highlight(&mut self, project: &Project, selection: &[ObjectId], hover: Option<ObjectId>) {
         let _theme = crate::style::scope(self.editor());
         let new: FxHashSet<ObjectId> = selection.iter().copied().collect();
