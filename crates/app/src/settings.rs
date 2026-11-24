@@ -48,11 +48,10 @@ pub struct Settings {
     pub layer_colors: BTreeMap<Theme, BTreeMap<LayerColor, String>>,
     /// The most library item tabs open at once; `None`: [`LIBRARY_TABS`].
     pub library_tabs: Option<usize>,
-    /// The ngspice executable; `None`: found on `PATH` and the usual places.
-    pub ngspice: Option<PathBuf>,
-    /// The ngspice shared library (libngspice); `None`: found in the usual places.
+    /// The ngspice shared library (libngspice); `None`: `NGSPICE_LIBRARY`, else the one
+    /// that comes with the app.
     pub ngspice_library: Option<PathBuf>,
-    /// Every simulation in a separate ngspice process (never the shared library).
+    /// Every simulation in a worker process (the library never loads into the app).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub simulation_process_only: bool,
     /// The editors show a crosshair at the pointer.
@@ -176,9 +175,10 @@ impl Settings {
     /// Where ngspice is and how to run it.
     pub fn engine(&self) -> sim::EngineSettings {
         sim::EngineSettings {
-            executable: self.ngspice.clone(),
             library: self.ngspice_library.clone(),
             process_only: self.simulation_process_only,
+            // The app is its own worker (main.rs).
+            worker: sim::WorkerCommand::current_exe("--sim-worker"),
         }
     }
 

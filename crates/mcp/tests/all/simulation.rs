@@ -238,10 +238,10 @@ fn simulate_refuses_unknown_signals() {
     assert!(err.contains("no analysis"), "{err}");
 }
 
-/// Whether ngspice is found (the executable or the library).
+/// Whether ngspice (the library) is found.
 fn ngspice() -> bool {
     let engine = sim::Engine::find(&sim::EngineSettings::default());
-    let found = engine.process.is_some() || engine.library.is_some();
+    let found = engine.library.is_some();
     if !found {
         eprintln!("skipped: ngspice not found");
     }

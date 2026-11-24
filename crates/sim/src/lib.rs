@@ -3,9 +3,9 @@
 //! * [`netlist`]: the schematic as a SPICE netlist, with maps from nets and pins to SPICE
 //!   names, and the problems found on the way (no ground, values that aren't numbers,
 //!   parts without a model).
-//! * [`ngspice`]: runs ngspice as a separate process (a [`Backend`]); [`shared`]: as a
-//!   shared library (libngspice, loaded at run time), streaming results while it runs.
-//!   [`Engine`] picks one.
+//! * [`shared`]: runs ngspice as a shared library (libngspice, loaded at run time; the
+//!   app bundles one), streaming results while it runs; [`worker`]: the same library in
+//!   a process of our own. [`Engine`] picks one.
 //! * [`raw`]: reads ngspice's raw result files.
 //! * [`results`]: a run's vectors by net and pin; [`report`]: them as text and CSV.
 //!
@@ -22,6 +22,7 @@ pub mod session;
 pub mod shared;
 pub mod spectrum;
 pub mod tune;
+pub mod worker;
 
 use editor_core::connectivity::Connectivity;
 use std::sync::{Arc, Mutex};
@@ -29,11 +30,12 @@ use std::sync::{Arc, Mutex};
 use model::{Analysis, Project};
 
 pub use netlist::{Level, Netlist, SimProblem};
-pub use ngspice::{Cancel, Ngspice};
+pub use ngspice::Cancel;
 pub use raw::{Plot, Vector};
 pub use results::SimResult;
 pub use session::{Attempt, Finished, Outcome, Session, SharedBackend};
 pub use shared::{Libngspice, bundled_library};
+pub use worker::{Worker, WorkerCommand};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SimError {
@@ -69,7 +71,7 @@ pub struct Output {
     pub stopped: bool,
 }
 
-/// Runs a netlist: [`Ngspice`] (a process per run) or [`Libngspice`] (in-process).
+/// Runs a netlist: [`Libngspice`] (in-process) or a [`Worker`] (a process per run).
 pub trait Backend {
     /// Runs `netlist`. Backends that stream put the points into `live` as they come.
     /// Cancelled, a backend returns what it has so far (`stopped`) or
@@ -81,7 +83,7 @@ pub trait Backend {
         true
     }
 
-    /// "ngspice-47, process".
+    /// "libngspice-47, shared library".
     fn describe(&self) -> String;
 }
 
@@ -169,65 +171,65 @@ impl Live {
 /// Where ngspice is and how to run it (the app's settings).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EngineSettings {
-    /// The executable (`None`: `PATH` and the usual places).
-    pub executable: Option<std::path::PathBuf>,
-    /// The shared library (`None`: the usual places).
+    /// The shared library (`None`: `NGSPICE_LIBRARY`, else the bundled one).
     pub library: Option<std::path::PathBuf>,
-    /// Never load the library: every run in a process (a crashing model can't take the
-    /// app down).
+    /// Every run in a worker process (a crashing model can't take the app down).
     pub process_only: bool,
+    /// How to start a worker process (`None`: none; sweeps then run one step at a time).
+    pub worker: Option<WorkerCommand>,
 }
 
-/// Which backend runs simulations: the shared library when found (single runs and the
-/// tuner), processes for parallel sweeps and as the fallback.
+/// Which backend runs simulations: the library in this process (single runs and the
+/// tuner, streaming), worker processes for parallel sweeps, once ngspice exited in this
+/// process, and for everything with `process_only`.
 #[derive(Clone, Debug, Default)]
 pub struct Engine {
-    pub process: Option<Ngspice>,
     pub library: Option<Libngspice>,
-    /// Why neither was found.
+    pub worker: Option<Worker>,
+    /// Why there is no ngspice to run.
     pub error: Option<String>,
 }
 
 impl Engine {
-    /// Finds the executable and, unless `process_only`, the library. A configured path
-    /// that doesn't work is an error even when the other is found.
+    /// Finds the library ([`Libngspice::locate`]) and loads it here, unless
+    /// `process_only` with a worker.
     pub fn find(settings: &EngineSettings) -> Engine {
-        let process = Ngspice::find(settings.executable.as_deref());
-        let library = if settings.process_only {
-            Err(SimError::NotFound("process only".into()))
-        } else {
-            Libngspice::find(settings.library.as_deref())
+        let path = match Libngspice::locate(settings.library.as_deref()) {
+            Ok(p) => p,
+            Err(e) => return Engine { error: Some(e.to_string()), ..Engine::default() },
         };
-        let error = match (&process, &library) {
-            (Err(e), _) if settings.executable.is_some() => Some(e.to_string()),
-            (_, Err(e)) if settings.library.is_some() && !settings.process_only => Some(e.to_string()),
-            (Err(e), Err(_)) => Some(e.to_string()),
-            _ => None,
-        };
-        Engine { process: process.ok(), library: library.ok(), error }
+        let worker = settings.worker.clone().map(|c| Worker::new(c, path.clone()));
+        if settings.process_only && worker.is_some() {
+            return Engine { library: None, worker, error: None };
+        }
+        match Libngspice::load(&path) {
+            Ok(l) => Engine { library: Some(l), worker, error: None },
+            Err(e) => Engine { library: None, worker: None, error: Some(e.to_string()) },
+        }
     }
 
-    /// The backend for `analysis`: the library, but for sweeps when the executable is
-    /// there too, and once ngspice exited in this process ([`Libngspice::exited`]).
+    fn use_worker(&self, sweep: bool) -> bool {
+        self.worker.is_some() && (sweep || self.library.is_none() || Libngspice::exited())
+    }
+
+    /// The backend for `analysis` (see [`Engine`]).
     pub fn backend(&self, analysis: &Analysis) -> Result<session::SharedBackend, String> {
-        let process_first = analysis.step.is_some() || Libngspice::exited();
-        let library = self.library.clone().map(|l| Arc::new(l) as session::SharedBackend);
-        let process = self.process.clone().map(|p| Arc::new(p) as session::SharedBackend);
         if let Some(e) = &self.error {
             return Err(e.clone());
         }
-        let pick = if process_first { process.or(library) } else { library.or(process) };
-        pick.ok_or_else(|| "ngspice is not installed".into())
+        if self.use_worker(analysis.step.is_some()) {
+            return Ok(Arc::new(self.worker.clone().expect("worker")));
+        }
+        let library = self.library.clone().ok_or_else(|| "ngspice is not available".to_string())?;
+        Ok(Arc::new(library))
     }
 
-    /// What runs single analyses: "libngspice-47, shared library".
+    /// What runs single analyses: "libngspice-47, shared library (bundled)".
     pub fn describe(&self) -> Option<String> {
-        match (&self.library, &self.process) {
-            (Some(_), Some(p)) if Libngspice::exited() => Some(p.describe()),
-            (Some(l), _) => Some(l.describe()),
-            (None, Some(p)) => Some(p.describe()),
-            _ => None,
+        if self.use_worker(false) {
+            return self.worker.as_ref().map(Worker::describe);
         }
+        self.library.as_ref().map(Libngspice::describe)
     }
 }
 

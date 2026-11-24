@@ -54,9 +54,7 @@ Linux and Windows (x86_64).
 - **Linux:** unpack `pcb-designer` from the archive and run it.
 - **Windows:** unzip and run `pcb-designer.exe`.
 
-For simulation, install [ngspice](https://ngspice.sourceforge.io/) as well
-(`brew install ngspice libngspice`, `apt install ngspice libngspice0`, or the Windows
-download); see [Simulation](docs/simulation.md#installing-ngspice).
+[ngspice](https://ngspice.sourceforge.io/) comes with the app for simulation.
 
 ## Build from source
 
@@ -70,7 +68,8 @@ cargo run --release -p app -- --example amp  # a discrete audio amplifier
 cargo test --workspace
 ```
 
-On Linux, install the window system's development packages first; on macOS,
+On Linux, install the window system's development packages first. For simulation,
+`scripts/build-ngspice.sh` builds the ngspice the app bundles; on macOS,
 `scripts/bundle-macos.sh` builds the app bundle. See [Development](docs/development.md).
 
 ## License
@@ -78,5 +77,6 @@ On Linux, install the window system's development packages first; on macOS,
 PCB Designer is licensed under the [MIT License](LICENSE). Bundled third-party assets keep
 their own licenses: [JetBrains Mono](https://www.jetbrains.com/lp/mono/) under the SIL Open
 Font License 1.1 (`crates/render/fonts/OFL.txt`), [Tabler icons](https://tabler.io/icons)
-under MIT (`crates/app/icons/tabler/LICENSE`). KiCad's libraries, which the app can
+under MIT (`crates/app/icons/tabler/LICENSE`), [ngspice](https://ngspice.sourceforge.io/)
+under its own licenses (mainly BSD; its COPYING ships with it). KiCad's libraries, which the app can
 download, are CC-BY-SA 4.0 with an exception for designs made with them.

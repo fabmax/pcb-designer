@@ -42,7 +42,7 @@ fn amp_passes_erc_and_drc() {
 #[test]
 fn amp_simulates_with_ngspice() {
     let engine = sim::Engine::find(&sim::EngineSettings::default());
-    if engine.process.is_none() && engine.library.is_none() {
+    if engine.library.is_none() {
         eprintln!("skipped: ngspice not found");
         return;
     }

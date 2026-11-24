@@ -2,19 +2,18 @@
 //! run, results streamed while the analysis runs, Stop through `bg_halt`.
 //!
 //! * One instance per process: runs are serialised by [`RUN`], and the callbacks write
-//!   into one global [`SINK`]. Parameter sweeps run in parallel processes instead
-//!   ([`Backend::parallel`]).
+//!   into one global [`SINK`]. Parameter sweeps run in parallel worker processes
+//!   instead ([`Backend::parallel`]).
 //! * The analysis runs on ngspice's own background thread (`bg_run`); the calling
 //!   worker waits for `BGThreadRunning`, halting it when cancelled. Then `write` puts the
-//!   plot (whole or as far as it got) into a raw file, read like the process backend's,
-//!   so both name vectors alike.
+//!   plot (whole or as far as it got) into a raw file, read back with [`crate::raw`].
 //! * `SendInitData` / `SendData` stream every accepted point into the [`Live`] plot,
 //!   `SendStat` the percentage.
-//! * Gotchas: a crashing model takes the app down (the process backend is the setting
-//!   for that). `ControlledExit` (ngspice wants to quit) mustn't end the app, but the
+//! * Gotchas: a crashing model takes the app down (worker processes are the setting for
+//!   that, [`crate::worker`]). `ControlledExit` (ngspice wants to quit) mustn't end the app, but the
 //!   instance is spent: calling `ngSpice_Init` again (or `ngSpice_Reset` first) leaves it
 //!   corrupt, and later runs crash. So it's never run again in this process
-//!   ([`Libngspice::exited`]; the engine falls back to processes). The library is never unloaded
+//!   ([`Libngspice::exited`]; the engine falls back to worker processes). The library is never unloaded
 //!   (its threads may still run). No lock may be held across an ngspice call that
 //!   calls back (`SendChar` comes on the calling thread too).
 
@@ -331,20 +330,25 @@ impl Libngspice {
     /// the environment (also an error when it doesn't load), else the one that comes with
     /// the app ([`bundled_library`]), else the usual install places.
     pub fn find(configured: Option<&Path>) -> Result<Libngspice, SimError> {
-        if let Some(path) = configured.filter(|p| !p.as_os_str().is_empty()) {
-            return Libngspice::load(path);
+        Libngspice::load(&Libngspice::locate(configured)?)
+    }
+
+    /// Where [`find`](Libngspice::find) loads the library from, without loading it.
+    pub fn locate(configured: Option<&Path>) -> Result<PathBuf, SimError> {
+        let explicit = configured
+            .filter(|p| !p.as_os_str().is_empty())
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("NGSPICE_LIBRARY").filter(|p| !p.is_empty()).map(PathBuf::from));
+        if let Some(path) = explicit {
+            return if path.is_file() {
+                Ok(path)
+            } else {
+                Err(SimError::NotFound(format!("{} is not a file", path.display())))
+            };
         }
-        if let Some(path) = std::env::var_os("NGSPICE_LIBRARY").filter(|p| !p.is_empty()) {
-            return Libngspice::load(Path::new(&path));
-        }
-        let mut last = None;
-        for path in bundled_library().into_iter().chain(PLACES.iter().map(PathBuf::from).filter(|p| p.is_file())) {
-            match Libngspice::load(&path) {
-                Ok(l) => return Ok(l),
-                Err(e) => last = Some(e),
-            }
-        }
-        Err(last.unwrap_or_else(|| SimError::NotFound("libngspice is not installed".into())))
+        bundled_library()
+            .or_else(|| PLACES.iter().map(PathBuf::from).find(|p| p.is_file()))
+            .ok_or_else(|| SimError::NotFound("libngspice is not installed".into()))
     }
 
     /// Loads the library at `path` (once per path).

@@ -4,17 +4,18 @@ The schematic simulates as drawn, with [ngspice](https://ngspice.sourceforge.io/
 components, nets and labels, plus simulation-only sources that never reach the board.
 Analyses: operating point, DC sweep, AC (frequency response) and transient.
 
-## Installing ngspice
+## ngspice
 
-Install ngspice yourself: `brew install ngspice`, `apt install ngspice`, or the Windows
-download. It is found on `PATH` and the usual install places, or set its path in
-**Settings → Simulation**.
+ngspice comes with the app; there's nothing to install. Runs start at once, and
+transient, AC and DC sweep traces grow while they run. A model that crashes ngspice takes
+the app down with it, though; **Settings → Simulation → Run simulations → In a separate
+process** runs every simulation in a process of its own instead (parameter sweeps always
+do, several at once).
 
-When ngspice's shared library is installed too (Homebrew's `libngspice`, `libngspice0` on
-Debian/Ubuntu, Spice64's `ngspice.dll`, or the one KiCad bundles), runs go through it: they
-start at once, and transient, AC and DC sweep traces grow while they run. A model that
-crashes ngspice then takes the app down with it; **Settings → Simulation → Separate process
-only** runs everything in a process instead (parameter sweeps always do).
+To use another ngspice, choose its shared library (libngspice, `ngspice.dll` on Windows)
+in **Settings → Simulation**, or set the `NGSPICE_LIBRARY` environment variable. Built
+from source, the app uses the ngspice that `scripts/build-ngspice.sh` builds, else one
+that's installed (Homebrew's `libngspice`, `libngspice0` on Debian/Ubuntu).
 
 ngspice runs in its LTspice/PSpice compatibility mode (as in KiCad), so vendor models
 written for those simulators work.
@@ -169,7 +170,7 @@ values aren't.
 
 Tick **Parameter sweep** under an analysis' settings, pick a part value or source setting
 and its values (a list like `1k, 2.2k, 4.7k`, linear from/to/step, or log per decade; at
-most 64). Each value runs as its own ngspice process, several at once. The plot shows a
+most 64). Each value runs in its own process, several at once. The plot shows a
 trace per signal and step ("V(OUT) · R1 = 4.7 kΩ"; one signal: a colour per step, several:
 each signal's steps in fading shades), the table groups them under the signal (click it to
 hide all its steps). An operating point shows a column per step; click a column to sort by

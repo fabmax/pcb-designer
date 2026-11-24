@@ -77,9 +77,8 @@ once; each page has a **Reset to defaults**.
   commands and config to connect a client.
 - **Libraries:** the most library tabs open at once (1–50, 10 by default), and where
   KiCad's libraries are downloaded to.
-- **Simulation:** shared library when found or a separate process only; where ngspice and
-  its library are (empty: found automatically); shows what's in use with its version, or
-  how to install it.
+- **Simulation:** run simulations in the app or in a separate process; another ngspice
+  library (empty: the one that comes with the app); shows what's in use with its version.
 
 These, the panel layout, the window's size and position and the recent projects are saved
 in `settings.json` in the configuration folder (macOS:

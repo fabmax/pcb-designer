@@ -36,8 +36,8 @@ claude mcp add pcb-designer -- /path/to/pcb-designer --mcp-stdio ~/boards/my.pcb
 ```
 
 (**Tools → Copy Claude Code command (headless)** fills in the paths.) Screenshots are
-rendered offscreen; `simulate` finds ngspice like the app (the Settings paths and choice,
-`PATH`, the usual places).
+rendered offscreen; `simulate` runs ngspice like the app (the one that comes with it, or the
+Settings path and choice).
 
 ## Tools
 

@@ -191,7 +191,7 @@ impl SimPanel {
         let e = self.engine.as_ref()?;
         e.error
             .clone()
-            .or_else(|| (e.library.is_none() && e.process.is_none()).then(|| "ngspice is not installed".to_string()))
+            .or_else(|| (e.library.is_none() && e.worker.is_none()).then(|| "ngspice is not available".to_string()))
     }
 
     /// The simulation shown, if it still exists.

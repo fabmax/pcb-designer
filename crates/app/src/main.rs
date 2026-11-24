@@ -101,6 +101,11 @@ use app::{Options, Startup};
 use view::demo::Example;
 
 fn main() -> eframe::Result {
+    // A simulation worker process (sim::worker), started by this app: nothing else.
+    if std::env::args_os().nth(1).is_some_and(|a| a == "--sim-worker") {
+        let args: Vec<std::ffi::OsString> = std::env::args_os().skip(2).collect();
+        std::process::exit(sim::worker::worker_main(&args));
+    }
     env_logger::init();
     let mut opts = Options {
         startup: Startup::Empty,

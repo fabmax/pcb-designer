@@ -103,9 +103,8 @@ const ENTRIES: &[Entry] = &[
     entry(Page::Agent, "Headless mode", "stdio claude code command copy window"),
     entry(Page::Libraries, "Most library tabs", "tabs preview limit maximum open items parts symbols footprints"),
     entry(Page::Libraries, "KiCad library folder", "download path directory kicad"),
-    entry(Page::Simulation, "Run simulations", "spice ngspice shared library process backend crash in use version"),
-    entry(Page::Simulation, "ngspice", "spice simulator path executable install program version"),
-    entry(Page::Simulation, "ngspice library", "spice simulator path libngspice dll dylib shared install"),
+    entry(Page::Simulation, "Run simulations", "spice ngspice app separate process worker crash in use version"),
+    entry(Page::Simulation, "ngspice library", "spice simulator path libngspice dll dylib shared bundled own"),
 ];
 
 /// The search words (lower case; every one has to match).
@@ -238,7 +237,6 @@ pub struct SettingsWindow {
     /// The KiCad folder being typed.
     kicad_text: Option<String>,
     /// The ngspice path being typed.
-    ngspice_text: Option<String>,
     /// The ngspice library path being typed.
     ngspice_lib_text: Option<String>,
     /// What was found for the simulation settings (the settings it was for, the text).
@@ -251,7 +249,6 @@ pub struct SettingsWindow {
 #[derive(Clone, Copy)]
 enum PathField {
     Kicad,
-    Ngspice,
     NgspiceLibrary,
 }
 
@@ -282,11 +279,6 @@ impl SettingsWindow {
                     settings.kicad_dir = Some(path);
                     self.kicad_text = None;
                     changes.kicad_dir = true;
-                }
-                PathField::Ngspice => {
-                    settings.ngspice = Some(path);
-                    self.ngspice_text = None;
-                    changes.ngspice = true;
                 }
                 PathField::NgspiceLibrary => {
                     settings.ngspice_library = Some(path);
@@ -684,60 +676,37 @@ impl SettingsWindow {
 
 impl SettingsWindow {
     fn simulation(&mut self, ui: &mut Ui, rows: &mut Rows, settings: &mut Settings, changes: &mut Changes) {
-        let help = "The shared library starts runs at once (the tuner reacts quicker) and draws traces while \
-                    they run. A model that crashes ngspice takes the app down with it, though: a separate \
-                    process is safe. Parameter sweeps always run in processes, several at once.";
+        let help = "In the app, runs start at once (the tuner reacts quicker). In a separate process, a \
+                    model that crashes ngspice can't take the app down. Traces draw while runs go either \
+                    way, and parameter sweeps always run in separate processes, several at once.";
         rows.row(ui, "Run simulations", Some(help), |ui| {
             let mut process_only = settings.simulation_process_only;
-            ui.selectable_value(&mut process_only, false, "Shared library when found");
-            ui.selectable_value(&mut process_only, true, "Separate process only");
+            ui.selectable_value(&mut process_only, false, "In the app");
+            ui.selectable_value(&mut process_only, true, "In a separate process");
             if process_only != settings.simulation_process_only {
                 settings.simulation_process_only = process_only;
                 changes.ngspice = true;
                 changes.save = true;
             }
         });
-        let help = "Empty: found on PATH and in the usual install folders (Homebrew, /usr/bin, Program Files).";
-        let (text, dialog) = (&mut self.ngspice_text, &mut self.dialog);
-        let choose = (dialog, PathField::Ngspice);
-        if let Some(path) = path_row(ui, rows, "ngspice", help, &settings.ngspice, text, choose) {
-            settings.ngspice = path;
+        let help = "Empty: the ngspice that comes with the app (or NGSPICE_LIBRARY when set). Or a \
+                    libngspice of your own (ngspice.dll on Windows).";
+        let (label, text) = ("ngspice library", &mut self.ngspice_lib_text);
+        let choose = (&mut self.dialog, PathField::NgspiceLibrary);
+        if let Some(path) = path_row(ui, rows, label, help, &settings.ngspice_library, text, choose) {
+            settings.ngspice_library = path;
             changes.ngspice = true;
             changes.save = true;
         }
-        if !settings.simulation_process_only {
-            let help = "libngspice (ngspice.dll on Windows). Empty: the usual install folders (Homebrew, \
-                        /usr/lib, Program Files\\Spice64, KiCad's).";
-            let (label, text) = ("ngspice library", &mut self.ngspice_lib_text);
-            let choose = (&mut self.dialog, PathField::NgspiceLibrary);
-            if let Some(path) = path_row(ui, rows, label, help, &settings.ngspice_library, text, choose) {
-                settings.ngspice_library = path;
-                changes.ngspice = true;
-                changes.save = true;
-            }
-        }
         let engine = settings.engine();
         if self.ngspice_found.as_ref().is_none_or(|(e, _)| *e != engine) {
-            use sim::Backend;
             let found = sim::Engine::find(&engine);
-            let text = match (&found.error, &found.library, &found.process) {
-                (Some(e), ..) => Err(format!("{e}.")),
-                (None, Some(l), p) => {
-                    let mut t = format!("In use: {} · {}", l.describe(), l.path.display());
-                    if let Some(p) = p {
-                        t.push_str(&format!("\nSweeps: {} · {}", p.describe(), p.path.display()));
-                    }
-                    Ok(t)
-                }
-                (None, None, Some(p)) => Ok(format!("In use: {} · {}", p.describe(), p.path.display())),
-                (None, None, None) => Err("ngspice is not installed.".to_string()),
+            let path = found.library.as_ref().map(|l| &l.path).or(found.worker.as_ref().map(|w| &w.library));
+            let text = match (&found.error, found.describe(), path) {
+                (Some(e), ..) => Err(format!("{e}. Leave the field empty for the ngspice that comes with the app.")),
+                (None, Some(d), Some(p)) => Ok(format!("In use: {d} · {}", p.display())),
+                _ => Err("ngspice is not available.".to_string()),
             };
-            let text = text.map_err(|e| {
-                format!(
-                    "{e} Install it (macOS: brew install ngspice; Linux: your package manager; Windows: \
-                     ngspice.sourceforge.io) or choose where it is."
-                )
-            });
             self.ngspice_found = Some((engine, text));
         }
         if let Some((_, found)) = &self.ngspice_found
@@ -752,10 +721,8 @@ impl SettingsWindow {
             });
         }
         reset(ui, rows, || {
-            settings.ngspice = None;
             settings.ngspice_library = None;
             settings.simulation_process_only = false;
-            self.ngspice_text = None;
             self.ngspice_lib_text = None;
             changes.ngspice = true;
             changes.save = true;

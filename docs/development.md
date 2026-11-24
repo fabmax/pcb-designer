@@ -21,8 +21,11 @@ sudo apt install libwayland-dev libxkbcommon-dev libx11-dev libxcursor-dev libxi
   libxrandr-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
 ```
 
-The simulation tests run against ngspice when it's installed (process and shared library;
-see [Simulation](simulation.md#installing-ngspice)) and skip otherwise. Tests that render
+The simulation tests run against ngspice (in the test process and in worker processes)
+and skip without it. Build the version the app bundles once with
+`scripts/build-ngspice.sh` (a C compiler, make, bison, flex and patch; on Windows in an
+MSYS2 UCRT64 shell): it goes to `target/ngspice/`, where tests and `cargo run` find it.
+Without it, an installed libngspice is used. Tests that render
 offscreen skip without a GPU adapter (on Linux, Mesa's `mesa-vulkan-drivers` provides a
 software one).
 

@@ -588,9 +588,9 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   `schematic.json` (`Schematic::simulation`, like the ERC settings), so it rides in the
   change set's `Setup`. The plot is a tab beside the schematic, not a modal window, and
   a widget of our own: `egui_plot` lacks log axes, a second y axis and per-column
-  decimation, and doesn't follow the palettes. The process backend came first; the
-  shared library became the default (the process stays for sweeps, as the fallback and
-  as the safe setting). Not goals for now: mixed-signal, board parasitics, RF.
+  decimation, and doesn't follow the palettes. ngspice comes with the app (built from
+  source, see "Bundled ngspice"): the shared library in the app's process by default,
+  worker processes of our own for sweeps, as the fallback and as the safe setting. Not goals for now: mixed-signal, board parasitics, RF.
 
 - **Model** (`model::simulation`; named so, as `model::sim` would clash with the `sim`
   crate under `use model::*`): `Part::sim: Option<SimModel>` is part content (in the
@@ -638,19 +638,23 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   (`DevicePin`: component, refdes, symbol, pin, key, outer node) for labels (`I(R1.1)`)
   and the device table. Supplies are `VSUPPLY_…` to
   ground. Problems carry the component's symbols for zooming.
-- **ngspice** (`sim::Ngspice`, a `Backend`): `-b -r out.raw circuit.cir` in a temp dir
-  with a `.spiceinit` of `set ngbehavior=ltpsa` (LTspice/PSpice compatibility, as KiCad
-  runs it: vendor `params:` subcircuits fail without it; it must be set at start-up,
-  a `.control` in the netlist is too late), both pipes drained on threads, a `Cancel` polled every 5 ms kills it. Found from the
-  `ngspice` setting, `NGSPICE`, `PATH`, then the usual install places. Exit status 1 with
-  the reasons on stderr on netlist errors (`SimError::Failed`, log kept). Gotchas:
-  ngspice writes plots last analysis first (reversed on read); an operating point has
-  no scale vector; vector names are `v(node)` and `i(vsource)` (older versions
-  `v1#branch`); `No. Points` can exceed the data of a stopped run (the reader takes
-  whole points); B-source lines must use subcircuit parameters by bare name or through
-  a `.param` in the subcircuit — `{…}` expressions of parameters inside a B-source
-  evaluate wrongly in ngspice 47 without an error. Killed (Stop), it returns the raw
-  file's whole points so far as a `stopped` output, if any.
+- **ngspice output gotchas:** plots come last analysis first (reversed on read); an
+  operating point has no scale vector; vector names are `v(node)` and `i(vsource)`
+  (older versions `v1#branch`); `No. Points` can exceed the data of a stopped run (the
+  reader takes whole points); B-source lines must use subcircuit parameters by bare
+  name or through a `.param` in the subcircuit — `{…}` expressions of parameters inside
+  a B-source evaluate wrongly in ngspice 47 without an error. `set ngbehavior=ltpsa`
+  (LTspice/PSpice compatibility, as KiCad runs it: vendor `params:` subcircuits fail
+  without it) must be set before the circuit loads.
+- **Worker** (`sim::Worker`, `worker.rs`): the library in a process of our own, `PROGRAM
+  ARGS… LIBRARY` with the netlist on stdin: the app is its own worker (`pcb-designer
+  --sim-worker`, handled first in `main`), tests use the `sim-worker` binary
+  (`CARGO_BIN_EXE_sim-worker`; other crates' tests have none). It runs `Libngspice`
+  and answers in tab-separated lines starting with `MARK` (ngspice may print to stdout
+  itself): the live plot as it grows (polled every 10 ms), then the plots, log,
+  warnings and `done` or `error`. Floats as Rust's shortest round-trip text, so worker
+  and in-process results are identical. Stop kills it and keeps the live points; dying
+  without an answer is "ngspice crashed". `version` runs one with `--version` (cached).
 - **libngspice** (`sim::Libngspice`, `shared.rs`): loaded with `libloading` (never
   unloaded; one `Api` per path), found from the `ngspice_library` setting,
   `NGSPICE_LIBRARY` (both errors when they don't load), then the bundled one
@@ -670,10 +674,9 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   `RUN` mutex serialises runs, the callbacks write into a global `SINK` (never hold it
   across an ngspice call: `SendChar` also comes on the calling thread). A run:
   `ngSpice_Circ` (fails only on "circuit not parsed": "Error on line" is a line ngspice
-  drops and goes on, as the process does), `bg_run`, wait for `BGThreadRunning`
+  drops and goes on), `bg_run`, wait for `BGThreadRunning`
   (`bg_halt` on cancel), then `write '<tmp>/out.raw'` (single quotes: double ones stay
-  in the name) read by the raw reader so names match the process (`write` sorts
-  vectors: compare by name), `destroy all`, `remcirc`. Streaming: `SendInitData`
+  in the name) read by the raw reader (`write` sorts vectors: compare by name), `destroy all`, `remcirc`. Streaming: `SendInitData`
   names the vectors (`out` → `v(out)`, `v1#branch` → `i(v1)`, the scale moved first),
   `SendData` appends each point to the `Live` plot, `SendStat` ("tran: 42.3%") sets its
   progress. Init: `set ngbehavior=ltpsa`; without its spinit (a library looks in a
@@ -684,16 +687,20 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   exited". The instance is spent for the rest of the process: `ngSpice_Init` again
   (with or without `ngSpice_Reset`) leaves it corrupt and later runs crash (macOS
   malloc traps it), so `Libngspice::exited` makes library runs fail and
-  `Engine::backend` / `describe` pick the process backend.
-- **Versions:** Ubuntu ships ngspice 45 (CI tests it), Homebrew 47. Before 46 current
+  `Engine::backend` / `describe` pick a worker.
+- **Versions:** the app bundles 47; a user's own library may be older (Ubuntu ships
+  45). Before 46 current
   sources have no `r=` (PWL repeat), so a repeating PWL current source is netlisted as
   the I element with its DC and AC parts, plus a hidden repeating V of the PWL less its
   start driving a G of gain 1 beside it.
-- **Engine** (`sim::Engine`, from `EngineSettings`: both paths and `process_only`):
-  `backend(analysis)` is the library, but parameter sweeps get the process (parallel);
-  `Backend::parallel` false makes a session run steps on one worker. A configured path
-  that doesn't work is an error even when the other is found. The app, the headless
-  host (MCP) and `simulate` (CLI) use it; `describe` is "libngspice-47, shared library".
+- **Engine** (`sim::Engine`, from `EngineSettings`: the library path, `process_only`
+  and the `WorkerCommand`): `Libngspice::locate` once, then the library loaded in this
+  process (not with `process_only`) and a `Worker` on the same path. `backend` is the
+  library, but a worker for sweeps (parallel), once ngspice exited here, and with
+  `process_only`; without a worker command (`HeadlessHost` default, other crates'
+  tests) sweeps run their steps one at a time (`Backend::parallel` false). The app,
+  the headless host (MCP) and `simulate` (CLI) use `Settings::engine`; `describe` is
+  "libngspice-47, shared library (bundled)" or "libngspice-47, worker process".
 - `SimResult` reads by net (`voltage`, ground as zeros) and pin (`current`), `Vector`
   has `db`, `phase`, `magnitude` and `at` (interpolated). `sim::report` gives the text
   summary and CSV of the `simulate` command; its rows are the nets, then per device its
@@ -1947,12 +1954,9 @@ defers.
 **Other**
 - Recovery copies of modified external libraries (only the project is kept now), and a
   setting for the interval.
-- Releases: ngspice built from source and linked statically (a pinned version, the
-  `cmake` crate on its CMake build, unused features off: OSDI, RF, PSS, FFTW, sound
-  files, OpenMP, X11; unused device models patched out of its list; XSPICE kept for
-  POLY): no library search, install or bundling. About 730k lines of C, 464k of them
-  device models we mostly don't use. A universal (x86_64 + arm64) macOS app, a Windows
-  installer and a Linux AppImage; ngspice on Windows CI.
+- Releases: a universal (x86_64 + arm64) macOS app (ngspice built twice, `lipo`), a
+  Windows installer and a Linux AppImage. Trimming ngspice's unused device models
+  (464k of its 730k lines) if its size ever matters.
 - macOS signing and notarization: the Apple Developer Program (US$99 a year; an
   individual's legal name shows in the signature, an organisation needs a D-U-N-S
   number), a "Developer ID Application" certificate exported as `.p12`. In the release
@@ -1961,6 +1965,6 @@ defers.
   runtime) instead of the ad-hoc signature, `xcrun notarytool submit --wait`, `xcrun
   stapler staple`. The hardened runtime won't load another developer's libngspice
   (Homebrew's, KiCad's) without the `com.apple.security.cs.disable-library-validation`
-  entitlement; building ngspice in statically (above) avoids that.
+  entitlement; the bundled one is signed with the app's identity, so it loads.
 - Documentation: publish `docs/` as a site (GitHub Pages with a template such as
   just-the-docs), with screenshots.

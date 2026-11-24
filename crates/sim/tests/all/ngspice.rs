@@ -1,20 +1,17 @@
-//! Circuits run by ngspice, checked against what they should do: by every backend found
-//! (the executable and the shared library), which must agree. Skipped (with a note)
+//! Circuits run by ngspice, checked against what they should do: by every backend (the
+//! shared library in this process and in a worker process), which must agree. Skipped (with a note)
 //! when ngspice isn't installed, so a fresh checkout's tests pass.
 
 use model::*;
-use sim::{Backend, Cancel, Libngspice, Ngspice, SimError, SimResult};
+use sim::{Backend, Cancel, Libngspice, SimError, SimResult, Worker, WorkerCommand};
 
 use crate::bench::Bench;
 
-fn ngspice() -> Option<Ngspice> {
-    match Ngspice::find(None) {
-        Ok(n) => Some(n),
-        Err(e) => {
-            eprintln!("skipped: {e}");
-            None
-        }
-    }
+/// The `sim-worker` binary running the library [`library`] loads.
+fn worker() -> Option<Worker> {
+    let path = Libngspice::locate(None).ok()?;
+    let command = WorkerCommand { program: env!("CARGO_BIN_EXE_sim-worker").into(), args: Vec::new() };
+    Some(Worker::new(command, path))
 }
 
 fn library() -> Option<Libngspice> {
@@ -30,11 +27,11 @@ fn library() -> Option<Libngspice> {
 /// Every backend found.
 fn backends() -> Vec<Box<dyn Backend>> {
     let mut out: Vec<Box<dyn Backend>> = Vec::new();
-    if let Some(n) = ngspice() {
-        out.push(Box::new(n));
-    }
     if let Some(l) = library() {
         out.push(Box::new(l));
+    }
+    if let Some(w) = worker() {
+        out.push(Box::new(w));
     }
     out
 }
@@ -340,7 +337,7 @@ fn cancel_stops_a_run() {
         });
         let started = std::time::Instant::now();
         let r = sim::simulate(b.project(), &b.conn(), &a, &*ng, &cancel);
-        // What it had so far (the library always, a process as far as its raw file got).
+        // What it had so far.
         match r {
             Err(SimError::Cancelled) => {}
             Ok(r) => assert!(r.plot.len() > 1, "{}", ng.describe()),
@@ -351,10 +348,15 @@ fn cancel_stops_a_run() {
 }
 
 /// The library streams the points while it runs, its progress too, and Stop keeps
-/// what it has.
+/// what it has; in a worker process too.
 #[test]
 fn the_library_streams_and_stops() {
     let Some(lib) = library() else { return };
+    streams_and_stops(std::sync::Arc::new(lib));
+    streams_and_stops(std::sync::Arc::new(worker().unwrap()));
+}
+
+fn streams_and_stops(backend: sim::SharedBackend) {
     let mut b = Bench::new();
     let sine = Waveform::Sine { offset: 0.0, amplitude: 1.0, frequency: 1e3, delay: 0.0, damping: 0.0, phase: 0.0 };
     b.source("VSource", sine, 0.0, &["A", "GND"]);
@@ -363,7 +365,7 @@ fn the_library_streams_and_stops() {
     let a = b.analysis(AnalysisKind::Tran { stop: 100.0, step: Some(1e-6), start: 0.0, max_step: Some(1e-6) });
     let mut s = sim::Session::default();
     let none = sim::tune::Overrides::default();
-    assert!(s.start_with(b.project(), &b.conn(), &a, &[], &none, std::sync::Arc::new(lib)));
+    assert!(s.start_with(b.project(), &b.conn(), &a, &[], &none, backend));
     let t = std::time::Instant::now();
     // Points come while it runs.
     let live = loop {
@@ -412,7 +414,7 @@ fn the_library_streams_and_stops() {
 
 /// ngspice asking to exit (a `quit`: what it does when it gives up, e.g. when it can't
 /// allocate a run's vectors) doesn't take the app down. The instance is spent: later
-/// library runs fail, and the engine picks processes. It runs in a child process of
+/// library runs fail, and the engine picks worker processes. It runs in a child process of
 /// this test binary, so the other tests' library stays usable.
 #[test]
 fn an_exited_library_runs_no_more() {
@@ -444,13 +446,12 @@ fn an_exited_library_runs_no_more() {
     let a = op(&mut b);
     let r = sim::simulate(b.project(), &b.conn(), &a, &lib, &Cancel::default());
     assert!(matches!(&r, Err(SimError::Failed { message, .. }) if message.contains("restart")), "{r:?}");
-    // The engine runs it in a process instead (when the executable is there).
-    let engine = sim::Engine { process: ngspice(), library: Some(lib), error: None };
-    if engine.process.is_some() {
-        let backend = engine.backend(&a).unwrap();
-        let r = sim::simulate(b.project(), &b.conn(), &a, backend.as_ref(), &Cancel::default()).unwrap();
-        assert!(near(r.op_voltage("OUT").unwrap(), 4.0, 1e-6));
-    }
+    // The engine runs it in a worker process instead.
+    let engine = sim::Engine { library: Some(lib), worker: worker(), error: None };
+    assert!(engine.describe().unwrap().ends_with("worker process"));
+    let backend = engine.backend(&a).unwrap();
+    let r = sim::simulate(b.project(), &b.conn(), &a, backend.as_ref(), &Cancel::default()).unwrap();
+    assert!(near(r.op_voltage("OUT").unwrap(), 4.0, 1e-6));
 }
 
 /// Runs one after the other through the one instance, from several threads.
@@ -538,10 +539,10 @@ fn run_project(project: &Project, conn: &editor_core::connectivity::Connectivity
 
 #[test]
 fn version() {
-    if let Some(ng) = ngspice() {
-        let v = ng.version().unwrap();
+    if let Some(w) = worker() {
+        let v = w.version().unwrap();
         assert!(v.starts_with("ngspice-"), "{v}");
-        assert_eq!(ng.describe(), format!("{v}, process"));
+        assert_eq!(w.describe(), format!("lib{v}, worker process"));
     }
     if let Some(lib) = library() {
         let v = lib.version().unwrap();
@@ -577,7 +578,7 @@ fn differential_and_power_signals_in_a_sweep() {
 
 #[test]
 fn a_parameter_sweep_in_parallel_processes() {
-    let Some(ng) = ngspice() else { return };
+    let Some(ng) = worker() else { return };
     let mut b = Bench::new();
     b.dc(10.0, "IN", "GND");
     b.place("Resistor", "10k", &["IN", "OUT"]);
@@ -619,4 +620,16 @@ fn the_bundled_library_comes_first() {
     let lib = Libngspice::find(None).unwrap();
     assert_eq!(lib.path, bundled);
     assert!(lib.describe().ends_with("shared library (bundled)"), "{}", lib.describe());
+}
+
+#[test]
+fn a_worker_reports_what_goes_wrong() {
+    let Some(w) = worker() else { return };
+    // A library that isn't one.
+    let bad = Worker::new(w.command.clone(), std::path::PathBuf::from("/nonexistent/libngspice.so"));
+    let r = bad.run("* x\nR1 a 0 1k\n.op\n.end\n", &Cancel::default(), &sim::Live::default());
+    assert!(matches!(&r, Err(SimError::NotFound(m)) if m.contains("nonexistent")), "{r:?}");
+    // ngspice's own errors, with its log.
+    let r = w.run("* x\nR1 a 0 bogus_value\n.op\n.end\n", &Cancel::default(), &sim::Live::default());
+    assert!(matches!(&r, Err(SimError::Failed { .. })), "{r:?}");
 }

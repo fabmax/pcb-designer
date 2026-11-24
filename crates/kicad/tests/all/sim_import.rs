@@ -206,12 +206,10 @@ fn kicad_simulation_demos_match_kicad() {
         eprintln!("KICAD_CLI not set; skipped");
         return;
     };
-    let Ok(ngspice) = sim::Ngspice::find(None) else {
+    let Ok(library) = sim::Libngspice::find(None) else {
         eprintln!("ngspice not found; skipped");
         return;
     };
-    // The shared library, when found, must agree with the process on our netlists.
-    let library = sim::Libngspice::find(None).ok();
     let Some(dir) = demos() else { return };
     let mut list = Vec::new();
     projects(&dir, &mut list);
@@ -259,7 +257,7 @@ fn kicad_simulation_demos_match_kicad() {
             continue;
         }
         let live = sim::Live::default();
-        let run = |text: &str, who: &str| match ngspice.run(text, &cancel, &live) {
+        let run = |text: &str, who: &str| match library.run(text, &cancel, &live) {
             Ok(o) => o.plots.into_iter().next(),
             Err(e) => {
                 eprintln!("{name}: {who} netlist failed in ngspice: {e}\n{text}");
@@ -270,20 +268,6 @@ fn kicad_simulation_demos_match_kicad() {
             failures.push(format!("{name}: ngspice failed"));
             continue;
         };
-        if let Some(lib) = &library {
-            match lib.run(&ours.text, &cancel, &live) {
-                Ok(o) => {
-                    let plot = o.plots.into_iter().next().unwrap_or_default();
-                    for v in &our_plot.vectors {
-                        let (a, b) = (v.re.first().copied(), plot.vector(&v.name).and_then(|w| w.re.first().copied()));
-                        if !matches!((a, b), (Some(a), Some(b)) if (a - b).abs() <= 1e-9 * a.abs().max(1.0)) {
-                            failures.push(format!("{name}: {}: process {a:?}, library {b:?}", v.name));
-                        }
-                    }
-                }
-                Err(e) => failures.push(format!("{name}: the library failed: {e}")),
-            }
-        }
         let mut checked = 0;
         for c in p.schematic.components.iter() {
             let Some(device) = ours.devices.get(&c.id) else { continue };
