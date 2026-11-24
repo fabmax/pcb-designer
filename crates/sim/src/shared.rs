@@ -273,7 +273,37 @@ impl PartialEq for Libngspice {
     }
 }
 
-/// Where libngspice is usually installed (after `NGSPICE_LIBRARY`).
+/// The library's file name in the app's bundle and in scripts/build-ngspice.sh's output.
+const BUNDLED_NAME: &str = if cfg!(target_os = "macos") {
+    "libngspice.0.dylib"
+} else if cfg!(windows) {
+    "ngspice.dll"
+} else {
+    "libngspice.so.0"
+};
+
+/// The libngspice that comes with the app, if any: beside the executable (macOS:
+/// `Contents/Frameworks` of the `.app`; Linux: `lib/`; Windows: the exe's folder). In
+/// development, scripts/build-ngspice.sh's output under `target/ngspice/<triple>/lib`,
+/// looked for upwards from the executable (`target/<profile>/`, test binaries deeper).
+pub fn bundled_library() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let mut candidates = vec![if cfg!(target_os = "macos") {
+        dir.join("../Frameworks").join(BUNDLED_NAME)
+    } else if cfg!(windows) {
+        dir.join(BUNDLED_NAME)
+    } else {
+        dir.join("lib").join(BUNDLED_NAME)
+    }];
+    for up in dir.ancestors().skip(1).take(6) {
+        candidates.push(up.join("ngspice").join(env!("SIM_TARGET")).join("lib").join(BUNDLED_NAME));
+    }
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// Where libngspice is usually installed: the last resort, in development without
+/// scripts/build-ngspice.sh's build.
 const PLACES: &[&str] = &[
     "/opt/homebrew/lib/libngspice.0.dylib",
     "/opt/homebrew/lib/libngspice.dylib",
@@ -298,14 +328,17 @@ impl Libngspice {
     }
 
     /// `configured` if given (an error when it doesn't load), else `NGSPICE_LIBRARY` from
-    /// the environment, else the usual install places.
+    /// the environment (also an error when it doesn't load), else the one that comes with
+    /// the app ([`bundled_library`]), else the usual install places.
     pub fn find(configured: Option<&Path>) -> Result<Libngspice, SimError> {
         if let Some(path) = configured.filter(|p| !p.as_os_str().is_empty()) {
             return Libngspice::load(path);
         }
-        let env = std::env::var_os("NGSPICE_LIBRARY").map(PathBuf::from).filter(|p| p.is_file());
+        if let Some(path) = std::env::var_os("NGSPICE_LIBRARY").filter(|p| !p.is_empty()) {
+            return Libngspice::load(Path::new(&path));
+        }
         let mut last = None;
-        for path in env.into_iter().chain(PLACES.iter().map(PathBuf::from).filter(|p| p.is_file())) {
+        for path in bundled_library().into_iter().chain(PLACES.iter().map(PathBuf::from).filter(|p| p.is_file())) {
             match Libngspice::load(&path) {
                 Ok(l) => return Ok(l),
                 Err(e) => last = Some(e),
@@ -417,15 +450,25 @@ fn exited(sink: Sink) -> SimError {
     SimError::Failed { message, log: format!("{}{}", sink.stdout, sink.stderr) }
 }
 
-/// The XSPICE code models beside a library: `lib/ngspice/*.cm` (Homebrew, Linux,
-/// Spice64), KiCad's `PlugIns/sim/ngspice` (macOS).
+/// The XSPICE code models beside a library: `ngspice/*.cm` in its folder (ours, Homebrew,
+/// Linux, Spice64), the `.app`'s `PlugIns/ngspice` (ours on macOS), KiCad's
+/// `PlugIns/sim/ngspice`.
 fn code_models(library: &Path) -> Vec<PathBuf> {
     const MODELS: [&str; 7] =
         ["spice2poly.cm", "analog.cm", "digital.cm", "xtradev.cm", "xtraevt.cm", "table.cm", "tlines.cm"];
     let Some(dir) = library.parent() else { return Vec::new() };
-    let candidates = [dir.join("ngspice"), dir.join("../lib/ngspice"), dir.join("../PlugIns/sim/ngspice")];
+    let candidates = [
+        dir.join("ngspice"),
+        dir.join("../lib/ngspice"),
+        dir.join("../PlugIns/ngspice"),
+        dir.join("../PlugIns/sim/ngspice"),
+    ];
     let Some(folder) = candidates.iter().find(|d| d.join(MODELS[0]).is_file()) else { return Vec::new() };
     MODELS.iter().map(|m| folder.join(m)).filter(|p| p.is_file()).collect()
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(a), Ok(b)) if a == b)
 }
 
 /// How long `bg_run` may take to report its thread started.
@@ -511,7 +554,8 @@ impl Backend for Libngspice {
 
     fn describe(&self) -> String {
         let v = self.version().unwrap_or_else(|| "libngspice".into());
-        format!("lib{v}, shared library")
+        let bundled = bundled_library().is_some_and(|b| same_file(&b, &self.path));
+        format!("lib{v}, shared library{}", if bundled { " (bundled)" } else { "" })
     }
 }
 

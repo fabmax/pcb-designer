@@ -546,7 +546,7 @@ fn version() {
     if let Some(lib) = library() {
         let v = lib.version().unwrap();
         assert!(v.starts_with("ngspice-"), "{v}");
-        assert_eq!(lib.describe(), format!("lib{v}, shared library"));
+        assert!(lib.describe().starts_with(&format!("lib{v}, shared library")), "{}", lib.describe());
     }
 }
 
@@ -603,4 +603,20 @@ fn a_parameter_sweep_in_parallel_processes() {
     for (v, r) in out.iter().zip(&values) {
         assert!(near(*v, 10.0 * r / (10e3 + r), 1e-3), "{out:?}");
     }
+}
+
+#[test]
+fn the_bundled_library_comes_first() {
+    // scripts/build-ngspice.sh's build counts as bundled in development.
+    let Some(bundled) = sim::bundled_library() else {
+        eprintln!("skipped: no bundled libngspice (scripts/build-ngspice.sh)");
+        return;
+    };
+    if std::env::var_os("NGSPICE_LIBRARY").is_some() {
+        eprintln!("skipped: NGSPICE_LIBRARY overrides it");
+        return;
+    }
+    let lib = Libngspice::find(None).unwrap();
+    assert_eq!(lib.path, bundled);
+    assert!(lib.describe().ends_with("shared library (bundled)"), "{}", lib.describe());
 }

@@ -33,7 +33,7 @@ pub use ngspice::{Cancel, Ngspice};
 pub use raw::{Plot, Vector};
 pub use results::SimResult;
 pub use session::{Attempt, Finished, Outcome, Session, SharedBackend};
-pub use shared::Libngspice;
+pub use shared::{Libngspice, bundled_library};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SimError {

@@ -653,8 +653,20 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   file's whole points so far as a `stopped` output, if any.
 - **libngspice** (`sim::Libngspice`, `shared.rs`): loaded with `libloading` (never
   unloaded; one `Api` per path), found from the `ngspice_library` setting,
-  `NGSPICE_LIBRARY`, then the usual places (Homebrew, Linux `libngspice.so.0`,
-  Spice64's `ngspice.dll`, KiCad's bundled one). One instance per process: a global
+  `NGSPICE_LIBRARY` (both errors when they don't load), then the bundled one
+  (`bundled_library`: beside the executable, or in development
+  `target/ngspice/<triple>/lib` upwards from it, the triple from `sim/build.rs`), then
+  the usual places (Homebrew, Linux `libngspice.so.0`, Spice64's `ngspice.dll`,
+  KiCad's bundled one).
+- **Bundled ngspice:** `scripts/build-ngspice.sh` builds the release pinned in
+  `scripts/ngspice.env` (checksum as Homebrew's) with our patches
+  (`scripts/ngspice-patches`) into `target/ngspice/<triple>/` (about 85 s, 5.6 MB):
+  shared, XSPICE and KLU; no OSDI, OpenMP, FFTW, readline, X11. Not shipped:
+  `table.cm` (GPL, loads into our process), the Icarus bridge. Licences: BSD, XSPICE
+  public domain, `numparam` and KLU LGPLv2 (an unmodified shared library is fine),
+  COPYING ships with it. Gotcha (patched): ngspice 47's `ft_numparse` tests
+  `(double)(int)val == val`, undefined above `INT_MAX`; current clang folds it, so
+  `.options rshunt=1e12` became 2.1 GΩ and every result drifted by ~1e-6. One instance per process: a global
   `RUN` mutex serialises runs, the callbacks write into a global `SINK` (never hold it
   across an ngspice call: `SendChar` also comes on the calling thread). A run:
   `ngSpice_Circ` (fails only on "circuit not parsed": "Error on line" is a line ngspice

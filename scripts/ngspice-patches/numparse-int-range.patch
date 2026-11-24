@@ -1,0 +1,15 @@
+--- a/src/frontend/parser/numparse.c
++++ b/src/frontend/parser/numparse.c
+@@ -162,8 +162,10 @@
+                     val, p_cur);
+         }
+ 
+-        /* Test if the number can be represented as an intger */
+-        return (double) (int) val == val;
++        /* Test if the number can be represented as an intger. Out of int's
++         * range the cast is undefined, and recent compilers assume it isn't:
++         * 1e12 then counted as an integer and was stored as INT_MAX. */
++        return val >= INT_MIN && val <= INT_MAX && (double) (int) val == val;
+     }
+ } /* end of function ft_numparse */
+ 
