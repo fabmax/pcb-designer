@@ -1003,8 +1003,10 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   keepouts and filled board drawings are hit on their outline like lines, inside (the
   polygon, minus holes) after everything else, and `Target::grips` says a drag from
   inside doesn't move them: the press then selects only on release, and a drag boxes
-  unless the area is selected with other objects; a touching box takes an area only if
-  it crosses the outline or encloses it), drag with snap of the grabbed reference point (one undo step; R rotates while
+  unless the area is selected with other objects; unfilled board drawings (the board
+  outline) are hit on their line only, `view::stroke_dist`, shared with the part editors;
+  a touching box takes areas and board drawings only where it meets their line,
+  `outline_segments`, or when it encloses them), drag with snap of the grabbed reference point (one undo step; R rotates while
   dragging), `snap` toggle. Locked footprints don't move. A press becomes a drag when
   the *hand* moves the pointer 4 points on screen (`PointerInput::screen`), not when the
   view shifts under it (a panel changing width); the drag then follows the hand's motion.

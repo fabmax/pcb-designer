@@ -261,6 +261,57 @@ fn zones_drag_by_their_outline_and_box_from_inside() {
 }
 
 #[test]
+fn unfilled_drawings_are_hit_on_their_line_only() {
+    // A polygon board outline (as KiCad imports and the amplifier have) around everything
+    // else, and an arc.
+    let mut doc = Document::new(Project::new("T"));
+    let v = ViewId::Board;
+    let corners = vec![Point::mm(0.0, 0.0), Point::mm(50.0, 0.0), Point::mm(50.0, 40.0), Point::mm(0.0, 40.0)];
+    let outline = BoardGraphic {
+        id: Id::new(),
+        layer: LayerId::OUTLINE,
+        shape: Shape::Polygon { points: corners, width: mm(0.1), fill: false },
+    };
+    let arc = BoardGraphic {
+        id: Id::new(),
+        layer: LayerId::OUTLINE,
+        shape: Shape::Arc {
+            center: Point::mm(25.0, 20.0),
+            radius: mm(5.0),
+            start: Angle::ZERO,
+            sweep: 90.0,
+            width: mm(0.1),
+        },
+    };
+    let (o, a) = (ObjectId::BoardGraphic(outline.id), ObjectId::BoardGraphic(arc.id));
+    doc.execute(Command::Insert { objects: vec![Object::BoardGraphic(outline.clone()), Object::BoardGraphic(arc)] })
+        .unwrap();
+    let tol = mm(0.3);
+
+    // Inside the outline, away from its line: nothing to grab, so a drag boxes.
+    let inside = Point::mm(10.0, 10.0);
+    assert_eq!(doc.target(v).hit(inside, tol), None);
+    assert_eq!(doc.target(v).hit(Point::mm(50.1, 20.0), tol), Some(o));
+    let mut it = Interaction::new(mm(0.5));
+    press(&mut it, &mut doc.target(v), inside);
+    drag(&mut it, &mut doc.target(v), inside + Point::mm(5.0, 5.0));
+    assert!(it.box_rect().is_some());
+    release(&mut it, &mut doc.target(v), inside + Point::mm(5.0, 5.0));
+    assert_eq!(doc.project().board.graphics.get(outline.id).unwrap(), &outline);
+
+    // The arc: on it, not on the rest of its circle.
+    assert_eq!(doc.target(v).hit(Point::mm(25.0, 25.0), tol), Some(a), "at 90°");
+    assert_eq!(doc.target(v).hit(Point::mm(25.0, 15.0), tol), None, "at 270°: off the arc");
+
+    // A touching box takes them only where it meets their line.
+    let t = doc.target(v);
+    let small = Rect::from_points(Point::mm(5.0, 5.0), Point::mm(15.0, 15.0));
+    assert!(t.in_rect(small, true).is_empty());
+    assert_eq!(t.in_rect(Rect::from_points(Point::mm(45.0, 5.0), Point::mm(55.0, 10.0)), true), vec![o]);
+    assert_eq!(t.in_rect(Rect::from_points(Point::mm(24.0, 24.0), Point::mm(26.0, 26.0)), true), vec![a]);
+}
+
+#[test]
 fn locked_footprints_do_not_move_and_delete_explains() {
     let mut doc = Document::new(demo_project());
     let mut it = Interaction::new(mm(0.5));

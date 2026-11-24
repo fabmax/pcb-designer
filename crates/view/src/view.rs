@@ -1168,18 +1168,9 @@ impl View {
                     t.path(10_000).windows(2).map(|w| seg_dist(p, w[0], w[1])).fold(f64::MAX, f64::min)
                         - t.width as f64 / 2.0
                 }),
-                ObjectId::BoardGraphic(g) => match project.board.graphics.get(g).map(|g| &g.shape) {
-                    Some(Shape::Line { a, b, width }) => Some(seg_dist(p, *a, *b) - *width as f64 / 2.0),
-                    Some(Shape::Rect { a, b, width, fill: false }) => {
-                        let r = Rect::from_points(*a, *b);
-                        let c = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
-                        Some(
-                            (0..4).map(|i| seg_dist(p, c[i], c[(i + 1) % 4])).fold(f64::MAX, f64::min)
-                                - *width as f64 / 2.0,
-                        )
-                    }
-                    _ => None,
-                },
+                // Unfilled drawings (the board outline among them) by their line only;
+                // filled ones are areas.
+                ObjectId::BoardGraphic(g) => project.board.graphics.get(g).and_then(|g| stroke_dist(&g.shape, p)),
                 _ => None,
             })
             .map(|d| (d <= tol as f64).then_some((0u8, d)))
@@ -1211,9 +1202,10 @@ impl View {
         let mut ids = self.index.in_rect(r, crossing);
         ids.retain(|id| !matches!(id, ObjectId::SymbolField(_) | ObjectId::FootprintField(_)));
         if crossing {
-            ids.retain(|&id| match Area::of(project, id) {
-                Some(area) => {
-                    self.index.bounds(id).is_some_and(|b| r.contains(b.min) && r.contains(b.max)) || area.crosses(r)
+            ids.retain(|&id| match outline_segments(project, id) {
+                Some(segments) => {
+                    self.index.bounds(id).is_some_and(|b| r.contains(b.min) && r.contains(b.max))
+                        || segments.into_iter().any(|(a, b)| seg_touches_rect(a, b, r))
                 }
                 None => true,
             });
@@ -1480,26 +1472,79 @@ impl Area {
             Area::Circle(c, r, _) => dist(p, *c) <= *r as f64,
         }
     }
+}
 
-    /// Does the outline pass through rectangle `r`?
-    fn crosses(&self, r: Rect) -> bool {
-        use editor_core::copper::seg_seg_dist;
-        match self {
-            Area::Rings(rings, _) => {
-                let c = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
-                rings.iter().flat_map(|ring| Area::edges(ring)).any(|(a, b)| {
-                    r.contains(a) || r.contains(b) || (0..4).any(|i| seg_seg_dist(a, b, c[i], c[(i + 1) % 4]) == 0.0)
-                })
+/// The outline of a zone, keepout or board drawing as segments (arcs and circles in short
+/// pieces): a touching box takes these only where it meets the line, not anywhere in
+/// their bounding box.
+fn outline_segments(project: &Project, id: ObjectId) -> Option<Vec<(Point, Point)>> {
+    let ring = |c: &[Point]| (0..c.len()).map(|i| (c[i], c[(i + 1) % c.len()])).collect::<Vec<_>>();
+    let b = &project.board;
+    let rings = |outline: &[Point], holes: &[Vec<Point>]| {
+        std::iter::once(outline).chain(holes.iter().map(|h| h.as_slice())).flat_map(ring).collect()
+    };
+    let arc = |c: Point, r: Coord, from: f64, sweep: f64| {
+        let n = ((sweep.abs() / 5.0).ceil() as usize).max(1);
+        let at = |deg: f64| {
+            let (sin, cos) = deg.to_radians().sin_cos();
+            Point::new(c.x + (r as f64 * cos).round() as Coord, c.y + (r as f64 * sin).round() as Coord)
+        };
+        (0..n).map(|i| (at(from + sweep * i as f64 / n as f64), at(from + sweep * (i + 1) as f64 / n as f64))).collect()
+    };
+    match id {
+        ObjectId::Zone(z) => b.zones.get(z).map(|z| rings(&z.outline, &z.holes)),
+        ObjectId::Keepout(k) => b.keepouts.get(k).map(|k| rings(&k.outline, &k.holes)),
+        ObjectId::BoardGraphic(g) => Some(match &b.graphics.get(g)?.shape {
+            &Shape::Line { a, b, .. } => vec![(a, b)],
+            &Shape::Rect { a, b, .. } => {
+                let r = Rect::from_points(a, b);
+                ring(&[r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)])
             }
-            Area::Circle(c, rad, _) => {
-                // Some of the rectangle inside the circle and some outside.
-                let near = Point::new(c.x.clamp(r.min.x, r.max.x), c.y.clamp(r.min.y, r.max.y));
-                let corners = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
-                let far = corners.iter().map(|&q| dist(q, *c)).fold(0.0, f64::max);
-                dist(near, *c) <= *rad as f64 && far >= *rad as f64
-            }
-        }
+            Shape::Polygon { points, .. } => ring(points),
+            &Shape::Circle { center, radius, .. } => arc(center, radius, 0.0, 360.0),
+            &Shape::Arc { center, radius, start, sweep, .. } => arc(center, radius, start.degrees(), sweep),
+        }),
+        _ => None,
     }
+}
+
+fn seg_touches_rect(a: Point, b: Point, r: Rect) -> bool {
+    let c = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
+    r.contains(a)
+        || r.contains(b)
+        || (0..4).any(|i| editor_core::copper::seg_seg_dist(a, b, c[i], c[(i + 1) % 4]) == 0.0)
+}
+
+/// Distance from `p` to the edge of an unfilled shape's drawn line; `None` if filled.
+pub(crate) fn stroke_dist(s: &Shape, p: Point) -> Option<f64> {
+    let ring = |c: &[Point]| (0..c.len()).map(|i| seg_dist(p, c[i], c[(i + 1) % c.len()])).fold(f64::MAX, f64::min);
+    let (d, width) = match s {
+        Shape::Line { a, b, width } => (seg_dist(p, *a, *b), *width),
+        Shape::Rect { a, b, width, fill: false } => {
+            let r = Rect::from_points(*a, *b);
+            (ring(&[r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)]), *width)
+        }
+        Shape::Polygon { points, width, fill: false } if !points.is_empty() => (ring(points), *width),
+        Shape::Circle { center, radius, width, fill: false } => ((dist(p, *center) - *radius as f64).abs(), *width),
+        Shape::Arc { center, radius, start, sweep, width } => {
+            let at = |deg: f64| {
+                let (sin, cos) = deg.to_radians().sin_cos();
+                let r = *radius as f64;
+                Point::new(center.x + (r * cos).round() as Coord, center.y + (r * sin).round() as Coord)
+            };
+            let angle = ((p.y - center.y) as f64).atan2((p.x - center.x) as f64).to_degrees();
+            let from = start.degrees();
+            let along = if *sweep >= 0.0 { (angle - from).rem_euclid(360.0) } else { (from - angle).rem_euclid(360.0) };
+            let d = if along <= sweep.abs() {
+                (dist(p, *center) - *radius as f64).abs()
+            } else {
+                dist(p, at(from)).min(dist(p, at(from + sweep)))
+            };
+            (d, *width)
+        }
+        _ => return None,
+    };
+    Some(d - width as f64 / 2.0)
 }
 
 fn seg_dist(p: Point, a: Point, b: Point) -> f64 {

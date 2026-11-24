@@ -752,23 +752,7 @@ impl ItemView {
 /// Outline hits (class 1, by distance) beat area hits (class 2, by size).
 fn shape_score(s: &Shape, p: Point, tol: Coord, inside: bool, area: f64) -> Option<(u8, f64)> {
     let tol = tol as f64;
-    let d = match s {
-        Shape::Line { a, b, width } => Some(seg_dist(p, *a, *b) - *width as f64 / 2.0),
-        Shape::Rect { a, b, width, fill: false } => {
-            let r = Rect::from_points(*a, *b);
-            let c = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
-            Some((0..4).map(|i| seg_dist(p, c[i], c[(i + 1) % 4])).fold(f64::MAX, f64::min) - *width as f64 / 2.0)
-        }
-        Shape::Circle { center, radius, width, fill: false } | Shape::Arc { center, radius, width, .. } => {
-            Some(((p - *center).length() - *radius as f64).abs() - *width as f64 / 2.0)
-        }
-        Shape::Polygon { points, width, fill: false } if points.len() > 1 => Some(
-            (0..points.len()).map(|i| seg_dist(p, points[i], points[(i + 1) % points.len()])).fold(f64::MAX, f64::min)
-                - *width as f64 / 2.0,
-        ),
-        _ => None,
-    };
-    match d {
+    match crate::view::stroke_dist(s, p) {
         Some(d) if d <= tol => Some((1, d)),
         Some(_) => None,
         None => inside.then_some((2, area)),
