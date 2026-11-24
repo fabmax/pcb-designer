@@ -78,9 +78,16 @@ case "$(uname -s)" in
         # lib/ngspice.dll here and ngspice.dll beside its exe.
         mv "$out"/bin/libngspice*.dll "$out/lib/ngspice.dll"
         rm -rf "$out/bin"
-        # MinGW's runtime DLLs they need (libwinpthread, …) go beside them.
-        ldd "$out/lib/ngspice.dll" "$out"/lib/ngspice/*.cm | awk '$3 ~ /\/ucrt64\// {print $3}' | sort -u |
-            while read -r dep; do cp "$dep" "$out/lib/"; done ;;
+        # MinGW's runtime DLLs they import (libwinpthread, …) go beside them. objdump, not
+        # ldd: MSYS2's ldd refuses files not named .exe or .dll (the code models).
+        for f in "$out/lib/ngspice.dll" "$out"/lib/ngspice/*.cm; do
+            objdump -p "$f" | sed -n 's/^[[:space:]]*DLL Name: //p'
+        done | sort -u | while read -r dll; do
+            if [ -f "/ucrt64/bin/$dll" ]; then
+                step "bundling $dll"
+                cp "/ucrt64/bin/$dll" "$out/lib/"
+            fi
+        done ;;
 esac
 cp "$src/COPYING" "$out/COPYING"
 echo "$NGSPICE_VERSION" >"$out/VERSION"
