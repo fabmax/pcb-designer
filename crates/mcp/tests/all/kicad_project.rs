@@ -1,5 +1,5 @@
 //! `import_kicad_project` replaces the open project by an imported KiCad project, which
-//! `save_project` then writes.
+//! `save_project` then writes; `export_kicad_project` writes the open one as KiCad's.
 
 use std::path::PathBuf;
 
@@ -58,4 +58,22 @@ fn a_failed_import_keeps_the_project() {
     let err = call(&mut host, Request::ImportKicadProject { path: "/nonexistent/x.kicad_pro".into() }).unwrap_err();
     assert!(!err.is_empty());
     assert_eq!(host.doc.project().name, "Old");
+}
+
+#[test]
+fn export_writes_a_kicad_project_that_imports_back() {
+    let mut host = HeadlessHost::new(Document::new(view::demo::Example::Led.project()));
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("kicad");
+    let reply = call(&mut host, Request::ExportKicadProject { dir: out.clone(), name: Some("led".into()) }).unwrap();
+    let files: Vec<&str> = reply["files"].as_array().unwrap().iter().filter_map(|f| f.as_str()).collect();
+    assert!(files.contains(&"led.kicad_pcb") && files.contains(&"sym-lib-table"), "{reply}");
+    assert!(reply["notes"].is_array(), "{reply}");
+    let back = kicad::import_project(&out.join("led.kicad_pro")).unwrap().project;
+    assert_eq!(back.board.footprints.len(), host.doc.project().board.footprints.len());
+
+    // A folder with other things in it is refused.
+    std::fs::write(dir.path().join("mine.txt"), "").unwrap();
+    let err = call(&mut host, Request::ExportKicadProject { dir: dir.path().into(), name: None }).unwrap_err();
+    assert!(err.contains("isn't empty"), "{err}");
 }

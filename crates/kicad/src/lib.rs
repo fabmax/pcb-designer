@@ -1,4 +1,5 @@
-//! Import of KiCad symbol and footprint libraries, and of KiCad projects.
+//! Import of KiCad symbol and footprint libraries, and of KiCad projects; export of
+//! projects and libraries to KiCad 9.
 //!
 //! Supports the S-expression formats of KiCad 6 to 10: `.kicad_sym` symbol libraries,
 //! `.kicad_symdir` directories (one file per symbol, KiCad 10) and `.pretty` footprint
@@ -7,6 +8,7 @@
 pub mod catalog;
 pub mod common;
 pub mod download;
+pub mod export;
 pub mod footprint;
 pub mod import;
 pub mod pcb;

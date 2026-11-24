@@ -14,7 +14,7 @@ things to do **later**.
 | Schematic → PCB | Always live, inside the same command transaction. PCB → schematic: never |
 | Copper | Tracks have no stored net; nets come from the pads they touch. Copper whose net no longer fits is flagged, never deleted |
 | Library parts | Copied into the project (Project Library). Each copy keeps `source` (library id, part id, content hash) for "update from library" |
-| Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported later: buses, label scopes (local / global / hierarchical / power), net names and hierarchical sheets with sheet pins as KiCad does. Multi-unit parts work |
+| Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported: buses, label scopes (local / global / hierarchical / power), net names and hierarchical sheets with sheet pins as KiCad does. Multi-unit parts work |
 | Files | JSON, pretty, stable order, integer nm. A project is a folder (`<name>.pcbproj/`: `project.json`, `library.json`, `schematic.json`, `board.json`); a library is one `*.pcblib`. No migrations until production use (`model::io::MIGRATIONS` stays empty) |
 | MCP | In the app (Streamable HTTP on 127.0.0.1, opt-in) and headless over stdio. Every tool goes through editor-core commands |
 | Simulation | ngspice: the shared library when found (live traces), else a process per run. Design in "Simulation (`sim`)" |
@@ -1225,12 +1225,14 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
     instance path); sheet pins are laid out by name here, so wires ending on KiCad's pin
     positions are stretched to ours. Refdes from the symbol's `instances`, else the root
     `symbol_instances` (KiCad 6), else the Reference property. Each file's `paper`
-    becomes its sheets' page and `to_pages` lifts the content by the page height (KiCad
-    pages hang down from the origin). The root file's `title_block` is the project's.
+    becomes its sheets' page and `to_pages` lifts the content by `common::page_lift` (the page
+    height rounded down to the 1.27 mm grid: KiCad pages hang down from the origin and its
+    grid starts at their top left). The root file's `title_block` is the project's.
     `common::plain` also undoes KiCad's `{slash}`-style escapes. Symbol Reference and
     Value properties (absolute positions) become `SymbolField`s in symbol coordinates
     (`Transform::inverse_point` / `inverse_angle`), hidden as KiCad hides them.
-  - Board: pad and text angles in `.kicad_pcb` are absolute (minus the footprint's
+  - Board: `aux_axis_origin` (KiCad's drill/place origin) becomes our origin. Pad and
+    text angles in `.kicad_pcb` are absolute (minus the footprint's
     orientation). Back footprints are stored mirrored: un-mirrored (negate y and angles,
     swap F./B. layers and chamfer corners), then placed with rotation + 180 on the
     bottom. Reference/Value become `${REF}`/`${VALUE}` templates plus per-instance
@@ -1271,6 +1273,48 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
     fetched sparse into `target/kicad-sim-demos` or `KICAD_SIM_DEMOS`) netlisted by
     `kicad-cli` and by us must give every device pin the same operating point
     (IBIS, the XSPICE counter and Q17, which `kicad-cli` can't netlist, are skipped).
+
+- Project export (`kicad::export`, KiCad 9 formats: sch 20250114, pcb 20241229, sym
+  20241209): `render_project` builds the files in memory, `export_project` writes them
+  into a folder that is new, empty or holds `NAME.kicad_pro` (old `.kicad_mod`s of
+  `NAME.pretty` are removed first). `sx.rs` is the writer (exact mm from nm). Entry
+  points: File → Export KiCad project… (a save dialog names the folder), a library's
+  "Export as KiCad library…", `pcb-designer export-kicad`, MCP `export_kicad_project`.
+  - Ids are written as KiCad UUIDs; objects KiCad has and we don't (pins of placed
+    symbols, pads, field texts, sub-sheet files) get `kid` ids derived from ours, so
+    exports are byte-for-byte repeatable. A sub-sheet file's uuid must differ from its
+    sheet symbol's (KiCad's hierarchy breaks otherwise).
+  - Symbols: one per (part, variant), `Part_Variant` when a part has several; pins are
+    numbered by the variant's pads (`pin_numbers`): a pin on several pads becomes stacked
+    pins (the extra ones hidden passive), a pin without pad keeps its number unless a pad
+    has it. Lib symbol texts turn in tenths of a degree, everything else in degrees.
+  - Schematic: `(x, H − y)` with `H` = `common::page_lift` (the page height rounded down
+    to the 1.27 mm grid, shared with the import), since KiCad's grid starts at the page's
+    top left: content on our grid stays on KiCad's. Coordinates round to 100 nm.
+    Mirrored symbols are `(mirror y)` at −rotation. Field positions are absolute, their
+    angles relative to the symbol (0° on a symbol at 90° draws vertical; the import does
+    the same now), and KiCad turns a field's justification with its symbol: fields are
+    written centred on the text as we draw it (`text_center`, 0.82 cap heights per
+    character). Power ports become power symbols `LIB:PWR_NAME` (a hidden power input
+    pin named like the net, our glyph), power flags `LIB:PWR_FLAG`, both in the project
+    library too. A `/` in a label is `{slash}`.
+  - Board: KiCad's y is down and its page hangs from the origin, so the board is moved
+    onto it (`Origin`, its top left 25 mm in, whole mm) and `aux_axis_origin` /
+    `grid_origin` mark our origin; the import subtracts `aux_axis_origin`, so round trips
+    are exact. Back footprints: orientation = rotation − 180, local y not negated, F/B
+    swapped (`lib::Place`, the import's rules inverted). Nets: only the schematic's
+    (pads without a pin get none), unlabelled ones named as KiCad 9 names them
+    (`kicad_net_names`, from `SCH_PIN::GetDefaultNetName` and the driver sort: names
+    without `-Pad` first, then the smallest), so `drc --schematic-parity` is clean.
+    Zones unfilled, `min_thickness 0`; polygon pads are custom pads with a circle anchor
+    inside the outline. DNP is the `dnp` attribute only (KiCad's own BOM rule).
+  - Tests (`kicad/tests/all/project_export.rs`): both examples and the hier fixture
+    import back the same (nets, pads, symbols, wires, labels, footprints, tracks, vias,
+    zones by id). With `KICAD_CLI`: KiCad's netlist has our nets (by KiCad pin number,
+    off-board symbols left out, as KiCad does), its IPC-D-356 our pads, schematic parity
+    is clean and ERC finds nothing but `power_pin_not_driven`. With `KICAD_TEMPLATE_DIR`
+    too (e.g. KiCad's `demos`), every project there is imported, exported and checked,
+    ERC against the original's findings.
 
 - **Built-in library** (`model::builtin`): a standard library of generic parts, the file
   `crates/model/library/builtin.pcblib` (4.7 MB of JSON), embedded and parsed once
@@ -1695,7 +1739,7 @@ Things decided to do later, by area. Remove an entry when it's done; add what a 
 defers.
 
 **Schematic**
-- KiCad project export. Import gaps (counted in the import report today): schematic
+- KiCad import gaps (counted in the import report today): schematic
   graphics, images, text boxes, tables and rule areas; text variables (`${TITLE}` etc. in
   texts stay as written; the frame shows the title block);
   bus aliases; directive labels (net class flags); stored sheet pin positions (laid out by name); reused
@@ -1792,6 +1836,12 @@ defers.
 - Circular pad arrays.
 - Pad paste ratio (KiCad's `solder_paste_margin_ratio`, warned about on import) and
   footprint-level mask/paste margin defaults (the import copies them into the pads).
+- KiCad import: pins a multi-unit symbol's units share (KiCad's unit 0) land on the first
+  unit only, so wires and no-connect flags at them on the other units dangle (seen in
+  KiCad's `complex_hierarchy` and `tinytapeout` demos).
+- KiCad export: power flags where KiCad's ERC wants them (nets powered only by power
+  ports), KiCad's standard power symbols (`power:GND`) instead of our own, filled zones,
+  exclusions, custom pad primitives other than one polygon, De Morgan and alternate pins.
 - KiCad import: back-side footprint content, text boxes, De Morgan bodies, alternate pin
   functions, exact oval drills, 3D models.
 
@@ -1848,7 +1898,7 @@ defers.
   `values` do the same for one run).
 - Probes and operating point values on sub-sheet instances once sheets can be reused.
 - Board-aware simulation (track resistance, parasitic capacitance from the layout).
-- KiCad export of simulation fields (with the KiCad project export).
+- KiCad export of simulation fields (`Sim.*`) and of the setup as directive texts.
 
 **Performance**
 - Ratsnest of huge nets (7k-pad GND, ~2.3 ms): incremental MST or a worker thread.

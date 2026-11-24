@@ -130,6 +130,12 @@ pub enum Request {
     ImportKicadProject {
         path: PathBuf,
     },
+    /// Write the open project as a KiCad 9 project into folder `dir`, its files named
+    /// `name` (default: the project's name).
+    ExportKicadProject {
+        dir: PathBuf,
+        name: Option<String>,
+    },
     /// Run an analysis and answer with its values (see [`crate::simulation`]).
     Simulate(SimulateRequest),
     /// The SPICE netlist an analysis would run now.
@@ -243,6 +249,7 @@ impl Request {
             Request::KicadDownload { update: true } => "update KiCad libraries".into(),
             Request::Library(r) => r.describe(),
             Request::ImportKicadProject { path } => format!("import KiCad project {}", path.display()),
+            Request::ExportKicadProject { dir, .. } => format!("export a KiCad project to {}", dir.display()),
             Request::Simulate(r) => match &r.analysis {
                 Some(a) => format!("simulate {a}"),
                 None => "simulate".into(),
@@ -656,6 +663,19 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
             })
         }
         Request::KicadSearch { query, footprints, limit } => host.kicad_search(&query, footprints, limit)?,
+        Request::ExportKicadProject { dir, name } => {
+            let project = host.document().project();
+            let name = name.unwrap_or_else(|| project.name.clone());
+            let export = kicad::export::export_project(project, &dir, &name)?;
+            json!({
+                "dir": dir,
+                "project": dir.join(format!("{}.kicad_pro", kicad::export::item_name(&name))),
+                "files": export.files.iter().map(|(f, _)| f.to_string_lossy().replace('\\', "/")).collect::<Vec<_>>(),
+                "warnings": export.report.warnings,
+                "notes": export.report.notes,
+                "skipped": export.report.skipped,
+            })
+        }
         Request::KicadImport(_)
         | Request::KicadDownload { .. }
         | Request::Library(_)

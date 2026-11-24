@@ -132,6 +132,8 @@ pub enum Act {
     PreviewItem(u64, Open),
     SaveLibrary(u64),
     SaveLibraryAs(u64),
+    /// Write a library as KiCad libraries (`.kicad_sym` and `.pretty`).
+    ExportKicadLibrary(u64),
     /// Close an unsaved library (asking about its changes).
     CloseLibrary(u64),
     RemoveLibrary(u64),
@@ -275,6 +277,7 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
         NodeId::Library(Owner::Lib(k)) => {
             if !info.editable {
                 out.push(A("Save a copy as…", Act::SaveLibraryAs(k)));
+                out.push(A("Export as KiCad library…", Act::ExportKicadLibrary(k)));
                 return out;
             }
             for g in [Group::Parts, Group::Symbols, Group::Footprints] {
@@ -286,6 +289,7 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
                 out.push(A("Save", Act::SaveLibrary(k)));
             }
             out.push(A("Save as…", Act::SaveLibraryAs(k)));
+            out.push(A("Export as KiCad library…", Act::ExportKicadLibrary(k)));
             reveal(&mut out);
             out.push(Separator);
             if info.flag {

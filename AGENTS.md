@@ -162,4 +162,8 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
 - Without a window: `cargo run -p mcp --example render_board -- out.png [w h] [--light]
   [--schematic] [--example amp] [--show-layer "Top Solder Mask"]`.
 - Gerber files of the demo: `cargo run -p view --example export_demo -- DIR`.
+- A KiCad export of an example or of an imported KiCad project: `cargo run -p kicad
+  --example export_kicad -- led|amp|PROJECT.kicad_pro DIR`. With `kicad-cli` installed,
+  `KICAD_CLI=$(which kicad-cli) KICAD_TEMPLATE_DIR=…/kicad/demos cargo test -p kicad --test
+  all project_export` checks exports against KiCad itself.
 - Call a running app's MCP tool: `cargo run -p mcp --example mcp_call -- URL TOOL '{…}'`.

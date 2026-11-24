@@ -11,6 +11,7 @@
 //!        pcb-designer export-gerber PROJECT_DIR [--assembly generic|jlcpcb|pcbway]
 //!        pcb-designer export-schematic-pdf PROJECT_DIR
 //!        pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR
+//!        pcb-designer export-kicad PROJECT_DIR OUT_DIR
 //!        pcb-designer simulate PROJECT_DIR [--analysis NAME] [--csv FILE] [--netlist]
 //!
 //! `export-gerber` writes the Gerber, drill and job files into `PROJECT_DIR/output/gerber/`
@@ -25,6 +26,9 @@
 //! `import-kicad` imports a KiCad project (schematic and board) and saves it as a project
 //! folder, printing the import report. A `.kicad_pro` given to the app opens its import
 //! as an unsaved project.
+//!
+//! `export-kicad` writes a project as a KiCad 9 project into `OUT_DIR` (new, empty, or an
+//! earlier export), printing the export report.
 //!
 //! `simulate` runs an analysis of the project's simulation setup (by name, default the
 //! first; an operating point when there is none) with ngspice and prints a summary, or
@@ -173,6 +177,17 @@ fn main() -> eframe::Result {
         }
         return Ok(());
     }
+    if std::env::args().nth(1).as_deref() == Some("export-kicad") {
+        let (Some(dir), Some(out)) = (std::env::args().nth(2), std::env::args().nth(3)) else {
+            eprintln!("usage: pcb-designer export-kicad PROJECT_DIR OUT_DIR");
+            std::process::exit(2);
+        };
+        if let Err(e) = export_kicad(dir.as_ref(), out.as_ref()) {
+            eprintln!("pcb-designer: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     while let Some(a) = args.next() {
         match a.as_str() {
             "--demo" => opts.startup = Startup::Example(Example::Led),
@@ -302,6 +317,17 @@ fn import_kicad(pro: &std::path::Path, out: &std::path::Path) -> Result<(), Stri
     let mut doc = view::Document::new(import.project);
     doc.save_as(out).map_err(|e| format!("cannot save {}: {e}", out.display()))?;
     println!("{}", out.display());
+    Ok(())
+}
+
+/// `export-kicad`: a project as a KiCad project, named after the project.
+fn export_kicad(dir: &std::path::Path, out: &std::path::Path) -> Result<(), String> {
+    let project = model::io::load_project(dir).map_err(|e| e.to_string())?;
+    let export = kicad::export::export_project(&project, out, &project.name)?;
+    for line in export.report.lines() {
+        eprintln!("{line}");
+    }
+    println!("{}", out.join(format!("{}.kicad_pro", kicad::export::item_name(&project.name))).display());
     Ok(())
 }
 

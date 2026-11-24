@@ -382,6 +382,16 @@ pub struct ImportProjectParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct ExportKicadParams {
+    /// The folder to write into: new, empty, or an earlier export of a project of this name
+    /// (which is replaced).
+    pub dir: String,
+    /// The KiCad project's name (its files are NAME.kicad_pro, …); default: the project's.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct SaveParams {
     /// Project folder to save to. Defaults to the current folder.
     #[serde(default)]
@@ -922,6 +932,20 @@ impl PcbTools {
         Parameters(p): Parameters<ImportProjectParams>,
     ) -> Result<CallToolResult, ErrorData> {
         self.call(Request::ImportKicadProject { path: p.path.into() }).await
+    }
+
+    #[tool(description = "Write the open project as a KiCad 9 project into the folder `dir`: \
+        NAME.kicad_pro, NAME.kicad_sch with a file per sub-sheet, NAME.kicad_pcb and a project \
+        library (NAME.kicad_sym, NAME.pretty, sym-lib-table, fp-lib-table). Ids stay KiCad's \
+        UUIDs, so KiCad's board stays linked to its schematic. A part with several footprint \
+        variants becomes a symbol per variant (pins numbered by its pads); power ports become \
+        power symbols; zones are written unfilled; nets get KiCad's names. Returns the files \
+        and a report (warnings, notes, what wasn't exported, e.g. simulation models).")]
+    async fn export_kicad_project(
+        &self,
+        Parameters(p): Parameters<ExportKicadParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.call(Request::ExportKicadProject { dir: p.dir.into(), name: p.name }).await
     }
 
     #[tool(description = "Save the project folder (to its current location or to `path`).")]

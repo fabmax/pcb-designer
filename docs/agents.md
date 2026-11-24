@@ -86,6 +86,7 @@ Wherever a sheet is asked for (`sheet`, `parent`), an id, a name or a path like
 | `import_parts`, `update_parts` | Copy parts into the Project Library, update them from their library |
 | `search_kicad`, `import_kicad`, `download_kicad_libraries` | KiCad's libraries ([KiCad](kicad.md)) |
 | `import_kicad_project` | Opens a KiCad project as a new project |
+| `export_kicad_project` | Writes the project as a KiCad 9 project into a folder |
 
 ### Library tools
 

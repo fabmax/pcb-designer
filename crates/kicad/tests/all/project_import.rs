@@ -157,7 +157,7 @@ fn projects() -> Option<(PathBuf, Vec<PathBuf>)> {
 }
 
 /// KiCad's nets as sets of "REF.PIN" (nets with two or more pins).
-fn kicad_nets(cli: &Path, sch: &Path, tmp: &Path) -> Vec<BTreeSet<String>> {
+pub(crate) fn kicad_nets(cli: &Path, sch: &Path, tmp: &Path) -> Vec<BTreeSet<String>> {
     let out = tmp.join("net.net");
     let ok = Command::new(cli)
         .args(["sch", "export", "netlist", "--format", "kicadsexpr", "-o"])
@@ -195,7 +195,7 @@ fn our_nets(p: &Project) -> Vec<BTreeSet<String>> {
 }
 
 /// Pad positions from KiCad's IPC-D-356 export: "REF.PAD" → positions (nm, y up).
-fn kicad_pads(cli: &Path, pcb: &Path, tmp: &Path) -> HashMap<String, Vec<Point>> {
+pub(crate) fn kicad_pads(cli: &Path, pcb: &Path, tmp: &Path) -> HashMap<String, Vec<Point>> {
     let out = tmp.join("pads.d356");
     let ok = Command::new(cli).args(["pcb", "export", "ipcd356", "-o"]).arg(&out).arg(pcb).output().unwrap();
     assert!(ok.status.success(), "{}", String::from_utf8_lossy(&ok.stderr));

@@ -31,6 +31,7 @@ pcb-designer export-gerber PROJECT_DIR [--assembly generic|jlcpcb|pcbway]
 pcb-designer export-schematic-pdf PROJECT_DIR
 pcb-designer simulate PROJECT_DIR [--analysis NAME] [--csv FILE] [--netlist]
 pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR
+pcb-designer export-kicad PROJECT_DIR OUT_DIR
 ```
 
 - `export-gerber` writes the [manufacturing files](manufacturing.md); `--assembly` picks
@@ -42,6 +43,8 @@ pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR
   point as CSV; `--netlist` prints the SPICE netlist.
 - `import-kicad` imports a [KiCad project](kicad.md#kicad-projects), saves the project
   folder and prints the report.
+- `export-kicad` writes a project as a [KiCad project](kicad.md#exporting-to-kicad) into
+  `OUT_DIR` and prints the report.
 
 Options for development (screenshots, scripted input, stress boards) are in
 [AGENTS.md](../AGENTS.md#seeing-the-app).

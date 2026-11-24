@@ -4,7 +4,8 @@
 //! value (counterclockwise on screen in both). Footprints are stored placed in KiCad:
 //! pad and text angles include the footprint's rotation, and footprints on the back
 //! are mirrored (local y negated, front and back layers swapped). Both are undone so
-//! every footprint becomes a top-side definition placed by its instance.
+//! every footprint becomes a top-side definition placed by its instance. KiCad's drill
+//! and place origin (`aux_axis_origin`) becomes our origin.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -68,9 +69,12 @@ pub fn import(path: &Path, report: &mut Report) -> Result<PcbImport, String> {
     let mut out = PcbImport::default();
     let layers = Layers::of(&root);
     out.copper_layers = layers.copper.max(2);
+    // KiCad's drill/place origin (fabrication outputs are relative to it) becomes ours.
+    let mut origin = Point::ZERO;
     if let Some(setup) = root.child("setup") {
         out.mask_expansion = setup.child("pad_to_mask_clearance").and_then(|n| n.num(0)).map(nm);
         out.paste_margin = setup.child("pad_to_paste_clearance").and_then(|n| n.num(0)).map(nm);
+        origin = child_point(setup, "aux_axis_origin", true).unwrap_or(Point::ZERO);
     }
     let mut ids = Ids::default();
     for item in root.lists() {
@@ -148,7 +152,43 @@ pub fn import(path: &Path, report: &mut Report) -> Result<PcbImport, String> {
             _ => {}
         }
     }
+    if origin != Point::ZERO {
+        out.translate(Point::ZERO - origin);
+    }
     Ok(out)
+}
+
+impl PcbImport {
+    /// Move everything on the board by `d`.
+    fn translate(&mut self, d: Point) {
+        let t = Transform::new(d, Angle::ZERO, false);
+        for f in &mut self.footprints {
+            f.instance.pos = f.instance.pos + d;
+        }
+        for tr in &mut self.tracks {
+            tr.a = tr.a + d;
+            tr.b = tr.b + d;
+            tr.mid = tr.mid.map(|m| m + d);
+        }
+        for v in &mut self.vias {
+            v.pos = v.pos + d;
+        }
+        let shift = |pts: &mut Vec<Point>| pts.iter_mut().for_each(|p| *p = *p + d);
+        for z in &mut self.zones {
+            shift(&mut z.outline);
+            z.holes.iter_mut().for_each(shift);
+        }
+        for k in &mut self.keepouts {
+            shift(&mut k.outline);
+            k.holes.iter_mut().for_each(shift);
+        }
+        for g in &mut self.graphics {
+            g.shape = g.shape.transformed(&t);
+        }
+        for x in &mut self.texts {
+            x.text.pos = x.text.pos + d;
+        }
+    }
 }
 
 /// Ids from KiCad UUIDs; repeated or missing ones get fresh ids.

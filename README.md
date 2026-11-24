@@ -8,7 +8,7 @@ work on the open project through MCP while you watch.
 - **PCB:** push-and-shove routing, net classes, blind and buried vias, copper zones,
   keepouts, DRC.
 - **Libraries:** a built-in library of generic parts, symbol, footprint and part editors,
-  KiCad library and project import.
+  KiCad library and project import, KiCad project export.
 - **Manufacturing:** Gerber X2, Excellon, job file, BOM and positions (JLCPCB, PCBWay), a
   Gerber viewer, schematic PDF.
 - **Simulation:** ngspice with probes on the schematic, plots, measurements, a tuner and
@@ -35,7 +35,7 @@ schematic, board, and the spectrum of a 1 kHz sine through it.
 - [Libraries and parts](docs/libraries.md)
 - [Manufacturing files](docs/manufacturing.md)
 - [Simulation](docs/simulation.md)
-- [KiCad import](docs/kicad.md)
+- [KiCad import and export](docs/kicad.md)
 - [Agents (MCP)](docs/agents.md)
 - [Command line](docs/command-line.md)
 - [Development](docs/development.md)

@@ -4,5 +4,6 @@
 mod corpus;
 mod download;
 mod library_import;
+mod project_export;
 mod project_import;
 mod sim_import;

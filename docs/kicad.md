@@ -1,7 +1,8 @@
 # KiCad
 
 PCB Designer follows KiCad's concepts (label scopes, hierarchical sheets, power symbols,
-net classes), so KiCad's libraries and projects can be imported.
+net classes), so KiCad's libraries and projects can be imported, and projects and libraries exported
+to KiCad.
 
 ## KiCad libraries
 
@@ -55,5 +56,39 @@ pcb-designer PROJECT.kicad_pro                     # opens an import at startup
 pcb-designer import-kicad PROJECT.kicad_pro OUT_DIR  # imports, saves, prints the report
 ```
 
-Agents use `download_kicad_libraries`, `search_kicad`, `import_kicad` and
-`import_kicad_project` (see [Agents](agents.md)).
+Agents use `download_kicad_libraries`, `search_kicad`, `import_kicad`,
+`import_kicad_project` and `export_kicad_project` (see [Agents](agents.md)).
+
+## Exporting to KiCad
+
+**File → Export KiCad project…** writes the project as a KiCad 9 project (KiCad 10 opens
+it too) into a new folder you name, e.g. `amp-kicad`:
+
+- `NAME.kicad_pro` with the net classes, design rules and ERC/DRC severities;
+- `NAME.kicad_sch` and a file per sub-sheet, page sizes and title block included;
+- `NAME.kicad_pcb`: footprints, tracks, vias, zones, keepouts, outline, texts, stackup;
+- a project library, `NAME.kicad_sym` and `NAME.pretty`, with every part and footprint
+  of the Project Library, and the `sym-lib-table` and `fp-lib-table` that name it.
+
+The board stays linked to the schematic, so KiCad's **Update PCB from Schematic** finds
+nothing to change, and exporting again into the same folder replaces the files. A folder
+that holds other things is refused. A report window lists what changed on the way:
+
+- KiCad numbers a symbol's pins by its footprint's pads, so a part with several
+  footprint variants becomes a symbol per variant (`Resistor_0603`, `Resistor_0805`). A
+  pin on several pads becomes stacked pins, one per pad.
+- Power ports become power symbols of the project library. KiCad counts them as power
+  inputs, not sources: its ERC wants a `PWR_FLAG` on nets powered only by power ports.
+- Nets without a label get KiCad's names (`Net-(R1-Pad2)`, `Net-(Q1-B)`).
+- Zones are written unfilled: fill them in KiCad (**B**).
+- The board is moved onto KiCad's page; KiCad's drill/place origin and grid origin mark
+  where our origin was (importing back moves it back).
+- Texts keep their size and place, but KiCad draws its own font, so their widths differ.
+- Simulation models and setups aren't exported yet, nor ERC/DRC exclusions.
+
+A library's context menu in the Project panel has **Export as KiCad library…**: its parts
+(a symbol per variant, as above) and footprints as `NAME.kicad_sym` and `NAME.pretty`.
+
+```sh
+pcb-designer export-kicad PROJECT_DIR OUT_DIR   # exports, prints the report
+```

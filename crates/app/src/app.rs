@@ -255,6 +255,10 @@ type Then = Box<dyn FnOnce(&mut PcbApp)>;
 enum Chosen {
     OpenProject,
     ImportKicadProject,
+    /// The folder to write the KiCad project into.
+    ExportKicadProject,
+    /// The folder to write a library's KiCad libraries into.
+    ExportKicadLibrary(u64),
     SaveProject(Option<Then>),
     NewLibrary,
     AddLibrary,
@@ -1164,6 +1168,61 @@ impl PcbApp {
         }
     }
 
+    /// File → Export KiCad project: into a folder named in a save dialog.
+    fn export_kicad_project(&mut self) {
+        let name = format!("{}-kicad", kicad::export::item_name(&self.doc().project().name));
+        let dialog = rfd::AsyncFileDialog::new().set_title("Export KiCad project folder").set_file_name(name);
+        self.show_file_dialog(dialog, Kind::Save, Chosen::ExportKicadProject);
+    }
+
+    fn export_kicad_project_to(&mut self, dir: &std::path::Path) {
+        let project = self.doc().project();
+        let result = kicad::export::export_project(project, dir, &project.name);
+        let name = format!("{}.kicad_pro", kicad::export::item_name(&project.name));
+        self.export_report(dir, &name, result);
+    }
+
+    /// A library's context menu → Export as KiCad library.
+    fn export_kicad_library(&mut self, key: u64) {
+        let Some(l) = self.libraries.by_key(key) else { return };
+        let name = format!("{}-kicad", kicad::export::item_name(l.lib.name()));
+        let dialog = self.library_dialog("Export KiCad library folder").set_file_name(name);
+        self.show_file_dialog(dialog, Kind::Save, Chosen::ExportKicadLibrary(key));
+    }
+
+    fn export_kicad_library_to(&mut self, key: u64, dir: &std::path::Path) {
+        let Some(l) = self.libraries.by_key(key) else { return };
+        let name = l.lib.name().to_string();
+        let result = kicad::export::export_library(l.lib.library(), dir, &name);
+        self.export_report(dir, &format!("{}.kicad_sym", kicad::export::item_name(&name)), result);
+    }
+
+    /// The report of a KiCad export, in the import's report window.
+    fn export_report(&mut self, dir: &std::path::Path, main: &str, result: Result<kicad::export::Export, String>) {
+        match result {
+            Ok(export) => {
+                self.set_status(format!("Exported {}", dir.join(main).display()));
+                self.import_report = Some(ImportReport {
+                    title: "Exported to KiCad".into(),
+                    summary: Some(format!("{} files written to {}.", export.files.len(), dir.display())),
+                    errors: Vec::new(),
+                    report: export.report,
+                    export: true,
+                });
+            }
+            Err(e) => {
+                self.set_status(format!("KiCad export failed: {e}"));
+                self.import_report = Some(ImportReport {
+                    title: "KiCad export failed".into(),
+                    summary: None,
+                    errors: vec![e],
+                    report: kicad::Report::default(),
+                    export: true,
+                });
+            }
+        }
+    }
+
     /// Open an imported project (after unsaved changes were dealt with) and show its report.
     fn open_import(&mut self, path: &std::path::Path, import: kicad::ProjectImport) {
         self.replace_document(Document::new(import.project));
@@ -1200,7 +1259,7 @@ impl PcbApp {
                     egui::ScrollArea::vertical().max_height(max_height).auto_shrink([false, true]).show(ui, |ui| {
                         let report = &r.report;
                         if report.is_empty() && r.errors.is_empty() {
-                            ui.label("Everything was imported.");
+                            ui.label(if r.export { "Everything was exported." } else { "Everything was imported." });
                         }
                         let section =
                             |ui: &mut egui::Ui, title: &str, lines: &[String], color: Option<egui::Color32>| {
@@ -1221,7 +1280,8 @@ impl PcbApp {
                         section(ui, "Notes", &report.notes, None);
                         let skipped: Vec<String> =
                             report.skipped.iter().map(|(what, n)| format!("{what}: {n}")).collect();
-                        section(ui, "Not imported", &skipped, Some(theme::text_dim()));
+                        let not = if r.export { "Not exported" } else { "Not imported" };
+                        section(ui, not, &skipped, Some(theme::text_dim()));
                     });
                 },
             );
@@ -1457,6 +1517,8 @@ impl PcbApp {
         let then = match chosen {
             Chosen::OpenProject => return self.open_path(&path),
             Chosen::ImportKicadProject => return self.import_kicad_file(&path),
+            Chosen::ExportKicadProject => return self.export_kicad_project_to(&path),
+            Chosen::ExportKicadLibrary(key) => return self.export_kicad_library_to(key, &path),
             Chosen::NewLibrary => return self.create_library(&path),
             Chosen::AddLibrary => return self.add_library_file(&project_libs::absolute(&path), true),
             Chosen::LocateLibrary(from) => return self.relink_library(from, &path),
@@ -3173,6 +3235,7 @@ impl PcbApp {
             Cmd::AddLibrary => self.open_library(),
             Cmd::ImportKicad => self.kicad.open = true,
             Cmd::ImportKicadProject => self.import_kicad_project(),
+            Cmd::ExportKicadProject => self.export_kicad_project(),
             Cmd::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             Cmd::Layout { side_by_side } => {
                 if side_by_side != self.is_side_by_side() {
@@ -3643,6 +3706,7 @@ impl PcbApp {
             Act::SaveLibraryAs(key) => {
                 self.save_library(key, true, None);
             }
+            Act::ExportKicadLibrary(key) => self.export_kicad_library(key),
             Act::CloseLibrary(key) => self.close_library(key),
             Act::RemoveLibrary(key) => self.remove_library(key),
             Act::Locate(path) => self.locate_missing_library(path),
@@ -5959,12 +6023,14 @@ struct ImportReport {
     /// Requested items that failed.
     errors: Vec<String>,
     report: kicad::Report,
+    /// The report of an export (else of an import).
+    export: bool,
 }
 
 impl ImportReport {
     fn new(path: &std::path::Path, report: kicad::Report) -> Self {
         let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned());
-        ImportReport { title: format!("Imported {name}"), summary: None, errors: Vec::new(), report }
+        ImportReport { title: format!("Imported {name}"), summary: None, errors: Vec::new(), report, export: false }
     }
 
     /// The result of importing parts into library `target`.
@@ -5980,6 +6046,7 @@ impl ImportReport {
             summary: Some(summary),
             errors: imported.errors.clone(),
             report: kicad::Report { notes: imported.warnings.clone(), ..Default::default() },
+            export: false,
         }
     }
 
@@ -5989,6 +6056,7 @@ impl ImportReport {
             summary: None,
             errors: vec![error],
             report: kicad::Report::default(),
+            export: false,
         }
     }
 }

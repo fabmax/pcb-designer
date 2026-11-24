@@ -23,6 +23,7 @@ pub enum Cmd {
     AddLibrary,
     ImportKicad,
     ImportKicadProject,
+    ExportKicadProject,
     Quit,
     Layout {
         side_by_side: bool,
@@ -194,6 +195,7 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
         Entry::Separator,
         action("Export Gerber files", Action::ExportGerber, true),
         action("Export schematic PDF", Action::ExportSchematicPdf, true),
+        item("Export KiCad project…", Cmd::ExportKicadProject),
     ];
     if !s.native {
         file.extend([Entry::Separator, item("Quit", Cmd::Quit)]);

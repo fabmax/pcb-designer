@@ -23,6 +23,19 @@ pub fn kid(parts: &[&str]) -> Id {
     Id::from_u128(v)
 }
 
+/// KiCad's schematic connection grid (50 mil). KiCad's grid starts at the page's top
+/// left corner, ours at its bottom left.
+pub const SCH_GRID: Coord = 1_270_000;
+
+/// How far a sheet's content moves up between KiCad (pages hang down from the origin)
+/// and here (pages stand on it): the page height rounded down to the connection grid, so
+/// what is on KiCad's grid is on ours and the other way round. A page of "None" counts
+/// as A4 (KiCad always has a page).
+pub fn page_lift(page: &Page) -> Coord {
+    let h = page.dimensions().map_or(210_000_000, |d| d.h);
+    h / SCH_GRID * SCH_GRID
+}
+
 /// mm → nm.
 pub fn nm(v: f64) -> Coord {
     (v * 1e6).round() as Coord

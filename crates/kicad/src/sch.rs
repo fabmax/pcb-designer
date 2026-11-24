@@ -187,10 +187,9 @@ fn title_block(node: &Node) -> TitleBlock {
 }
 
 /// KiCad pages hang down from the origin (y down, so negative y here); ours stand on it.
-/// Shift each sheet's content up by its page height.
+/// Shift each sheet's content up by its page height (on the grid, [`page_lift`]).
 fn to_pages(out: &mut SchImport) {
-    let heights: HashMap<Id, Coord> =
-        out.sheets.iter().map(|s| (s.id, s.page.dimensions().map_or(0, |d| d.h))).collect();
+    let heights: HashMap<Id, Coord> = out.sheets.iter().map(|s| (s.id, page_lift(&s.page))).collect();
     let up = |sheet: Id| Point::new(0, heights.get(&sheet).copied().unwrap_or(0));
     for s in &mut out.sheets {
         if let Some(parent) = s.parent {
@@ -545,8 +544,10 @@ impl Loader<'_> {
             if hidden && let Some(size) = effects.and_then(|e| e.child("font")).and_then(|f| f.child("size")) {
                 text.size = nm(size.num(0).unwrap_or(1.27));
             }
+            // Positions are absolute, angles relative to the symbol's (KiCad draws a
+            // field at 0° along a symbol turned by 90° vertically).
             text.pos = t.inverse_point(text.pos);
-            text.rotation = t.inverse_angle(text.rotation);
+            text.rotation = t.inverse_angle(text.rotation.rotated_by(rotation));
             self.out.fields.push(SymbolField {
                 id: kid(&["kicad-field", &id.to_string(), key]),
                 symbol: id,
