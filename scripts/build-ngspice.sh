@@ -2,7 +2,7 @@
 # Builds libngspice and its XSPICE code models from the pinned source release
 # (scripts/ngspice.env), with our patches (scripts/ngspice-patches), into target/ngspice/<rust host triple>/:
 #   lib/   libngspice.0.dylib, libngspice.so.0 or ngspice.dll; lib/ngspice/*.cm (code models)
-#   COPYING, VERSION
+#   COPYING, VERSION (and on Windows the MinGW runtime DLLs beside ngspice.dll)
 # Releases bundle it (scripts/bundle-*.sh) and CI tests against it (NGSPICE_LIBRARY).
 # Runs on macOS, Linux and Windows (MSYS2 UCRT64 shell). Needs a C compiler, make, bison
 # flex and patch; the release tarball has its configure script.
@@ -64,8 +64,12 @@ case "$(uname -s)" in
         # libtool puts the DLL in bin/ as libngspice-0.dll; the app looks for
         # lib/ngspice.dll here and ngspice.dll beside its exe.
         mv "$out"/bin/libngspice*.dll "$out/lib/ngspice.dll"
-        rm -rf "$out/bin" ;;
+        rm -rf "$out/bin"
+        # MinGW's runtime DLLs they need (libwinpthread, …) go beside them.
+        ldd "$out/lib/ngspice.dll" "$out"/lib/ngspice/*.cm | awk '$3 ~ /\/ucrt64\// {print $3}' | sort -u |
+            while read -r dep; do cp "$dep" "$out/lib/"; done ;;
 esac
 cp "$src/COPYING" "$out/COPYING"
 echo "$NGSPICE_VERSION" >"$out/VERSION"
+rm -rf "$work"
 echo "$out"

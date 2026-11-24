@@ -1,0 +1,34 @@
+name: ngspice
+description: >
+  Builds the ngspice the app bundles (scripts/build-ngspice.sh) into target/ngspice/, cached
+  by its version, patches and script. Windows builds it in MSYS2 (UCRT64) and puts its
+  folder on PATH, for the MinGW runtime DLLs beside ngspice.dll.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      id: cache
+      with:
+        path: target/ngspice/*/
+        key: ngspice-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/ngspice.env', 'scripts/build-ngspice.sh', 'scripts/ngspice-patches/**') }}
+    - if: runner.os == 'Linux' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: sudo apt-get install -y --no-install-recommends bison flex
+    - if: runner.os != 'Windows' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: scripts/build-ngspice.sh
+    - if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        # rustc (for the target triple) and curl from Windows' PATH.
+        path-type: inherit
+        install: >-
+          mingw-w64-ucrt-x86_64-gcc make bison flex patch
+    - if: runner.os == 'Windows' && steps.cache.outputs.cache-hit != 'true'
+      shell: msys2 {0}
+      run: scripts/build-ngspice.sh
+    - if: runner.os == 'Windows'
+      shell: bash
+      run: |
+        for d in target/ngspice/*/lib; do cygpath -w "$PWD/$d" >> "$GITHUB_PATH"; done

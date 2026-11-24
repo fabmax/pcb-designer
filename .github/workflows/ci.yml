@@ -1,6 +1,6 @@
 # Tests on macOS, Linux and Windows for every push to main and every pull request;
-# formatting and clippy once (Linux). ngspice is installed where a package manager has it
-# (macOS, Linux), so the simulation tests run against the process and the shared library.
+# formatting and clippy once (Linux). The simulation tests run against the ngspice the app
+# bundles, built from source (cached) on every OS.
 name: CI
 
 on:
@@ -45,7 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - if: runner.os == 'Linux'
         uses: ./.github/actions/linux-deps
-      - if: runner.os == 'macOS'
-        run: brew install ngspice libngspice
       - uses: Swatinem/rust-cache@v2
+      # After rust-cache: its post step (cleaning target/) runs after this one saves.
+      - uses: ./.github/actions/ngspice
       - run: cargo test --workspace --no-fail-fast

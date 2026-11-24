@@ -1,4 +1,5 @@
-# Release builds for macOS (Apple Silicon, ad-hoc signed app), Linux and Windows (x86_64).
+# Release builds for macOS (Apple Silicon, ad-hoc signed app), Linux and Windows (x86_64),
+# each with the ngspice it bundles (built from source).
 # A manual run keeps the archives as workflow artifacts; a version tag (v0.2.0) also
 # publishes them as a GitHub Release.
 name: Release
@@ -28,6 +29,7 @@ jobs:
       - if: runner.os == 'Linux'
         uses: ./.github/actions/linux-deps
       - uses: Swatinem/rust-cache@v2
+      - uses: ./.github/actions/ngspice
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
@@ -39,18 +41,36 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           cargo build --release -p app
+          # A folder: the binary, ngspice in lib/ (sim::bundled_library), its licence.
+          pkg=target/package/pcb-designer
+          rm -rf "$pkg" && mkdir -p "$pkg/lib/ngspice"
+          cp target/release/pcb-designer "$pkg/"
           # The release profile's line tables are inside the binary on Linux (macOS and
           # Windows keep them beside it): drop them, keep the symbols for backtraces.
-          strip --strip-debug target/release/pcb-designer
+          strip --strip-debug "$pkg/pcb-designer"
+          ngspice=$(echo target/ngspice/*/)
+          cp "$ngspice"lib/libngspice.so.0 "$pkg/lib/"
+          cp "$ngspice"lib/ngspice/*.cm "$pkg/lib/ngspice/"
+          cp "$ngspice"COPYING "$pkg/ngspice-COPYING.txt"
           mkdir dist
-          tar -czf dist/pcb-designer-${{ matrix.name }}.tar.gz -C target/release pcb-designer
+          tar -czf dist/pcb-designer-${{ matrix.name }}.tar.gz -C target/package pcb-designer
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           cargo build --release -p app
+          # A folder: the exe, ngspice.dll and its runtime DLLs beside it, the code models
+          # in ngspice\ (sim::bundled_library), its licence.
+          $pkg = "target/package/pcb-designer"
+          Remove-Item -Recurse -Force $pkg -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory "$pkg/ngspice" | Out-Null
+          Copy-Item target/release/pcb-designer.exe $pkg
+          $ngspice = (Get-ChildItem target/ngspice -Directory)[0].FullName
+          Copy-Item "$ngspice/lib/*.dll" $pkg
+          Copy-Item "$ngspice/lib/ngspice/*.cm" "$pkg/ngspice"
+          Copy-Item "$ngspice/COPYING" "$pkg/ngspice-COPYING.txt"
           New-Item -ItemType Directory dist | Out-Null
-          Compress-Archive target/release/pcb-designer.exe dist/pcb-designer-${{ matrix.name }}.zip
+          Compress-Archive $pkg dist/pcb-designer-${{ matrix.name }}.zip
 
       - uses: actions/upload-artifact@v7
         with:

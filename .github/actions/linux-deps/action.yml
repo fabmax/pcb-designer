@@ -1,7 +1,7 @@
 name: Linux dependencies
 description: >
   The window's system libraries (Wayland, X11, xkbcommon), Mesa's software Vulkan driver
-  (offscreen rendering without a GPU) and ngspice with its shared library.
+  (offscreen rendering without a GPU).
 runs:
   using: composite
   steps:
@@ -11,5 +11,4 @@ runs:
         sudo apt-get install -y --no-install-recommends \
           libwayland-dev libxkbcommon-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
           libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-          mesa-vulkan-drivers \
-          ngspice libngspice0
+          mesa-vulkan-drivers
