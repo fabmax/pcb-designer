@@ -1122,6 +1122,24 @@ impl View {
     pub fn hit(&self, project: &Project, p: Point, tol: Coord) -> Option<ObjectId> {
         let mut best: Option<((u8, f64), ObjectId)> = None;
         for id in self.index.near(p, tol) {
+            // Areas: on the outline like a line, inside after everything else (smallest
+            // first), outside not at all (a concave zone's bounding box isn't the zone).
+            if let Some(area) = Area::of(project, id) {
+                let d = area.edge_dist(p);
+                let score = if d <= tol as f64 {
+                    Some((0u8, d))
+                } else if area.contains(p) {
+                    self.index.bounds(id).map(|b| (2u8, b.width() as f64 * b.height() as f64))
+                } else {
+                    None
+                };
+                if let Some(s) = score
+                    && best.as_ref().is_none_or(|(bs, _)| s < *bs)
+                {
+                    best = Some((s, id));
+                }
+                continue;
+            }
             let score = match id {
                 ObjectId::Wire(w) => project.schematic.wires.get(w).map(|w| (w.a, w.b, WIRE_WIDTH)),
                 ObjectId::BusWire(w) => project.schematic.bus_wires.get(w).map(|w| (w.a, w.b, BUS_WIDTH)),
@@ -1179,12 +1197,27 @@ impl View {
         best.map(|(_, id)| id)
     }
 
+    /// Whether a drag from `p` on `id` (a hit) may move it: not from inside an area (a
+    /// zone, keepout or filled drawing), only from its outline within `tol`.
+    pub fn grips(&self, project: &Project, id: ObjectId, p: Point, tol: Coord) -> bool {
+        Area::of(project, id).is_none_or(|a| a.edge_dist(p) <= tol as f64)
+    }
+
     /// Objects inside `r` (fully, or touching when `crossing`). Reference and value texts
     /// come with their symbol or footprint, never on their own: they are easy to catch by
-    /// accident.
+    /// accident. An area is touched only where its outline is (a box inside a zone
+    /// doesn't take the zone).
     pub fn select_rect(&self, project: &Project, r: Rect, crossing: bool) -> Vec<ObjectId> {
         let mut ids = self.index.in_rect(r, crossing);
         ids.retain(|id| !matches!(id, ObjectId::SymbolField(_) | ObjectId::FootprintField(_)));
+        if crossing {
+            ids.retain(|&id| match Area::of(project, id) {
+                Some(area) => {
+                    self.index.bounds(id).is_some_and(|b| r.contains(b.min) && r.contains(b.max)) || area.crosses(r)
+                }
+                None => true,
+            });
+        }
         let mut parts = FxHashSet::default();
         for id in &ids {
             if let ObjectId::Symbol(p) | ObjectId::Footprint(p) = id {
@@ -1389,6 +1422,84 @@ fn field_owner(project: &Project, id: ObjectId) -> Option<(ObjectId, Point, Poin
 
 fn dist(p: Point, q: Point) -> f64 {
     (p - q).length()
+}
+
+/// A filled area on the board: a zone, a keepout or a filled board drawing. A drag grabs
+/// it by its outline; from inside it boxes (see [`View::grips`]).
+enum Area {
+    /// Outline rings (the first is the outer one, the rest holes) and the drawn line width.
+    Rings(Vec<Vec<Point>>, Coord),
+    Circle(Point, Coord, Coord),
+}
+
+impl Area {
+    fn of(project: &Project, id: ObjectId) -> Option<Area> {
+        let b = &project.board;
+        let rings = |outline: &Vec<Point>, holes: &Vec<Vec<Point>>| {
+            std::iter::once(outline.clone()).chain(holes.iter().cloned()).collect()
+        };
+        match id {
+            ObjectId::Zone(z) => b.zones.get(z).map(|z| Area::Rings(rings(&z.outline, &z.holes), 0)),
+            ObjectId::Keepout(k) => b.keepouts.get(k).map(|k| Area::Rings(rings(&k.outline, &k.holes), 0)),
+            ObjectId::BoardGraphic(g) => match &b.graphics.get(g)?.shape {
+                &Shape::Rect { a, b, width, fill: true } => {
+                    let r = Rect::from_points(a, b);
+                    let c = vec![r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
+                    Some(Area::Rings(vec![c], width))
+                }
+                Shape::Polygon { points, width, fill: true } => Some(Area::Rings(vec![points.clone()], *width)),
+                &Shape::Circle { center, radius, width, fill: true } => Some(Area::Circle(center, radius, width)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn edges(ring: &[Point]) -> impl Iterator<Item = (Point, Point)> + '_ {
+        (0..ring.len()).map(move |i| (ring[i], ring[(i + 1) % ring.len()]))
+    }
+
+    /// Distance from `p` to the outline (its drawn line's edge).
+    fn edge_dist(&self, p: Point) -> f64 {
+        match self {
+            Area::Rings(rings, width) => {
+                rings.iter().flat_map(|r| Area::edges(r)).map(|(a, b)| seg_dist(p, a, b)).fold(f64::MAX, f64::min)
+                    - *width as f64 / 2.0
+            }
+            Area::Circle(c, r, width) => (dist(p, *c) - *r as f64).abs() - *width as f64 / 2.0,
+        }
+    }
+
+    fn contains(&self, p: Point) -> bool {
+        use editor_core::copper::point_in_polygon;
+        match self {
+            Area::Rings(rings, _) => {
+                rings.first().is_some_and(|o| point_in_polygon(p, o))
+                    && !rings[1..].iter().any(|h| point_in_polygon(p, h))
+            }
+            Area::Circle(c, r, _) => dist(p, *c) <= *r as f64,
+        }
+    }
+
+    /// Does the outline pass through rectangle `r`?
+    fn crosses(&self, r: Rect) -> bool {
+        use editor_core::copper::seg_seg_dist;
+        match self {
+            Area::Rings(rings, _) => {
+                let c = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
+                rings.iter().flat_map(|ring| Area::edges(ring)).any(|(a, b)| {
+                    r.contains(a) || r.contains(b) || (0..4).any(|i| seg_seg_dist(a, b, c[i], c[(i + 1) % 4]) == 0.0)
+                })
+            }
+            Area::Circle(c, rad, _) => {
+                // Some of the rectangle inside the circle and some outside.
+                let near = Point::new(c.x.clamp(r.min.x, r.max.x), c.y.clamp(r.min.y, r.max.y));
+                let corners = [r.min, Point::new(r.max.x, r.min.y), r.max, Point::new(r.min.x, r.max.y)];
+                let far = corners.iter().map(|&q| dist(q, *c)).fold(0.0, f64::max);
+                dist(near, *c) <= *rad as f64 && far >= *rad as f64
+            }
+        }
+    }
 }
 
 fn seg_dist(p: Point, a: Point, b: Point) -> f64 {

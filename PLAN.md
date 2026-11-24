@@ -999,7 +999,12 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
 - `Interaction`: click/shift/cmd select, box (inside, or touching with Alt; modifiers
   count at the release; what it would select is highlighted live, searched again only
   when the box changes; `View::select_rect` leaves out reference and value fields and
-  adds the drawn ones of each symbol or footprint it found), drag with snap of the grabbed reference point (one undo step; R rotates while
+  adds the drawn ones of each symbol or footprint it found; areas, `view::Area`: zones,
+  keepouts and filled board drawings are hit on their outline like lines, inside (the
+  polygon, minus holes) after everything else, and `Target::grips` says a drag from
+  inside doesn't move them: the press then selects only on release, and a drag boxes
+  unless the area is selected with other objects; a touching box takes an area only if
+  it crosses the outline or encloses it), drag with snap of the grabbed reference point (one undo step; R rotates while
   dragging), `snap` toggle. Locked footprints don't move. A press becomes a drag when
   the *hand* moves the pointer 4 points on screen (`PointerInput::screen`), not when the
   view shifts under it (a panel changing width); the drag then follows the hand's motion.

@@ -104,6 +104,11 @@ pub trait Target {
     fn retract(&mut self, group: u64);
     /// Show `selection` as selected (ids may repeat) and `hover` as hovered.
     fn highlight(&mut self, selection: &[Self::Id], hover: Option<Self::Id>);
+    /// Whether a drag from `p` on `id` (a hit within `tol`) may move it. A zone grips by
+    /// its outline only: from inside it, a drag draws a selection box.
+    fn grips(&self, _id: Self::Id, _p: Point, _tol: Coord) -> bool {
+        true
+    }
     /// What a double click on `id` selects (a wire: its whole chain).
     fn chain(&self, id: Self::Id) -> Vec<Self::Id> {
         vec![id]
@@ -125,6 +130,10 @@ enum State<I> {
         start_screen: Option<[f64; 2]>,
         hit: Option<I>,
         was_selected: bool,
+        /// A drag from here may move `hit` (see [`Target::grips`]); if not, the hit is
+        /// selected on release (a click) and a drag boxes, unless `hit` is selected with
+        /// other objects, which it then moves along with.
+        grip: bool,
     },
     Dragging(Drag<I>),
     Boxing {
@@ -284,15 +293,17 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                 if input.pressed {
                     let hit = self.hover;
                     let was_selected = hit.is_some_and(|h| self.selection.contains(&h));
+                    let grip = hit.is_none_or(|h| t.grips(h, p, input.tolerance));
                     if let Some(h) = hit
                         && !was_selected
+                        && grip
                     {
                         if !(input.shift || input.command) {
                             self.selection.clear();
                         }
                         self.selection.push(h);
                     }
-                    State::Pressed { start: p, start_screen: input.screen, hit, was_selected }
+                    State::Pressed { start: p, start_screen: input.screen, hit, was_selected, grip }
                 } else {
                     State::Idle
                 }
@@ -301,7 +312,7 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                 self.hover = None;
                 State::Idle
             }
-            (State::Pressed { start, start_screen, hit, was_selected }, p) => {
+            (State::Pressed { start, start_screen, hit, was_selected, grip }, p) => {
                 let p = p.unwrap_or(start);
                 // How far the hand moved, in world units: on screen when known.
                 let moved = match (start_screen, input.screen) {
@@ -316,6 +327,12 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                     match hit {
                         Some(h) if was_selected && input.command => self.selection.retain(|&s| s != h),
                         Some(h) if was_selected && !input.shift => self.selection = vec![h],
+                        Some(h) if !was_selected && !grip => {
+                            if !(input.shift || input.command) {
+                                self.selection.clear();
+                            }
+                            self.selection.push(h);
+                        }
                         Some(_) => {}
                         None if !(input.shift || input.command) => self.selection.clear(),
                         None => {}
@@ -325,8 +342,10 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                     match hit {
                         // Grabbed where the pointer is now, less the hand's motion: if the
                         // view moved meanwhile, the object doesn't jump with it.
-                        Some(h) => self.start_drag(t, p - moved, h).map_or(State::Idle, State::Dragging),
-                        None => State::Boxing {
+                        Some(h) if grip || (was_selected && self.selection.len() > 1) => {
+                            self.start_drag(t, p - moved, h).map_or(State::Idle, State::Dragging)
+                        }
+                        _ => State::Boxing {
                             start,
                             current: p,
                             crossing: input.alt,
@@ -335,7 +354,7 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
                         },
                     }
                 } else {
-                    State::Pressed { start, start_screen, hit, was_selected }
+                    State::Pressed { start, start_screen, hit, was_selected, grip }
                 }
             }
             (State::Dragging(mut drag), p) => {

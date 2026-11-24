@@ -199,6 +199,68 @@ fn box_select_takes_reference_and_value_only_with_their_part() {
 }
 
 #[test]
+fn zones_drag_by_their_outline_and_box_from_inside() {
+    let mut doc = Document::new(demo_project());
+    let mut it = Interaction::new(mm(0.5));
+    let v = ViewId::Board;
+    let zone = doc.project().board.zones.iter().next().expect("the demo has a zone").clone();
+    let id = ObjectId::Zone(zone.id);
+    let outline = |doc: &Document| doc.project().board.zones.get(zone.id).unwrap().outline.clone();
+    // A point inside where nothing but the zone is (a 0.5 mm search grid).
+    let b = doc.view(v).index.bounds(id).unwrap();
+    let inside = (0..)
+        .map(|i| Point::new(b.min.x + mm(0.5) * (i % 200), b.min.y + mm(0.5) * (i / 200)))
+        .take(200 * 200)
+        .find(|&p| doc.target(v).hit(p, mm(0.3)) == Some(id) && !doc.target(v).grips(id, p, mm(0.3)))
+        .expect("an empty spot in the zone");
+    let away = inside + Point::mm(1.0, 0.6);
+
+    // From inside, a drag draws a box and leaves the zone alone, selected or not.
+    for selected in [false, true] {
+        it.set_selection(&mut doc.target(v), if selected { vec![id] } else { Vec::new() });
+        press(&mut it, &mut doc.target(v), inside);
+        drag(&mut it, &mut doc.target(v), away);
+        assert!(it.box_rect().is_some(), "boxing (zone selected: {selected})");
+        release(&mut it, &mut doc.target(v), away);
+        assert_eq!(outline(&doc), zone.outline);
+        assert!(!it.selection.contains(&id), "a box inside the zone doesn't take it");
+    }
+
+    // A click inside selects it.
+    press(&mut it, &mut doc.target(v), inside);
+    release(&mut it, &mut doc.target(v), inside);
+    assert_eq!(it.selection, vec![id]);
+
+    // By its outline, it drags.
+    let (a, c) = (zone.outline[0], zone.outline[1]);
+    let edge = Point::new((a.x + c.x) / 2, (a.y + c.y) / 2);
+    assert!(doc.target(v).grips(id, edge, mm(0.3)));
+    it.set_selection(&mut doc.target(v), Vec::new());
+    press(&mut it, &mut doc.target(v), edge);
+    drag(&mut it, &mut doc.target(v), edge + Point::mm(2.0, 0.0));
+    release(&mut it, &mut doc.target(v), edge + Point::mm(2.0, 0.0));
+    assert_eq!(outline(&doc)[0], zone.outline[0] + Point::mm(2.0, 0.0));
+    doc.undo();
+    assert_eq!(outline(&doc), zone.outline);
+
+    // Selected with something else, it moves along from inside too.
+    let via = doc.project().board.vias.iter().next().expect("the demo has a via").clone();
+    it.set_selection(&mut doc.target(v), vec![id, ObjectId::Via(via.id)]);
+    press(&mut it, &mut doc.target(v), inside);
+    drag(&mut it, &mut doc.target(v), inside + Point::mm(1.0, 0.0));
+    release(&mut it, &mut doc.target(v), inside + Point::mm(1.0, 0.0));
+    assert_eq!(outline(&doc)[0], zone.outline[0] + Point::mm(1.0, 0.0));
+    assert_eq!(doc.project().board.vias.get(via.id).unwrap().pos, via.pos + Point::mm(1.0, 0.0));
+    doc.undo();
+
+    // Touching (Alt) takes it where the box crosses its outline, not inside it.
+    let t = doc.target(v);
+    let small = Rect::from_points(inside, away);
+    assert!(!t.in_rect(small, true).contains(&id));
+    assert!(t.in_rect(Rect::around(edge, mm(0.2)), true).contains(&id));
+}
+
+#[test]
 fn locked_footprints_do_not_move_and_delete_explains() {
     let mut doc = Document::new(demo_project());
     let mut it = Interaction::new(mm(0.5));

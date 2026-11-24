@@ -37,6 +37,12 @@ box adds to the selection. What the box will select shows as selected while you 
 A box never selects a part's reference or value text on its own; it takes them along
 with their symbol or footprint (click one to select just the text).
 
+Zones, keepouts and filled board drawings are areas: drag one by its outline to move it.
+Inside an area a click selects it, but a drag draws a selection box, so you can box
+select on top of a zone. The exception: if the area is selected together with other
+objects, a drag from inside it moves them all. A box with Alt takes an area only when it
+crosses its outline (or encloses it), not when it lies entirely inside it.
+
 Dragging keeps things connected, in the schematic and on the board:
 
 - Wires attached to a moved symbol follow it, and horizontal and vertical wires stay so.

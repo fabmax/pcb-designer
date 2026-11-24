@@ -874,6 +874,10 @@ impl Target for ProjectTarget<'_> {
         self.doc.view(self.view).hit(self.doc.project(), p, tol)
     }
 
+    fn grips(&self, id: ObjectId, p: Point, tol: Coord) -> bool {
+        self.doc.view(self.view).grips(self.doc.project(), id, p, tol)
+    }
+
     fn in_rect(&self, r: Rect, crossing: bool) -> Vec<ObjectId> {
         self.doc.view(self.view).select_rect(self.doc.project(), r, crossing)
     }
