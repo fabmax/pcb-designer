@@ -1,0 +1,559 @@
+{
+  "format": "pcb-designer/schematic",
+  "version": 1,
+  "sheets": [
+    {
+      "id": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "name": "Schematic",
+      "pos": [0, 0],
+      "size": [0, 0],
+      "page": {
+        "size": "a4"
+      },
+      "title_block": {}
+    },
+    {
+      "id": "5b7b2d3b-d297-4571-a9ea-3d95f17837d5",
+      "name": "Indicator",
+      "parent": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [127000000, 106680000],
+      "size": [25400000, 20320000],
+      "page": {
+        "size": "a4"
+      }
+    },
+    {
+      "id": "3747c297-f4e3-4add-b2f1-7e4629cb56e0",
+      "name": "Testbench",
+      "parent": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [165100000, 106680000],
+      "size": [25400000, 20320000],
+      "page": {
+        "size": "a4"
+      }
+    }
+  ],
+  "components": [
+    {
+      "id": "45d942dc-7786-4a8d-9e60-c05baf671cad",
+      "part": "5ce10000-0000-4000-9000-447040fc7209",
+      "variant": "5ce10000-0000-4000-9000-4b586ba8bdcc",
+      "refdes": "J1",
+      "value": "Conn"
+    },
+    {
+      "id": "80b0a1dc-f14b-462c-bdf9-5d41dacb403e",
+      "part": "5ce10000-0000-4000-9000-1596e0022042",
+      "variant": "5ce10000-0000-4000-9000-6c81ba07e676",
+      "refdes": "R1",
+      "value": "330"
+    },
+    {
+      "id": "c5e02b52-7d60-4b37-99ed-9a4f9f9cfa9b",
+      "part": "5ce10000-0000-4000-9000-0ace831f67d6",
+      "variant": "5ce10000-0000-4000-9000-574ecc369282",
+      "refdes": "D1",
+      "value": "red"
+    },
+    {
+      "id": "0d089f20-8f4d-46cd-a38f-e20f77fb270a",
+      "part": "5ce10000-0000-4000-9000-f5f6c40b8a2b",
+      "variant": "5ce10000-0000-4000-9000-66ec8b36d1f5",
+      "refdes": "C1",
+      "value": "100n"
+    },
+    {
+      "id": "5d70f03b-6f4b-4a54-9b7a-bc3f72e745e5",
+      "part": "5ce10000-0000-4000-9000-1596e0022042",
+      "variant": "5ce10000-0000-4000-9000-6c81ba07e676",
+      "refdes": "R2",
+      "value": "10k"
+    },
+    {
+      "id": "a626c01a-3026-4879-bd71-5a1aedafe28d",
+      "part": "5ce10000-0000-4000-9000-c2699b2b9768",
+      "variant": "5ce10000-0000-4000-9000-b59e98b05d0d",
+      "refdes": "V1",
+      "value": "SIN 5 V ± 500 mV 1 kHz AC 1 V",
+      "sim": {
+        "source": {
+          "waveform": {
+            "type": "sine",
+            "offset": 5.0,
+            "amplitude": 0.5,
+            "frequency": 1000.0,
+            "delay": 0.0,
+            "damping": 0.0,
+            "phase": 0.0
+          },
+          "ac": 1.0
+        }
+      }
+    }
+  ],
+  "symbols": [
+    {
+      "id": "245bc4ee-f6a8-47e4-b182-667e5e441bf5",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "component": "45d942dc-7786-4a8d-9e60-c05baf671cad",
+      "unit": 0,
+      "pos": [101600000, 101600000],
+      "rotation": 0.0,
+      "mirror": false
+    },
+    {
+      "id": "99b1f261-9caf-4459-8dea-6ad590046638",
+      "sheet": "5b7b2d3b-d297-4571-a9ea-3d95f17837d5",
+      "component": "80b0a1dc-f14b-462c-bdf9-5d41dacb403e",
+      "unit": 0,
+      "pos": [127000000, 109220000],
+      "rotation": 0.0,
+      "mirror": false
+    },
+    {
+      "id": "0317ee42-707a-4885-a580-2cd491604960",
+      "sheet": "5b7b2d3b-d297-4571-a9ea-3d95f17837d5",
+      "component": "c5e02b52-7d60-4b37-99ed-9a4f9f9cfa9b",
+      "unit": 0,
+      "pos": [147320000, 109220000],
+      "rotation": 0.0,
+      "mirror": false
+    },
+    {
+      "id": "1c088d38-3606-48f3-870c-99484d86d3b6",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "component": "0d089f20-8f4d-46cd-a38f-e20f77fb270a",
+      "unit": 0,
+      "pos": [127000000, 93980000],
+      "rotation": 90.0,
+      "mirror": false
+    },
+    {
+      "id": "86a82e52-49cf-43e5-a968-254418dfd9a1",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "component": "5d70f03b-6f4b-4a54-9b7a-bc3f72e745e5",
+      "unit": 0,
+      "pos": [147320000, 93980000],
+      "rotation": 90.0,
+      "mirror": false
+    },
+    {
+      "id": "3c4b6ae9-0903-4771-8caf-c53532dc7601",
+      "sheet": "3747c297-f4e3-4add-b2f1-7e4629cb56e0",
+      "component": "a626c01a-3026-4879-bd71-5a1aedafe28d",
+      "unit": 0,
+      "pos": [127000000, 101600000],
+      "rotation": 0.0,
+      "mirror": false
+    }
+  ],
+  "wires": [
+    {
+      "id": "bc4499e3-6135-445f-9dbc-4cb01f69ade7",
+      "sheet": "5b7b2d3b-d297-4571-a9ea-3d95f17837d5",
+      "a": [132080000, 109220000],
+      "b": [142240000, 109220000]
+    },
+    {
+      "id": "7bc313a5-2da0-46d1-915c-3fc425fc3637",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "a": [96520000, 104140000],
+      "b": [93980000, 104140000]
+    },
+    {
+      "id": "fe38a2a9-4f70-4042-8d2c-7e603e374402",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "a": [96520000, 101600000],
+      "b": [93980000, 101600000]
+    },
+    {
+      "id": "d39a8d55-41d8-4eff-a9d2-5b37763d0c46",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "a": [96520000, 96520000],
+      "b": [93980000, 96520000]
+    },
+    {
+      "id": "070c1fed-0aee-4132-a5c8-08a0567e9381",
+      "sheet": "5b7b2d3b-d297-4571-a9ea-3d95f17837d5",
+      "a": [152400000, 109220000],
+      "b": [154940000, 109220000]
+    },
+    {
+      "id": "ed7a117a-5793-43ef-a416-513ebcd88053",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "a": [127000000, 99060000],
+      "b": [127000000, 101600000]
+    },
+    {
+      "id": "9ba534a5-51f0-42af-903e-13876c6a3518",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "a": [127000000, 88900000],
+      "b": [127000000, 86360000]
+    },
+    {
+      "id": "4632acb7-2b5f-4bb8-9440-6c98addff717",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "a": [147320000, 99060000],
+      "b": [147320000, 101600000]
+    },
+    {
+      "id": "4f78e532-3314-49d9-99e1-b2abd53a96b3",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "a": [147320000, 88900000],
+      "b": [147320000, 86360000]
+    },
+    {
+      "id": "ecdf8ead-d604-459c-8bc7-99497f87e9b9",
+      "sheet": "5b7b2d3b-d297-4571-a9ea-3d95f17837d5",
+      "a": [121920000, 109220000],
+      "b": [119380000, 109220000]
+    },
+    {
+      "id": "88469611-1f40-41ea-8c3c-9e8f86acaed5",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "a": [127000000, 124460000],
+      "b": [121920000, 124460000]
+    },
+    {
+      "id": "10e76180-06d2-4adb-b326-f2520a4ca012",
+      "sheet": "3747c297-f4e3-4add-b2f1-7e4629cb56e0",
+      "a": [127000000, 106680000],
+      "b": [127000000, 109220000]
+    },
+    {
+      "id": "ef7ad5b4-88e1-475a-ae95-ad0673718036",
+      "sheet": "3747c297-f4e3-4add-b2f1-7e4629cb56e0",
+      "a": [127000000, 96520000],
+      "b": [127000000, 93980000]
+    }
+  ],
+  "junctions": [],
+  "no_connects": [
+    {
+      "id": "374d461a-1820-4e60-8aed-63c745dc49d7",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [96520000, 99060000]
+    }
+  ],
+  "labels": [
+    {
+      "id": "28d5476c-bffc-44ad-b956-06461cd67551",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [93980000, 104140000],
+      "name": "+5V",
+      "kind": "power",
+      "shape": "input",
+      "rotation": 0.0
+    },
+    {
+      "id": "c5e06a04-5aca-4f56-96ab-5134e46aa48e",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [93980000, 101600000],
+      "name": "SIG",
+      "kind": "local",
+      "shape": "input",
+      "rotation": 180.0
+    },
+    {
+      "id": "e4d3198c-7a2d-449f-a27a-c1e4c45cd04b",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [93980000, 96520000],
+      "name": "GND",
+      "kind": "power",
+      "shape": "input",
+      "rotation": 0.0
+    },
+    {
+      "id": "6dd02a7c-b165-419e-9e6c-18da40cb2160",
+      "sheet": "5b7b2d3b-d297-4571-a9ea-3d95f17837d5",
+      "pos": [154940000, 109220000],
+      "name": "GND",
+      "kind": "power",
+      "shape": "input",
+      "rotation": 0.0
+    },
+    {
+      "id": "1faf59b6-5e30-4feb-be63-2c1b6e710ae4",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [127000000, 101600000],
+      "name": "+5V",
+      "kind": "power",
+      "shape": "input",
+      "rotation": 0.0
+    },
+    {
+      "id": "8942a61a-aba3-4e97-9f29-0800b613f681",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [127000000, 86360000],
+      "name": "GND",
+      "kind": "power",
+      "shape": "input",
+      "rotation": 0.0
+    },
+    {
+      "id": "dd820e22-de94-4e20-820d-85d601343905",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [147320000, 101600000],
+      "name": "SIG",
+      "kind": "local",
+      "shape": "input",
+      "rotation": 0.0
+    },
+    {
+      "id": "9401853c-8dbe-4e5f-ba9b-334b82297894",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [147320000, 86360000],
+      "name": "GND",
+      "kind": "power",
+      "shape": "input",
+      "rotation": 0.0
+    },
+    {
+      "id": "40ba5261-455b-4022-bd34-0bddcaae077f",
+      "sheet": "5b7b2d3b-d297-4571-a9ea-3d95f17837d5",
+      "pos": [119380000, 109220000],
+      "name": "IN",
+      "kind": "hierarchical",
+      "shape": "input",
+      "rotation": 180.0
+    },
+    {
+      "id": "e3d63121-d226-4b38-a015-12d8913ccf81",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "pos": [121920000, 124460000],
+      "name": "+5V",
+      "kind": "power",
+      "shape": "input",
+      "rotation": 0.0
+    },
+    {
+      "id": "a36a407f-f9a4-4d29-91fa-52cef83187b6",
+      "sheet": "3747c297-f4e3-4add-b2f1-7e4629cb56e0",
+      "pos": [127000000, 109220000],
+      "name": "+5V",
+      "kind": "power",
+      "shape": "input",
+      "rotation": 0.0
+    },
+    {
+      "id": "f69c885b-35a0-454b-a083-563a20b51308",
+      "sheet": "3747c297-f4e3-4add-b2f1-7e4629cb56e0",
+      "pos": [127000000, 93980000],
+      "name": "GND",
+      "kind": "power",
+      "shape": "input",
+      "rotation": 0.0
+    }
+  ],
+  "texts": [
+    {
+      "id": "7a185b42-f71b-462f-b2da-5d9f697fb250",
+      "sheet": "b067cbf5-b31c-4651-8238-6bdb73f94944",
+      "text": {
+        "text": "LED DEMO",
+        "pos": [101600000, 119380000],
+        "size": 2540000,
+        "rotation": 0.0,
+        "halign": "left",
+        "valign": "bottom"
+      }
+    }
+  ],
+  "fields": [
+    {
+      "id": "7b74bb31-1417-434b-add7-4818ae5307a0",
+      "symbol": "245bc4ee-f6a8-47e4-b182-667e5e441bf5",
+      "text": {
+        "text": "${REF}",
+        "pos": [0, 4340000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "bottom"
+      }
+    },
+    {
+      "id": "4c0848a5-3749-4d31-a7e8-4852c326423a",
+      "symbol": "245bc4ee-f6a8-47e4-b182-667e5e441bf5",
+      "text": {
+        "text": "${VALUE}",
+        "pos": [0, -6880000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "top"
+      }
+    },
+    {
+      "id": "a67742a3-4aa8-4b15-9cf9-d594f9542cd4",
+      "symbol": "99b1f261-9caf-4459-8dea-6ad590046638",
+      "text": {
+        "text": "${REF}",
+        "pos": [0, 1400000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "bottom"
+      }
+    },
+    {
+      "id": "c75fef2d-943c-4944-ad9b-4d51538d2b41",
+      "symbol": "99b1f261-9caf-4459-8dea-6ad590046638",
+      "text": {
+        "text": "${VALUE}",
+        "pos": [0, -1400000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "top"
+      }
+    },
+    {
+      "id": "fd6389b4-96b5-4ba9-bc2c-122966691765",
+      "symbol": "0317ee42-707a-4885-a580-2cd491604960",
+      "text": {
+        "text": "${REF}",
+        "pos": [0, 3000000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "bottom"
+      }
+    },
+    {
+      "id": "a2f715b0-12ae-4842-aee9-3aa70a7e1e37",
+      "symbol": "0317ee42-707a-4885-a580-2cd491604960",
+      "text": {
+        "text": "${VALUE}",
+        "pos": [0, -3000000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "top"
+      }
+    },
+    {
+      "id": "d61c5d2b-b932-4c5f-a93d-716774601574",
+      "symbol": "1c088d38-3606-48f3-870c-99484d86d3b6",
+      "text": {
+        "text": "${REF}",
+        "pos": [0, 2500000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "bottom"
+      }
+    },
+    {
+      "id": "5db57f71-fc9a-4ac2-8adf-f1e7ff996725",
+      "symbol": "1c088d38-3606-48f3-870c-99484d86d3b6",
+      "text": {
+        "text": "${VALUE}",
+        "pos": [0, -2500000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "top"
+      }
+    },
+    {
+      "id": "82d86514-b494-47d4-af9e-cc809db35cc6",
+      "symbol": "86a82e52-49cf-43e5-a968-254418dfd9a1",
+      "text": {
+        "text": "${REF}",
+        "pos": [0, 1400000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "bottom"
+      }
+    },
+    {
+      "id": "41ddf466-eadc-4c66-b4bc-f5f6ac08f863",
+      "symbol": "86a82e52-49cf-43e5-a968-254418dfd9a1",
+      "text": {
+        "text": "${VALUE}",
+        "pos": [0, -1400000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "top"
+      }
+    },
+    {
+      "id": "eb438a8c-1909-4317-a817-803a87f50811",
+      "symbol": "3c4b6ae9-0903-4771-8caf-c53532dc7601",
+      "text": {
+        "text": "${REF}",
+        "pos": [3340000, 600000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "left",
+        "valign": "bottom"
+      }
+    },
+    {
+      "id": "e8a5a6bd-e343-4990-9a7a-bc61d821f750",
+      "symbol": "3c4b6ae9-0903-4771-8caf-c53532dc7601",
+      "text": {
+        "text": "${VALUE}",
+        "pos": [3340000, -600000],
+        "size": 1270000,
+        "rotation": 0.0,
+        "halign": "left",
+        "valign": "top"
+      }
+    }
+  ],
+  "simulation": {
+    "analyses": [
+      {
+        "id": "771379bf-10d9-4e82-b93d-3cd5ec90d05f",
+        "name": "Operating point",
+        "kind": {
+          "type": "op"
+        }
+      },
+      {
+        "id": "2c5aae9f-9de5-4c5d-aec4-186be7cfc26a",
+        "name": "Transient",
+        "kind": {
+          "type": "tran",
+          "stop": 0.003,
+          "step": 5e-6,
+          "max_step": 5e-6
+        },
+        "probes": [
+          {
+            "type": "voltage",
+            "net": "+5V"
+          },
+          {
+            "type": "voltage",
+            "net": "Net-(D1-2)"
+          }
+        ]
+      },
+      {
+        "id": "b51bd69f-1a25-4e28-ad61-19e9d9b6f183",
+        "name": "AC",
+        "kind": {
+          "type": "ac",
+          "start": 1.0,
+          "stop": 10000000.0,
+          "points_per_decade": 50
+        },
+        "probes": [
+          {
+            "type": "voltage",
+            "net": "+5V"
+          },
+          {
+            "type": "voltage",
+            "net": "Net-(D1-2)"
+          }
+        ]
+      }
+    ]
+  }
+}

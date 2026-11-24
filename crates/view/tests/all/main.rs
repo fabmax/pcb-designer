@@ -19,6 +19,7 @@ mod part_tools;
 mod pcb_tools;
 mod print;
 mod probe;
+mod saved_files;
 mod sch_tools;
 mod sheets;
 mod sim_overlay;

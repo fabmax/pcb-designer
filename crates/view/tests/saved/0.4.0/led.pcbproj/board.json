@@ -1,0 +1,289 @@
+{
+  "format": "pcb-designer/board",
+  "version": 1,
+  "layers": [
+    {
+      "id": 0,
+      "name": "Top",
+      "function": "copper"
+    },
+    {
+      "id": 63,
+      "name": "Bottom",
+      "function": "copper"
+    },
+    {
+      "id": 100,
+      "name": "Top Silkscreen",
+      "function": "silkscreen"
+    },
+    {
+      "id": 101,
+      "name": "Bottom Silkscreen",
+      "function": "silkscreen"
+    },
+    {
+      "id": 102,
+      "name": "Top Solder Mask",
+      "function": "solder_mask"
+    },
+    {
+      "id": 103,
+      "name": "Bottom Solder Mask",
+      "function": "solder_mask"
+    },
+    {
+      "id": 104,
+      "name": "Top Paste",
+      "function": "solder_paste"
+    },
+    {
+      "id": 105,
+      "name": "Bottom Paste",
+      "function": "solder_paste"
+    },
+    {
+      "id": 106,
+      "name": "Top Fabrication",
+      "function": "fabrication"
+    },
+    {
+      "id": 107,
+      "name": "Bottom Fabrication",
+      "function": "fabrication"
+    },
+    {
+      "id": 108,
+      "name": "Top Courtyard",
+      "function": "courtyard"
+    },
+    {
+      "id": 109,
+      "name": "Bottom Courtyard",
+      "function": "courtyard"
+    },
+    {
+      "id": 120,
+      "name": "Board Outline",
+      "function": "outline"
+    }
+  ],
+  "rules": {
+    "clearance": 200000,
+    "track_width": 250000,
+    "via_diameter": 600000,
+    "via_drill": 300000,
+    "min_track_width": 150000,
+    "min_drill": 200000,
+    "thermal_gap": 500000,
+    "thermal_spoke": 500000,
+    "mask_expansion": 50000,
+    "paste_margin": 0
+  },
+  "footprints": [
+    {
+      "id": "637b120e-3d41-4c7f-9446-71b3e97e07bc",
+      "component": "45d942dc-7786-4a8d-9e60-c05baf671cad",
+      "pos": [5000000, 15000000],
+      "rotation": 0.0,
+      "side": "top",
+      "locked": false
+    },
+    {
+      "id": "46502067-8c45-4fab-bd8d-165baeb0054c",
+      "component": "80b0a1dc-f14b-462c-bdf9-5d41dacb403e",
+      "pos": [18000000, 20000000],
+      "rotation": 0.0,
+      "side": "top",
+      "locked": false
+    },
+    {
+      "id": "b0ee5312-28bf-4dad-8f47-71b8bf863880",
+      "component": "c5e02b52-7d60-4b37-99ed-9a4f9f9cfa9b",
+      "pos": [30000000, 20000000],
+      "rotation": 180.0,
+      "side": "top",
+      "locked": false
+    },
+    {
+      "id": "afcf3027-ebbd-4f51-aaa9-08e10203edfb",
+      "component": "0d089f20-8f4d-46cd-a38f-e20f77fb270a",
+      "pos": [18000000, 10000000],
+      "rotation": 90.0,
+      "side": "top",
+      "locked": false
+    },
+    {
+      "id": "2bc29855-ac19-43fa-9358-550b5e463080",
+      "component": "5d70f03b-6f4b-4a54-9b7a-bc3f72e745e5",
+      "pos": [30000000, 10000000],
+      "rotation": 90.0,
+      "side": "top",
+      "locked": false
+    }
+  ],
+  "fields": [
+    {
+      "id": "b1b6e898-c7e6-477e-a82c-614657576254",
+      "footprint": "637b120e-3d41-4c7f-9446-71b3e97e07bc",
+      "layer": "silkscreen",
+      "text": {
+        "text": "${REF}",
+        "pos": [0, 5800000],
+        "size": 1000000,
+        "bold": true,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "bottom"
+      }
+    },
+    {
+      "id": "13e3848d-1485-480b-90f7-8f02b0ddf96c",
+      "footprint": "46502067-8c45-4fab-bd8d-165baeb0054c",
+      "layer": "silkscreen",
+      "text": {
+        "text": "${REF}",
+        "pos": [0, 950000],
+        "size": 1000000,
+        "bold": true,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "bottom"
+      }
+    },
+    {
+      "id": "95a7b789-49d0-4f50-9d03-6e160eaf0f48",
+      "footprint": "b0ee5312-28bf-4dad-8f47-71b8bf863880",
+      "layer": "silkscreen",
+      "text": {
+        "text": "${REF}",
+        "pos": [0, 950000],
+        "size": 1000000,
+        "bold": true,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "bottom"
+      }
+    },
+    {
+      "id": "7f67a1a2-d684-43c9-9da8-72b3eb2d761b",
+      "footprint": "afcf3027-ebbd-4f51-aaa9-08e10203edfb",
+      "layer": "silkscreen",
+      "text": {
+        "text": "${REF}",
+        "pos": [0, 950000],
+        "size": 1000000,
+        "bold": true,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "bottom"
+      }
+    },
+    {
+      "id": "57703229-20f7-4bab-a817-c6fae5a3394d",
+      "footprint": "2bc29855-ac19-43fa-9358-550b5e463080",
+      "layer": "silkscreen",
+      "text": {
+        "text": "${REF}",
+        "pos": [0, 950000],
+        "size": 1000000,
+        "bold": true,
+        "rotation": 0.0,
+        "halign": "center",
+        "valign": "bottom"
+      }
+    }
+  ],
+  "tracks": [
+    {
+      "id": "98739a70-93da-406c-aabe-2faf570dc1f8",
+      "layer": 0,
+      "a": [5000000, 18810000],
+      "b": [17175000, 18810000],
+      "width": 250000
+    },
+    {
+      "id": "33efe9ed-e688-460d-8f5d-67a316b65e8a",
+      "layer": 0,
+      "a": [17175000, 18810000],
+      "b": [17175000, 20000000],
+      "width": 250000
+    },
+    {
+      "id": "96f1161b-ed5a-486e-a67d-4051f7298c30",
+      "layer": 0,
+      "a": [18825000, 20000000],
+      "b": [29175000, 20000000],
+      "width": 250000
+    },
+    {
+      "id": "991f2bf2-e48d-4936-bd96-bf6f439927b5",
+      "layer": 0,
+      "a": [5000000, 16270000],
+      "b": [30000000, 16270000],
+      "width": 250000
+    },
+    {
+      "id": "de887ef8-2ffe-4669-b716-3da80a4ed042",
+      "layer": 0,
+      "a": [30000000, 16270000],
+      "b": [30000000, 10825000],
+      "width": 250000
+    },
+    {
+      "id": "a720a896-e8f5-4b74-8bc0-c1570d0e4ce9",
+      "layer": 0,
+      "a": [5000000, 11190000],
+      "b": [9000000, 11190000],
+      "width": 400000
+    }
+  ],
+  "vias": [
+    {
+      "id": "101156c3-3f29-406f-bce1-6fa815258b7a",
+      "pos": [9000000, 11190000],
+      "diameter": 600000,
+      "drill": 300000,
+      "from": 0,
+      "to": 63
+    }
+  ],
+  "zones": [
+    {
+      "id": "f1266bb8-620c-46f1-a6c4-160a0ad0454d",
+      "layer": 63,
+      "net": "GND",
+      "outline": [
+        [1000000, 1000000],
+        [39000000, 1000000],
+        [39000000, 29000000],
+        [1000000, 29000000]
+      ],
+      "priority": 0
+    }
+  ],
+  "keepouts": [],
+  "graphics": [
+    {
+      "id": "06826c40-4ee6-4efc-a4a5-e3a40f14c668",
+      "layer": 120,
+      "shape": {
+        "type": "rect",
+        "a": [0, 0],
+        "b": [40000000, 30000000],
+        "width": 100000,
+        "fill": false
+      }
+    }
+  ],
+  "texts": [],
+  "stackup": {
+    "thickness": 1600000,
+    "outer_copper": 35000,
+    "inner_copper": 18000,
+    "finish": "unspecified",
+    "mask_color": "green",
+    "silk_color": "white"
+  },
+  "assembly": "generic"
+}

@@ -44,8 +44,10 @@ The **Release** workflow builds the macOS app (Apple Silicon) and the Linux and 
 (x86_64) binaries. Run by hand, it keeps them as workflow artifacts; a version tag
 publishes them as a GitHub Release:
 
-1. Set the version in the workspace `Cargo.toml` (`version = "0.3.0"`) and commit.
-2. `git tag -a v0.3.0 -m "pcb-designer 0.3.0"`, then push `main` and the tag.
+1. Set the version in the workspace `Cargo.toml` (`version = "0.5.0"`).
+2. `cargo run -p view --example save_examples -- --release 0.5.0` saves the examples to
+   `crates/view/tests/saved/0.5.0/`: later versions must keep loading them. Commit.
+3. `git tag -a v0.5.0 -m "pcb-designer 0.5.0"`, then push `main` and the tag.
 
 ## Example projects
 

@@ -12,8 +12,8 @@
 //!
 //! A library is a single `*.pcblib` JSON file. Every file starts with
 //! `"format": "pcb-designer/<kind>"` and `"version": N`. Older versions can be upgraded on
-//! load by the migrations in [`MIGRATIONS`] (none until production use: until then format
-//! changes may break older files). Files are written with stable field order,
+//! load by the migrations in [`MIGRATIONS`]: files saved by a released version keep
+//! loading (`view/tests/all/saved_files.rs` checks the releases' examples). Files are written with stable field order,
 //! integer coordinates, and short scalar arrays (like points) kept on one line, so they
 //! diff well in git. Writes go through a temporary file and a rename.
 
@@ -234,6 +234,13 @@ pub fn from_file_str<T: DeserializeOwned>(
     migrations: &[Migration],
     path: &Path,
 ) -> Result<T, FileError> {
+    let value = upgrade(text, kind, migrations, path)?;
+    serde_json::from_value(value).map_err(|e| FileError::Json { path: path.into(), source: e })
+}
+
+/// A file's JSON in the current version: checked against `kind`, migrated, without its
+/// `format` and `version` fields.
+pub fn upgrade(text: &str, kind: FileKind, migrations: &[Migration], path: &Path) -> Result<Value, FileError> {
     let json_err = |e| FileError::Json { path: path.into(), source: e };
     let mut value: Value = serde_json::from_str(text).map_err(json_err)?;
     let obj = value.as_object_mut().ok_or_else(|| FileError::Format {
@@ -257,7 +264,7 @@ pub fn from_file_str<T: DeserializeOwned>(
         (m.apply)(&mut value).map_err(|reason| FileError::Migration { path: path.into(), from: version, reason })?;
         version += 1;
     }
-    serde_json::from_value(value).map_err(json_err)
+    Ok(value)
 }
 
 fn write_file<T: Serialize>(path: &Path, kind: FileKind, data: &T) -> Result<(), FileError> {

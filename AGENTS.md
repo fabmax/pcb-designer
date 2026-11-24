@@ -38,8 +38,13 @@ Work on the branch that is checked out (often `main`); don't create branches.
    repo `fabmax/pcb-designer`) or asks for it. Then carry on with the next milestone
    without asking.
 
-Breaking changes are fine: the project is far from production. Rename or remove freely
-(file formats, settings, keymaps, MCP tools), and update tests and docs to match.
+Saved projects and libraries stay loadable: the project is in use. A format change that
+renames, removes or reinterprets a field bumps that file kind's version and adds a
+migration (`model::io::MIGRATIONS`); a new field with a default needs neither.
+`view/tests/all/saved_files.rs` loads each release's examples (`view/tests/saved/`) and
+fails when something in them is lost. Settings: missing and unknown fields fall back to
+defaults, but a value that no longer parses (a renamed enum variant) resets them all, so
+don't rename those. Keymaps and MCP tools may still change; update tests and docs to match.
 
 ## Crates
 
