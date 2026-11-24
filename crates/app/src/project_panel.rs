@@ -1271,10 +1271,14 @@ mod tests {
     #[test]
     fn menus_follow_what_a_node_allows() {
         let builtin = Info { editable: false, ..Default::default() };
-        assert_eq!(acts(menu(NodeId::Library(Owner::Lib(0)), &builtin)), [Act::SaveLibraryAs(0)]);
+        assert_eq!(
+            acts(menu(NodeId::Library(Owner::Lib(0)), &builtin)),
+            [Act::SaveLibraryAs(0), Act::ExportKicadLibrary(0)]
+        );
         let listed = Info { editable: true, flag: true, path: Some("/l.pcblib".into()), ..Default::default() };
         let a = acts(menu(NodeId::Library(Owner::Lib(1)), &listed));
         assert!(a.contains(&Act::RemoveLibrary(1)) && a.contains(&Act::SaveLibrary(1)));
+        assert!(a.contains(&Act::ExportKicadLibrary(1)));
         let unsaved = Info { editable: true, ..Default::default() };
         let a = acts(menu(NodeId::Library(Owner::Lib(2)), &unsaved));
         assert!(a.contains(&Act::CloseLibrary(2)) && !a.contains(&Act::SaveLibrary(2)));
