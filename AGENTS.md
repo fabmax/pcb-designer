@@ -14,27 +14,27 @@ of JSON files, and an MCP server lets agents edit the open project.
 
 Each change (a milestone or a refinement) runs through these steps:
 
-1. Branch off `main`.
-2. Implement, with tests for new behaviour. Logic goes in the GUI-independent crates
+Work on the branch that is checked out (often `main`); don't create branches.
+
+1. Implement, with tests for new behaviour. Logic goes in the GUI-independent crates
    (`editor-core`, `view`), where it's unit-testable headless. Integration tests are one
    binary per crate: a new file in `crates/<crate>/tests/all/` needs a `mod` line in its
    `main.rs`. Run one file with `cargo test -p view --test all sheets::`. (Every test
    binary costs link time and, on macOS, a first-launch check of a second or more;
    `view/tests/theme.rs` stays separate because it switches the global palette.)
-3. Make it green: `cargo test --workspace`, `cargo clippy --workspace --all-targets` with
+2. Make it green: `cargo test --workspace`, `cargo clippy --workspace --all-targets` with
    zero warnings, and `cargo fmt`. GitHub Actions runs the same on macOS, Linux and
    Windows once main is pushed (`.github/workflows/ci.yml`); keep code portable.
-4. For anything visible, look at it in a real-window screenshot (see below): both themes,
+3. For anything visible, look at it in a real-window screenshot (see below): both themes,
    and `--side-by-side` when layout is involved.
-5. Update PLAN.md. It is a reference, not a changelog (the commit message says what
+4. Update PLAN.md. It is a reference, not a changelog (the commit message says what
    changed). Update the section of the area you touched with the current design and the
    gotchas a later change needs to know, keeping it short. Add what you defer to
    **Later**, and remove what you finished from it. When users see the change, update
    the matching file in `docs/` too (how to use it, not how it's built).
-6. Commit with a message like `M9: copper zones …` or `GUI: floating icon tool bars …`.
-   End it with the attribution trailer.
-7. `git rebase main` on the branch, then `git checkout main && git merge --ff-only
-   <branch>` (linear history, no merge commits). Don't push: the user tries changes out first, and pushes main to `origin` (private GitHub
+5. Commit on the current branch with a message like `M9: copper zones …` or `GUI:
+   floating icon tool bars …`. End it with the attribution trailer.
+6. Don't push: the user tries changes out first, and pushes to `origin` (private GitHub
    repo `fabmax/pcb-designer`) or asks for it. Then carry on with the next milestone
    without asking.
 
