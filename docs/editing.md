@@ -34,6 +34,8 @@ Click selects, Shift+click adds to the selection and Cmd+click (Ctrl elsewhere) 
 Dragging from empty space draws a box that selects what lies entirely inside it; hold
 Alt (Option) while dragging to select everything the box touches. With Shift or Cmd the
 box adds to the selection. What the box will select shows as selected while you drag.
+A box never selects a part's reference or value text on its own; it takes them along
+with their symbol or footprint (click one to select just the text).
 
 Dragging keeps things connected, in the schematic and on the board:
 

@@ -998,7 +998,8 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   document itself (one undo history).
 - `Interaction`: click/shift/cmd select, box (inside, or touching with Alt; modifiers
   count at the release; what it would select is highlighted live, searched again only
-  when the box changes), drag with snap of the grabbed reference point (one undo step; R rotates while
+  when the box changes; `View::select_rect` leaves out reference and value fields and
+  adds the drawn ones of each symbol or footprint it found), drag with snap of the grabbed reference point (one undo step; R rotates while
   dragging), `snap` toggle. Locked footprints don't move. A press becomes a drag when
   the *hand* moves the pointer 4 points on screen (`PointerInput::screen`), not when the
   view shifts under it (a panel changing width); the drag then follows the hand's motion.

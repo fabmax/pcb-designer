@@ -1,7 +1,7 @@
 use editor_core::Command;
 use model::*;
 use view::demo::demo_project;
-use view::{Document, Interaction, KeyAction, PointerInput, ProjectTarget, ViewId};
+use view::{Document, Interaction, KeyAction, PointerInput, ProjectTarget, Target, ViewId};
 
 fn input(p: Point) -> PointerInput {
     PointerInput { world: Some(p), tolerance: mm(0.3), drag_threshold: mm(0.5), ..Default::default() }
@@ -128,6 +128,74 @@ fn box_select_inside_and_crossing() {
     press(&mut it, &mut doc.target(v), far);
     release(&mut it, &mut doc.target(v), far);
     assert!(it.selection.is_empty());
+}
+
+#[test]
+fn box_select_takes_reference_and_value_only_with_their_part() {
+    let mut doc = Document::new(demo_project());
+    let mut it = Interaction::new(mm(1.27));
+    let r1 = symbol(&doc, "R1");
+    let v = ViewId::Sheet(r1.sheet);
+    let fields: Vec<ObjectId> = doc
+        .project()
+        .schematic
+        .fields
+        .iter()
+        .filter(|f| f.symbol == r1.id)
+        .map(|f| ObjectId::SymbolField(f.id))
+        .collect();
+    assert!(!fields.is_empty());
+    let alt = |p| PointerInput { alt: true, ..input(p) };
+    let alt_box = |it: &mut Interaction<ObjectId>, doc: &mut Document, a: Point, b: Point| {
+        press(it, &mut doc.target(v), a);
+        it.pointer(&mut doc.target(v), &PointerInput { down: true, ..alt(b) });
+        it.pointer(&mut doc.target(v), &PointerInput { released: true, ..alt(b) });
+    };
+
+    // A box enclosing just one field selects nothing.
+    let field = doc.view(v).index.bounds(fields[0]).unwrap();
+    // From a corner of the box in empty space, to the opposite one.
+    let (lo, hi) = (field.min - Point::mm(0.5, 0.5), field.max + Point::mm(0.5, 0.5));
+    let corners = [
+        (lo, hi),
+        (hi, lo),
+        (Point::new(lo.x, hi.y), Point::new(hi.x, lo.y)),
+        (Point::new(hi.x, lo.y), Point::new(lo.x, hi.y)),
+    ];
+    let (a, b) = corners.into_iter().find(|&(a, _)| doc.target(v).hit(a, mm(0.3)).is_none()).unwrap();
+    press(&mut it, &mut doc.target(v), a);
+    drag(&mut it, &mut doc.target(v), b);
+    release(&mut it, &mut doc.target(v), b);
+    assert!(fields.iter().all(|f| !it.selection.contains(f)));
+    // Touching may catch the symbol's body next to it, but never the field alone.
+    alt_box(&mut it, &mut doc, a, b);
+    let with_symbol = it.selection.contains(&ObjectId::Symbol(r1.id));
+    assert!(fields.iter().all(|f| it.selection.contains(f) == with_symbol));
+
+    // A thin box touching the symbol's body brings all its fields along.
+    let body = doc.view(v).index.bounds(ObjectId::Symbol(r1.id)).unwrap();
+    let c = Point::new((body.min.x + body.max.x) / 2, (body.min.y + body.max.y) / 2);
+    alt_box(&mut it, &mut doc, c + Point::mm(-0.2, 8.0), c + Point::mm(0.2, -8.0));
+    assert!(it.selection.contains(&ObjectId::Symbol(r1.id)));
+    assert!(fields.iter().all(|f| it.selection.contains(f)));
+
+    // On the board, the same for a footprint's texts.
+    let fp = doc.project().board.footprints.iter().next().unwrap().clone();
+    let texts: Vec<ObjectId> = doc
+        .project()
+        .board
+        .fields
+        .iter()
+        .filter(|f| f.footprint == fp.id && !f.hidden)
+        .map(|f| ObjectId::FootprintField(f.id))
+        .collect();
+    assert!(!texts.is_empty());
+    let board = doc.view(ViewId::Board);
+    let text = board.index.bounds(texts[0]).unwrap();
+    assert!(!board.select_rect(doc.project(), text, false).iter().any(|id| texts.contains(id)));
+    let whole = board.index.bounds(ObjectId::Footprint(fp.id)).unwrap();
+    let found = board.select_rect(doc.project(), whole, false);
+    assert!(texts.iter().all(|t| found.contains(t)));
 }
 
 #[test]

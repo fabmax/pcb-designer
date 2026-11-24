@@ -875,7 +875,7 @@ impl Target for ProjectTarget<'_> {
     }
 
     fn in_rect(&self, r: Rect, crossing: bool) -> Vec<ObjectId> {
-        self.doc.view(self.view).select_rect(r, crossing)
+        self.doc.view(self.view).select_rect(self.doc.project(), r, crossing)
     }
 
     fn all(&self) -> Vec<ObjectId> {

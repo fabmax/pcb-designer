@@ -38,7 +38,7 @@ fn the_keepout_tool_draws_a_polygon() {
     let id = ObjectId::Keepout(k.id);
     assert!(
         doc.view(ViewId::Board)
-            .select_rect(Rect::from_points(Point::mm(1.0, 1.0), Point::mm(9.0, 9.0)), false)
+            .select_rect(doc.project(), Rect::from_points(Point::mm(1.0, 1.0), Point::mm(9.0, 9.0)), false)
             .contains(&id)
     );
 }

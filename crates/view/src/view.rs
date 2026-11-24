@@ -1179,9 +1179,26 @@ impl View {
         best.map(|(_, id)| id)
     }
 
-    /// Objects inside `r` (fully, or touching when `crossing`).
-    pub fn select_rect(&self, r: Rect, crossing: bool) -> Vec<ObjectId> {
+    /// Objects inside `r` (fully, or touching when `crossing`). Reference and value texts
+    /// come with their symbol or footprint, never on their own: they are easy to catch by
+    /// accident.
+    pub fn select_rect(&self, project: &Project, r: Rect, crossing: bool) -> Vec<ObjectId> {
         let mut ids = self.index.in_rect(r, crossing);
+        ids.retain(|id| !matches!(id, ObjectId::SymbolField(_) | ObjectId::FootprintField(_)));
+        let mut parts = FxHashSet::default();
+        for id in &ids {
+            if let ObjectId::Symbol(p) | ObjectId::Footprint(p) = id {
+                parts.insert(*p);
+            }
+        }
+        if !parts.is_empty() {
+            let symbol = project.schematic.fields.iter().filter(|f| parts.contains(&f.symbol));
+            let footprint = project.board.fields.iter().filter(|f| parts.contains(&f.footprint));
+            let fields =
+                symbol.map(|f| ObjectId::SymbolField(f.id)).chain(footprint.map(|f| ObjectId::FootprintField(f.id)));
+            // Only the ones drawn here (not hidden).
+            ids.extend(fields.filter(|&id| self.index.bounds(id).is_some()));
+        }
         ids.sort();
         ids
     }
