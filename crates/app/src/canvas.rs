@@ -49,6 +49,8 @@ pub struct Canvas {
     /// frame before [`Canvas::ui`].
     pub command_wheel: bool,
     wheel_steps: f64,
+    /// The last mouse wheel notch counted as a step: egui's time and direction.
+    last_notch: Option<(f64, f64)>,
     /// A short note next to the pointer ([`Canvas::flash`]) and when it was set.
     tip: Option<(String, std::time::Instant)>,
 }
@@ -72,6 +74,7 @@ impl Canvas {
             rect: egui::Rect::NOTHING,
             command_wheel: false,
             wheel_steps: 0.0,
+            last_notch: None,
             tip: None,
         }
     }
@@ -209,8 +212,14 @@ impl Canvas {
                             // macOS sends an event per notch of a mouse wheel, but with
                             // accelerated deltas (a slow notch is a fraction of a line):
                             // count the notches.
-                            (egui::MouseWheelSource::Wheel, _) if delta.y != 0.0 => delta.y.signum() as f64,
-                            (egui::MouseWheelSource::Wheel, _) => 0.0,
+                            (egui::MouseWheelSource::Wheel, _) => {
+                                let sign = delta.y.signum() as f64;
+                                if delta.y != 0.0 && notch_counts(&mut self.last_notch, i.time, sign) {
+                                    sign
+                                } else {
+                                    0.0
+                                }
+                            }
                             (_, egui::MouseWheelUnit::Point) => delta.y as f64 / 50.0,
                             (_, egui::MouseWheelUnit::Line) => delta.y as f64,
                             (_, egui::MouseWheelUnit::Page) => delta.y as f64 * 10.0,
@@ -252,6 +261,18 @@ impl Canvas {
             }
         });
     }
+}
+
+/// Some mouse drivers send a burst of events per wheel notch: in one direction, a notch
+/// counts at most every [`NOTCH_GAP`] seconds (still 25 steps a second when spun fast).
+/// `last` is the last counted notch's time and direction.
+fn notch_counts(last: &mut Option<(f64, f64)>, time: f64, sign: f64) -> bool {
+    const NOTCH_GAP: f64 = 0.04;
+    let counts = last.is_none_or(|(t, s)| s != sign || time - t >= NOTCH_GAP);
+    if counts {
+        *last = Some((time, sign));
+    }
+    counts
 }
 
 impl Drop for Canvas {
@@ -517,4 +538,21 @@ pub fn draw_measure(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, m: &view::
     let bg = egui::Rect::from_min_size(pos, galley.size()).expand(5.0);
     painter.rect(bg, 4.0, crate::theme::panel(), Stroke::new(1.0, accent), egui::StrokeKind::Inside);
     painter.galley(pos, galley, ui.visuals().text_color());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::notch_counts;
+
+    #[test]
+    fn a_burst_of_wheel_events_is_one_notch() {
+        let mut last = None;
+        let counted: Vec<bool> =
+            [(0.0, 1.0), (0.005, 1.0), (0.02, 1.0), (0.05, 1.0), (0.06, -1.0), (0.07, 1.0), (0.071, 1.0)]
+                .into_iter()
+                .map(|(t, s)| notch_counts(&mut last, t, s))
+                .collect();
+        // A burst counts once; the next notch 50 ms on does; turning back counts at once.
+        assert_eq!(counted, [true, false, false, true, true, true, false]);
+    }
 }

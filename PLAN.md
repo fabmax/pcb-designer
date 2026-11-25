@@ -429,7 +429,8 @@ things to do **later**.
   the rules' minimum) from the width it lays now (the net class's if unset), setting
   `PcbSettings::width`. A mouse wheel (`MouseWheelSource::Wheel`, only set on macOS)
   steps once per event: macOS sends one per notch but accelerates its delta (a slow
-  notch is a fraction of a line); elsewhere line deltas are notches already, and a
+  notch is a fraction of a line). In one direction at most every 40 ms
+  (`notch_counts`): some drivers send a burst of events per notch; elsewhere line deltas are notches already, and a
   trackpad's points add up (50 a step). The canvas collects the steps only with `Canvas::command_wheel`
   on, and then zooms only by pinches (`Event::Zoom`, multi-touch), not by egui's
   `zoom_delta`: that counts Cmd+wheel as zoom, smoothed over the following frames, so
