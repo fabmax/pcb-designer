@@ -82,8 +82,10 @@ pub struct Palette {
     /// Objects selected in the other view (cross-probing).
     pub probe: Color,
     pub probe_fill: Color,
-    /// Simulation values on the schematic (voltage and current tags) and their background.
-    pub sim_value: Color,
+    /// Simulation values on the schematic: voltage tags, current tags and arrows, and
+    /// their background.
+    pub sim_voltage: Color,
+    pub sim_current: Color,
     pub sim_value_bg: Color,
     /// The waveform plot: its chart's background, grid and frame, tick labels.
     pub plot_bg: Color,
@@ -150,7 +152,8 @@ pub static DARK: Palette = Palette {
     selected_copper: Color::rgba(0xff, 0xff, 0xff, 0xc0),
     probe: Color::rgba(0xff, 0xd0, 0x4c, 0xd0),
     probe_fill: Color::rgba(0xff, 0xd0, 0x4c, 0x22),
-    sim_value: Color::rgb(0x8c, 0xd0, 0xff),
+    sim_voltage: Color::rgb(0x8c, 0xd0, 0xff),
+    sim_current: Color::rgb(0xf0, 0x96, 0xdc),
     sim_value_bg: Color::rgba(0x16, 0x18, 0x1d, 0xd8),
     plot_bg: Color::rgb(0x0d, 0x0e, 0x11),
     plot_grid: Color::rgb(0x2a, 0x2e, 0x36),
@@ -218,7 +221,8 @@ pub static LIGHT: Palette = Palette {
     selected_copper: Color::rgba(0x00, 0x00, 0x00, 0x90),
     probe: Color::rgba(0xd0, 0x90, 0x00, 0xe0),
     probe_fill: Color::rgba(0xff, 0xc0, 0x00, 0x30),
-    sim_value: Color::rgb(0x0b, 0x5c, 0xad),
+    sim_voltage: Color::rgb(0x0b, 0x5c, 0xad),
+    sim_current: Color::rgb(0xa8, 0x1e, 0x86),
     sim_value_bg: Color::rgba(0xff, 0xff, 0xff, 0xe0),
     plot_bg: Color::rgb(0xff, 0xff, 0xff),
     plot_grid: Color::rgb(0xc4, 0xc8, 0xd0),

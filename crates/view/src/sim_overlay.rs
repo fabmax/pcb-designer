@@ -234,15 +234,15 @@ pub(crate) fn draw(
         }
     }
     let alpha = |c: Color| if o.dim { c.with_alpha(0x70) } else { c };
-    let (fg, bg) = (alpha(pal().sim_value), alpha(pal().sim_value_bg));
+    let (volts, amps, bg) = (alpha(pal().sim_voltage), alpha(pal().sim_current), alpha(pal().sim_value_bg));
     let mut placer = Placer { index, placed: Vec::new() };
     // Currents of two-pin parts first (they have the fewest places to go): an arrow on
     // the pin the current flows into, the value beside it.
     for (symbol, pin, text) in o.currents.iter().filter(|(s, ..)| on_sheet(*s)) {
         let Some((a, b)) = pin_ends(project, *symbol, *pin) else { continue };
-        arrow(p, layer, a, b, mm(0.9), fg);
+        arrow(p, layer, a, b, mm(0.9), amps);
         let spot = placer.place(&current_spots(a, b), text, Some(*symbol));
-        tag(p, layer, spot.0, text, spot.1, spot.2, fg, bg);
+        tag(p, layer, spot.0, text, spot.1, spot.2, amps, bg);
     }
     // Voltages: by the net's labels on this sheet, else along its wires, longest first.
     if !o.voltages.is_empty() {
@@ -266,7 +266,7 @@ pub(crate) fn draw(
                 continue;
             }
             let spot = placer.place(&spots, text, None);
-            tag(p, layer, spot.0, text, spot.1, spot.2, fg, bg);
+            tag(p, layer, spot.0, text, spot.1, spot.2, volts, bg);
         }
     }
     placer.placed

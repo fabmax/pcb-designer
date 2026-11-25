@@ -340,7 +340,7 @@ impl View {
                 e(l.text, Some(p.sch_text), 1),
                 e(l.frame, Some(p.sch_frame), 2),
                 e(l.erc, Some(p.drc_marker), 3),
-                e(l.sim, Some(p.sim_value), 3),
+                e(l.sim, Some(p.sim_voltage), 3),
             ],
             Layers::Board(b) => {
                 let board = |id: LayerId, group| e(b.map[&id], Some(board_layer_color(id)), group);

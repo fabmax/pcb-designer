@@ -880,9 +880,9 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   `SpatialIndex` or the tags placed so far, else the least covered (overlap area,
   weighted: texts and tags 4, other symbols 2, wires 1; the own part's body is free).
   Currents go first, as they have fewer spots. `View::sim_tags` keeps the rects for
-  tests. Tags use
-  `sim_value` / `sim_value_bg`, three significant digits, and are world-sized. Parts
-  with more than two pins get a hover tooltip (pin V, I, power). `SimPanel::hover` is
+  tests. Voltages use `sim_voltage`, currents (tags and arrows) `sim_current`, both on
+  `sim_value_bg`; three significant digits, world-sized. Parts with more than two pins
+  get a hover tooltip (pin V, I, power). `SimPanel::hover` is
   cleared each frame before the tree draws and set by the Probe tool or a hovered
   table row.
 - **Measurements** (`sim::measure`): over a window with interpolated ends; average and
