@@ -121,6 +121,10 @@ pub fn toolbar(
         None if pcb.tool() == PcbTool::Measure && pcb.settings.clearance => {
             toolbar::hint(ui, canvas, view::measure::CLEARANCE_HINT)
         }
+        None if pcb.tool() == PcbTool::Route => {
+            let wheel = if cfg!(target_os = "macos") { "⌘+wheel" } else { "Ctrl+wheel" };
+            toolbar::hint(ui, canvas, &format!("{} · {wheel} width", pcb.tool().hint()))
+        }
         None => toolbar::hint(ui, canvas, pcb.tool().hint()),
     }
     chosen.filter(|&t| t != PcbTool::Place)

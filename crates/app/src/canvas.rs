@@ -44,7 +44,17 @@ pub struct Canvas {
     pub cursor_world: Option<[f64; 2]>,
     viewport: [f64; 2],
     rect: egui::Rect,
+    /// Cmd+wheel (Ctrl elsewhere) steps something (the Route tool's width) instead of
+    /// zooming; read them with [`Canvas::take_command_wheel`]. Set by the caller each
+    /// frame before [`Canvas::ui`].
+    pub command_wheel: bool,
+    wheel_steps: f64,
+    /// A short note next to the pointer ([`Canvas::flash`]) and when it was set.
+    tip: Option<(String, std::time::Instant)>,
 }
+
+/// How long a [`Canvas::flash`] note stays.
+const TIP_TIME: std::time::Duration = std::time::Duration::from_millis(1200);
 
 impl Canvas {
     /// A canvas of `editor` with a grid of `grid` world units.
@@ -60,6 +70,9 @@ impl Canvas {
             cursor_world: None,
             viewport: [1.0, 1.0],
             rect: egui::Rect::NOTHING,
+            command_wheel: false,
+            wheel_steps: 0.0,
+            tip: None,
         }
     }
 
@@ -67,6 +80,37 @@ impl Canvas {
     pub fn restyle(&mut self, editor: view::style::Editor) {
         self.editor = editor;
         self.background = view::style::with_editor(editor, || view::style::background(self.background.grid));
+    }
+
+    /// Whole Cmd+wheel steps since the last call (up: positive), with
+    /// [`Canvas::command_wheel`] on. A trackpad's small deltas add up to steps.
+    pub fn take_command_wheel(&mut self) -> i32 {
+        let whole = self.wheel_steps.trunc();
+        self.wheel_steps -= whole;
+        whole as i32
+    }
+
+    /// Show `text` next to the pointer for a moment.
+    pub fn flash(&mut self, text: String) {
+        self.tip = Some((text, std::time::Instant::now()));
+    }
+
+    fn tip_ui(&mut self, ui: &egui::Ui, response: &egui::Response) {
+        let Some((text, since)) = &self.tip else { return };
+        let left = TIP_TIME.saturating_sub(since.elapsed());
+        if left.is_zero() || !response.hovered() {
+            self.tip = None;
+            return;
+        }
+        ui.ctx().request_repaint_after(left);
+        egui::Tooltip::always_open(
+            ui.ctx().clone(),
+            ui.layer_id(),
+            egui::Id::unique("canvas_flash"),
+            egui::PopupAnchor::Pointer,
+        )
+        .gap(14.0)
+        .show(|ui| ui.label(text.as_str()));
     }
 
     pub fn request_fit(&mut self) {
@@ -111,6 +155,7 @@ impl Canvas {
         }
         self.handle_input(ui, &response, rect);
         self.paint(ui, rect, scene);
+        self.tip_ui(ui, &response);
         if CROSSHAIR.load(Ordering::Relaxed)
             && let Some(at) = response.hover_pos()
         {
@@ -156,9 +201,19 @@ impl Canvas {
         let Some(hover) = hover else { return };
         let anchor = local(hover);
 
+        let mut stepped = false;
         ui.input(|i| {
             for e in &i.events {
                 if let egui::Event::MouseWheel { unit, delta, source, modifiers, .. } = e {
+                    if modifiers.command && self.command_wheel {
+                        self.wheel_steps += match unit {
+                            egui::MouseWheelUnit::Point => delta.y as f64 / 50.0,
+                            egui::MouseWheelUnit::Line => delta.y as f64,
+                            egui::MouseWheelUnit::Page => delta.y as f64 * 10.0,
+                        };
+                        stepped = true;
+                        continue;
+                    }
                     if modifiers.command || modifiers.ctrl {
                         continue; // handled as zoom_delta by egui
                     }
@@ -181,8 +236,9 @@ impl Canvas {
                     }
                 }
             }
+            // egui counts Cmd+wheel into the zoom too (a pinch at the same time is lost).
             let z = i.zoom_delta();
-            if z != 1.0 {
+            if z != 1.0 && !stepped {
                 self.camera.zoom_at(z as f64, anchor, vp);
             }
         });

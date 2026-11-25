@@ -32,7 +32,11 @@ touching one is a short. See [Libraries](libraries.md#board-parts).
 ## Routing
 
 The Route tool draws tracks leg by leg like wires (see
-[Drawing wires and tracks](editing.md#drawing-wires-and-tracks)). **Edit → Round track
+[Drawing wires and tracks](editing.md#drawing-wires-and-tracks)). **⌘+mouse wheel**
+(Ctrl+wheel on Windows and Linux) changes its track width, also in the middle of a track:
+the leg being drawn follows at once, and a note by the pointer shows the new width. The
+steps are 0.05 mm below 0.5 mm, 0.1 mm up to 2 mm and 0.25 mm above, from the board's
+minimum track width up to 10 mm. **Edit → Round track
 corners** rounds the corners between the selected tracks with the Route tool's corner
 radius.
 

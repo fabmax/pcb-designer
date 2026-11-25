@@ -484,6 +484,19 @@ impl PcbPlacer {
         true
     }
 
+    /// Widen (`steps` > 0) or narrow the Route tool's tracks by `steps` steps of
+    /// [`width_step`], from the width it lays now. Returns the new width (`None` for
+    /// another tool).
+    pub fn step_width(&mut self, doc: &Document, steps: i32) -> Option<Coord> {
+        if self.tool != PcbTool::Route || steps == 0 {
+            return None;
+        }
+        let min = doc.project().board.rules.min_track_width;
+        let w = (0..steps.unsigned_abs()).fold(self.width(doc), |w, _| width_step(w, steps > 0, min));
+        self.settings.width = Some(w);
+        Some(w)
+    }
+
     /// The track width: the tool's, else the routed net's class's.
     fn width(&self, doc: &Document) -> Coord {
         self.settings.width.unwrap_or_else(|| doc.project().board.rules.for_net(self.net.as_deref()).track_width)
@@ -1088,6 +1101,35 @@ impl PcbPlacer {
             g
         })
     }
+}
+
+/// The widest track [`width_step`] goes to.
+pub const MAX_STEPPED_WIDTH: Coord = 10_000_000;
+
+/// The next track width up or down from `w` (Cmd+wheel while routing): 0.05 mm steps
+/// below 0.5 mm, 0.1 mm below 2 mm, 0.25 mm above, on multiples of the step, between
+/// `min` (the design rules' minimum, else 0.05 mm) and [`MAX_STEPPED_WIDTH`].
+pub fn width_step(w: Coord, up: bool, min: Coord) -> Coord {
+    let step = |w: Coord, below: bool| {
+        // Narrowing from a boundary takes the finer step under it.
+        let at = if below { w - 1 } else { w };
+        if at < 500_000 {
+            50_000
+        } else if at < 2_000_000 {
+            100_000
+        } else {
+            250_000
+        }
+    };
+    let next = if up {
+        let s = step(w, false);
+        (w.div_euclid(s) + 1) * s
+    } else {
+        let s = step(w, true);
+        ((w + s - 1).div_euclid(s) - 1) * s
+    };
+    let min = if min > 0 { min } else { 50_000 };
+    next.clamp(min.min(MAX_STEPPED_WIDTH), MAX_STEPPED_WIDTH)
 }
 
 /// What a cutout started at `p` cuts into: the zone on `layer` containing `p` with the

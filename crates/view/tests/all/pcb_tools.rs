@@ -5,7 +5,7 @@ use editor_core::query::{pad_positions, pin_positions};
 use model::builtin::{self, PART_HEADER_1X4, PART_RESISTOR};
 use model::*;
 use view::Document;
-use view::pcb_tools::{PcbGhost, PcbPlacer, PcbTool};
+use view::pcb_tools::{MAX_STEPPED_WIDTH, PcbGhost, PcbPlacer, PcbTool, width_step};
 
 fn place(doc: &mut Document, part: Id, x: f64, at: Point) -> (Id, Id) {
     place_at(doc, part, Point::mm(x, 0.0), at)
@@ -97,6 +97,53 @@ fn route_two_nets_with_a_layer_change() {
     assert_eq!(copper.unrouted(), 0, "{:?}", copper.ratsnest);
     assert!(copper.shorts.is_empty());
     assert!(doc.project().board.tracks.iter().any(|tr| tr.layer == LayerId::BOTTOM_COPPER));
+}
+
+#[test]
+fn track_widths_step_finer_when_narrow() {
+    let up = |w: f64| width_step(mm(w), true, mm(0.15)) as f64 / 1e6;
+    let down = |w: f64| width_step(mm(w), false, mm(0.15)) as f64 / 1e6;
+    assert_eq!(
+        (up(0.2), up(0.254), up(0.45), up(0.5), up(1.95), up(2.0), up(9.9)),
+        (0.25, 0.3, 0.5, 0.6, 2.0, 2.25, 10.0)
+    );
+    assert_eq!(
+        (down(0.254), down(0.5), down(0.55), down(2.0), down(2.1), down(10.0)),
+        (0.25, 0.45, 0.5, 1.9, 2.0, 9.75)
+    );
+    // Not below the design rules' minimum, nor above the maximum.
+    assert_eq!((down(0.2), down(0.15), up(10.0)), (0.15, 0.15, 10.0));
+    assert_eq!(width_step(mm(0.15), true, mm(0.15)), mm(0.2));
+    assert_eq!(width_step(mm(0.05), false, 0), mm(0.05), "a minimum of 0 stops at one step");
+    assert_eq!(width_step(mm(30.0), false, 0), MAX_STEPPED_WIDTH);
+}
+
+/// Cmd+wheel while routing: the leg being drawn takes the new width at once, and so does
+/// the track the click adds.
+#[test]
+fn stepping_the_width_while_routing_widens_the_leg() {
+    let mut doc = Document::new(Project::new("T"));
+    let rules_width = doc.project().board.rules.track_width;
+    let mut t = PcbPlacer::default();
+    assert_eq!(t.step_width(&doc, 1), None, "only the Route tool");
+    t.set_tool(PcbTool::Route);
+    let (a, b) = (Point::mm(0.0, 0.0), Point::mm(5.0, 0.0));
+    t.hover(&mut doc, Some((a, a)), mm(0.3));
+    t.click(&mut doc).unwrap();
+    t.hover(&mut doc, Some((b, b)), mm(0.3));
+    let leg = |t: &PcbPlacer, doc: &Document| {
+        t.ghosts(doc).iter().find_map(|g| if let PcbGhost::Track { width, .. } = g { Some(*width) } else { None })
+    };
+    assert_eq!(leg(&t, &doc), Some(rules_width));
+    let wider = t.step_width(&doc, 2).unwrap();
+    assert_eq!(wider, width_step(width_step(rules_width, true, 0), true, 0));
+    t.hover(&mut doc, Some((b, b)), mm(0.3));
+    assert_eq!(leg(&t, &doc), Some(wider));
+    assert_eq!(t.step_width(&doc, -1), Some(width_step(wider, false, 0)));
+    let w = t.settings.width.unwrap();
+    t.hover(&mut doc, Some((b, b)), mm(0.3));
+    t.click(&mut doc).unwrap();
+    assert_eq!(doc.project().board.tracks.iter().next().unwrap().width, w);
 }
 
 #[test]

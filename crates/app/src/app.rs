@@ -5080,6 +5080,8 @@ impl TreeBehavior<'_> {
         let pane = self.panes.get(view);
         let scene = &mut doc.view_mut(view).scene;
         let canvas = &mut pane.canvas;
+        // Cmd+wheel steps the Route tool's width.
+        canvas.command_wheel = kind == ViewKind::Board && self.pcb.tool() == PcbTool::Route;
         let response = ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| canvas.ui(ui, scene)).inner;
         if view == ViewId::Board {
             let [x0, y0, x1, y1] = canvas.camera.visible_world(canvas.viewport());
@@ -5241,6 +5243,10 @@ impl TreeBehavior<'_> {
             let tol = (8.0 / pane.canvas.camera.zoom * 1e6) as Coord;
             if let Some((raw, _)) = world {
                 self.pcb.steer(raw, 1e6 / pane.canvas.camera.zoom);
+            }
+            let steps = pane.canvas.take_command_wheel();
+            if let Some(w) = self.pcb.step_width(doc, steps) {
+                pane.canvas.flash(format!("Width {}", units::fmt(w)));
             }
             (self.pcb.free, self.pcb.force) = ui.input(|i| (i.modifiers.alt, i.modifiers.shift));
             self.pcb.hover(doc, world, tol);
