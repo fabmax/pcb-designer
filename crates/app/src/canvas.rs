@@ -205,10 +205,15 @@ impl Canvas {
             for e in &i.events {
                 if let egui::Event::MouseWheel { unit, delta, source, modifiers, .. } = e {
                     if modifiers.command && self.command_wheel {
-                        self.wheel_steps += match unit {
-                            egui::MouseWheelUnit::Point => delta.y as f64 / 50.0,
-                            egui::MouseWheelUnit::Line => delta.y as f64,
-                            egui::MouseWheelUnit::Page => delta.y as f64 * 10.0,
+                        self.wheel_steps += match (source, unit) {
+                            // macOS sends an event per notch of a mouse wheel, but with
+                            // accelerated deltas (a slow notch is a fraction of a line):
+                            // count the notches.
+                            (egui::MouseWheelSource::Wheel, _) if delta.y != 0.0 => delta.y.signum() as f64,
+                            (egui::MouseWheelSource::Wheel, _) => 0.0,
+                            (_, egui::MouseWheelUnit::Point) => delta.y as f64 / 50.0,
+                            (_, egui::MouseWheelUnit::Line) => delta.y as f64,
+                            (_, egui::MouseWheelUnit::Page) => delta.y as f64 * 10.0,
                         };
                         continue;
                     }

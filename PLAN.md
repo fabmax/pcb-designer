@@ -427,7 +427,10 @@ things to do **later**.
 - **Route tool width wheel**: Cmd+wheel (Ctrl elsewhere) steps the width
   (`PcbPlacer::step_width`, `width_step`: 0.05 / 0.1 / 0.25 mm below 0.5 / 2 / 10 mm, from
   the rules' minimum) from the width it lays now (the net class's if unset), setting
-  `PcbSettings::width`. The canvas collects the steps only with `Canvas::command_wheel`
+  `PcbSettings::width`. A mouse wheel (`MouseWheelSource::Wheel`, only set on macOS)
+  steps once per event: macOS sends one per notch but accelerates its delta (a slow
+  notch is a fraction of a line); elsewhere line deltas are notches already, and a
+  trackpad's points add up (50 a step). The canvas collects the steps only with `Canvas::command_wheel`
   on, and then zooms only by pinches (`Event::Zoom`, multi-touch), not by egui's
   `zoom_delta`: that counts Cmd+wheel as zoom, smoothed over the following frames, so
   skipping it just in the wheel's frame still zoomed. The ghost follows because the clash key holds the width.
