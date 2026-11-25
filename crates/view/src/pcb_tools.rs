@@ -497,6 +497,12 @@ impl PcbPlacer {
         Some(w)
     }
 
+    /// The width the Route tool lays now: its own, else the routed net's class's (the
+    /// design rules' before a track is started or for a net without a class).
+    pub fn track_width(&self, doc: &Document) -> Coord {
+        self.width(doc)
+    }
+
     /// The track width: the tool's, else the routed net's class's.
     fn width(&self, doc: &Document) -> Coord {
         self.settings.width.unwrap_or_else(|| doc.project().board.rules.for_net(self.net.as_deref()).track_width)

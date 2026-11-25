@@ -150,6 +150,7 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
     let header = fields::reserve_subject(ui);
     let mut help: Option<String> = None;
     let rules = doc.project().board.rules.clone();
+    let laid_width = pcb.track_width(doc);
     let s = &mut pcb.settings;
     match tool {
         PcbTool::Select => {}
@@ -170,12 +171,30 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 layer_combo(ui, "pcb_tool_layer", &mut s.layer, doc);
                 ui.end_row();
                 label(ui, "Width");
-                let w = s.width.unwrap_or(rules.track_width);
+                // What the tool lays now: the net's class width while routing one.
+                let by_class = s.width.is_none();
+                let w = s.width.unwrap_or(laid_width);
                 // The steps of Cmd+wheel while routing.
                 let range = [rules.min_track_width.max(1), view::pcb_tools::MAX_STEPPED_WIDTH];
                 let (position, at) = (view::pcb_tools::width_position, view::pcb_tools::width_at_position);
-                if let (_, Some(w)) = units::drag_steps(ui, w, range, position, at) {
+                let (r, changed) =
+                    ui.add_enabled_ui(!by_class, |ui| units::drag_steps(ui, w, range, position, at)).inner;
+                let wheel = if cfg!(target_os = "macos") { "⌘+wheel" } else { "Ctrl+wheel" };
+                r.on_disabled_hover_text(format!(
+                    "Tracks take their net's class width (nets without a class: the design rules' width). \
+                     Clear Use net class width, or turn {wheel} over the board, to set a width of the tool's own."
+                ));
+                if let Some(w) = changed {
                     s.width = Some(w);
+                }
+                ui.end_row();
+                label(ui, "");
+                let mut use_class = by_class;
+                ui.checkbox(&mut use_class, "Use net class width").on_hover_text(
+                    "Each track takes its net's class width (nets without a class: the design rules' width)",
+                );
+                if use_class != by_class {
+                    s.width = if use_class { None } else { Some(laid_width) };
                 }
                 ui.end_row();
                 fields::corner_rows(ui, &mut s.corners, &mut s.bend, Corners::TRACK);
@@ -208,15 +227,6 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                      (Shift+click does it once); DRC flags them",
                 );
             });
-            let classes = !rules.net_classes.is_empty();
-            if s.width.is_some() {
-                let text = if classes { "Use the net class width" } else { "Use the design rule width" };
-                if ui.small_button(text).clicked() {
-                    s.width = None;
-                }
-            } else if classes {
-                hint(ui, "Tracks take the width of their net's class.");
-            }
             help = Some(
                 ("Tracks start and end on pad centers, vias and track ends. The net being routed is highlighted. \
                  The Edit menu's Round track corners rounds the selected tracks with the corner radius.")

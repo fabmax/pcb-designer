@@ -37,7 +37,9 @@ The Route tool draws tracks leg by leg like wires (see
 the leg being drawn follows at once, and a note by the pointer shows the new width. The
 steps are 0.05 mm below 0.5 mm, 0.1 mm up to 2 mm and 0.25 mm above, from the board's
 minimum track width up to 10 mm. Dragging the Width field in the tool settings takes the
-same steps; typing a width there takes any value. **Edit → Round track
+same steps; typing a width there takes any value. Under the field, **Use net class width**
+(on by default) gives each track its net's class width instead, and the field shows the
+width being laid; changing the width with the wheel turns it off. **Edit → Round track
 corners** rounds the corners between the selected tracks with the Route tool's corner
 radius.
 
@@ -47,8 +49,8 @@ Net classes (Board setup → Net classes) give nets their own clearance, track w
 size; values left at *default* are the board's (the Default class). A class lists its nets
 by name or by pattern (`GND, +*V`, `/USB_D?`); a name beats a pattern, else the first class
 matching wins. The Nets panel shows each net's class, and its context menu puts a net into
-one. New tracks and vias take their net's class sizes (unless the Route tool has a width of
-its own), and copper keeps the larger clearance of the two classes in routing checks, zone
+one. New tracks and vias take their net's class sizes (the Route tool's tracks while its
+**Use net class width** is on), and copper keeps the larger clearance of the two classes in routing checks, zone
 fills and DRC. KiCad imports keep their net classes.
 
 ### Modes: shove, walk around, highlight

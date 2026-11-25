@@ -435,7 +435,10 @@ things to do **later**.
   on, and then zooms only by pinches (`Event::Zoom`, multi-touch), not by egui's
   `zoom_delta`: that counts Cmd+wheel as zoom, smoothed over the following frames, so
   skipping it just in the wheel's frame still zoomed. The ghost follows because the clash key holds the width.
-  `Canvas::flash` shows the width by the pointer for 1.2 s. The tool settings' Width
+  `Canvas::flash` shows the width by the pointer for 1.2 s, on one line (a tooltip
+  keeps its last width, so a longer text wrapped). `PcbSettings::width == None` is the
+  panel's Use net class width checkbox (the field, disabled then, shows
+  `PcbPlacer::track_width`); setting a width (wheel, field) turns it off. The tool settings' Width
   field drags in the same steps (`units::drag_steps` over `width_position`, whole numbers
   being the steps: `max_decimals(0)` rounds drags but not typed values).
 - **Route tool and the router**: in Shove and Walk around (`PcbPlacer::routed`, Shift

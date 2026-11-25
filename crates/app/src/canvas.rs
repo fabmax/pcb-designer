@@ -113,7 +113,8 @@ impl Canvas {
             egui::PopupAnchor::Pointer,
         )
         .gap(14.0)
-        .show(|ui| ui.label(text.as_str()));
+        // On one line: the tooltip keeps its last width, and a longer text would wrap.
+        .show(|ui| ui.add(egui::Label::new(text.as_str()).wrap_mode(egui::TextWrapMode::Extend)));
     }
 
     pub fn request_fit(&mut self) {
