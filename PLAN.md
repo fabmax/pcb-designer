@@ -1913,11 +1913,12 @@ defers.
   functions, exact oval drills, 3D models.
 
 **Simulation**
-- Simulation backends: only single runs stream (a sweep's steps, and processes, show
-  nothing until done; a process could stream with ngspice's interactive mode); sweeps
-  can't use the library (one instance per process: copies of the library file would
-  give more); a crash in the library takes the app down (a watchdog process holding
-  libngspice would isolate it).
+- Parameter sweeps show nothing until every step is done (steps don't stream, their
+  points would mix): finished steps could appear as they come in, with "3 of 8 steps"
+  as the progress.
+- A crash inside the in-app library (a segfault, not ngspice's `ControlledExit`) takes
+  the app down unless "In a separate process" is on. A long-lived worker could hold the
+  library instead and be restarted after a crash, making that the default.
 - KiCad simulation import gaps: IBIS (KIBIS) and XSPICE code models, switches,
   transmission lines, coupled inductors (`K`), potentiometers; the workbook (`.wbk`:
   plotted signals, cursors) and `.probe` / `.save` become no probes; `.control` scripts
