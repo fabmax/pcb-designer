@@ -1405,7 +1405,8 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   board parts `MountingHole_M2`…`M4` (plated / plain) and `Fiducial`; hand-made `OpAmp`,
   `LM358`, `74HC00`, `AMS1117-3.3`, `AP2112K-3.3`, `LM7805`; generated logic
   (`generate::logic`): `74HC02`, `04`, `08`, `14`, `32`, `86` (a unit per gate plus a
-  power unit, distinctive-shape symbols with names hidden) and `74HC74` (two
+  power unit, distinctive-shape symbols with pin names hidden, as on the hand-made
+  74HC00's gates) and `74HC74` (two
   flip-flop units plus power), `74HC595` (one unit), in DIP and SOIC. Active-low pins
   are named with `~` (`~CLR`, `~OE`): there's no overbar markup, and a bubble on a
   shortened pin pushes the pin's name onto the body edge.

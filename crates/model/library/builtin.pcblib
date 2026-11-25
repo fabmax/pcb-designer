@@ -21172,7 +21172,7 @@
           "direction": 0.0,
           "length": 3810000,
           "kind": "input",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         },
         {
@@ -21183,7 +21183,7 @@
           "direction": 0.0,
           "length": 3810000,
           "kind": "input",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         },
         {
@@ -21194,7 +21194,7 @@
           "direction": 180.0,
           "length": 2540000,
           "kind": "output",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         }
       ]
@@ -21265,7 +21265,7 @@
           "direction": 0.0,
           "length": 3810000,
           "kind": "input",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         },
         {
@@ -21276,7 +21276,7 @@
           "direction": 0.0,
           "length": 3810000,
           "kind": "input",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         },
         {
@@ -21287,7 +21287,7 @@
           "direction": 180.0,
           "length": 2540000,
           "kind": "output",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         }
       ]
@@ -21358,7 +21358,7 @@
           "direction": 0.0,
           "length": 3810000,
           "kind": "input",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         },
         {
@@ -21369,7 +21369,7 @@
           "direction": 0.0,
           "length": 3810000,
           "kind": "input",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         },
         {
@@ -21380,7 +21380,7 @@
           "direction": 180.0,
           "length": 2540000,
           "kind": "output",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         }
       ]
@@ -21451,7 +21451,7 @@
           "direction": 0.0,
           "length": 3810000,
           "kind": "input",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         },
         {
@@ -21462,7 +21462,7 @@
           "direction": 0.0,
           "length": 3810000,
           "kind": "input",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         },
         {
@@ -21473,7 +21473,7 @@
           "direction": 180.0,
           "length": 2540000,
           "kind": "output",
-          "show_name": true,
+          "show_name": false,
           "show_number": true
         }
       ]
