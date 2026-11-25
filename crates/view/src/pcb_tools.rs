@@ -1132,6 +1132,33 @@ pub fn width_step(w: Coord, up: bool, min: Coord) -> Coord {
     next.clamp(min.min(MAX_STEPPED_WIDTH), MAX_STEPPED_WIDTH)
 }
 
+/// `w` on a scale where the widths [`width_step`] steps between are whole numbers (0.5 mm
+/// is 10, 2 mm is 25), for dragging the width field in those steps. Widths between
+/// steps fall between whole numbers.
+pub fn width_position(w: Coord) -> f64 {
+    // In nm, so that the steps come out whole.
+    let w = w as f64;
+    if w <= 500_000.0 {
+        w / 50_000.0
+    } else if w <= 2_000_000.0 {
+        10.0 + (w - 500_000.0) / 100_000.0
+    } else {
+        25.0 + (w - 2_000_000.0) / 250_000.0
+    }
+}
+
+/// The width at `position` on [`width_position`]'s scale.
+pub fn width_at_position(position: f64) -> Coord {
+    let nm = if position <= 10.0 {
+        position * 50_000.0
+    } else if position <= 25.0 {
+        500_000.0 + (position - 10.0) * 100_000.0
+    } else {
+        2_000_000.0 + (position - 25.0) * 250_000.0
+    };
+    nm.round() as Coord
+}
+
 /// What a cutout started at `p` cuts into: the zone on `layer` containing `p` with the
 /// highest priority, else a keepout on `layer` containing it.
 pub fn cutout_target(project: &Project, p: Point, layer: LayerId) -> Option<ObjectId> {

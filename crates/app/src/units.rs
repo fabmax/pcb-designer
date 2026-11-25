@@ -107,6 +107,33 @@ pub fn drag(ui: &mut egui::Ui, value: Coord, min: Coord, max: Coord) -> (egui::R
     (r, changed)
 }
 
+/// [`drag`] in uneven steps: dragging moves over `position` (whole numbers are the
+/// steps; `at` maps back), typing takes any length.
+pub fn drag_steps(
+    ui: &mut egui::Ui,
+    value: Coord,
+    [min, max]: [Coord; 2],
+    position: impl Fn(Coord) -> f64,
+    at: impl Fn(f64) -> Coord,
+) -> (egui::Response, Option<Coord>) {
+    let u = unit();
+    let mut p = position(value);
+    let r = crate::fields::fill(
+        ui,
+        egui::DragValue::new(&mut p)
+            // A step per 6 points of dragging.
+            .speed(1.0 / 6.0)
+            // Dragging lands on whole positions (typed values aren't rounded).
+            .max_decimals(0)
+            .range(position(min)..=position(max))
+            .custom_formatter(|p, _| trim(u.value(at(p)), u.decimals()))
+            .custom_parser(|text| text.trim().parse::<f64>().ok().map(|v| position(u.to_nm(v))))
+            .suffix(format!(" {}", u.label())),
+    );
+    let changed = r.changed().then(|| at(p));
+    (r, changed)
+}
+
 /// Kinds of editors with their own grid presets.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GridKind {

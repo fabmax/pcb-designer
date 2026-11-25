@@ -171,7 +171,10 @@ pub fn settings(ui: &mut egui::Ui, pcb: &mut PcbPlacer, doc: &Document) {
                 ui.end_row();
                 label(ui, "Width");
                 let w = s.width.unwrap_or(rules.track_width);
-                if let (_, Some(w)) = units::drag(ui, w, rules.min_track_width, mm(10.0)) {
+                // The steps of Cmd+wheel while routing.
+                let range = [rules.min_track_width.max(1), view::pcb_tools::MAX_STEPPED_WIDTH];
+                let (position, at) = (view::pcb_tools::width_position, view::pcb_tools::width_at_position);
+                if let (_, Some(w)) = units::drag_steps(ui, w, range, position, at) {
                     s.width = Some(w);
                 }
                 ui.end_row();

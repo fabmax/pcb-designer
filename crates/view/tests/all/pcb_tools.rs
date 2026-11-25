@@ -5,7 +5,7 @@ use editor_core::query::{pad_positions, pin_positions};
 use model::builtin::{self, PART_HEADER_1X4, PART_RESISTOR};
 use model::*;
 use view::Document;
-use view::pcb_tools::{MAX_STEPPED_WIDTH, PcbGhost, PcbPlacer, PcbTool, width_step};
+use view::pcb_tools::{MAX_STEPPED_WIDTH, PcbGhost, PcbPlacer, PcbTool, width_at_position, width_position, width_step};
 
 fn place(doc: &mut Document, part: Id, x: f64, at: Point) -> (Id, Id) {
     place_at(doc, part, Point::mm(x, 0.0), at)
@@ -116,6 +116,22 @@ fn track_widths_step_finer_when_narrow() {
     assert_eq!(width_step(mm(0.15), true, mm(0.15)), mm(0.2));
     assert_eq!(width_step(mm(0.05), false, 0), mm(0.05), "a minimum of 0 stops at one step");
     assert_eq!(width_step(mm(30.0), false, 0), MAX_STEPPED_WIDTH);
+}
+
+/// The width field drags over whole positions: the same widths the wheel steps through.
+#[test]
+fn width_positions_are_the_steps() {
+    let mut w = mm(0.05);
+    while w < MAX_STEPPED_WIDTH {
+        let p = width_position(w);
+        assert_eq!(p, p.round(), "{w}");
+        assert_eq!(width_at_position(p + 1.0), width_step(w, true, 0), "{w}");
+        w = width_step(w, true, 0);
+    }
+    assert_eq!(width_position(MAX_STEPPED_WIDTH), 57.0);
+    // Widths off the steps keep their place in between.
+    assert_eq!(width_at_position(width_position(mm(0.127))), mm(0.127));
+    assert_eq!(width_at_position(width_position(mm(3.1))), mm(3.1));
 }
 
 /// Cmd+wheel while routing: the leg being drawn takes the new width at once, and so does

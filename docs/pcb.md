@@ -36,7 +36,8 @@ The Route tool draws tracks leg by leg like wires (see
 (Ctrl+wheel on Windows and Linux) changes its track width, also in the middle of a track:
 the leg being drawn follows at once, and a note by the pointer shows the new width. The
 steps are 0.05 mm below 0.5 mm, 0.1 mm up to 2 mm and 0.25 mm above, from the board's
-minimum track width up to 10 mm. **Edit → Round track
+minimum track width up to 10 mm. Dragging the Width field in the tool settings takes the
+same steps; typing a width there takes any value. **Edit → Round track
 corners** rounds the corners between the selected tracks with the Route tool's corner
 radius.
 
