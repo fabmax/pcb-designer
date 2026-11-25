@@ -1056,8 +1056,12 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
 - `Target::drag_axis`: a single straight segment (horizontal/vertical wire, any straight
   track; 45° as a unit diagonal for whole grid steps) moves only across itself.
   `Target::chain` + `Interaction::double_click`: wire and track chains
-  (`query::wire_chain` / `track_chain`). A double click can arrive while the second
-  press is still pending (script input): it uses the press up.
+  (`query::wire_chain` / `track_chain`); `Target::connected` + `triple_click`: the same
+  carried on through branches, tees and (wires) junctions, still stopping at pins, bus
+  entries, sheet pins, pads and vias (`connected_wires` / `connected_tracks`; arcs join
+  at their ends only). Both share `query::segments_through`. A double click can arrive
+  while the second press is still pending (script input): it uses the press up. The
+  third click of a triple click first selects the single hit, then `triple_click` runs.
 - The GUI sets `keep_connected` for every move, rotate, mirror and flip except carries;
   the commands default to false (MCP gets exact moves unless it asks).
 - Tools: `tools::Placer` (library: pin/pad, line, rect, circle, arc, polygon, text; names
@@ -1861,8 +1865,7 @@ defers.
 - Round track corners: corners at pads and vias, between arcs, and live radius
   editing of an existing arc.
 - Track drags: a 45° fix-up where a joining track is added (two segments instead of one
-  at any angle); tees of other tracks onto a moved track's inside don't follow;
-  re-selecting "expand" (through vias, then the whole net) on a second double click.
+  at any angle); tees of other tracks onto a moved track's inside don't follow.
 - A move that detaches (KiCad's M versus G): drags always keep connections today.
 - Copper graphics inside footprints (from KiCad custom pads) counting as connections.
 - Incremental or background zone refill (only zones near the change).

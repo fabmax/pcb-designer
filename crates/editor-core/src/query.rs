@@ -167,16 +167,25 @@ pub fn sheet_pin_points(project: &Project, sheet: Id) -> Vec<Point> {
 /// end on the inside of another segment), dangling ends, pins, bus entries and sheet pins.
 /// Labels and junctions don't stop it. Includes `id`; empty if `id` isn't a wire.
 pub fn wire_chain(project: &Project, id: ObjectId) -> Vec<ObjectId> {
+    wires_through(project, id, false)
+}
+
+/// The wires (or bus wires) connected to `id` on its sheet: [`wire_chain`] carried on
+/// through branches, tees (an end on another segment's inside) and junctions, still
+/// stopping at pins, bus entries and sheet pins. Crossings without a junction and
+/// same-named labels don't connect. Includes `id`; empty if `id` isn't a wire.
+pub fn connected_wires(project: &Project, id: ObjectId) -> Vec<ObjectId> {
+    wires_through(project, id, true)
+}
+
+fn wires_through(project: &Project, id: ObjectId, branches: bool) -> Vec<ObjectId> {
     use crate::rubber_band::Kind;
     let Some((kind, start)) = Kind::of(id) else { return Vec::new() };
     let Some(first) = kind.get(project, start) else { return Vec::new() };
     let sheet = first.sheet;
-    let segs: Vec<_> = kind.segments(project).into_iter().filter(|s| s.sheet == sheet).collect();
-    let mut ends: std::collections::HashMap<Point, Vec<usize>> = Default::default();
-    for (i, s) in segs.iter().enumerate() {
-        ends.entry(s.a).or_default().push(i);
-        ends.entry(s.b).or_default().push(i);
-    }
+    let segs: Vec<Seg> =
+        kind.segments(project).into_iter().filter(|s| s.sheet == sheet).map(|s| (s.a, s.b, true)).collect();
+    let ids: Vec<Id> = kind.segments(project).into_iter().filter(|s| s.sheet == sheet).map(|s| s.id).collect();
     // Things that end a chain.
     let s = &project.schematic;
     let mut stops: std::collections::HashSet<Point> = Default::default();
@@ -192,27 +201,71 @@ pub fn wire_chain(project: &Project, id: ObjectId) -> Vec<ObjectId> {
         }
         Kind::Bus => stops.extend(s.bus_entries.iter().filter(|e| e.sheet == sheet).map(|e| e.pos)),
     }
-    let passes = |q: Point| {
-        !stops.contains(&q)
-            && ends[&q].len() == 2
-            && !segs.iter().any(|o| crate::connectivity::on_segment_inside(q, o.a, o.b))
-    };
-    let Some(first) = segs.iter().position(|s| s.id == start) else { return Vec::new() };
+    let Some(first) = ids.iter().position(|&i| i == start) else { return Vec::new() };
+    let junctions: Vec<Point> =
+        if branches { s.junctions.iter().filter(|j| j.sheet == sheet).map(|j| j.pos).collect() } else { Vec::new() };
+    let found = segments_through(&segs, first, branches, &junctions, |q| stops.contains(&q));
+    found.into_iter().map(|i| kind.object_id(ids[i])).collect()
+}
+
+/// A wire or track: its ends, and whether it's straight (an arc's chord isn't on it).
+type Seg = (Point, Point, bool);
+
+/// The segments reached from `first`: through points where exactly two segment ends meet
+/// (with `branches`, through any end shared with or lying on another segment, and
+/// through `junctions` on segments' insides), never through a point that `stop`s.
+fn segments_through(
+    segs: &[Seg],
+    first: usize,
+    branches: bool,
+    junctions: &[Point],
+    stop: impl Fn(Point) -> bool,
+) -> Vec<usize> {
+    use crate::connectivity::on_segment_inside;
+    let mut ends: std::collections::HashMap<Point, Vec<usize>> = Default::default();
+    for (i, &(a, b, _)) in segs.iter().enumerate() {
+        ends.entry(a).or_default().push(i);
+        ends.entry(b).or_default().push(i);
+    }
+    let inside = |q: Point, (a, b, straight): Seg| straight && on_segment_inside(q, a, b);
+    let on = |q: Point, s: Seg| q == s.0 || q == s.1 || inside(q, s);
     let mut seen = vec![false; segs.len()];
     seen[first] = true;
     let mut work = vec![first];
     let mut out = Vec::new();
     while let Some(i) = work.pop() {
-        out.push(kind.object_id(segs[i].id));
-        for q in [segs[i].a, segs[i].b] {
-            if !passes(q) {
+        out.push(i);
+        let (a, b, _) = segs[i];
+        if !branches {
+            for q in [a, b] {
+                let passes = !stop(q) && ends[&q].len() == 2 && !segs.iter().any(|&o| inside(q, o));
+                if passes {
+                    for &j in &ends[&q] {
+                        if !seen[j] {
+                            seen[j] = true;
+                            work.push(j);
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        // Points where segment i meets others: its ends, and junctions on its inside.
+        let meets: Vec<Point> = [a, b]
+            .into_iter()
+            .chain(junctions.iter().copied().filter(|&q| inside(q, segs[i])))
+            .filter(|&q| !stop(q))
+            .collect();
+        for (j, &other) in segs.iter().enumerate() {
+            if seen[j] {
                 continue;
             }
-            for &j in &ends[&q] {
-                if !seen[j] {
-                    seen[j] = true;
-                    work.push(j);
-                }
+            // Another's end on i (its end or inside), or i's meeting points on it.
+            let joined = [other.0, other.1].into_iter().any(|q| on(q, segs[i]) && !stop(q))
+                || meets.iter().any(|&q| on(q, other));
+            if joined {
+                seen[j] = true;
+                work.push(j);
             }
         }
     }
@@ -223,16 +276,23 @@ pub fn wire_chain(project: &Project, id: ObjectId) -> Vec<ObjectId> {
 /// points where exactly two track ends meet, stopping at pads, vias, branches and
 /// dangling ends. Includes `id`; empty if there is no such track.
 pub fn track_chain(project: &Project, id: Id) -> Vec<Id> {
+    tracks_through(project, id, false)
+}
+
+/// The tracks connected to track `id` on its layer: [`track_chain`] carried on through
+/// branches and tees (an end on another straight track's inside), still stopping at pads
+/// and vias. Includes `id`; empty if there is no such track.
+pub fn connected_tracks(project: &Project, id: Id) -> Vec<Id> {
+    tracks_through(project, id, true)
+}
+
+fn tracks_through(project: &Project, id: Id, branches: bool) -> Vec<Id> {
     let b = &project.board;
     let Some(first) = b.tracks.get(id) else { return Vec::new() };
     let layer = first.layer;
     let bit = crate::copper::layer_bit(layer);
     let tracks: Vec<&Track> = b.tracks.iter().filter(|t| t.layer == layer).collect();
-    let mut ends: std::collections::HashMap<Point, Vec<usize>> = Default::default();
-    for (i, t) in tracks.iter().enumerate() {
-        ends.entry(t.a).or_default().push(i);
-        ends.entry(t.b).or_default().push(i);
-    }
+    let segs: Vec<Seg> = tracks.iter().map(|t| (t.a, t.b, t.mid.is_none())).collect();
     // Copper that ends a chain: pads and vias on the layer.
     let mut copper: Vec<(Rect, crate::copper::Geo)> = Vec::new();
     for f in b.footprints.iter() {
@@ -246,27 +306,9 @@ pub fn track_chain(project: &Project, id: Id) -> Vec<Id> {
         let geo = crate::copper::via_geo(v);
         copper.push((geo.bounds(), geo));
     }
-    let passes = |q: Point| ends[&q].len() == 2 && !copper.iter().any(|(r, g)| r.contains(q) && g.contains(q));
+    let stop = |q: Point| copper.iter().any(|(r, g)| r.contains(q) && g.contains(q));
     let Some(first) = tracks.iter().position(|t| t.id == id) else { return Vec::new() };
-    let mut seen = vec![false; tracks.len()];
-    seen[first] = true;
-    let mut work = vec![first];
-    let mut out = Vec::new();
-    while let Some(i) = work.pop() {
-        out.push(tracks[i].id);
-        for q in [tracks[i].a, tracks[i].b] {
-            if !passes(q) {
-                continue;
-            }
-            for &j in &ends[&q] {
-                if !seen[j] {
-                    seen[j] = true;
-                    work.push(j);
-                }
-            }
-        }
-    }
-    out
+    segments_through(&segs, first, branches, &[], stop).into_iter().map(|i| tracks[i].id).collect()
 }
 
 /// World positions of the pins of a placed symbol (cheaper than [`pin_positions`]).

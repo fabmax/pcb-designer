@@ -987,6 +987,15 @@ impl Target for ProjectTarget<'_> {
         }
     }
 
+    fn connected(&self, id: ObjectId) -> Vec<ObjectId> {
+        let p = self.doc.project();
+        match id {
+            ObjectId::Wire(_) | ObjectId::BusWire(_) => editor_core::query::connected_wires(p, id),
+            ObjectId::Track(t) => editor_core::query::connected_tracks(p, t).into_iter().map(ObjectId::Track).collect(),
+            _ => vec![id],
+        }
+    }
+
     fn drag_axis(&self, ids: &[ObjectId]) -> Option<Point> {
         let p = self.doc.project();
         let (a, b) = match ids {

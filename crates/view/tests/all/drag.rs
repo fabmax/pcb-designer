@@ -118,6 +118,21 @@ fn double_click_selects_the_chain() {
 }
 
 #[test]
+fn triple_click_selects_everything_connected() {
+    let mut doc = Document::new(Project::new("t"));
+    let v = doc.root();
+    wires(&mut doc, &[p(0.0, 0.0), p(10.16, 0.0), p(10.16, 10.16)]);
+    wires(&mut doc, &[p(10.16, 10.16), p(20.32, 10.16)]);
+    wires(&mut doc, &[p(10.16, 10.16), p(10.16, 20.32)]);
+    let apart = wires(&mut doc, &[p(30.48, 0.0), p(40.64, 0.0)]);
+    let mut it = Interaction::new(mm(1.27));
+    hover(&mut it, &mut doc.target(v), p(5.08, 0.0));
+    it.triple_click(&mut doc.target(v), false);
+    assert_eq!(it.selection.len(), 4);
+    assert!(!it.selection.contains(&ObjectId::Wire(apart[0])));
+}
+
+#[test]
 fn board_drag_keeps_tracks_on_a_via() {
     let mut doc = Document::new(Project::new("t"));
     let c = doc.execute(Command::AddVia { pos: p(0.0, 0.0), diameter: None, drill: None, span: None }).unwrap();

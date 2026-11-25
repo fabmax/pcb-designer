@@ -31,8 +31,8 @@ enum Step {
     Move([f64; 2]),
     Press([f64; 2]),
     Release([f64; 2]),
-    /// Two clicks in one frame (a double-click).
-    Double([f64; 2]),
+    /// Two or three clicks in one frame (a double- or triple-click).
+    Clicks([f64; 2], usize),
     /// Screen position in points (for clicking widgets).
     Screen(Step2),
     Wait(u32),
@@ -103,9 +103,10 @@ impl Script {
                 }
                 "press" => steps.push_back(Step::Press(point()?)),
                 "release" => steps.push_back(Step::Release(point()?)),
-                "double-click" => {
+                "double-click" | "triple-click" => {
                     let p = point()?;
-                    steps.extend([Step::Move(p), Step::Double(p)]);
+                    let n = if verb == "double-click" { 2 } else { 3 };
+                    steps.extend([Step::Move(p), Step::Clicks(p, n)]);
                 }
                 "ui-click" => {
                     let [x, y] = point()?;
@@ -205,7 +206,7 @@ impl Script {
         }
         let Some(step) = self.steps.pop_front() else { return Vec::new() };
         // A view that isn't laid out yet (just switched to) maps to no position: wait.
-        if let Step::Move(p) | Step::Press(p) | Step::Release(p) | Step::Double(p) = step
+        if let Step::Move(p) | Step::Press(p) | Step::Release(p) | Step::Clicks(p, _) = step
             && !to_screen(p).is_finite()
         {
             self.steps.push_front(step);
@@ -234,14 +235,16 @@ impl Script {
                 pressed: matches!(step, Step::Press(_)),
                 modifiers: m,
             }],
-            Step::Double(p) => [true, false, true, false]
+            Step::Clicks(p, n) => [true, false]
+                .repeat(n)
+                .into_iter()
                 .map(|pressed| Event::PointerButton {
                     pos: to_screen(p),
                     button: PointerButton::Primary,
                     pressed,
                     modifiers: m,
                 })
-                .to_vec(),
+                .collect(),
             Step::Text(t) => vec![Event::Text(t)],
             Step::Screen(Step2::Move(p)) => vec![Event::PointerMoved(p)],
             Step::Screen(Step2::Double(pos)) => [true, false, true, false]

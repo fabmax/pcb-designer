@@ -5315,6 +5315,11 @@ impl TreeBehavior<'_> {
                     pane.it.double_click(&mut doc.target(view), add);
                 }
             }
+            // A triple click on a wire or track selects everything connected to it.
+            if response.triple_clicked() && !on_edit && !on_grip {
+                let add = ui.input(|i| i.modifiers.shift || i.modifiers.command);
+                pane.it.triple_click(&mut doc.target(view), add);
+            }
             // A right click selects what is under the pointer (unless it is selected
             // already) and opens the context menu.
             if response.secondary_clicked() && pane.it.is_idle() {

@@ -1,7 +1,7 @@
 //! Moving with `keep_connected`: wires and tracks stay attached, and chains for double
 //! click selection.
 
-use editor_core::query::{pad_positions, pin_positions, track_chain, wire_chain};
+use editor_core::query::{connected_tracks, connected_wires, pad_positions, pin_positions, track_chain, wire_chain};
 use editor_core::{Command, Editor};
 use model::builtin::{self, PART_RESISTOR};
 use model::*;
@@ -185,6 +185,41 @@ fn wire_chain_stops_at_branches_and_pins() {
 }
 
 #[test]
+fn connected_wires_pass_branches_tees_and_junctions_but_not_pins() {
+    let mut ed = editor();
+    let (sym, pin) = place_resistor(&mut ed);
+    let other_pin = pin_positions(ed.project(), sym).into_iter().map(|(_, _, q)| q).find(|&q| q != pin).unwrap();
+    let corner = pin + p(-10.0, 0.0);
+    let branch = corner + p(0.0, 10.0);
+    let run = wires(&mut ed, &[pin, corner, branch]);
+    wires(&mut ed, &[branch, branch + p(-10.0, 0.0)]);
+    wires(&mut ed, &[branch, branch + p(0.0, 10.0), branch + p(5.0, 10.0)]);
+    // A tee onto the inside of the run's second leg.
+    wires(&mut ed, &[corner + p(0.0, 5.0), corner + p(-5.0, 5.0)]);
+    // Crossing the last leg: once without a junction, once with one.
+    let low = branch + p(2.5, 10.0);
+    let loose = wires(&mut ed, &[low + p(0.0, -2.0), low + p(0.0, 2.0)]);
+    let low2 = branch + p(4.0, 10.0);
+    let joined = wires(&mut ed, &[low2 + p(0.0, -2.0), low2 + p(0.0, 2.0)]);
+    ed.execute(Command::AddJunction { sheet: None, pos: low2 }).unwrap();
+    // Past the resistor: not connected by wire.
+    let beyond = wires(&mut ed, &[other_pin, other_pin + p(10.0, 0.0)]);
+    let mut got = connected_wires(ed.project(), ObjectId::Wire(run[0]));
+    got.sort();
+    let mut want: Vec<ObjectId> = ed
+        .project()
+        .schematic
+        .wires
+        .iter()
+        .map(|w| ObjectId::Wire(w.id))
+        .filter(|id| ![&loose[..], &beyond[..]].concat().iter().any(|&w| ObjectId::Wire(w) == *id))
+        .collect();
+    want.sort();
+    assert!(want.contains(&ObjectId::Wire(joined[0])));
+    assert_eq!(got, want);
+}
+
+#[test]
 fn retracted_step_leaves_no_redo() {
     let mut ed = editor();
     let w = wires(&mut ed, &[p(0.0, 0.0), p(10.0, 0.0)])[0];
@@ -286,6 +321,27 @@ fn track_chain_stops_at_vias_and_branches() {
     assert_eq!(sorted(track_chain(ed.project(), run[0])), sorted(run.clone()));
     assert_eq!(track_chain(ed.project(), after[0]), vec![after[0]]);
     assert_eq!(track_chain(ed.project(), branch[0]), branch);
+}
+
+#[test]
+fn connected_tracks_pass_branches_and_tees_but_not_vias() {
+    let mut ed = editor();
+    via(&mut ed, p(10.0, 0.0));
+    let before = track(&mut ed, &[p(0.0, 0.0), p(10.0, 0.0)]);
+    let after = track(&mut ed, &[p(10.0, 0.0), p(20.0, 0.0), p(20.0, 10.0)]);
+    let branch = track(&mut ed, &[p(20.0, 0.0), p(30.0, 0.0)]);
+    let tee = track(&mut ed, &[p(20.0, 5.0), p(25.0, 5.0)]);
+    let sorted = |mut v: Vec<Id>| {
+        v.sort();
+        v
+    };
+    // Everything but the track before the via (the tee may have split the leg it ends on).
+    let got = sorted(connected_tracks(ed.project(), branch[0]));
+    let all_but_before: Vec<Id> =
+        ed.project().board.tracks.iter().map(|t| t.id).filter(|t| !before.contains(t)).collect();
+    assert_eq!(got, sorted(all_but_before));
+    assert!(got.contains(&tee[0]) && got.contains(&after[0]));
+    assert_eq!(connected_tracks(ed.project(), before[0]), before);
 }
 
 #[test]

@@ -146,7 +146,7 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
   - `--panel messages` (repeatable; shows a panel for this run only, see `dock.rs`)
   - `--script "board; ui-click X,Y; ui-move X,Y; key W; click X,Y; wait N"`, plus
     `press X,Y` / `move X,Y` / `release X,Y` (a drag), `double-click X,Y`,
-    `ui-double-click X,Y`, `ui-right-click X,Y`, `ui-press X,Y` / `ui-release X,Y` (a drag
+    `triple-click X,Y`, `ui-double-click X,Y`, `ui-right-click X,Y`, `ui-press X,Y` / `ui-release X,Y` (a drag
     in screen points, with `ui-move` between), `type TEXT` and `run [ANALYSIS]` (runs
     a simulation; later steps wait for it; `start [ANALYSIS]` doesn't wait), and `zoom F` (zooms the canvas under the
     pointer, after a `move` / `ui-move`) and `scroll DY` (scrolls a panel or form under

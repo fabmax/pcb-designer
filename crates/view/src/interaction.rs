@@ -113,6 +113,10 @@ pub trait Target {
     fn chain(&self, id: Self::Id) -> Vec<Self::Id> {
         vec![id]
     }
+    /// What a triple click on `id` selects (a wire: every wire connected to it).
+    fn connected(&self, id: Self::Id) -> Vec<Self::Id> {
+        self.chain(id)
+    }
     /// The only direction dragging `ids` may move them in (a single straight segment
     /// moves perpendicular to itself): a vector along it, or `None` if free.
     fn drag_axis(&self, _ids: &[Self::Id]) -> Option<Point> {
@@ -514,6 +518,16 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
     /// Double click: select the chain of the item under the pointer (with `add`, add it
     /// to the selection).
     pub fn double_click<T: Target<Id = I>>(&mut self, t: &mut T, add: bool) {
+        self.select_run(t, add, false);
+    }
+
+    /// Triple click: select everything connected to the item under the pointer (with
+    /// `add`, add it to the selection).
+    pub fn triple_click<T: Target<Id = I>>(&mut self, t: &mut T, add: bool) {
+        self.select_run(t, add, true);
+    }
+
+    fn select_run<T: Target<Id = I>>(&mut self, t: &mut T, add: bool, connected: bool) {
         let Some(h) = self.hover else { return };
         match self.state {
             State::Idle => {}
@@ -521,7 +535,7 @@ impl<I: Copy + Eq + Ord + std::hash::Hash + std::fmt::Debug> Interaction<I> {
             State::Pressed { .. } => self.state = State::Idle,
             _ => return,
         }
-        let chain = t.chain(h);
+        let chain = if connected { t.connected(h) } else { t.chain(h) };
         if !add {
             self.selection.clear();
         }

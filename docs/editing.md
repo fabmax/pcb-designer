@@ -64,7 +64,10 @@ Dragging keeps things connected, in the schematic and on the board:
 - Esc cancels a drag.
 
 Double-click a wire to select its whole run up to branches and pins, or a track up to
-pads, vias and branches; with ⇧ or ⌘ it's added to the selection.
+pads, vias and branches. Triple-click to select everything connected to it: through
+branches and tees (and, for wires, junctions), still stopping at pins, bus entries and
+sheet pins, or at pads and vias for tracks. With ⇧ or ⌘ either is added to the
+selection.
 
 Right-click the canvas for a menu with the common actions.
 
