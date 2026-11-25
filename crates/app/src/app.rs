@@ -5902,6 +5902,11 @@ impl eframe::App for PcbApp {
                         self.set_status(e);
                     }
                 }
+                Deferred::Plot(PlotAct::SetLogic(analysis, i, on)) => {
+                    if let Err(e) = SimPanel::set_probe_logic(self.doc_mut(), analysis, i, on) {
+                        self.set_status(e);
+                    }
+                }
                 Deferred::Plot(PlotAct::SetTune(rows)) => self.set_tune_rows(rows),
                 Deferred::Plot(PlotAct::TuneRun) => {
                     let engine = self.settings.engine();

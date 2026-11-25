@@ -214,7 +214,7 @@ pub fn data(time: &PlotData, lo: f64, hi: f64) -> Option<PlotData> {
     for t in &time.traces {
         let (f, db) = spectrum(&time.x, &t.y, lo, hi)?;
         x.get_or_insert(f);
-        traces.push(Trace { unit: "dB", y: db, ..t.clone() });
+        traces.push(Trace { unit: "dB", y: db, logic: None, ..t.clone() });
     }
     // Every trace on the left axis: they share the unit now.
     for t in &mut traces {

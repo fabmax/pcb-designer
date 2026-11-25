@@ -814,7 +814,16 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   `signal_label` read any of them from a result. `data` makes the traces: AC is dB left
   and unwrapped phase right (dashed, "V(X) phase"); else one axis per unit in the order
   V, A, W: the first present left, the next right, a third on `Axis::Right2` further
-  out. `Scale`
+  out. **Logic traces**: `Probe::Voltage::logic` (to ground only); `set_logic` marks
+  those traces with their threshold (`Trace::logic`, `logic_threshold`: halfway between
+  the trace's own min and max over the run, so any supply works; not in AC or
+  spectra), and they leave the axes (`axis_unit`, `fit_y` skip them). The widget's
+  `lanes` splits the plot rect: voltage traces above (y zooms, ticks and the box zoom's
+  y use that part), a lane per shown logic trace at the bottom (26 px, at most 60 %;
+  alone they fill it, up to 48 px each). `logic_runs` gives a lane's levels with
+  interpolated edges over the visible range; runs under a pixel wide become one bar
+  per column, so a busy clock costs a line per pixel. The data key includes the flags.
+  MCP's plot screenshots (`plot_scene`) still draw logic traces as voltages. `Scale`
   (linear or log) does fractions, zoom around a point, pan and a minimum width (flat
   traces still get an axis). `linear_ticks` divides rather than multiplies for negative
   exponents (3 · 0.2 ≠ 0.6) and keeps ticks at the range ends (0.7 / 0.1 = 6.999…).
@@ -1973,6 +1982,8 @@ defers.
   (tighter `reltol`, a max step from the source frequency) instead of `.options` in
   Extra; a known fundamental (the source's) instead of the measured one; spectrum window
   choices (flat top for levels) and averaging; harmonic markers on the spectrum.
+- Logic lanes: buses (several logic traces as one lane with a hex value), a threshold
+  per probe instead of halfway, the lanes in MCP's plot screenshots.
 - Digital nets: today the 74HC models bridge to analog at every pin, so every net is
   analog. Nets between digital pins could stay XSPICE digital nodes (faster for big
   logic): sort nets into digital and analog, insert bridges where they meet, and read

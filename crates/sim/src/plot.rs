@@ -33,8 +33,8 @@ impl Signal {
             at.and_then(|o| conn.net_of(o)).map_or_else(|| name.clone(), |n| n.name.clone())
         };
         match p {
-            Probe::Voltage { net: name, at, reference: None } => Signal::Voltage(net(name, at)),
-            Probe::Voltage { net: name, at, reference: Some(r) } => Signal::Diff(net(name, at), net(&r.net, &r.at)),
+            Probe::Voltage { net: name, at, reference: None, .. } => Signal::Voltage(net(name, at)),
+            Probe::Voltage { net: name, at, reference: Some(r), .. } => Signal::Diff(net(name, at), net(&r.net, &r.at)),
             Probe::Current { symbol, pin } => Signal::Current(*symbol, *pin),
             Probe::Power { component } => Signal::Power(*component),
         }
@@ -47,6 +47,7 @@ impl Signal {
                 net: net.clone(),
                 at: None,
                 reference: Some(model::NetRef { net: reference.clone(), at: None }),
+                logic: false,
             },
             Signal::Current(symbol, pin) => Probe::Current { symbol: *symbol, pin: *pin },
             Signal::Power(component) => Probe::Power { component: *component },
@@ -141,6 +142,9 @@ pub struct Trace {
     /// Index of a parameter sweep's step (0 without one).
     pub step: usize,
     pub y: Vec<f64>,
+    /// Shown as a logic level in a lane under the plot, off the axes: its threshold
+    /// ([`set_logic`], [`logic_threshold`]).
+    pub logic: Option<f64>,
 }
 
 /// A plot's data: the scale and the traces.
@@ -169,9 +173,9 @@ pub struct Missing {
 }
 
 impl PlotData {
-    /// The units on each axis (empty: the axis is unused).
+    /// The units on each axis (empty: the axis is unused; logic traces use none).
     pub fn axis_unit(&self, axis: Axis) -> &'static str {
-        self.traces.iter().find(|t| t.axis == axis).map_or("", |t| t.unit)
+        self.traces.iter().find(|t| t.axis == axis && t.logic.is_none()).map_or("", |t| t.unit)
     }
 
     /// The palette index of a trace and how far to fade it (0: not at all): with one
@@ -267,6 +271,7 @@ pub fn data(result: &SimResult, signals: &[Signal], phase: bool, conn: &Connecti
                 signal: i,
                 step: 0,
                 y: v.db(),
+                logic: None,
             });
             if phase {
                 let y = unwrap_phase(&v.phase());
@@ -278,15 +283,78 @@ pub fn data(result: &SimResult, signals: &[Signal], phase: bool, conn: &Connecti
                     signal: i,
                     step: 0,
                     y,
+                    logic: None,
                 });
             }
         } else {
             let unit = s.unit();
             let axis = Axis::ALL[units.iter().position(|u| *u == unit).unwrap_or(0)];
-            traces.push(Trace { label, unit, axis, dashed: false, signal: i, step: 0, y: v.re.clone() });
+            traces.push(Trace { label, unit, axis, dashed: false, signal: i, step: 0, y: v.re.clone(), logic: None });
         }
     }
     Some(PlotData { x_label, x_unit, log_x: ac, x: scale.re.clone(), traces, missing, steps: Vec::new() })
+}
+
+/// Marks the traces of the signals `logic` says (by signal index) as logic traces:
+/// voltages to ground only, not in AC.
+pub fn set_logic(data: &mut PlotData, signals: &[Signal], logic: &[bool]) {
+    // AC and spectra: levels make no sense in frequency.
+    if data.x_unit == "Hz" {
+        return;
+    }
+    for t in &mut data.traces {
+        let on =
+            logic.get(t.signal).copied().unwrap_or(false) && matches!(signals.get(t.signal), Some(Signal::Voltage(_)));
+        t.logic = on.then(|| logic_threshold(&t.y));
+    }
+}
+
+/// Which signals of `analysis`' probes show as logic (by signal index, like
+/// [`signals`]; none without probes).
+pub fn logic_flags(analysis: &Analysis) -> Vec<bool> {
+    analysis.probes.iter().map(|p| matches!(p, Probe::Voltage { logic: true, reference: None, .. })).collect()
+}
+
+/// The voltage a logic trace switches at: halfway between its lowest and highest
+/// value over the run (it works for any supply). A trace that barely moves is high
+/// above half of its value, at least 0.5 V (a steady 0 V is low, a steady 3.3 V high).
+pub fn logic_threshold(y: &[f64]) -> f64 {
+    let (lo, hi) =
+        y.iter().filter(|v| v.is_finite()).fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), &v| (a.min(v), b.max(v)));
+    if !lo.is_finite() {
+        return 0.5;
+    }
+    if hi - lo >= 0.5 { (lo + hi) / 2.0 } else { (hi / 2.0).max(0.5) }
+}
+
+/// A logic trace between `lo` and `hi` as runs of one level: (from, to, high), the
+/// switching points interpolated where the trace crosses `threshold`.
+pub fn logic_runs(x: &[f64], y: &[f64], lo: f64, hi: f64, threshold: f64) -> Vec<(f64, f64, bool)> {
+    let r = visible(x, lo, hi);
+    let mut runs: Vec<(f64, f64, bool)> = Vec::new();
+    // Include the samples just outside, so runs reach the edges.
+    let (a, b) = (r.start.saturating_sub(1), (r.end + 1).min(x.len()));
+    for i in a..b {
+        let high = y[i] > threshold;
+        match runs.last_mut() {
+            Some(last) if last.2 == high => last.1 = x[i],
+            Some(last) => {
+                // Where it crossed, between the previous sample and this one.
+                let (x0, y0) = (x[i - 1], y[i - 1]);
+                let t = if y[i] != y0 { ((threshold - y0) / (y[i] - y0)).clamp(0.0, 1.0) } else { 1.0 };
+                let at = x0 + t * (x[i] - x0);
+                last.1 = at;
+                runs.push((at, x[i], high));
+            }
+            None => runs.push((x[i], x[i], high)),
+        }
+    }
+    for run in &mut runs {
+        run.0 = run.0.max(lo);
+        run.1 = run.1.min(hi);
+    }
+    runs.retain(|r| r.1 >= r.0);
+    runs
 }
 
 /// Why a signal has no data in `result`.
@@ -569,7 +637,7 @@ pub fn decimate(
 pub fn fit_y(data: &PlotData, axis: Axis, lo: f64, hi: f64, hidden: &HashSet<String>) -> Option<(f64, f64)> {
     let r = visible(&data.x, lo, hi);
     let mut range: Option<(f64, f64)> = None;
-    for t in data.traces.iter().filter(|t| t.axis == axis && !hidden.contains(&t.label)) {
+    for t in data.traces.iter().filter(|t| t.axis == axis && t.logic.is_none() && !hidden.contains(&t.label)) {
         for &y in &t.y[r.clone()] {
             if y.is_finite() {
                 range = Some(match range {

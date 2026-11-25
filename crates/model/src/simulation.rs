@@ -983,6 +983,10 @@ pub enum Probe {
         at: Option<ObjectId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reference: Option<NetRef>,
+        /// Shown as a logic level (high or low) in a lane under the plot, not as a
+        /// voltage on its axes (transient and DC sweep; not differential ones).
+        #[serde(default, skip_serializing_if = "is_false")]
+        logic: bool,
     },
     /// The current into a pin of a placed symbol.
     Current { symbol: Id, pin: Id },
@@ -993,7 +997,7 @@ pub enum Probe {
 impl Probe {
     /// A voltage probe of a net to ground.
     pub fn voltage(net: impl Into<String>, at: Option<ObjectId>) -> Probe {
-        Probe::Voltage { net: net.into(), at, reference: None }
+        Probe::Voltage { net: net.into(), at, reference: None, logic: false }
     }
 }
 

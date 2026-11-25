@@ -29,6 +29,8 @@ pub enum PlotAct {
     Run(Id),
     /// Right-click → Remove probe: (analysis, probe index).
     RemoveProbe(Id, usize),
+    /// Right-click → Show as logic: (analysis, probe index, on).
+    SetLogic(Id, usize, bool),
     /// The tuner's rows changed (one `SetSimulation`).
     SetTune(Vec<TuneRow>),
     /// A tuned value changed: run the tab's analysis with it.
@@ -51,9 +53,9 @@ fn target(s: &Signal) -> ProbeTarget {
     }
 }
 
-/// A plot's data, with what it was made of (run, signals, phase) and how many named
-/// nets there are.
-type Data = ((u64, Vec<Signal>, bool), Arc<PlotData>, usize);
+/// A plot's data, with what it was made of (run, signals, phase, which show as logic)
+/// and how many named nets there are.
+type Data = ((u64, Vec<Signal>, bool, Vec<bool>), Arc<PlotData>, usize);
 
 /// A cached decimation: its key and the points of each trace in values.
 type Decimated = ((u64, u64, u64, usize, bool, bool), Vec<Vec<[f64; 2]>>);
@@ -304,10 +306,12 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
 
     // The data, rebuilt when the run, the signals or the phase choice change.
     let (signals, named) = plot::signals(&analysis, &done.result, doc.connectivity());
-    let key = (done.run, signals.clone(), phase);
+    let logic = plot::logic_flags(&analysis);
+    let key = (done.run, signals.clone(), phase, logic.clone());
     if state.data.as_ref().is_none_or(|d| d.0 != key) {
         let steps = sim::tune::steps(doc.project(), done);
-        let Some(data) = plot::data_steps(&steps, &signals, phase, doc.connectivity()) else { return act };
+        let Some(mut data) = plot::data_steps(&steps, &signals, phase, doc.connectivity()) else { return act };
+        plot::set_logic(&mut data, &signals, &logic);
         let range =
             done.range.unwrap_or((data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0)));
         state.full = done.range;
@@ -392,10 +396,11 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     if response.clicked() || response.drag_started() || response.secondary_clicked() {
         act = Some(PlotAct::Focus(analysis.id));
     }
-    plot_view(ui, state, &data, rect, &response, log_x);
+    let (analog, lanes) = lanes(&data, &state.hidden, rect);
+    plot_view(ui, state, &data, rect, analog, &response, log_x);
     // After the pointer: a double-click may just have cleared the view for a fit.
     let scales = state.scales(&data, log_x);
-    draw(ui, state, &data, scales, rect, outer, &response, dim);
+    draw(ui, state, &data, scales, (rect, analog, &lanes), outer, &response, dim);
     // Right-click (a right drag pans).
     response.context_menu(|ui| {
         let mut clear = egui::Button::new("Clear cursors");
@@ -438,12 +443,15 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
     }
     egui::ScrollArea::vertical().id_salt(("plot_table", analysis.id)).auto_shrink([false, false]).show(ui, |ui| {
         egui::Frame::new().inner_margin(egui::Margin { left: 12, right: 12, top: 0, bottom: 8 }).show(ui, |ui| {
-            let (hover, remove) = readout(ui, state, &data, &measuring, &signals, named, analysis.probes.is_empty());
+            let (hover, row) =
+                readout(ui, state, &data, &measuring, &signals, &logic, named, analysis.probes.is_empty());
             if let Some(s) = hover {
                 panel.hover = Some(target(&s));
             }
-            if let Some(i) = remove {
-                act = Some(PlotAct::RemoveProbe(analysis.id, i));
+            match row {
+                Some(RowAct::Remove(i)) => act = Some(PlotAct::RemoveProbe(analysis.id, i)),
+                Some(RowAct::Logic(i, on)) => act = Some(PlotAct::SetLogic(analysis.id, i, on)),
+                None => {}
             }
         });
     });
@@ -495,9 +503,54 @@ fn hint_with_run(ui: &mut Ui, text: &str) -> bool {
 }
 
 /// Fits the view where needed, and applies the pointer to it.
-fn plot_view(ui: &Ui, state: &mut PlotState, data: &PlotData, rect: Rect, response: &egui::Response, log_x: bool) {
+/// A logic lane's height (with voltage traces above; alone they share the height, up to
+/// [`LANE_MAX`]), and the gap above the lanes.
+const LANE_H: f32 = 26.0;
+const LANE_MAX: f32 = 48.0;
+const LANE_GAP: f32 = 6.0;
+
+/// The plot area split into the voltage traces' part and a lane per logic trace shown
+/// (by trace index): the lanes at the bottom (at most 60 % of the height), or the
+/// whole area when there are only logic traces.
+fn lanes(data: &PlotData, hidden: &HashSet<String>, rect: Rect) -> (Rect, Vec<(usize, Rect)>) {
+    let shown = |t: &&plot::Trace| !hidden.contains(&t.label);
+    let logic: Vec<usize> =
+        data.traces.iter().enumerate().filter(|(_, t)| t.logic.is_some() && shown(t)).map(|(i, _)| i).collect();
+    if logic.is_empty() {
+        return (rect, Vec::new());
+    }
+    let analog = data.traces.iter().filter(shown).any(|t| t.logic.is_none());
+    let n = logic.len() as f32;
+    let h = if analog { LANE_H.min(rect.height() * 0.6 / n) } else { (rect.height() / n).min(LANE_MAX) };
+    let top = if analog { rect.bottom() - h * n } else { rect.top() };
+    let rows = logic
+        .into_iter()
+        .enumerate()
+        .map(|(k, i)| {
+            let y = top + k as f32 * h;
+            (i, Rect::from_min_max(pos2(rect.left(), y), pos2(rect.right(), y + h)))
+        })
+        .collect();
+    let area = if analog {
+        Rect::from_min_max(rect.min, pos2(rect.right(), top - LANE_GAP))
+    } else {
+        Rect::from_min_max(rect.min, pos2(rect.right(), rect.top()))
+    };
+    (area, rows)
+}
+
+/// The pointer on the plot. `analog`: the voltage traces' part of `rect` (y zooms there).
+fn plot_view(
+    ui: &Ui,
+    state: &mut PlotState,
+    data: &PlotData,
+    rect: Rect,
+    analog: Rect,
+    response: &egui::Response,
+    log_x: bool,
+) {
     let (x, _) = state.scales(data, log_x);
-    let to_frac = |p: Pos2| ((p.x - rect.left()) / rect.width(), (rect.bottom() - p.y) / rect.height());
+    let to_frac = |p: Pos2| ((p.x - rect.left()) / rect.width(), (analog.bottom() - p.y) / analog.height().max(1.0));
     let input = ui.input(|i| (i.smooth_scroll_delta, i.zoom_delta(), i.modifiers, i.pointer.interact_pos()));
     let (scroll, zoom, mods, pointer) = input;
     if response.hovered()
@@ -567,6 +620,7 @@ fn plot_view(ui: &Ui, state: &mut PlotState, data: &PlotData, rect: Rect, respon
                 let (a, c) = (to_frac(b.left_top()).0 as f64, to_frac(b.right_top()).0 as f64);
                 state.x = Some(Scale::new(x.value(a), x.value(c), x.log));
             }
+            let b = b.intersect(analog);
             if b.height() > 4.0 {
                 let (lo, hi) = (to_frac(b.left_bottom()).1 as f64, to_frac(b.left_top()).1 as f64);
                 for s in state.y.iter_mut().flatten() {
@@ -602,19 +656,21 @@ fn draw(
     state: &mut PlotState,
     data: &PlotData,
     scales: (Scale, [Scale; 3]),
-    rect: Rect,
+    areas: (Rect, Rect, &[(usize, Rect)]),
     outer: Rect,
     response: &egui::Response,
     dim: bool,
 ) {
     let painter = ui.painter_at(outer);
     let (x, ys) = scales;
+    // The whole plot, the voltage traces' part of it and the logic lanes.
+    let (rect, analog, lanes) = areas;
     painter.rect_filled(rect, 4.0, chart_bg());
     let grid = theme::color(view::style::pal().plot_grid);
     let text = theme::color(view::style::pal().plot_text);
     let font = FontId::proportional(11.0);
     let px = |v: f64| rect.left() + x.frac(v) as f32 * rect.width();
-    let py = |s: &Scale, v: f64| rect.bottom() - s.frac(v) as f32 * rect.height();
+    let py = |s: &Scale, v: f64| analog.bottom() - s.frac(v) as f32 * analog.height();
 
     // Grid and tick labels.
     for v in x.ticks(((rect.width() / 90.0) as usize).max(2)) {
@@ -629,7 +685,10 @@ fn draw(
             continue;
         }
         let s = &ys[i];
-        for v in s.ticks(((rect.height() / 40.0) as usize).max(2)) {
+        if analog.height() < 1.0 {
+            continue;
+        }
+        for v in s.ticks(((analog.height() / 40.0) as usize).max(2)) {
             let p = py(s, v);
             if i == 0 {
                 painter.hline(rect.x_range(), p, Stroke::new(1.0, grid));
@@ -662,11 +721,11 @@ fn draw(
         let pts = data.traces.iter().map(|t| plot::decimate(&data.x, &t.y, x.lo, x.hi, columns, col)).collect();
         state.decimated = Some((key, pts));
     }
-    let clip = painter.with_clip_rect(rect);
+    let clip = painter.with_clip_rect(analog);
     let visible = plot::visible(&data.x, x.lo, x.hi).len();
     let dots = visible > 0 && rect.width() / visible as f32 > 8.0;
     for (t, pts) in data.traces.iter().zip(&state.decimated.as_ref().unwrap().1) {
-        if state.hidden.contains(&t.label) {
+        if state.hidden.contains(&t.label) || t.logic.is_some() {
             continue;
         }
         let s = &ys[t.axis.index()];
@@ -687,6 +746,8 @@ fn draw(
             }
         }
     }
+
+    draw_lanes(&painter, data, x, rect, lanes, dim);
 
     // Cursors.
     for (k, c) in state.cursors.iter().enumerate() {
@@ -740,7 +801,7 @@ fn draw(
             .filter_map(|t| {
                 let y = plot::interpolate(&data.x, &t.y, v)?;
                 let (color, dashed) = trace_style(data, t);
-                Some((color, dashed, t.label.clone(), plot::label(y, t.unit)))
+                Some((color, dashed, t.label.clone(), value_text(t, y)))
             })
             .collect();
         egui::Tooltip::always_open(
@@ -763,6 +824,58 @@ fn draw(
                 }
             });
         });
+    }
+}
+
+/// A trace's value as text: a logic trace's level first ("1 · 4.98 V").
+fn value_text(t: &plot::Trace, y: f64) -> String {
+    match t.logic {
+        Some(threshold) => format!("{} · {}", if y > threshold { "1" } else { "0" }, plot::label(y, t.unit)),
+        None => plot::label(y, t.unit),
+    }
+}
+
+/// The logic traces, each in its lane: the high and low levels joined by vertical
+/// edges, high filled lightly; where it switches more than once per pixel, a solid bar.
+/// The trace's label sits left of its lane.
+fn draw_lanes(painter: &egui::Painter, data: &PlotData, x: Scale, rect: Rect, lanes: &[(usize, Rect)], dim: bool) {
+    let grid = theme::color(view::style::pal().plot_grid);
+    let font = FontId::proportional(11.0);
+    let px = |v: f64| rect.left() + x.frac(v) as f32 * rect.width();
+    for (i, lane) in lanes {
+        let t = &data.traces[*i];
+        let Some(threshold) = t.logic else { continue };
+        let (mut color, _) = trace_style(data, t);
+        if dim {
+            color = color.gamma_multiply(0.35);
+        }
+        painter.hline(rect.x_range(), lane.top(), Stroke::new(1.0, grid));
+        painter.text(pos2(rect.left() - 6.0, lane.center().y), Align2::RIGHT_CENTER, &t.label, font.clone(), color);
+        let pad = (lane.height() * 0.18).clamp(3.0, 8.0);
+        let (high_y, low_y) = (lane.top() + pad, lane.bottom() - pad);
+        let clip = painter.with_clip_rect(*lane);
+        let mut points: Vec<Pos2> = Vec::new();
+        // The pixel column of the last bar drawn for a burst of edges.
+        let mut busy: Option<f32> = None;
+        for (a, b, high) in plot::logic_runs(&data.x, &t.y, x.lo, x.hi, threshold) {
+            let (pa, pb) = (px(a), px(b));
+            let y = if high { high_y } else { low_y };
+            if pb - pa < 1.0 {
+                let column = pa.floor();
+                if busy != Some(column) {
+                    busy = Some(column);
+                    points.extend([pos2(column, low_y), pos2(column, high_y)]);
+                }
+                continue;
+            }
+            busy = None;
+            if high {
+                let fill = Rect::from_min_max(pos2(pa, high_y), pos2(pb, low_y));
+                clip.rect_filled(fill, 0.0, color.gamma_multiply(0.15));
+            }
+            points.extend([pos2(pa, y), pos2(pb, y)]);
+        }
+        clip.add(egui::Shape::line(points, Stroke::new(1.5, color)));
     }
 }
 
@@ -843,27 +956,48 @@ fn group_header(
     clicked.then_some(prefix)
 }
 
+/// What a readout row's context menu asks for: (probe index).
+enum RowAct {
+    Remove(usize),
+    /// Show it as a logic level, or as a voltage again.
+    Logic(usize, bool),
+}
+
 /// The traces with their values at the cursors; a click on a row hides or shows it.
-/// Returns the signal hovered and a probe to remove (right-click; `auto`: no probes).
+/// Returns the signal hovered and what a row's context menu asked for (`auto`: no
+/// probes, no menu). `logic`: which probes show as logic.
+#[allow(clippy::too_many_arguments)]
 fn readout(
     ui: &mut Ui,
     state: &mut PlotState,
     data: &PlotData,
     measuring: &Measuring,
     signals: &[Signal],
+    logic: &[bool],
     named: usize,
     auto: bool,
-) -> (Option<Signal>, Option<usize>) {
+) -> (Option<Signal>, Option<RowAct>) {
     let mut hover = None;
-    let mut remove = None;
+    let mut act = None;
+    // Logic levels: voltages to ground, not in frequency (AC, spectra).
+    let levels = data.x_unit != "Hz";
     let mut row_menu = |r: &egui::Response, signal: usize| {
         if r.hovered() {
             hover = signals.get(signal).cloned();
         }
         if !auto {
             r.context_menu(|ui| {
+                if levels && matches!(signals.get(signal), Some(Signal::Voltage(_))) {
+                    let mut on = logic.get(signal).copied().unwrap_or(false);
+                    let tip = "A lane under the plot showing high and low, switching halfway between the \
+                        trace's lowest and highest voltage";
+                    if ui.checkbox(&mut on, "Show as logic").on_hover_text(tip).clicked() {
+                        act = Some(RowAct::Logic(signal, on));
+                        ui.close();
+                    }
+                }
                 if ui.button("Remove probe").clicked() {
-                    remove = Some(signal);
+                    act = Some(RowAct::Remove(signal));
                     ui.close();
                 }
             });
@@ -971,7 +1105,7 @@ fn readout(
                 if trace_row(ui, state, data, t, &mut row_menu) {
                     toggle = Some(t.label.clone());
                 }
-                let value = |i: Option<usize>| i.map_or(String::new(), |i| plot::label(t.y[i], t.unit));
+                let value = |i: Option<usize>| i.map_or(String::new(), |i| value_text(t, t.y[i]));
                 let delta = a.zip(b).map_or(String::new(), |(i, j)| plot::label(t.y[j] - t.y[i], t.unit));
                 for v in [value(a), value(b), delta] {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1015,7 +1149,7 @@ fn readout(
         };
         crate::fields::hint(ui, &text);
     }
-    (hover, remove)
+    (hover, act)
 }
 
 /// The operating point's values, sortable by signal or value; a sweep's steps as
@@ -1093,7 +1227,16 @@ mod tests {
     fn data() -> PlotData {
         let x: Vec<f64> = (0..=100).map(|i| i as f64 * 1e-5).collect();
         let y = x.iter().map(|t| (t * 6283.0).sin()).collect();
-        let trace = Trace { label: "V(OUT)".into(), unit: "V", axis: Axis::Left, dashed: false, signal: 0, step: 0, y };
+        let trace = Trace {
+            label: "V(OUT)".into(),
+            unit: "V",
+            axis: Axis::Left,
+            dashed: false,
+            signal: 0,
+            step: 0,
+            y,
+            logic: None,
+        };
         PlotData {
             x_label: "Time".into(),
             x_unit: "s",
@@ -1115,9 +1258,9 @@ mod tests {
         let mut out = ctx.run_ui(input, |ui| {
             let (outer, response) = ui.allocate_exact_size(vec2(780.0, 560.0), Sense::click_and_drag());
             let rect = outer.shrink(40.0);
-            plot_view(ui, state, data, rect, &response, false);
+            plot_view(ui, state, data, rect, rect, &response, false);
             let scales = state.scales(data, false);
-            draw(ui, state, data, scales, rect, outer, &response, false);
+            draw(ui, state, data, scales, (rect, rect, &[]), outer, &response, false);
         });
         // No renderer takes the font textures.
         out.textures_delta.clear();

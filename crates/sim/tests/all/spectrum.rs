@@ -105,6 +105,7 @@ fn spectrum_plots_follow_the_time_plot() {
         signal: 0,
         step: 0,
         y: y.clone(),
+        logic: None,
     };
     let time = PlotData {
         x_label: "Time".into(),

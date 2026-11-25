@@ -237,3 +237,35 @@ fn sweep_steps_share_one_x_axis() {
     let one = plot::data_steps(&steps[..1], &out, false, &conn).unwrap();
     assert_eq!(one, plot::data(&r1, &out, false, &conn).unwrap());
 }
+
+#[test]
+fn logic_traces_switch_halfway_and_stay_off_the_axes() {
+    // Halfway between the trace's own extremes, whatever the supply.
+    assert_eq!(plot::logic_threshold(&[0.0, 3.3, 0.1]), 1.65);
+    assert_eq!(plot::logic_threshold(&[5.0, 5.0]), 2.5);
+    assert_eq!(plot::logic_threshold(&[0.0, 0.01]), 0.5);
+    // Runs between crossings, interpolated, clipped to the range.
+    let x = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0];
+    let y = [0.0, 0.0, 5.0, 5.0, 0.0, 0.0];
+    let runs = plot::logic_runs(&x, &y, 0.5, 4.5, 2.5);
+    assert_eq!(runs, vec![(0.5, 1.5, false), (1.5, 3.5, true), (3.5, 4.5, false)]);
+
+    let (b, _, _) = rc();
+    let r = tran(&b, &[0.0, 0.5, 1.0], 5.0);
+    let mut a = Analysis::new("T", AnalysisKind::Tran { stop: 1.0, step: None, start: 0.0, max_step: None });
+    a.probes = vec![Probe::voltage("IN", None), Probe::voltage("OUT", None)];
+    if let Probe::Voltage { logic, .. } = &mut a.probes[1] {
+        *logic = true;
+    }
+    let conn = b.conn();
+    let (signals, _) = plot::signals(&a, &r, &conn);
+    let mut d = plot::data(&r, &signals, false, &conn).unwrap();
+    plot::set_logic(&mut d, &signals, &plot::logic_flags(&a));
+    assert_eq!(d.traces.iter().map(|t| t.logic).collect::<Vec<_>>(), vec![None, Some(2.5)]);
+    // y fits the analog trace only (IN is 1 V; OUT, up to 5 V, is a lane).
+    let (lo, hi) = plot::fit_y(&d, Axis::Left, 0.0, 1.0, &HashSet::new()).unwrap();
+    assert!(hi < 2.0, "{lo}…{hi}");
+    // With only logic traces, the axis has no unit.
+    plot::set_logic(&mut d, &signals, &[true, true]);
+    assert_eq!(d.axis_unit(Axis::Left), "");
+}

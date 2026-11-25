@@ -35,6 +35,7 @@ impl ProbeTarget {
                 net: net.clone(),
                 at: Some(*at),
                 reference: Some(NetRef { net: reference.clone(), at: Some(*ref_at) }),
+                logic: false,
             },
             ProbeTarget::Pin { symbol, pin } => Probe::Current { symbol: *symbol, pin: *pin },
             ProbeTarget::Part { component } => Probe::Power { component: *component },

@@ -236,6 +236,18 @@ impl SimPanel {
         doc.execute(Command::SetSimulation { simulation: setup }).map(|_| ()).map_err(|e| e.to_string())
     }
 
+    /// Shows voltage probe `index` of `analysis` as a logic level (`on`) or a voltage.
+    pub fn set_probe_logic(doc: &mut Document, analysis: Id, index: usize, on: bool) -> Result<(), String> {
+        let mut setup = doc.project().schematic.simulation.clone();
+        let Some(a) = setup.analyses.iter_mut().find(|a| a.id == analysis) else { return Ok(()) };
+        let Some(Probe::Voltage { logic, .. }) = a.probes.get_mut(index) else { return Ok(()) };
+        if *logic == on {
+            return Ok(());
+        }
+        *logic = on;
+        doc.execute(Command::SetSimulation { simulation: setup }).map(|_| ()).map_err(|e| e.to_string())
+    }
+
     /// Whether `target` is probed in the probe analysis.
     pub fn is_probed(&self, doc: &Document, target: &ProbeTarget) -> bool {
         let conn = doc.connectivity();
