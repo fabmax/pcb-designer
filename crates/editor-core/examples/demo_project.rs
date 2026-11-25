@@ -5,7 +5,7 @@ use model::builtin::{self, PART_LED, PART_RESISTOR};
 use model::*;
 
 fn main() {
-    let dir = std::env::args().nth(1).unwrap_or_else(|| "out/demo.pcbproj".into());
+    let dir = std::env::args().nth(1).unwrap_or_else(|| "out/demo".into());
     let mut ed = Editor::new(Project::new("Demo"));
     let lib = builtin::builtin_library();
     ed.execute(Command::import_parts(&lib, &[PART_RESISTOR, PART_LED]).unwrap()).unwrap();

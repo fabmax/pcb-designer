@@ -223,7 +223,7 @@ fn pairs(list: &[(&str, &str)]) -> Vec<(String, String)> {
 #[test]
 fn libraries_belong_to_the_project() {
     let dir = tempfile::tempdir().unwrap();
-    let project_dir = dir.path().join("amp.pcbproj");
+    let project_dir = dir.path().join("amp");
     let mut doc = Document::new(model::Project::new("amp"));
     doc.save_as(&project_dir).unwrap();
     let mut host = HeadlessHost::new(doc);
@@ -254,7 +254,7 @@ fn libraries_belong_to_the_project() {
     lib(&mut host, LibraryRequest::Save { library: "Mine".into(), path: Some(other.clone()) }).unwrap();
     assert_eq!(host.doc.project().libraries, std::slice::from_ref(&other));
     host.doc.save().unwrap();
-    let text = std::fs::read_to_string(project_dir.join("project.json")).unwrap();
+    let text = std::fs::read_to_string(project_dir.join("project.pcbproj")).unwrap();
     assert!(text.contains(r#""libraries": ["../libs/Other.pcblib"]"#), "{text}");
 
     // Unsaved edits block removal unless discarded.

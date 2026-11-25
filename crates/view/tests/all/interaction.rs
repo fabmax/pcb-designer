@@ -377,7 +377,7 @@ fn hit_prefers_wires_over_symbol_bodies() {
 #[test]
 fn save_and_reopen_document() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("demo.pcbproj");
+    let path = dir.path().join("demo");
     let mut doc = Document::new(demo_project());
     assert!(doc.save().is_err(), "no path yet");
     let mut it = Interaction::new(mm(1.27));

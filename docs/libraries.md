@@ -63,7 +63,7 @@ It is read-only; **Save a copy as…** makes an editable library of your own fro
 
 ## External libraries
 
-The project lists its library files in `project.json`, relative to the project folder, and
+The project lists its library files in `project.pcbproj`, relative to the project folder, and
 they load with the project. A file that can't be read shows as missing, with Locate… and
 Remove. Adding a copy of a library that is already there is refused, because a copied file
 keeps the library's id. KiCad's libraries can be imported too: see

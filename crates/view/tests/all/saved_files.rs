@@ -48,18 +48,20 @@ fn projects_saved_by_releases_load_without_losing_anything() {
         let project = io::load_project(&dir).unwrap_or_else(|e| panic!("{e}"));
         let again = out.path().join(dir.file_name().unwrap());
         io::save_project(&project, &again).unwrap();
-        for (file, kind) in [
-            (io::PROJECT_FILE, FileKind::Project),
-            (io::LIBRARY_FILE, FileKind::Library),
-            (io::SCHEMATIC_FILE, FileKind::Schematic),
-            (io::BOARD_FILE, FileKind::Board),
-        ] {
+        for kind in [FileKind::Project, FileKind::Library, FileKind::Schematic, FileKind::Board] {
+            let file = |d: &Path| match kind {
+                // `project.json` until 0.4.0.
+                FileKind::Project => io::project_file(d).unwrap(),
+                FileKind::Library => d.join(io::LIBRARY_FILE),
+                FileKind::Schematic => d.join(io::SCHEMATIC_FILE),
+                FileKind::Board => d.join(io::BOARD_FILE),
+            };
             let read = |d: &Path| {
-                let path = d.join(file);
+                let path = file(d);
                 io::upgrade(&std::fs::read_to_string(&path).unwrap(), kind, MIGRATIONS, &path).unwrap()
             };
             if let Some(lost) = missing(&read(&dir), &read(&again), "") {
-                panic!("{}: {lost}", dir.join(file).display());
+                panic!("{}: {lost}", file(&dir).display());
             }
         }
     }

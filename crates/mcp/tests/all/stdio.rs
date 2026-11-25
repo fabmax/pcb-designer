@@ -20,7 +20,7 @@ fn ok_json(r: CallToolResult) -> Value {
 #[test]
 fn headless_session_edits_checks_and_saves() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("demo.pcbproj");
+    let path = dir.path().join("demo");
     let (client_side, server_side) = tokio::io::duplex(1 << 16);
     let server = std::thread::spawn(move || {
         let mut host = HeadlessHost::new(Document::new(view::demo::demo_project()));

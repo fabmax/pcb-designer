@@ -15,7 +15,7 @@ things to do **later**.
 | Copper | Tracks have no stored net; nets come from the pads they touch. Copper whose net no longer fits is flagged, never deleted |
 | Library parts | Copied into the project (Project Library). Each copy keeps `source` (library id, part id, content hash) for "update from library" |
 | Schematic scope | KiCad's concepts, so KiCad projects can be imported and exported: buses, label scopes (local / global / hierarchical / power), net names and hierarchical sheets with sheet pins as KiCad does. Multi-unit parts work |
-| Files | JSON, pretty, stable order, integer nm. A project is a folder (`<name>.pcbproj/`: `project.json`, `library.json`, `schematic.json`, `board.json`); a library is one `*.pcblib`. Files saved by releases keep loading: a renamed, removed or reinterpreted field bumps the kind's version (`FileKind::current_version`) with a migration in `model::io::MIGRATIONS` (on the JSON, before deserializing); a new field with a default needs neither. `view/tests/saved/VERSION/` holds each release's examples (`save_examples -- --release VERSION`); `saved_files.rs` loads them, saves again and fails if any old value (after migrating) is gone or changed |
+| Files | JSON, pretty, stable order, integer nm. A project is a folder of any name, recognised by its `project.pcbproj` (JSON; with `library.json`, `schematic.json`, `board.json`; `model::io::is_project_dir`). Opening accepts the folder or its `project.pcbproj` (`project_dir`). 0.4.0 named the project file `project.json`: still read (only when its `format` is ours), deleted when the new one is saved. Saving into a folder that isn't a project but has a file of ours by name is refused; a library is one `*.pcblib`. Files saved by releases keep loading: a renamed, removed or reinterpreted field bumps the kind's version (`FileKind::current_version`) with a migration in `model::io::MIGRATIONS` (on the JSON, before deserializing); a new field with a default needs neither. `view/tests/saved/VERSION/` holds each release's examples (`save_examples -- --release VERSION`); `saved_files.rs` loads them, saves again and fails if any old value (after migrating) is gone or changed |
 | MCP | In the app (Streamable HTTP on 127.0.0.1, opt-in) and headless over stdio. Every tool goes through editor-core commands |
 | Simulation | ngspice 47, built from source and bundled: its shared library in the app (live traces), worker processes of our own for sweeps and isolation. Design in "Simulation (`sim`)" |
 | Routing | Push and shove after KiCad's PNS router (hulls, lines walked round a pusher's hull, a shove stack, spring-back by recomputing from the board at the last click). Design in "Connectivity, copper, zones, DRC" (Router, Shove) |
@@ -1172,7 +1172,7 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
 - Example projects (`demo::Example`: File → Open example, `--example NAME`).
   `led` (`demo_project`, plus a demo library the app writes to the temp folder) is built
   in code. `amp` (a discrete class-AB amplifier) is **stored**: a project folder
-  `crates/view/demo/amp.pcbproj` (the four JSON files, no `.pcb-designer/`), embedded
+  `crates/view/demo/amp/` (the four files, no `.pcb-designer/`), embedded
   with `include_str!` (`Example::stored`) and parsed by `model::io::project_from_files`.
   It opens as a new, unsaved project, so it must use no external library files.
   `demo::tests` checks every stored example loads, validates, its net classes name
@@ -1968,3 +1968,6 @@ defers.
   entitlement; the bundled one is signed with the app's identity, so it loads.
 - Documentation: publish `docs/` as a site (GitHub Pages with a template such as
   just-the-docs), with screenshots.
+- Opening a project from the file manager: register `project.pcbproj` as a document type
+  (`CFBundleDocumentTypes` in the macOS bundle and the open-file event, a Windows file
+  association, a Linux `.desktop` MIME type). The command line already accepts it.

@@ -432,7 +432,7 @@ impl PcbApp {
         let doc = match opts.startup {
             Startup::Open(path) => match Document::open(&path) {
                 Ok(doc) => {
-                    settings.add_recent(&path);
+                    settings.add_recent(doc.path.as_deref().unwrap_or(&path));
                     let _ = settings.save();
                     doc
                 }
@@ -1138,10 +1138,12 @@ impl PcbApp {
         self.show_file_dialog(dialog, Kind::PickFolder, Chosen::OpenProject);
     }
 
-    /// Open a project folder (after unsaved changes were dealt with).
-    fn open_path(&mut self, dir: &std::path::Path) {
-        match Document::open(dir) {
+    /// Open a project folder, or the folder of a `project.pcbproj` (after unsaved changes
+    /// were dealt with).
+    fn open_path(&mut self, path: &std::path::Path) {
+        match Document::open(path) {
             Ok(doc) => {
+                let dir = &doc.path.clone().unwrap_or_else(|| path.to_path_buf());
                 self.replace_document(doc);
                 self.set_status(format!("Opened {}", dir.display()));
                 self.remember_project(dir);
@@ -1440,7 +1442,7 @@ impl PcbApp {
                 self.save_to(&path)
             }
             _ => {
-                let name = format!("{}.pcbproj", self.doc().project().name);
+                let name = self.doc().project().name.clone();
                 let dialog = rfd::AsyncFileDialog::new().set_title("Save project folder").set_file_name(name);
                 self.show_file_dialog(dialog, Kind::Save, Chosen::SaveProject(then));
                 false

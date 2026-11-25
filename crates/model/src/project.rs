@@ -16,7 +16,7 @@ pub struct Project {
     pub schematic: Schematic,
     pub board: Board,
     /// Library files the project takes parts from (External Libraries), in the order the
-    /// user added them. Absolute in memory; `project.json` stores them relative to the
+    /// user added them. Absolute in memory; `project.pcbproj` stores them relative to the
     /// project folder.
     pub libraries: Vec<PathBuf>,
 }

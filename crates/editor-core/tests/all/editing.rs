@@ -339,15 +339,15 @@ fn project_folder_roundtrip() {
     ed.execute(Command::AddWire { sheet: None, points: vec![Point::mm(5.08, 0.0), Point::mm(4.92, 0.0)] }).unwrap();
     ed.execute(Command::AddVia { pos: Point::mm(3.0, 3.0), diameter: None, drill: None, span: None }).unwrap();
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("demo.pcbproj");
+    let path = dir.path().join("demo");
     save_project(ed.project(), &path).unwrap();
     let loaded = load_project(&path).unwrap();
     assert_eq!(&loaded, ed.project());
     assert_eq!(loaded.validate(), Vec::<String>::new());
     // Saving the loaded project produces identical files.
-    let again = dir.path().join("again.pcbproj");
+    let again = dir.path().join("again");
     save_project(&loaded, &again).unwrap();
-    for f in ["project.json", "library.json", "schematic.json", "board.json"] {
+    for f in ["project.pcbproj", "library.json", "schematic.json", "board.json"] {
         assert_eq!(std::fs::read(path.join(f)).unwrap(), std::fs::read(again.join(f)).unwrap(), "{f}");
     }
 }

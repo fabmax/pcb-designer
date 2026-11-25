@@ -424,7 +424,7 @@ mod tests {
     #[test]
     fn outputs_list_gerber_and_assembly_files() {
         let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path().join("demo.pcbproj");
+        let dir = tmp.path().join("demo");
         let mut doc = Document::new(view::demo::demo_project());
         doc.save_as(&dir).unwrap();
         let mut outputs = Outputs::default();

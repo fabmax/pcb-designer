@@ -605,10 +605,12 @@ impl Document {
         done
     }
 
-    pub fn open(dir: impl AsRef<Path>) -> Result<Self, FileError> {
-        let project = load_project(dir.as_ref())?;
+    /// Open a project folder, or the folder of the `project.pcbproj` `path` names.
+    pub fn open(path: impl AsRef<Path>) -> Result<Self, FileError> {
+        let dir = model::io::project_dir(path.as_ref());
+        let project = load_project(&dir)?;
         let mut doc = Document::new(project);
-        doc.path = Some(dir.as_ref().to_path_buf());
+        doc.path = Some(dir);
         Ok(doc)
     }
 

@@ -46,7 +46,7 @@ fn import_replaces_the_project_and_saves() {
     assert_eq!(root["page_rect"]["max"][1], 210_000_000, "{root}");
 
     let dir = tempfile::tempdir().unwrap();
-    let out = dir.path().join("hier.pcbproj");
+    let out = dir.path().join("hier");
     call(&mut host, Request::Save { path: Some(out.clone()) }).unwrap();
     let reopened = Document::open(&out).unwrap();
     assert_eq!(reopened.project().schematic.components.len(), components);

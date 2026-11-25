@@ -45,7 +45,7 @@ fn main() {
         println!("{:?}: {}", v.kind, v.message);
     }
     if gerber {
-        let tmp = std::env::temp_dir().join(format!("render_board_{}.pcbproj", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("render_board_{}", std::process::id()));
         host.doc.save_as(&tmp).expect("save");
         host.doc.export_gerber().expect("export");
         let mut gv = view::GerberView::load(&view::gerber::gerber_dir(&tmp)).expect("load");

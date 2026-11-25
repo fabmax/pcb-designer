@@ -229,7 +229,7 @@ mod tests {
 
     fn copy(name: &str) -> impl FnOnce() -> (Project, Option<PathBuf>) {
         let project = Project::new(name);
-        move || (project, Some(PathBuf::from("/somewhere/x.pcbproj")))
+        move || (project, Some(PathBuf::from("/somewhere/x")))
     }
 
     #[test]
@@ -256,7 +256,7 @@ mod tests {
         assert_eq!(entries.len(), 1);
         let e = &entries[0];
         assert_eq!(e.meta.name, "A");
-        assert_eq!(e.meta.project, Some(PathBuf::from("/somewhere/x.pcbproj")));
+        assert_eq!(e.meta.project, Some(PathBuf::from("/somewhere/x")));
         assert_eq!(e.load().unwrap().name, "A");
         assert!(!e.saved_since());
         e.discard();

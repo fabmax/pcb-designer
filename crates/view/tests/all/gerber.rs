@@ -9,7 +9,7 @@ use view::demo::demo_project;
 fn saved_demo() -> (tempfile::TempDir, Document) {
     let dir = tempfile::tempdir().unwrap();
     let mut doc = Document::new(demo_project());
-    doc.save_as(dir.path().join("demo.pcbproj")).unwrap();
+    doc.save_as(dir.path().join("demo")).unwrap();
     (dir, doc)
 }
 
@@ -66,7 +66,7 @@ fn refuses_without_outline_or_folder() {
     assert!(matches!(doc.export_gerber(), Err(ExportError::NotSaved)));
     let dir = tempfile::tempdir().unwrap();
     let mut empty = Document::new(Project::new("empty"));
-    empty.save_as(dir.path().join("empty.pcbproj")).unwrap();
+    empty.save_as(dir.path().join("empty")).unwrap();
     assert!(matches!(empty.export_gerber(), Err(ExportError::NoOutline)));
 }
 

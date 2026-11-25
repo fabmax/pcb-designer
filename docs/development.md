@@ -51,9 +51,9 @@ publishes them as a GitHub Release:
 
 ## Example projects
 
-The audio amplifier example is a project folder, `crates/view/demo/amp.pcbproj`, built
+The audio amplifier example is a project folder, `crates/view/demo/amp/`, built
 into the app. To change it, open it (`--example amp`), edit, save it anywhere, and copy
-`project.json`, `library.json`, `schematic.json` and `board.json` over the stored ones.
+`project.pcbproj`, `library.json`, `schematic.json` and `board.json` over the stored ones.
 After a file format change, `cargo run -p view --example save_examples` re-saves the
 stored examples (a test fails until then).
 

@@ -8,7 +8,7 @@ use model::io::ProjectFiles;
 pub enum Example {
     /// [`demo_project`]: an LED on a sub-sheet, a test bench, a small routed board.
     Led,
-    /// A discrete class-AB audio amplifier, routed (stored in `demo/amp.pcbproj`).
+    /// A discrete class-AB audio amplifier, routed (stored in `demo/amp/`).
     Amp,
 }
 
@@ -19,7 +19,7 @@ pub const STORED_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/demo");
 macro_rules! stored {
     ($dir:literal) => {
         ProjectFiles {
-            project: include_str!(concat!("../../demo/", $dir, "/project.json")),
+            project: include_str!(concat!("../../demo/", $dir, "/project.pcbproj")),
             library: include_str!(concat!("../../demo/", $dir, "/library.json")),
             schematic: include_str!(concat!("../../demo/", $dir, "/schematic.json")),
             board: include_str!(concat!("../../demo/", $dir, "/board.json")),
@@ -55,7 +55,7 @@ impl Example {
     pub fn stored(self) -> Option<(&'static str, ProjectFiles<'static>)> {
         match self {
             Example::Led => None,
-            Example::Amp => Some(("amp.pcbproj", stored!("amp.pcbproj"))),
+            Example::Amp => Some(("amp", stored!("amp"))),
         }
     }
 

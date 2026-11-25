@@ -1,10 +1,10 @@
 //! Project folders and library files.
 //!
-//! A project is a folder (conventionally `<name>.pcbproj/`) with one JSON file per part of
-//! the document:
+//! A project is a folder of any name, recognised by its `project.pcbproj` (JSON like the
+//! others), with one file per part of the document:
 //!
 //! ```text
-//! project.json    name, library files (relative to the folder)
+//! project.pcbproj name, library files (relative to the folder)
 //! library.json    embedded copies of used parts, symbols and footprints
 //! schematic.json  schematic
 //! board.json      board
@@ -53,7 +53,9 @@ impl FileKind {
     }
 }
 
-pub const PROJECT_FILE: &str = "project.json";
+pub const PROJECT_FILE: &str = "project.pcbproj";
+/// The project file's name until 0.4.0: still read, replaced on save.
+pub const OLD_PROJECT_FILE: &str = "project.json";
 pub const LIBRARY_FILE: &str = "library.json";
 pub const SCHEMATIC_FILE: &str = "schematic.json";
 pub const BOARD_FILE: &str = "board.json";
@@ -90,25 +92,76 @@ struct ProjectFile {
     libraries: Vec<String>,
 }
 
+/// The project file of a project folder: `project.pcbproj`, or an older project's
+/// `project.json`. `None` when `dir` holds no project.
+pub fn project_file(dir: &Path) -> Option<PathBuf> {
+    [PROJECT_FILE, OLD_PROJECT_FILE].into_iter().map(|name| dir.join(name)).find(|path| {
+        // A `project.json` counts only when it's ours (not, say, an npm project's).
+        path.is_file()
+            && (path.ends_with(PROJECT_FILE)
+                || std::fs::read_to_string(path).is_ok_and(|text| is_format(&text, FileKind::Project)))
+    })
+}
+
+/// Whether `dir` is a project folder.
+pub fn is_project_dir(dir: &Path) -> bool {
+    project_file(dir).is_some()
+}
+
+/// The project folder `path` names: the folder itself, or the folder of its project file
+/// (`…/project.pcbproj`, opened from a file manager or the command line).
+pub fn project_dir(path: &Path) -> PathBuf {
+    match (path.file_name(), path.parent()) {
+        (Some(name), Some(parent)) if path.is_file() && name == PROJECT_FILE => parent.to_path_buf(),
+        _ => path.to_path_buf(),
+    }
+}
+
+fn is_format(text: &str, kind: FileKind) -> bool {
+    serde_json::from_str::<Value>(text).is_ok_and(|v| v.get("format").and_then(Value::as_str) == Some(kind.format()))
+}
+
+/// Save to the folder `dir`, created if needed. A folder that already holds files of the
+/// same names (`board.json`, …) but no project is refused rather than overwritten.
 pub fn save_project(project: &Project, dir: impl AsRef<Path>) -> Result<(), FileError> {
     let dir = dir.as_ref();
+    if !is_project_dir(dir)
+        && let Some(name) =
+            [PROJECT_FILE, LIBRARY_FILE, SCHEMATIC_FILE, BOARD_FILE].into_iter().find(|n| dir.join(n).exists())
+    {
+        return Err(FileError::Io {
+            path: dir.join(name),
+            source: std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists, and the folder is no project"),
+        });
+    }
     std::fs::create_dir_all(dir).map_err(|e| FileError::Io { path: dir.into(), source: e })?;
     let libraries = project.libraries.iter().map(|p| stored_path(p, dir)).collect();
     write_file(&dir.join(PROJECT_FILE), FileKind::Project, &ProjectFile { name: project.name.clone(), libraries })?;
     write_file(&dir.join(LIBRARY_FILE), FileKind::Library, &project.library)?;
     write_file(&dir.join(SCHEMATIC_FILE), FileKind::Schematic, &project.schematic)?;
     write_file(&dir.join(BOARD_FILE), FileKind::Board, &project.board)?;
+    // An older project's file, now replaced by `project.pcbproj`.
+    let old = dir.join(OLD_PROJECT_FILE);
+    if std::fs::read_to_string(&old).is_ok_and(|text| is_format(&text, FileKind::Project)) {
+        std::fs::remove_file(&old).map_err(|e| FileError::Io { path: old, source: e })?;
+    }
     Ok(())
 }
 
+/// Load the project folder `dir` (or the folder of a `project.pcbproj` it names).
 pub fn load_project(dir: impl AsRef<Path>) -> Result<Project, FileError> {
-    let dir = dir.as_ref();
+    let dir = &project_dir(dir.as_ref());
     let read = |name: &str| {
         let path = dir.join(name);
         std::fs::read_to_string(&path).map_err(|e| FileError::Io { path, source: e })
     };
+    let project_file = project_file(dir).ok_or_else(|| FileError::Io {
+        path: dir.clone(),
+        source: std::io::Error::new(std::io::ErrorKind::NotFound, "not a project folder (no project.pcbproj)"),
+    })?;
     let files = ProjectFiles {
-        project: &read(PROJECT_FILE)?,
+        project: &std::fs::read_to_string(&project_file)
+            .map_err(|e| FileError::Io { path: project_file, source: e })?,
         library: &read(LIBRARY_FILE)?,
         schematic: &read(SCHEMATIC_FILE)?,
         board: &read(BOARD_FILE)?,
@@ -144,7 +197,7 @@ pub fn project_from_files(files: &ProjectFiles, dir: &Path) -> Result<Project, F
     })
 }
 
-/// `path` as written to `project.json`: relative to `dir` with `/` separators, or
+/// `path` as written to `project.pcbproj`: relative to `dir` with `/` separators, or
 /// absolute when there is no relative path (another drive on Windows).
 pub fn stored_path(path: &Path, dir: &Path) -> String {
     let path = normalize(&absolute(path));
@@ -341,8 +394,8 @@ mod tests {
 
     #[test]
     fn library_paths_are_stored_relative_to_the_project() {
-        let dir = Path::new("/work/boards/amp.pcbproj");
-        assert_eq!(stored_path(Path::new("/work/boards/amp.pcbproj/parts.pcblib"), dir), "parts.pcblib");
+        let dir = Path::new("/work/boards/amp");
+        assert_eq!(stored_path(Path::new("/work/boards/amp/parts.pcblib"), dir), "parts.pcblib");
         assert_eq!(stored_path(Path::new("/work/libs/mine.pcblib"), dir), "../../libs/mine.pcblib");
         assert_eq!(stored_path(Path::new("/work/libs/./x/../mine.pcblib"), dir), "../../libs/mine.pcblib");
         assert_eq!(normalize(&dir.join("../../libs/mine.pcblib")), Path::new("/work/libs/mine.pcblib"));
@@ -351,7 +404,7 @@ mod tests {
     #[test]
     fn project_library_list_round_trips() {
         let tmp = std::env::temp_dir().join(format!("pcbio-{}", crate::Id::new()));
-        let dir = tmp.join("boards/amp.pcbproj");
+        let dir = tmp.join("boards/amp");
         let mut p = Project::new("amp");
         p.libraries = vec![tmp.join("libs/mine.pcblib"), dir.join("local.pcblib")];
         save_project(&p, &dir).unwrap();
@@ -360,12 +413,44 @@ mod tests {
         // Moving the project together with its libraries keeps the references valid.
         let moved = std::env::temp_dir().join(format!("pcbio-{}", crate::Id::new()));
         std::fs::rename(&tmp, &moved).unwrap();
-        let loaded = load_project(moved.join("boards/amp.pcbproj")).unwrap();
-        assert_eq!(
-            loaded.libraries,
-            vec![moved.join("libs/mine.pcblib"), moved.join("boards/amp.pcbproj/local.pcblib")]
-        );
+        let loaded = load_project(moved.join("boards/amp")).unwrap();
+        assert_eq!(loaded.libraries, vec![moved.join("libs/mine.pcblib"), moved.join("boards/amp/local.pcblib")]);
         std::fs::remove_dir_all(&moved).unwrap();
+    }
+
+    #[test]
+    fn projects_are_folders_recognised_by_their_project_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("My Board");
+        assert!(!is_project_dir(&dir));
+        save_project(&Project::new("b"), &dir).unwrap();
+        assert!(is_project_dir(&dir));
+        assert_eq!(project_dir(&dir.join(PROJECT_FILE)), dir);
+        assert_eq!(project_dir(&dir), dir);
+        assert_eq!(load_project(dir.join(PROJECT_FILE)).unwrap().name, "b");
+        // A folder without one isn't a project, and isn't overwritten by a save.
+        let other = tmp.path().join("other");
+        std::fs::create_dir(&other).unwrap();
+        std::fs::write(other.join("project.json"), r#"{"name": "an npm package"}"#).unwrap();
+        assert!(!is_project_dir(&other));
+        assert!(load_project(&other).is_err());
+        std::fs::write(other.join(BOARD_FILE), "{}").unwrap();
+        assert!(save_project(&Project::new("b"), &other).is_err());
+        assert_eq!(std::fs::read_to_string(other.join(BOARD_FILE)).unwrap(), "{}");
+    }
+
+    #[test]
+    fn an_older_project_file_is_read_and_replaced_on_save() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("old.pcbproj");
+        save_project(&Project::new("old"), &dir).unwrap();
+        std::fs::rename(dir.join(PROJECT_FILE), dir.join(OLD_PROJECT_FILE)).unwrap();
+        assert!(is_project_dir(&dir));
+        let p = load_project(&dir).unwrap();
+        assert_eq!(p.name, "old");
+        save_project(&p, &dir).unwrap();
+        assert!(dir.join(PROJECT_FILE).is_file());
+        assert!(!dir.join(OLD_PROJECT_FILE).exists());
     }
 
     #[test]

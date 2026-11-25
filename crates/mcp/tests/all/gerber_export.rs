@@ -21,7 +21,7 @@ fn exports_into_the_project_folder() {
     assert!(err.contains("save the project"), "{err}");
 
     let tmp = tempfile::tempdir().unwrap();
-    let dir = tmp.path().join("demo.pcbproj");
+    let dir = tmp.path().join("demo");
     host.doc.save_as(&dir).unwrap();
     let v = ask(&mut host, Request::ExportGerber { assembly: None }).unwrap();
     let files = v["files"].as_array().unwrap();

@@ -7,7 +7,7 @@ The binary is `pcb-designer` (inside the macOS app:
 
 ```sh
 pcb-designer                       # an empty project
-pcb-designer my.pcbproj            # open a project folder
+pcb-designer my-board              # open a project folder (or my-board/project.pcbproj)
 pcb-designer PROJECT.kicad_pro     # import a KiCad project at startup
 pcb-designer --demo                # the LED demo project
 pcb-designer --example amp         # an example project: led, amp

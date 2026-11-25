@@ -3,8 +3,10 @@
 ## Tabs
 
 The schematic sheets, the board, library items, the Gerber viewer and the simulation plot
-open in tabs, which can be split side by side by dragging them. Projects are folders
-(`<name>.pcbproj/`) of JSON files; **File → Open** (⌘O) opens one, ⌘S saves it.
+open in tabs, which can be split side by side by dragging them. A project is a folder of
+any name holding a `project.pcbproj` and the design's JSON files (`library.json`,
+`schematic.json`, `board.json`). **File → Open** (⌘O) opens one, ⌘S saves it; Save As
+asks for a new folder (or an existing project's).
 
 ## Example projects
 

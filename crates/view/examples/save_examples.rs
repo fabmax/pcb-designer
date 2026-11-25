@@ -1,4 +1,4 @@
-//! Re-saves the stored example projects (`crates/view/demo/*.pcbproj`) in the current
+//! Re-saves the stored example projects (`crates/view/demo/*/`) in the current
 //! file format, after a format change:
 //! `cargo run -p view --example save_examples`.
 //!
@@ -16,7 +16,7 @@ fn main() {
     {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/saved").join(version);
         for e in Example::ALL {
-            let path = root.join(format!("{}.pcbproj", e.name()));
+            let path = root.join(e.name());
             model::io::save_project(&e.project(), &path).expect("saved");
             println!("{}", path.display());
         }

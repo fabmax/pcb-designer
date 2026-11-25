@@ -5,7 +5,7 @@ it in `.gitignore`.
 
 ## Gerber and drill files
 
-**File → Export Gerber files** (⇧⌘E) writes into `<project>.pcbproj/output/gerber/`,
+**File → Export Gerber files** (⇧⌘E) writes into `output/gerber/` in the project folder,
 replacing the previous export:
 
 - Gerber X2 files: copper, solder mask, paste, silkscreen, board outline. Copper carries

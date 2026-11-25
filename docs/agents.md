@@ -32,7 +32,7 @@ there by `save_project`; `--demo` or `--example NAME` starts from an
 [example project](user-interface.md#example-projects). For Claude Code:
 
 ```sh
-claude mcp add pcb-designer -- /path/to/pcb-designer --mcp-stdio ~/boards/my.pcbproj
+claude mcp add pcb-designer -- /path/to/pcb-designer --mcp-stdio ~/boards/my-board
 ```
 
 (**Tools → Copy Claude Code command (headless)** fills in the paths.) Screenshots are

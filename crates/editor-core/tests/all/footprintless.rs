@@ -187,7 +187,7 @@ fn files_omit_a_missing_footprint() {
     assert_eq!(lib.matches("\"footprint\"").count(), 13);
     assert!(!lib.contains("\"footprint\": null"));
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("t.pcbproj");
+    let path = dir.path().join("t");
     save_project(ed.project(), &path).unwrap();
     let loaded = load_project(&path).unwrap();
     assert_eq!(&loaded, ed.project());
