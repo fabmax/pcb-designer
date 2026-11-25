@@ -11,6 +11,7 @@ mod gerber;
 mod interaction;
 mod keepouts;
 mod layers;
+mod multi;
 mod net_labels;
 mod object_json;
 mod part_editor;

@@ -46,6 +46,7 @@ impl Properties {
             [id] => self.single(ui, &mut cx, *id),
             ids => {
                 multiple(ui, ids);
+                self.shared(ui, &mut cx, ids);
                 dnp_many(ui, &mut cx, ids);
                 exclude_many(ui, &mut cx, ids);
             }
@@ -807,6 +808,75 @@ impl Properties {
         }
     }
 
+    /// The properties all the selected objects have (not their positions): an edit sets
+    /// it on all of them, in one undo step.
+    fn shared(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, ids: &[ObjectId]) {
+        use view::multi::{Prop, Value};
+        let props = view::multi::shared(cx.doc.project(), ids);
+        if props.is_empty() {
+            return;
+        }
+        crate::fields::section(
+            ui,
+            "Shared properties",
+            Some(
+                "What all the selected objects have. A change sets it on all of them; \"mixed\": their values differ.",
+            ),
+        );
+        let project = cx.doc.project();
+        let rules = &project.board.rules;
+        let locked_footprint = view::multi::any_locked_footprint(project, ids);
+        // The change, and whether it's a drag (grouped into one undo step).
+        let mut change: Option<(Prop, Value, bool)> = None;
+        grid(ui, |ui| {
+            for s in &props {
+                label(ui, s.prop.label());
+                match (s.first, s.value) {
+                    (Value::Length(first), value) => {
+                        let min = match s.prop {
+                            Prop::TrackWidth => rules.min_track_width,
+                            Prop::ViaDrill => rules.min_drill,
+                            _ => mm(0.1),
+                        };
+                        let value = value.and_then(|v| if let Value::Length(l) = v { Some(l) } else { None });
+                        let (r, v) = units::drag_mixed(ui, value, first, min.max(1), mm(1e6));
+                        self.active |= r.dragged() || r.has_focus();
+                        if let Some(v) = v {
+                            change = Some((s.prop, Value::Length(v), true));
+                        }
+                    }
+                    (Value::Layer(_), value) => {
+                        let value = value.and_then(|v| if let Value::Layer(l) = v { Some(l) } else { None });
+                        if let Some(l) = copper_layer_combo_mixed(ui, project, value, "multi_layer") {
+                            change = Some((s.prop, Value::Layer(l), false));
+                        }
+                    }
+                    (Value::Angle(_), value) => {
+                        let value = value.and_then(|v| if let Value::Angle(a) = v { Some(a) } else { None });
+                        let r = ui.add_enabled_ui(!locked_footprint, |ui| rotation_combo_mixed(ui, "multi_rot", value));
+                        r.response.on_disabled_hover_text("A selected footprint is locked");
+                        if let Some(a) = r.inner {
+                            change = Some((s.prop, Value::Angle(a), false));
+                        }
+                    }
+                    (Value::Flag(_), value) => {
+                        let mixed = value.is_none();
+                        let mut on = value == Some(Value::Flag(true));
+                        if ui.add(egui::Checkbox::new(&mut on, "").indeterminate(mixed)).changed() {
+                            change = Some((s.prop, Value::Flag(on), false));
+                        }
+                    }
+                }
+                ui.end_row();
+            }
+        });
+        if let Some((prop, value, grouped)) = change
+            && let Some(cmd) = view::multi::set_all(cx.doc.project(), ids, prop, value)
+        {
+            self.run(cx, cmd, grouped);
+        }
+    }
+
     fn symbol(&mut self, ui: &mut egui::Ui, cx: &mut Ctx, mut s: SymbolInstance) {
         let project = cx.doc.project();
         let Some(c) = project.schematic.components.get(s.component).cloned() else { return };
@@ -1001,13 +1071,19 @@ fn fmt_point(p: Point) -> String {
 }
 
 fn rotation_combo(ui: &mut egui::Ui, salt: &str, current: Angle) -> Option<Angle> {
-    let mut deg = current.degrees();
-    crate::fields::combo_box(ui, salt).selected_text(format!("{deg:.0}°")).show_ui(ui, |ui| {
+    rotation_combo_mixed(ui, salt, Some(current))
+}
+
+/// [`rotation_combo`] for several objects (`None`: their rotations differ).
+fn rotation_combo_mixed(ui: &mut egui::Ui, salt: &str, current: Option<Angle>) -> Option<Angle> {
+    let mut deg = current.map(|a| a.degrees());
+    let text = deg.map_or("mixed".into(), |d| format!("{d:.0}°"));
+    crate::fields::combo_box(ui, salt).selected_text(text).show_ui(ui, |ui| {
         for d in [0.0, 90.0, 180.0, 270.0] {
-            ui.selectable_value(&mut deg, d, format!("{d:.0}°"));
+            ui.selectable_value(&mut deg, Some(d), format!("{d:.0}°"));
         }
     });
-    (deg != current.degrees()).then(|| Angle::deg(deg))
+    deg.filter(|&d| Some(d) != current.map(|a| a.degrees())).map(Angle::deg)
 }
 
 fn layer_name(project: &Project, id: LayerId) -> String {
@@ -1019,13 +1095,24 @@ fn copper_layer_combo(ui: &mut egui::Ui, project: &Project, current: LayerId) ->
 }
 
 fn copper_layer_combo_salt(ui: &mut egui::Ui, project: &Project, current: LayerId, salt: &str) -> Option<LayerId> {
+    copper_layer_combo_mixed(ui, project, Some(current), salt)
+}
+
+/// [`copper_layer_combo`] for several objects (`None`: their layers differ).
+fn copper_layer_combo_mixed(
+    ui: &mut egui::Ui,
+    project: &Project,
+    current: Option<LayerId>,
+    salt: &str,
+) -> Option<LayerId> {
     let mut layer = current;
-    crate::fields::combo_box(ui, salt).selected_text(layer_name(project, current)).show_ui(ui, |ui| {
+    let text = current.map_or("mixed".into(), |l| layer_name(project, l));
+    crate::fields::combo_box(ui, salt).selected_text(text).show_ui(ui, |ui| {
         for l in project.board.copper_layers() {
-            ui.selectable_value(&mut layer, l.id, &l.name);
+            ui.selectable_value(&mut layer, Some(l.id), &l.name);
         }
     });
-    (layer != current).then_some(layer)
+    layer.filter(|_| layer != current)
 }
 
 fn shape_name(s: &Shape) -> &'static str {

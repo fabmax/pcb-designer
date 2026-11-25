@@ -22,6 +22,7 @@ pub mod item;
 pub mod library_doc;
 pub mod list_nav;
 pub mod measure;
+pub mod multi;
 pub mod net_labels;
 pub mod pcb_tools;
 pub mod print;

@@ -107,6 +107,36 @@ pub fn drag(ui: &mut egui::Ui, value: Coord, min: Coord, max: Coord) -> (egui::R
     (r, changed)
 }
 
+/// [`drag`] for several objects' lengths: `None` when they differ, shown as "mixed" (a
+/// drag starts from `first`, typing sets them all).
+pub fn drag_mixed(
+    ui: &mut egui::Ui,
+    value: Option<Coord>,
+    first: Coord,
+    min: Coord,
+    max: Coord,
+) -> (egui::Response, Option<Coord>) {
+    let Some(value) = value else {
+        let u = unit();
+        let start = u.value(first);
+        let mut v = start;
+        let r = crate::fields::fill(
+            ui,
+            egui::DragValue::new(&mut v)
+                .speed(50_000.0 / u.nm())
+                .range(u.value(min)..=u.value(max))
+                // The unit goes into the text: no "mixed mm".
+                .custom_formatter(move |v, _| {
+                    if v == start { "mixed".into() } else { format!("{} {}", trim(v, u.decimals()), u.label()) }
+                })
+                .custom_parser(move |text| text.trim().trim_end_matches(u.label()).trim().parse::<f64>().ok()),
+        );
+        let changed = (r.changed() && v != start).then(|| u.to_nm(v));
+        return (r, changed);
+    };
+    drag(ui, value, min, max)
+}
+
 /// [`drag`] in uneven steps: dragging moves over `position` (whole numbers are the
 /// steps; `at` maps back), typing takes any length.
 pub fn drag_steps(

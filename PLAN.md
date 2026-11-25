@@ -1572,6 +1572,13 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   (`activity_ui::count`). Clear sits at the right of the column titles. The body shows a failed start's error.
   While the server runs, the panel's bar button has a green dot (`Badge::Live`, tooltip with the
   URL; the status bar shows nothing).
+- **Properties of several objects** (`view::multi`): `shared` lists the `Prop`s every
+  selected object has (getter per `(Prop, Object)`), with the value when all agree;
+  `set_all` sets one on all of them as a single `Update`. Positions are deliberately
+  not a `Prop`. Reference and value texts whose owner is selected too are skipped (else
+  a part plus its text would share nothing). Via sizes keep a 0.05 mm ring per via;
+  rotation is disabled when a selected footprint is locked. The panel shows differing
+  values as "mixed" (`units::drag_mixed`, combos with `None`, indeterminate checkboxes).
 - **Properties** (`properties.rs`): a symbol and a footprint both have the component's
   Footprint variant combo (`variant_combo`); on the board it leaves out "no footprint"
   variants, which would delete the selected footprint. Text fields keep their typed

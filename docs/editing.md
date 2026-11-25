@@ -37,6 +37,12 @@ box adds to the selection. What the box will select shows as selected while you 
 A box never selects a part's reference or value text on its own; it takes them along
 with their symbol or footprint (click one to select just the text).
 
+With several objects selected, Properties shows **Shared properties**: the ones all of
+them have, such as the width and layer of tracks, Locked of tracks, vias and parts, the
+size of texts or the rotation of parts. A change sets it on all of them (one undo step);
+*mixed* means their values differ. Positions aren't among them: one position would stack
+the objects on top of each other.
+
 Zones, keepouts and filled board drawings are areas: drag one by its outline to move it.
 Inside an area a click selects it, but a drag draws a selection box, so you can box
 select on top of a zone. The exception: if the area is selected together with other
