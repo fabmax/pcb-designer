@@ -53,6 +53,43 @@ pub struct Canvas {
     last_notch: Option<(f64, f64)>,
     /// A short note next to the pointer ([`Canvas::flash`]) and when it was set.
     tip: Option<(String, std::time::Instant)>,
+    /// A pan drag: where the pointer was last frame, and a cursor warp to the other side
+    /// of the canvas that hasn't shown up in the pointer position yet.
+    pan: Option<Pan>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Pan {
+    last: egui::Pos2,
+    /// The pointer was moved from `.0` to `.1`.
+    warp: Option<(egui::Pos2, egui::Pos2)>,
+}
+
+/// Cursor warps that didn't take in a row (Wayland can't warp); at [`WARP_TRIES`],
+/// pans stop warping.
+static WARP_FAILS: AtomicU64 = AtomicU64::new(0);
+const WARP_TRIES: u64 = 3;
+/// A pan drag wraps the cursor around once it is this close (points) to the canvas edge.
+const WRAP_MARGIN: f32 = 3.0;
+
+/// Where the cursor at `pos` wraps to during a pan in `rect`: the other side for a
+/// pointer at or past an edge (`None` inside).
+fn wrap_point(rect: egui::Rect, pos: egui::Pos2) -> Option<egui::Pos2> {
+    let inner = rect.shrink(WRAP_MARGIN);
+    if inner.width() < 20.0 || inner.height() < 20.0 || inner.shrink(1.0).contains(pos) {
+        return None;
+    }
+    // Keep a point clear of the edges, so the warped cursor doesn't wrap straight back.
+    let wrap = |p: f32, lo: f32, hi: f32| {
+        if p <= lo {
+            hi - 1.0 - (lo - p).min(hi - lo - 2.0)
+        } else if p >= hi {
+            lo + 1.0 + (p - hi).min(hi - lo - 2.0)
+        } else {
+            p
+        }
+    };
+    Some(egui::pos2(wrap(pos.x, inner.min.x, inner.max.x), wrap(pos.y, inner.min.y, inner.max.y)))
 }
 
 /// How long a [`Canvas::flash`] note stays.
@@ -76,6 +113,7 @@ impl Canvas {
             wheel_steps: 0.0,
             last_notch: None,
             tip: None,
+            pan: None,
         }
     }
 
@@ -188,13 +226,44 @@ impl Canvas {
         ui.painter().add(egui_wgpu::Callback::new_paint_callback(rect, callback));
     }
 
+    /// Pan by the pointer's movement. At the canvas edge the cursor wraps around to the
+    /// other side (as in KiCad), so a drag pans any distance.
+    fn pan_drag(&mut self, ui: &egui::Ui, response: &egui::Response, rect: egui::Rect) {
+        let Some(pos) = ui.input(|i| i.pointer.latest_pos()) else { return };
+        let pan = self.pan.get_or_insert(Pan { last: pos - response.drag_delta(), warp: None });
+        let mut delta = pos - pan.last;
+        if let Some((from, to)) = pan.warp {
+            if pos == from {
+                // No pointer event since the warp: nothing moved.
+                return;
+            }
+            if pos.distance(to) < pos.distance(from) {
+                // Arrived: the movement since is from where the cursor was put.
+                delta = pos - to;
+                WARP_FAILS.store(0, Ordering::Relaxed);
+            } else {
+                WARP_FAILS.fetch_add(1, Ordering::Relaxed);
+            }
+            pan.warp = None;
+        }
+        self.camera.pan_pixels([delta.x as f64, delta.y as f64]);
+        pan.last = pos;
+        if WARP_FAILS.load(Ordering::Relaxed) < WARP_TRIES
+            && let Some(to) = wrap_point(rect, pos)
+        {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::CursorPosition(to));
+            pan.warp = Some((pos, to));
+        }
+    }
+
     fn handle_input(&mut self, ui: &egui::Ui, response: &egui::Response, rect: egui::Rect) {
         let vp = self.viewport;
         let local = |p: egui::Pos2| [(p.x - rect.min.x) as f64, (p.y - rect.min.y) as f64];
 
         if response.dragged_by(egui::PointerButton::Middle) || response.dragged_by(egui::PointerButton::Secondary) {
-            let d = response.drag_delta();
-            self.camera.pan_pixels([d.x as f64, d.y as f64]);
+            self.pan_drag(ui, response, rect);
+        } else {
+            self.pan = None;
         }
         if response.double_clicked_by(egui::PointerButton::Middle) {
             self.fit_requested = true;
@@ -543,7 +612,25 @@ pub fn draw_measure(ui: &egui::Ui, canvas: &Canvas, clip: egui::Rect, m: &view::
 
 #[cfg(test)]
 mod tests {
-    use super::notch_counts;
+    use super::*;
+
+    #[test]
+    fn a_pan_at_the_edge_wraps_to_the_other_side() {
+        let rect = egui::Rect::from_min_max(egui::pos2(100.0, 50.0), egui::pos2(500.0, 350.0));
+        assert_eq!(wrap_point(rect, egui::pos2(300.0, 200.0)), None);
+        // Past the right edge by 5: 5 in from the left one (plus the clearance).
+        assert_eq!(wrap_point(rect, egui::pos2(502.0, 200.0)), Some(egui::pos2(103.0 + 1.0 + 5.0, 200.0)));
+        // At the top edge: to the bottom, x kept.
+        assert_eq!(wrap_point(rect, egui::pos2(300.0, 53.0)), Some(egui::pos2(300.0, 346.0)));
+        // A corner wraps both ways, and lands inside where it doesn't wrap again.
+        let to = wrap_point(rect, egui::pos2(90.0, 40.0)).unwrap();
+        assert!(to.x > 400.0 && to.y > 250.0);
+        assert_eq!(wrap_point(rect, to), None);
+        // Far outside: still lands inside.
+        let to = wrap_point(rect, egui::pos2(-5000.0, 200.0)).unwrap();
+        assert!(rect.shrink(WRAP_MARGIN).contains(to));
+        assert_eq!(wrap_point(rect, to), None);
+    }
 
     #[test]
     fn a_burst_of_wheel_events_is_one_notch() {

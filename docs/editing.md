@@ -3,6 +3,14 @@
 What works the same way in the schematic, on the board and, where it applies, in the
 part editors.
 
+## Navigating
+
+Drag with the middle or right button (or scroll with two fingers on a trackpad) to pan;
+the wheel or a pinch zooms around the pointer, and V or a middle double-click fits the
+view. When the pointer reaches the edge of the view during a pan drag, it reappears at
+the opposite edge, so one drag can pan any distance. (On Wayland, which doesn't let
+apps move the pointer, the pan stops at the edge instead.)
+
 ## Drawing wires and tracks
 
 The Wire, Bus and Route tools draw one leg per click. Each leg bends once: the first part

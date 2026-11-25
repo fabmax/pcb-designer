@@ -1749,6 +1749,14 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   the scene. Gotcha: a new canvas only receives the scene's incremental uploads, so it
   must start with a scene that wasn't uploaded elsewhere (a fresh `ItemView`, or keep
   the canvas with its scene).
+  - **Endless pan** (`Canvas::pan_drag`): middle/right drag pans by the pointer's own
+    movement, not egui's `drag_delta`. Within `WRAP_MARGIN` of the edge it warps the
+    cursor across (`ViewportCommand::CursorPosition`, `wrap_point`). The warp's arrival
+    is detected by position: until a pointer position closer to the target than to
+    the old point arrives, positions are stale (macOS's warp sends no event; Windows'
+    does). A position that stays near the old point means the warp failed; after
+    `WARP_TRIES` failures in a row (Wayland can't warp) pans stop warping. Scripted
+    input can't test it: the warp moves the real cursor.
   - **Crosshair** (View → Crosshair, Shift+X, `Settings::crosshair`): `Canvas::ui`
     draws it with egui at the raw pointer (not snapped) while the canvas is hovered,
     under the overlays drawn after it. The switch is a global (`canvas::set_crosshair`,
