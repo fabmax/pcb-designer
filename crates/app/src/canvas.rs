@@ -201,7 +201,6 @@ impl Canvas {
         let Some(hover) = hover else { return };
         let anchor = local(hover);
 
-        let mut stepped = false;
         ui.input(|i| {
             for e in &i.events {
                 if let egui::Event::MouseWheel { unit, delta, source, modifiers, .. } = e {
@@ -211,7 +210,6 @@ impl Canvas {
                             egui::MouseWheelUnit::Line => delta.y as f64,
                             egui::MouseWheelUnit::Page => delta.y as f64 * 10.0,
                         };
-                        stepped = true;
                         continue;
                     }
                     if modifiers.command || modifiers.ctrl {
@@ -236,9 +234,15 @@ impl Canvas {
                     }
                 }
             }
-            // egui counts Cmd+wheel into the zoom too (a pinch at the same time is lost).
-            let z = i.zoom_delta();
-            if z != 1.0 && !stepped {
+            // egui counts Cmd+wheel into the zoom, smoothed over the following frames:
+            // while Cmd+wheel steps instead, only pinches zoom.
+            let z = if self.command_wheel {
+                let pinch = i.events.iter().map(|e| if let egui::Event::Zoom(f) = e { *f } else { 1.0 }).product();
+                i.multi_touch().map_or(pinch, |t| t.zoom_delta)
+            } else {
+                i.zoom_delta()
+            };
+            if z != 1.0 {
                 self.camera.zoom_at(z as f64, anchor, vp);
             }
         });
