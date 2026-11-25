@@ -135,11 +135,12 @@ fn symbol_pins_are_on_the_grid() {
 fn every_part_maps_its_pins() {
     let lib = generate::library();
     for part in lib.parts.iter().filter(|p| !p.is_board_part()) {
-        let sym = lib.symbols.get(part.units[0].symbol).unwrap();
+        // Every unit's pins (the logic parts have several units).
+        let pins: usize = part.units.iter().map(|u| lib.symbols.get(u.symbol).unwrap().pins.len()).sum();
         for v in part.variants.iter().filter(|v| v.footprint.is_some()) {
-            let mapped: HashSet<Id> = v.connections.iter().map(|c| c.pin).collect();
+            let mapped: HashSet<(u32, Id)> = v.connections.iter().map(|c| (c.unit, c.pin)).collect();
             // Two-pin crystals leave the case pads open, connectors their mounting pads.
-            assert_eq!(mapped.len(), sym.pins.len(), "{} {}: a pin without pad", part.name, v.name);
+            assert_eq!(mapped.len(), pins, "{} {}: a pin without pad", part.name, v.name);
         }
     }
 }

@@ -54,7 +54,8 @@ A standard library of generic parts: resistors, capacitors (also polarised), ind
 ferrite beads, fuses, diodes (Schottky, Zener, TVS), LEDs, NPN/PNP transistors, N/P
 MOSFETs, crystals, test points, a push button, connectors `Conn_01x01`…`Conn_01x40` and
 `Conn_02x01`…`Conn_02x20` (pin headers and sockets; single rows also JST PH/XH/SH and
-screw terminals), a few ICs (op amps, 74HC00, regulators), board parts (mounting holes M2
+screw terminals), a few ICs (op amps, regulators, 74HC logic: the 74HC00, 02, 04, 08, 14,
+32 and 86 gates, the 74HC74 flip-flop and the 74HC595 shift register), board parts (mounting holes M2
 to M4, a fiducial) and simulation sources. Each part offers its common packages, SMD and
 through-hole, as footprint variants; set the value per component. Every part has a
 simulation model.

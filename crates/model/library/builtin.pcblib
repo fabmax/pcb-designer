@@ -17320,6 +17320,3316 @@
       ]
     },
     {
+      "id": "5ce10000-0000-4000-9000-0402f8d1456a",
+      "name": "74HC02 A",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-e02059406aab",
+          "name": "A",
+          "number": "2",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-df20594068f8",
+          "name": "B",
+          "number": "3",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-e12059406c5e",
+          "name": "Y",
+          "number": "1",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-0302f8d143b7",
+      "name": "74HC02 B",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-c7868bafd297",
+          "name": "A",
+          "number": "5",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c8868bafd44a",
+          "name": "B",
+          "number": "6",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c6868bafd0e4",
+          "name": "Y",
+          "number": "4",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-0202f8d14204",
+      "name": "74HC02 C",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-073aa8eff03f",
+          "name": "A",
+          "number": "8",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-063aa8efee8c",
+          "name": "B",
+          "number": "9",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-41ad0fc955fc",
+          "name": "Y",
+          "number": "10",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-0102f8d14051",
+      "name": "74HC02 D",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-4c5ee33d5790",
+          "name": "A",
+          "number": "11",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-4f5ee33d5ca9",
+          "name": "B",
+          "number": "12",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-4e5ee33d5af6",
+          "name": "Y",
+          "number": "13",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-0002f8d13e9e",
+      "name": "74HC02 E",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -3810000],
+          "b": [2540000, 3810000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3810000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3810000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-8668ca7acb5a",
+          "name": "VCC",
+          "number": "14",
+          "pos": [0, 5080000],
+          "direction": 270.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-4acaafd70bd8",
+          "name": "GND",
+          "number": "7",
+          "pos": [0, -5080000],
+          "direction": 90.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2202dc193e28",
+      "name": "74HC04 A",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-12e357b34950",
+          "name": "A",
+          "number": "1",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-15e357b34e69",
+          "name": "Y",
+          "number": "2",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2502dc194341",
+      "name": "74HC04 B",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-7d19d8fbe0cb",
+          "name": "A",
+          "number": "3",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-8219d8fbe94a",
+          "name": "Y",
+          "number": "4",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2402dc19418e",
+      "name": "74HC04 C",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-bedeb4ddc76e",
+          "name": "A",
+          "number": "5",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-bddeb4ddc5bb",
+          "name": "Y",
+          "number": "6",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2702dc1946a7",
+      "name": "74HC04 D",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-6d9e3eb576a3",
+          "name": "A",
+          "number": "9",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-6c9e3eb574f0",
+          "name": "Y",
+          "number": "8",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2602dc1944f4",
+      "name": "74HC04 E",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-394580374d1f",
+          "name": "A",
+          "number": "11",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-384580374b6c",
+          "name": "Y",
+          "number": "10",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2902dc194a0d",
+      "name": "74HC04 F",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-d13535e571f2",
+          "name": "A",
+          "number": "13",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-d23535e573a5",
+          "name": "Y",
+          "number": "12",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2802dc19485a",
+      "name": "74HC04 G",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -3810000],
+          "b": [2540000, 3810000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3810000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3810000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-eda23b60cc0e",
+          "name": "VCC",
+          "number": "14",
+          "pos": [0, 5080000],
+          "direction": 270.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-8ec585ba33f4",
+          "name": "GND",
+          "number": "7",
+          "pos": [0, -5080000],
+          "direction": 90.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e60316413d6c",
+      "name": "74HC08 A",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [0, 3810000],
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [0, -3810000],
+            [0, -3810000],
+            [497305, -3777405],
+            [986101, -3680177],
+            [1458024, -3519981],
+            [1905000, -3299557],
+            [2319381, -3022676],
+            [2694077, -2694077],
+            [3022676, -2319381],
+            [3299557, -1905000],
+            [3519981, -1458024],
+            [3680177, -986101],
+            [3777405, -497305],
+            [3810000, 0],
+            [3777405, 497305],
+            [3680177, 986101],
+            [3519981, 1458024],
+            [3299557, 1905000],
+            [3022676, 2319381],
+            [2694077, 2694077],
+            [2319381, 3022676],
+            [1905000, 3299557],
+            [1458024, 3519981],
+            [986101, 3680177],
+            [497305, 3777405],
+            [0, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-71e7041475cc",
+          "name": "A",
+          "number": "1",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-74e704147ae5",
+          "name": "B",
+          "number": "2",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-73e704147932",
+          "name": "Y",
+          "number": "3",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e90316414285",
+      "name": "74HC08 B",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [0, 3810000],
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [0, -3810000],
+            [0, -3810000],
+            [497305, -3777405],
+            [986101, -3680177],
+            [1458024, -3519981],
+            [1905000, -3299557],
+            [2319381, -3022676],
+            [2694077, -2694077],
+            [3022676, -2319381],
+            [3299557, -1905000],
+            [3519981, -1458024],
+            [3680177, -986101],
+            [3777405, -497305],
+            [3810000, 0],
+            [3777405, 497305],
+            [3680177, 986101],
+            [3519981, 1458024],
+            [3299557, 1905000],
+            [3022676, 2319381],
+            [2694077, 2694077],
+            [2319381, 3022676],
+            [1905000, 3299557],
+            [1458024, 3519981],
+            [986101, 3680177],
+            [497305, 3777405],
+            [0, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-1919d75ee16e",
+          "name": "A",
+          "number": "4",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-1a19d75ee321",
+          "name": "B",
+          "number": "5",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-1719d75ede08",
+          "name": "Y",
+          "number": "6",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e803164140d2",
+      "name": "74HC08 C",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [0, 3810000],
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [0, -3810000],
+            [0, -3810000],
+            [497305, -3777405],
+            [986101, -3680177],
+            [1458024, -3519981],
+            [1905000, -3299557],
+            [2319381, -3022676],
+            [2694077, -2694077],
+            [3022676, -2319381],
+            [3299557, -1905000],
+            [3519981, -1458024],
+            [3680177, -986101],
+            [3777405, -497305],
+            [3810000, 0],
+            [3777405, 497305],
+            [3680177, 986101],
+            [3519981, 1458024],
+            [3299557, 1905000],
+            [3022676, 2319381],
+            [2694077, 2694077],
+            [2319381, 3022676],
+            [1905000, 3299557],
+            [1458024, 3519981],
+            [986101, 3680177],
+            [497305, 3777405],
+            [0, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-52fd14b35f3e",
+          "name": "A",
+          "number": "9",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-020a2cb3a1e2",
+          "name": "B",
+          "number": "10",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-53fd14b360f1",
+          "name": "Y",
+          "number": "8",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e30316413853",
+      "name": "74HC08 D",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [0, 3810000],
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [0, -3810000],
+            [0, -3810000],
+            [497305, -3777405],
+            [986101, -3680177],
+            [1458024, -3519981],
+            [1905000, -3299557],
+            [2319381, -3022676],
+            [2694077, -2694077],
+            [3022676, -2319381],
+            [3299557, -1905000],
+            [3519981, -1458024],
+            [3680177, -986101],
+            [3777405, -497305],
+            [3810000, 0],
+            [3777405, 497305],
+            [3680177, 986101],
+            [3519981, 1458024],
+            [3299557, 1905000],
+            [3022676, 2319381],
+            [2694077, 2694077],
+            [2319381, 3022676],
+            [1905000, 3299557],
+            [1458024, 3519981],
+            [986101, 3680177],
+            [497305, 3777405],
+            [0, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-7bff2af962e7",
+          "name": "A",
+          "number": "12",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-7aff2af96134",
+          "name": "B",
+          "number": "13",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-7cff2af9649a",
+          "name": "Y",
+          "number": "11",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e203164136a0",
+      "name": "74HC08 E",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -3810000],
+          "b": [2540000, 3810000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3810000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3810000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-7ebdd0207e34",
+          "name": "VCC",
+          "number": "14",
+          "pos": [0, 5080000],
+          "direction": 270.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-be80bb08f0fa",
+          "name": "GND",
+          "number": "7",
+          "pos": [0, -5080000],
+          "direction": 90.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-effa1023a4f5",
+      "name": "74HC14 A",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "line",
+          "a": [-3000000, -600000],
+          "b": [-1400000, -600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-1400000, -600000],
+          "b": [-1400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, -600000],
+          "b": [-2400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, 600000],
+          "b": [-800000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-a746add5525d",
+          "name": "A",
+          "number": "1",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-a446add54d44",
+          "name": "Y",
+          "number": "2",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-ecfa10239fdc",
+      "name": "74HC14 B",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "line",
+          "a": [-3000000, -600000],
+          "b": [-1400000, -600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-1400000, -600000],
+          "b": [-1400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, -600000],
+          "b": [-2400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, 600000],
+          "b": [-800000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-d68c0bfc1462",
+          "name": "A",
+          "number": "3",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-d18c0bfc0be3",
+          "name": "Y",
+          "number": "4",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-edfa1023a18f",
+      "name": "74HC14 C",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "line",
+          "a": [-3000000, -600000],
+          "b": [-1400000, -600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-1400000, -600000],
+          "b": [-1400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, -600000],
+          "b": [-2400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, 600000],
+          "b": [-800000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-2da4936333cf",
+          "name": "A",
+          "number": "5",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-2ea493633582",
+          "name": "Y",
+          "number": "6",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-eafa10239c76",
+      "name": "74HC14 D",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "line",
+          "a": [-3000000, -600000],
+          "b": [-1400000, -600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-1400000, -600000],
+          "b": [-1400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, -600000],
+          "b": [-2400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, 600000],
+          "b": [-800000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-5790ed98037a",
+          "name": "A",
+          "number": "9",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-5890ed98052d",
+          "name": "Y",
+          "number": "8",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-ebfa10239e29",
+      "name": "74HC14 E",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "line",
+          "a": [-3000000, -600000],
+          "b": [-1400000, -600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-1400000, -600000],
+          "b": [-1400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, -600000],
+          "b": [-2400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, 600000],
+          "b": [-800000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-957512f658d8",
+          "name": "A",
+          "number": "11",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-967512f65a8b",
+          "name": "Y",
+          "number": "10",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e8fa10239910",
+      "name": "74HC14 F",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-3810000, -3810000],
+            [3810000, 0]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "line",
+          "a": [-3000000, -600000],
+          "b": [-1400000, -600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-1400000, -600000],
+          "b": [-1400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, -600000],
+          "b": [-2400000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "line",
+          "a": [-2400000, 600000],
+          "b": [-800000, 600000],
+          "width": 254000
+        },
+        {
+          "type": "circle",
+          "center": [4445000, 0],
+          "radius": 635000,
+          "width": 254000,
+          "fill": false
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-4e38344abf71",
+          "name": "A",
+          "number": "13",
+          "pos": [-7620000, 0],
+          "direction": 0.0,
+          "length": 3810000,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-4d38344abdbe",
+          "name": "Y",
+          "number": "12",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e9fa10239ac3",
+      "name": "74HC14 G",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -3810000],
+          "b": [2540000, 3810000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3810000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3810000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-6e4d5569afb1",
+          "name": "VCC",
+          "number": "14",
+          "pos": [0, 5080000],
+          "direction": 270.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-57ae601f6bd9",
+          "name": "GND",
+          "number": "7",
+          "pos": [0, -5080000],
+          "direction": 90.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-c1e8bc2f8edd",
+      "name": "74HC32 A",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-168f40dff305",
+          "name": "A",
+          "number": "1",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-138f40dfedec",
+          "name": "B",
+          "number": "2",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-148f40dfef9f",
+          "name": "Y",
+          "number": "3",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-bee8bc2f89c4",
+      "name": "74HC32 B",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-f6165f56324b",
+          "name": "A",
+          "number": "4",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f5165f563098",
+          "name": "B",
+          "number": "5",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f8165f5635b1",
+          "name": "Y",
+          "number": "6",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-bfe8bc2f8b77",
+      "name": "74HC32 C",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-c88e43c27673",
+          "name": "A",
+          "number": "9",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-9cbd2386b041",
+          "name": "B",
+          "number": "10",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c78e43c274c0",
+          "name": "Y",
+          "number": "8",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-bce8bc2f865e",
+      "name": "74HC32 D",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-e4869249d5e8",
+          "name": "A",
+          "number": "12",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-e5869249d79b",
+          "name": "B",
+          "number": "13",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 4382414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-e7869249db01",
+          "name": "Y",
+          "number": "11",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-bde8bc2f8811",
+      "name": "74HC32 E",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -3810000],
+          "b": [2540000, 3810000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3810000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3810000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-7a388389aacf",
+          "name": "VCC",
+          "number": "14",
+          "pos": [0, 5080000],
+          "direction": 270.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-de1cf7798fa7",
+          "name": "GND",
+          "number": "7",
+          "pos": [0, -5080000],
+          "direction": 90.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-9844fa982426",
+      "name": "74HC86 A",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "arc",
+          "center": [-11328000, 0],
+          "radius": 7758000,
+          "start": 330.5867012531688,
+          "sweep": 58.8265974936623,
+          "width": 254000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-2d0b97f5e552",
+          "name": "A",
+          "number": "1",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 3622414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-2c0b97f5e39f",
+          "name": "B",
+          "number": "2",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 3622414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-2b0b97f5e1ec",
+          "name": "Y",
+          "number": "3",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-9744fa982273",
+      "name": "74HC86 B",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "arc",
+          "center": [-11328000, 0],
+          "radius": 7758000,
+          "start": 330.5867012531688,
+          "sweep": 58.8265974936623,
+          "width": 254000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-0c063f77a370",
+          "name": "A",
+          "number": "4",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 3622414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-0d063f77a523",
+          "name": "B",
+          "number": "5",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 3622414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-0e063f77a6d6",
+          "name": "Y",
+          "number": "6",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-9644fa9820c0",
+      "name": "74HC86 C",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "arc",
+          "center": [-11328000, 0],
+          "radius": 7758000,
+          "start": 330.5867012531688,
+          "sweep": 58.8265974936623,
+          "width": 254000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-db1c8371e650",
+          "name": "A",
+          "number": "9",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 3622414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c1735aa15808",
+          "name": "B",
+          "number": "10",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 3622414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-dc1c8371e803",
+          "name": "Y",
+          "number": "8",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-9d44fa982ca5",
+      "name": "74HC86 D",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "polygon",
+          "points": [
+            [-3810000, 3810000],
+            [-2708410, 3746085],
+            [-1621603, 3555197],
+            [-564167, 3239898],
+            [449709, 2804419],
+            [1406418, 2254605],
+            [2293119, 1597835],
+            [3097914, 842923],
+            [3810000, 0],
+            [3810000, 0],
+            [3097914, -842923],
+            [2293119, -1597835],
+            [1406418, -2254605],
+            [449709, -2804419],
+            [-564167, -3239898],
+            [-1621603, -3555197],
+            [-2708410, -3746085],
+            [-3810000, -3810000],
+            [-3810007, -3810000],
+            [-3377954, -2913726],
+            [-3064165, -1969525],
+            [-2873804, -992929],
+            [-2810000, 0],
+            [-2873804, 992929],
+            [-3064165, 1969525],
+            [-3377954, 2913726],
+            [-3810007, 3810000]
+          ],
+          "width": 254000,
+          "fill": true
+        },
+        {
+          "type": "arc",
+          "center": [-11328000, 0],
+          "radius": 7758000,
+          "start": 330.5867012531688,
+          "sweep": 58.8265974936623,
+          "width": 254000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -4310000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-538a1918cf0d",
+          "name": "A",
+          "number": "12",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 3622414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-528a1918cd5a",
+          "name": "B",
+          "number": "13",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 3622414,
+          "kind": "input",
+          "show_name": false,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-508a1918c9f4",
+          "name": "Y",
+          "number": "11",
+          "pos": [7620000, 0],
+          "direction": 180.0,
+          "length": 3810000,
+          "kind": "output",
+          "show_name": false,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-9c44fa982af2",
+      "name": "74HC86 E",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -3810000],
+          "b": [2540000, 3810000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3810000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3810000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-7f99414b3d36",
+          "name": "VCC",
+          "number": "14",
+          "pos": [0, 5080000],
+          "direction": 270.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-5e21e5aada2c",
+          "name": "GND",
+          "number": "7",
+          "pos": [0, -5080000],
+          "direction": 90.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-87c76d29736f",
+      "name": "74HC74 A",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-5080000, -7620000],
+          "b": [5080000, 7620000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [-5080000, 8120000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "right",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [-5080000, -8120000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "right",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-71d25d725ee3",
+          "name": "~CLR",
+          "number": "1",
+          "pos": [0, -10160000],
+          "direction": 90.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-72d25d726096",
+          "name": "D",
+          "number": "2",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-73d25d726249",
+          "name": "CLK",
+          "number": "3",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-74d25d7263fc",
+          "name": "~PRE",
+          "number": "4",
+          "pos": [0, 10160000],
+          "direction": 270.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-75d25d7265af",
+          "name": "Q",
+          "number": "5",
+          "pos": [7620000, 2540000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-76d25d726762",
+          "name": "~Q",
+          "number": "6",
+          "pos": [7620000, -2540000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": true,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-88c76d297522",
+      "name": "74HC74 B",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-5080000, -7620000],
+          "b": [5080000, 7620000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [-5080000, 8120000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "right",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [-5080000, -8120000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "right",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-f4b278dcf57f",
+          "name": "~CLR",
+          "number": "13",
+          "pos": [0, -10160000],
+          "direction": 90.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f3b278dcf3cc",
+          "name": "D",
+          "number": "12",
+          "pos": [-7620000, 2540000],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f6b278dcf8e5",
+          "name": "CLK",
+          "number": "11",
+          "pos": [-7620000, -2540000],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f5b278dcf732",
+          "name": "~PRE",
+          "number": "10",
+          "pos": [0, 10160000],
+          "direction": 270.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c8676616ecce",
+          "name": "Q",
+          "number": "9",
+          "pos": [7620000, 2540000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c9676616ee81",
+          "name": "~Q",
+          "number": "8",
+          "pos": [7620000, -2540000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": true,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-89c76d2976d5",
+      "name": "74HC74 C",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -3810000],
+          "b": [2540000, 3810000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [3810000, 600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [3810000, -600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-310e2f36734b",
+          "name": "VCC",
+          "number": "14",
+          "pos": [0, 5080000],
+          "direction": 270.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-02eb6f56020b",
+          "name": "GND",
+          "number": "7",
+          "pos": [0, -5080000],
+          "direction": 90.0,
+          "length": 1270000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-34d16b5bc7e8",
+      "name": "74HC595",
+      "category": "Logic",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-7620000, -12700000],
+          "b": [7620000, 12700000],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [-7620000, 13200000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [7620000, 13200000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "right",
+          "valign": "bottom"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-2fd7dddd3fac",
+          "name": "SER",
+          "number": "14",
+          "pos": [-10160000, 10160000],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-2cd7dddd3a93",
+          "name": "SRCLK",
+          "number": "11",
+          "pos": [-10160000, 5080000],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-2bd7dddd38e0",
+          "name": "~SRCLR",
+          "number": "10",
+          "pos": [-10160000, 2540000],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-2dd7dddd3c46",
+          "name": "RCLK",
+          "number": "12",
+          "pos": [-10160000, -2540000],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-2ed7dddd3df9",
+          "name": "~OE",
+          "number": "13",
+          "pos": [-10160000, -7620000],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "input",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-30d7dddd415f",
+          "name": "QA",
+          "number": "15",
+          "pos": [10160000, 10160000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "tri_state",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-756f22a4b390",
+          "name": "QB",
+          "number": "1",
+          "pos": [10160000, 7620000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "tri_state",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-786f22a4b8a9",
+          "name": "QC",
+          "number": "2",
+          "pos": [10160000, 5080000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "tri_state",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-776f22a4b6f6",
+          "name": "QD",
+          "number": "3",
+          "pos": [10160000, 2540000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "tri_state",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-7a6f22a4bc0f",
+          "name": "QE",
+          "number": "4",
+          "pos": [10160000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "tri_state",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-796f22a4ba5c",
+          "name": "QF",
+          "number": "5",
+          "pos": [10160000, -2540000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "tri_state",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-7c6f22a4bf75",
+          "name": "QG",
+          "number": "6",
+          "pos": [10160000, -5080000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "tri_state",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-7b6f22a4bdc2",
+          "name": "QH",
+          "number": "7",
+          "pos": [10160000, -7620000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "tri_state",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-7d6f22a4c128",
+          "name": "QH'",
+          "number": "9",
+          "pos": [10160000, -10160000],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "output",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-31d7dddd4312",
+          "name": "VCC",
+          "number": "16",
+          "pos": [0, 15240000],
+          "direction": 270.0,
+          "length": 2540000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-7e6f22a4c2db",
+          "name": "GND",
+          "number": "8",
+          "pos": [0, -15240000],
+          "direction": 90.0,
+          "length": 2540000,
+          "kind": "power_in",
+          "show_name": true,
+          "show_number": true
+        }
+      ]
+    },
+    {
       "id": "5ce10000-0000-4000-9000-42abe4f268b8",
       "name": "VSource",
       "category": "Simulation",
@@ -144861,6 +148171,392 @@
       ]
     },
     {
+      "id": "5ce10000-0000-4000-9000-24a6359b9de4",
+      "name": "SOIC-16_3.9x9.9mm_P1.27mm",
+      "category": "SMD",
+      "description": "SOIC-16, 3.9 mm body, 1.27 mm pitch",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-c51db39b9131",
+          "name": "1",
+          "pos": [-2475000, 4445000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c41db39b8f7e",
+          "name": "2",
+          "pos": [-2475000, 3175000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c31db39b8dcb",
+          "name": "3",
+          "pos": [-2475000, 1905000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c21db39b8c18",
+          "name": "4",
+          "pos": [-2475000, 635000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c91db39b97fd",
+          "name": "5",
+          "pos": [-2475000, -635000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c81db39b964a",
+          "name": "6",
+          "pos": [-2475000, -1905000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c71db39b9497",
+          "name": "7",
+          "pos": [-2475000, -3175000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c61db39b92e4",
+          "name": "8",
+          "pos": [-2475000, -4445000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-bd1db39b8399",
+          "name": "9",
+          "pos": [2475000, -4445000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-bc1db39b81e6",
+          "name": "10",
+          "pos": [2475000, -3175000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-8c783154818a",
+          "name": "11",
+          "pos": [2475000, -1905000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-8d783154833d",
+          "name": "12",
+          "pos": [2475000, -635000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-8a7831547e24",
+          "name": "13",
+          "pos": [2475000, 635000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-8b7831547fd7",
+          "name": "14",
+          "pos": [2475000, 1905000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-887831547abe",
+          "name": "15",
+          "pos": [2475000, 3175000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-897831547c71",
+          "name": "16",
+          "pos": [2475000, 4445000],
+          "rotation": 0.0,
+          "size": [1950000, 600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.25
+          },
+          "kind": {
+            "type": "smd"
+          }
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-1950000, -4950000],
+            "b": [1950000, 4950000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2060000, -5060000],
+            "b": [2060000, -5060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2060000, 5060000],
+            "b": [2060000, 5060000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2060000, -3885000],
+            "b": [-2060000, -3735000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2060000, -2615000],
+            "b": [-2060000, -2465000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2060000, -75000],
+            "b": [-2060000, 75000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2060000, 2465000],
+            "b": [-2060000, 2615000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2060000, 3735000],
+            "b": [-2060000, 3885000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2060000, -3885000],
+            "b": [2060000, -3735000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2060000, -2615000],
+            "b": [2060000, -2465000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2060000, -75000],
+            "b": [2060000, 75000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2060000, 2465000],
+            "b": [2060000, 2615000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2060000, 3735000],
+            "b": [2060000, 3885000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "circle",
+            "center": [-4000000, 4445000],
+            "radius": 150000,
+            "width": 0,
+            "fill": true
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-4450000, -5250000],
+            "b": [3750000, 5250000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 5450000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
       "id": "5ce10000-0000-4000-9000-7d3187b990b1",
       "name": "DIP-8_W7.62mm",
       "category": "Through hole",
@@ -145365,6 +149061,338 @@
           "text": {
             "text": "${REF}",
             "pos": [0, 9900000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-e3a4ef629182",
+      "name": "DIP-16_W7.62mm",
+      "category": "Through hole",
+      "description": "DIP-16, 7.62 mm row spacing, 2.54 mm pitch",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-f191a861421f",
+          "name": "1",
+          "pos": [-3810000, 8890000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f091a861406c",
+          "name": "2",
+          "pos": [-3810000, 6350000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f391a8614585",
+          "name": "3",
+          "pos": [-3810000, 3810000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f291a86143d2",
+          "name": "4",
+          "pos": [-3810000, 1270000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-ed91a8613b53",
+          "name": "5",
+          "pos": [-3810000, -1270000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-ec91a86139a0",
+          "name": "6",
+          "pos": [-3810000, -3810000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-ef91a8613eb9",
+          "name": "7",
+          "pos": [-3810000, -6350000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-ee91a8613d06",
+          "name": "8",
+          "pos": [-3810000, -8890000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f991a8614fb7",
+          "name": "9",
+          "pos": [3810000, -8890000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f891a8614e04",
+          "name": "10",
+          "pos": [3810000, -6350000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-23811d405c54",
+          "name": "11",
+          "pos": [3810000, -3810000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-24811d405e07",
+          "name": "12",
+          "pos": [3810000, -1270000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-25811d405fba",
+          "name": "13",
+          "pos": [3810000, 1270000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-26811d40616d",
+          "name": "14",
+          "pos": [3810000, 3810000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-1f811d405588",
+          "name": "15",
+          "pos": [3810000, 6350000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-20811d40573b",
+          "name": "16",
+          "pos": [3810000, 8890000],
+          "rotation": 0.0,
+          "size": [1600000, 1600000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-3175000, -10460000],
+            "b": [3175000, 10460000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2600000, -10580000],
+            "b": [2600000, -10580000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2600000, 10580000],
+            "b": [2600000, 10580000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-2600000, -10580000],
+            "b": [-2600000, 10580000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [2600000, -10580000],
+            "b": [2600000, 10580000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "arc",
+            "center": [0, 10580000],
+            "radius": 1000000,
+            "start": 180.0,
+            "sweep": 180.0,
+            "width": 120000
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-5150000, -11000000],
+            "b": [5150000, 11000000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 11200000],
             "size": 1000000,
             "bold": true,
             "rotation": 0.0,
@@ -176520,6 +180548,1554 @@
       }
     },
     {
+      "id": "5ce10000-0000-4000-9000-24e7e2599885",
+      "name": "74HC02",
+      "category": "Logic",
+      "description": "Quad 2-input NOR gate: gates A to D, power E",
+      "prefix": "U",
+      "default_value": "74HC02",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-0402f8d1456a"
+        },
+        {
+          "name": "B",
+          "symbol": "5ce10000-0000-4000-9000-0302f8d143b7"
+        },
+        {
+          "name": "C",
+          "symbol": "5ce10000-0000-4000-9000-0202f8d14204"
+        },
+        {
+          "name": "D",
+          "symbol": "5ce10000-0000-4000-9000-0102f8d14051"
+        },
+        {
+          "name": "E",
+          "symbol": "5ce10000-0000-4000-9000-0002f8d13e9e"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-61f59b6ded35",
+          "name": "DIP-14",
+          "footprint": "5ce10000-0000-4000-9000-af3fab8a5388",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-a590ef9fa8dd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e12059406c5e"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a490ef9fa72a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e02059406aab"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a390ef9fa577",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df20594068f8"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a290ef9fa3c4",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-c6868bafd0e4"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a190ef9fa211",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-c7868bafd297"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a090ef9fa05e",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-c8868bafd44a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9f90ef9f9eab",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-4acaafd70bd8"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9e90ef9f9cf8",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-073aa8eff03f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9d90ef9f9b45",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-063aa8efee8c"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9c90ef9f9992",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-41ad0fc955fc"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bc472c48f12e",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-4c5ee33d5790"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bd472c48f2e1",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-4f5ee33d5ca9"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ba472c48edc8",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-4e5ee33d5af6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bb472c48ef7b",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-8668ca7acb5a"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f3e7ce99ecac",
+          "name": "SOIC-14",
+          "footprint": "5ce10000-0000-4000-9000-498d8e441fa3",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-92dbd4961b96",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e12059406c5e"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-93dbd4961d49",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-e02059406aab"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-90dbd4961830",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-df20594068f8"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-91dbd49619e3",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-c6868bafd0e4"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-96dbd4962262",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-c7868bafd297"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-97dbd4962415",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-c8868bafd44a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-94dbd4961efc",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-4acaafd70bd8"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-95dbd49620af",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-073aa8eff03f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9adbd496292e",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-063aa8efee8c"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9bdbd4962ae1",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-41ad0fc955fc"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b78a3b14149b",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-4c5ee33d5790"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b68a3b1412e8",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-4f5ee33d5ca9"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b98a3b141801",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-4e5ee33d5af6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b88a3b14164e",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-8668ca7acb5a"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* HC02: 4 gates.\n* XSPICE digital: inputs switch at VCC/2, outputs follow VCC through 50 ohm, typical\n* 5 V delays. Supply current isn't modelled.\n.subckt HC02 a1 b1 y1 a2 b2 y2 a3 b3 y3 a4 b4 y4 vcc gnd\nCa1 a1 gnd 3.5p\nBa1 n_a1 0 V = v(a1,gnd)/max(v(vcc,gnd),1)\nAa1 [n_a1] [d_a1] hc_in\nCb1 b1 gnd 3.5p\nBb1 n_b1 0 V = v(b1,gnd)/max(v(vcc,gnd),1)\nAb1 [n_b1] [d_b1] hc_in\nAU1 [d_a1 d_b1] g1 hc_nor\nAy1 [g1] [m_y1] hc_out\nBy1 o_y1 gnd V = v(m_y1)*v(vcc,gnd)\nRy1 o_y1 y1 50\nCa2 a2 gnd 3.5p\nBa2 n_a2 0 V = v(a2,gnd)/max(v(vcc,gnd),1)\nAa2 [n_a2] [d_a2] hc_in\nCb2 b2 gnd 3.5p\nBb2 n_b2 0 V = v(b2,gnd)/max(v(vcc,gnd),1)\nAb2 [n_b2] [d_b2] hc_in\nAU2 [d_a2 d_b2] g2 hc_nor\nAy2 [g2] [m_y2] hc_out\nBy2 o_y2 gnd V = v(m_y2)*v(vcc,gnd)\nRy2 o_y2 y2 50\nCa3 a3 gnd 3.5p\nBa3 n_a3 0 V = v(a3,gnd)/max(v(vcc,gnd),1)\nAa3 [n_a3] [d_a3] hc_in\nCb3 b3 gnd 3.5p\nBb3 n_b3 0 V = v(b3,gnd)/max(v(vcc,gnd),1)\nAb3 [n_b3] [d_b3] hc_in\nAU3 [d_a3 d_b3] g3 hc_nor\nAy3 [g3] [m_y3] hc_out\nBy3 o_y3 gnd V = v(m_y3)*v(vcc,gnd)\nRy3 o_y3 y3 50\nCa4 a4 gnd 3.5p\nBa4 n_a4 0 V = v(a4,gnd)/max(v(vcc,gnd),1)\nAa4 [n_a4] [d_a4] hc_in\nCb4 b4 gnd 3.5p\nBb4 n_b4 0 V = v(b4,gnd)/max(v(vcc,gnd),1)\nAb4 [n_b4] [d_b4] hc_in\nAU4 [d_a4 d_b4] g4 hc_nor\nAy4 [g4] [m_y4] hc_out\nBy4 o_y4 gnd V = v(m_y4)*v(vcc,gnd)\nRy4 o_y4 y4 50\nRq vcc gnd 1meg\n.model hc_in adc_bridge(in_low=0.5 in_high=0.5)\n.model hc_nor d_nor(rise_delay=8n fall_delay=8n)\n.model hc_out dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=4n t_fall=4n)\n.ends HC02"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-1ee7e2598e53",
+      "name": "74HC04",
+      "category": "Logic",
+      "description": "Hex inverter: gates A to F, power G",
+      "prefix": "U",
+      "default_value": "74HC04",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-2202dc193e28"
+        },
+        {
+          "name": "B",
+          "symbol": "5ce10000-0000-4000-9000-2502dc194341"
+        },
+        {
+          "name": "C",
+          "symbol": "5ce10000-0000-4000-9000-2402dc19418e"
+        },
+        {
+          "name": "D",
+          "symbol": "5ce10000-0000-4000-9000-2702dc1946a7"
+        },
+        {
+          "name": "E",
+          "symbol": "5ce10000-0000-4000-9000-2602dc1944f4"
+        },
+        {
+          "name": "F",
+          "symbol": "5ce10000-0000-4000-9000-2902dc194a0d"
+        },
+        {
+          "name": "G",
+          "symbol": "5ce10000-0000-4000-9000-2802dc19485a"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-38637f638d33",
+          "name": "DIP-14",
+          "footprint": "5ce10000-0000-4000-9000-af3fab8a5388",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-a590ef9fa8dd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-12e357b34950"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a490ef9fa72a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-15e357b34e69"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a390ef9fa577",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-7d19d8fbe0cb"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a290ef9fa3c4",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-8219d8fbe94a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a190ef9fa211",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-bedeb4ddc76e"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a090ef9fa05e",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-bddeb4ddc5bb"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9f90ef9f9eab",
+              "unit": 6,
+              "pin": "5ce10000-0000-4000-9000-8ec585ba33f4"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9e90ef9f9cf8",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-6c9e3eb574f0"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9d90ef9f9b45",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-6d9e3eb576a3"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9c90ef9f9992",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-384580374b6c"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bc472c48f12e",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-394580374d1f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bd472c48f2e1",
+              "unit": 5,
+              "pin": "5ce10000-0000-4000-9000-d23535e573a5"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ba472c48edc8",
+              "unit": 5,
+              "pin": "5ce10000-0000-4000-9000-d13535e571f2"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bb472c48ef7b",
+              "unit": 6,
+              "pin": "5ce10000-0000-4000-9000-eda23b60cc0e"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-c3a54d057382",
+          "name": "SOIC-14",
+          "footprint": "5ce10000-0000-4000-9000-498d8e441fa3",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-92dbd4961b96",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-12e357b34950"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-93dbd4961d49",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-15e357b34e69"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-90dbd4961830",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-7d19d8fbe0cb"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-91dbd49619e3",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-8219d8fbe94a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-96dbd4962262",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-bedeb4ddc76e"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-97dbd4962415",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-bddeb4ddc5bb"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-94dbd4961efc",
+              "unit": 6,
+              "pin": "5ce10000-0000-4000-9000-8ec585ba33f4"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-95dbd49620af",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-6c9e3eb574f0"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9adbd496292e",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-6d9e3eb576a3"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9bdbd4962ae1",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-384580374b6c"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b78a3b14149b",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-394580374d1f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b68a3b1412e8",
+              "unit": 5,
+              "pin": "5ce10000-0000-4000-9000-d23535e573a5"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b98a3b141801",
+              "unit": 5,
+              "pin": "5ce10000-0000-4000-9000-d13535e571f2"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b88a3b14164e",
+              "unit": 6,
+              "pin": "5ce10000-0000-4000-9000-eda23b60cc0e"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* HC04: 6 gates.\n* XSPICE digital: inputs switch at VCC/2, outputs follow VCC through 50 ohm, typical\n* 5 V delays. Supply current isn't modelled.\n.subckt HC04 a1 y1 a2 y2 a3 y3 a4 y4 a5 y5 a6 y6 vcc gnd\nCa1 a1 gnd 3.5p\nBa1 n_a1 0 V = v(a1,gnd)/max(v(vcc,gnd),1)\nAa1 [n_a1] [d_a1] hc_in\nAU1 d_a1 g1 hc_inv\nAy1 [g1] [m_y1] hc_out\nBy1 o_y1 gnd V = v(m_y1)*v(vcc,gnd)\nRy1 o_y1 y1 50\nCa2 a2 gnd 3.5p\nBa2 n_a2 0 V = v(a2,gnd)/max(v(vcc,gnd),1)\nAa2 [n_a2] [d_a2] hc_in\nAU2 d_a2 g2 hc_inv\nAy2 [g2] [m_y2] hc_out\nBy2 o_y2 gnd V = v(m_y2)*v(vcc,gnd)\nRy2 o_y2 y2 50\nCa3 a3 gnd 3.5p\nBa3 n_a3 0 V = v(a3,gnd)/max(v(vcc,gnd),1)\nAa3 [n_a3] [d_a3] hc_in\nAU3 d_a3 g3 hc_inv\nAy3 [g3] [m_y3] hc_out\nBy3 o_y3 gnd V = v(m_y3)*v(vcc,gnd)\nRy3 o_y3 y3 50\nCa4 a4 gnd 3.5p\nBa4 n_a4 0 V = v(a4,gnd)/max(v(vcc,gnd),1)\nAa4 [n_a4] [d_a4] hc_in\nAU4 d_a4 g4 hc_inv\nAy4 [g4] [m_y4] hc_out\nBy4 o_y4 gnd V = v(m_y4)*v(vcc,gnd)\nRy4 o_y4 y4 50\nCa5 a5 gnd 3.5p\nBa5 n_a5 0 V = v(a5,gnd)/max(v(vcc,gnd),1)\nAa5 [n_a5] [d_a5] hc_in\nAU5 d_a5 g5 hc_inv\nAy5 [g5] [m_y5] hc_out\nBy5 o_y5 gnd V = v(m_y5)*v(vcc,gnd)\nRy5 o_y5 y5 50\nCa6 a6 gnd 3.5p\nBa6 n_a6 0 V = v(a6,gnd)/max(v(vcc,gnd),1)\nAa6 [n_a6] [d_a6] hc_in\nAU6 d_a6 g6 hc_inv\nAy6 [g6] [m_y6] hc_out\nBy6 o_y6 gnd V = v(m_y6)*v(vcc,gnd)\nRy6 o_y6 y6 50\nRq vcc gnd 1meg\n.model hc_in adc_bridge(in_low=0.5 in_high=0.5)\n.model hc_inv d_inverter(rise_delay=7n fall_delay=7n)\n.model hc_out dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=4n t_fall=4n)\n.ends HC04"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-2ae7e259a2b7",
+      "name": "74HC08",
+      "category": "Logic",
+      "description": "Quad 2-input AND gate: gates A to D, power E",
+      "prefix": "U",
+      "default_value": "74HC08",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-e60316413d6c"
+        },
+        {
+          "name": "B",
+          "symbol": "5ce10000-0000-4000-9000-e90316414285"
+        },
+        {
+          "name": "C",
+          "symbol": "5ce10000-0000-4000-9000-e803164140d2"
+        },
+        {
+          "name": "D",
+          "symbol": "5ce10000-0000-4000-9000-e30316413853"
+        },
+        {
+          "name": "E",
+          "symbol": "5ce10000-0000-4000-9000-e203164136a0"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-3b7dc30bd57f",
+          "name": "DIP-14",
+          "footprint": "5ce10000-0000-4000-9000-af3fab8a5388",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-a590ef9fa8dd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-71e7041475cc"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a490ef9fa72a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-74e704147ae5"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a390ef9fa577",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-73e704147932"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a290ef9fa3c4",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-1919d75ee16e"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a190ef9fa211",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-1a19d75ee321"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a090ef9fa05e",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-1719d75ede08"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9f90ef9f9eab",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-be80bb08f0fa"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9e90ef9f9cf8",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-53fd14b360f1"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9d90ef9f9b45",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-52fd14b35f3e"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9c90ef9f9992",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-020a2cb3a1e2"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bc472c48f12e",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-7cff2af9649a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bd472c48f2e1",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-7bff2af962e7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ba472c48edc8",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-7aff2af96134"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bb472c48ef7b",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-7ebdd0207e34"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-ac77824981d6",
+          "name": "SOIC-14",
+          "footprint": "5ce10000-0000-4000-9000-498d8e441fa3",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-92dbd4961b96",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-71e7041475cc"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-93dbd4961d49",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-74e704147ae5"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-90dbd4961830",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-73e704147932"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-91dbd49619e3",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-1919d75ee16e"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-96dbd4962262",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-1a19d75ee321"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-97dbd4962415",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-1719d75ede08"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-94dbd4961efc",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-be80bb08f0fa"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-95dbd49620af",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-53fd14b360f1"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9adbd496292e",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-52fd14b35f3e"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9bdbd4962ae1",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-020a2cb3a1e2"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b78a3b14149b",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-7cff2af9649a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b68a3b1412e8",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-7bff2af962e7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b98a3b141801",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-7aff2af96134"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b88a3b14164e",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-7ebdd0207e34"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* HC08: 4 gates.\n* XSPICE digital: inputs switch at VCC/2, outputs follow VCC through 50 ohm, typical\n* 5 V delays. Supply current isn't modelled.\n.subckt HC08 a1 b1 y1 a2 b2 y2 a3 b3 y3 a4 b4 y4 vcc gnd\nCa1 a1 gnd 3.5p\nBa1 n_a1 0 V = v(a1,gnd)/max(v(vcc,gnd),1)\nAa1 [n_a1] [d_a1] hc_in\nCb1 b1 gnd 3.5p\nBb1 n_b1 0 V = v(b1,gnd)/max(v(vcc,gnd),1)\nAb1 [n_b1] [d_b1] hc_in\nAU1 [d_a1 d_b1] g1 hc_and\nAy1 [g1] [m_y1] hc_out\nBy1 o_y1 gnd V = v(m_y1)*v(vcc,gnd)\nRy1 o_y1 y1 50\nCa2 a2 gnd 3.5p\nBa2 n_a2 0 V = v(a2,gnd)/max(v(vcc,gnd),1)\nAa2 [n_a2] [d_a2] hc_in\nCb2 b2 gnd 3.5p\nBb2 n_b2 0 V = v(b2,gnd)/max(v(vcc,gnd),1)\nAb2 [n_b2] [d_b2] hc_in\nAU2 [d_a2 d_b2] g2 hc_and\nAy2 [g2] [m_y2] hc_out\nBy2 o_y2 gnd V = v(m_y2)*v(vcc,gnd)\nRy2 o_y2 y2 50\nCa3 a3 gnd 3.5p\nBa3 n_a3 0 V = v(a3,gnd)/max(v(vcc,gnd),1)\nAa3 [n_a3] [d_a3] hc_in\nCb3 b3 gnd 3.5p\nBb3 n_b3 0 V = v(b3,gnd)/max(v(vcc,gnd),1)\nAb3 [n_b3] [d_b3] hc_in\nAU3 [d_a3 d_b3] g3 hc_and\nAy3 [g3] [m_y3] hc_out\nBy3 o_y3 gnd V = v(m_y3)*v(vcc,gnd)\nRy3 o_y3 y3 50\nCa4 a4 gnd 3.5p\nBa4 n_a4 0 V = v(a4,gnd)/max(v(vcc,gnd),1)\nAa4 [n_a4] [d_a4] hc_in\nCb4 b4 gnd 3.5p\nBb4 n_b4 0 V = v(b4,gnd)/max(v(vcc,gnd),1)\nAb4 [n_b4] [d_b4] hc_in\nAU4 [d_a4 d_b4] g4 hc_and\nAy4 [g4] [m_y4] hc_out\nBy4 o_y4 gnd V = v(m_y4)*v(vcc,gnd)\nRy4 o_y4 y4 50\nRq vcc gnd 1meg\n.model hc_and d_and(rise_delay=8n fall_delay=8n)\n.model hc_in adc_bridge(in_low=0.5 in_high=0.5)\n.model hc_out dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=4n t_fall=4n)\n.ends HC08"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-a0e7e2568262",
+      "name": "74HC14",
+      "category": "Logic",
+      "description": "Hex Schmitt-trigger inverter: gates A to F, power G",
+      "prefix": "U",
+      "default_value": "74HC14",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-effa1023a4f5"
+        },
+        {
+          "name": "B",
+          "symbol": "5ce10000-0000-4000-9000-ecfa10239fdc"
+        },
+        {
+          "name": "C",
+          "symbol": "5ce10000-0000-4000-9000-edfa1023a18f"
+        },
+        {
+          "name": "D",
+          "symbol": "5ce10000-0000-4000-9000-eafa10239c76"
+        },
+        {
+          "name": "E",
+          "symbol": "5ce10000-0000-4000-9000-ebfa10239e29"
+        },
+        {
+          "name": "F",
+          "symbol": "5ce10000-0000-4000-9000-e8fa10239910"
+        },
+        {
+          "name": "G",
+          "symbol": "5ce10000-0000-4000-9000-e9fa10239ac3"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-15f3e70a4e78",
+          "name": "DIP-14",
+          "footprint": "5ce10000-0000-4000-9000-af3fab8a5388",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-a590ef9fa8dd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a746add5525d"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a490ef9fa72a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a446add54d44"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a390ef9fa577",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-d68c0bfc1462"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a290ef9fa3c4",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-d18c0bfc0be3"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a190ef9fa211",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-2da4936333cf"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a090ef9fa05e",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-2ea493633582"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9f90ef9f9eab",
+              "unit": 6,
+              "pin": "5ce10000-0000-4000-9000-57ae601f6bd9"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9e90ef9f9cf8",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-5890ed98052d"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9d90ef9f9b45",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-5790ed98037a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9c90ef9f9992",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-967512f65a8b"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bc472c48f12e",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-957512f658d8"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bd472c48f2e1",
+              "unit": 5,
+              "pin": "5ce10000-0000-4000-9000-4d38344abdbe"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ba472c48edc8",
+              "unit": 5,
+              "pin": "5ce10000-0000-4000-9000-4e38344abf71"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bb472c48ef7b",
+              "unit": 6,
+              "pin": "5ce10000-0000-4000-9000-6e4d5569afb1"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-6194ceeacbf7",
+          "name": "SOIC-14",
+          "footprint": "5ce10000-0000-4000-9000-498d8e441fa3",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-92dbd4961b96",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a746add5525d"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-93dbd4961d49",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-a446add54d44"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-90dbd4961830",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-d68c0bfc1462"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-91dbd49619e3",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-d18c0bfc0be3"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-96dbd4962262",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-2da4936333cf"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-97dbd4962415",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-2ea493633582"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-94dbd4961efc",
+              "unit": 6,
+              "pin": "5ce10000-0000-4000-9000-57ae601f6bd9"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-95dbd49620af",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-5890ed98052d"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9adbd496292e",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-5790ed98037a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9bdbd4962ae1",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-967512f65a8b"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b78a3b14149b",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-957512f658d8"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b68a3b1412e8",
+              "unit": 5,
+              "pin": "5ce10000-0000-4000-9000-4d38344abdbe"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b98a3b141801",
+              "unit": 5,
+              "pin": "5ce10000-0000-4000-9000-4e38344abf71"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b88a3b14164e",
+              "unit": 6,
+              "pin": "5ce10000-0000-4000-9000-6e4d5569afb1"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* HC14: 6 gates.\n* XSPICE digital: inputs switch at VCC/2, outputs follow VCC through 50 ohm, typical\n* 5 V delays. Supply current isn't modelled.\n.subckt HC14 a1 y1 a2 y2 a3 y3 a4 y4 a5 y5 a6 y6 vcc gnd\nCa1 a1 gnd 3.5p\nBa1 n_a1 0 V = v(a1,gnd)/max(v(vcc,gnd),1) - 0.1 + 0.2*v(s_a1)\nAa1 [n_a1] [d_a1] hc_in\nAsa1 [d_a1] [s_a1] hc_fb\nAU1 d_a1 g1 hc_inv\nAy1 [g1] [m_y1] hc_out\nBy1 o_y1 gnd V = v(m_y1)*v(vcc,gnd)\nRy1 o_y1 y1 50\nCa2 a2 gnd 3.5p\nBa2 n_a2 0 V = v(a2,gnd)/max(v(vcc,gnd),1) - 0.1 + 0.2*v(s_a2)\nAa2 [n_a2] [d_a2] hc_in\nAsa2 [d_a2] [s_a2] hc_fb\nAU2 d_a2 g2 hc_inv\nAy2 [g2] [m_y2] hc_out\nBy2 o_y2 gnd V = v(m_y2)*v(vcc,gnd)\nRy2 o_y2 y2 50\nCa3 a3 gnd 3.5p\nBa3 n_a3 0 V = v(a3,gnd)/max(v(vcc,gnd),1) - 0.1 + 0.2*v(s_a3)\nAa3 [n_a3] [d_a3] hc_in\nAsa3 [d_a3] [s_a3] hc_fb\nAU3 d_a3 g3 hc_inv\nAy3 [g3] [m_y3] hc_out\nBy3 o_y3 gnd V = v(m_y3)*v(vcc,gnd)\nRy3 o_y3 y3 50\nCa4 a4 gnd 3.5p\nBa4 n_a4 0 V = v(a4,gnd)/max(v(vcc,gnd),1) - 0.1 + 0.2*v(s_a4)\nAa4 [n_a4] [d_a4] hc_in\nAsa4 [d_a4] [s_a4] hc_fb\nAU4 d_a4 g4 hc_inv\nAy4 [g4] [m_y4] hc_out\nBy4 o_y4 gnd V = v(m_y4)*v(vcc,gnd)\nRy4 o_y4 y4 50\nCa5 a5 gnd 3.5p\nBa5 n_a5 0 V = v(a5,gnd)/max(v(vcc,gnd),1) - 0.1 + 0.2*v(s_a5)\nAa5 [n_a5] [d_a5] hc_in\nAsa5 [d_a5] [s_a5] hc_fb\nAU5 d_a5 g5 hc_inv\nAy5 [g5] [m_y5] hc_out\nBy5 o_y5 gnd V = v(m_y5)*v(vcc,gnd)\nRy5 o_y5 y5 50\nCa6 a6 gnd 3.5p\nBa6 n_a6 0 V = v(a6,gnd)/max(v(vcc,gnd),1) - 0.1 + 0.2*v(s_a6)\nAa6 [n_a6] [d_a6] hc_in\nAsa6 [d_a6] [s_a6] hc_fb\nAU6 d_a6 g6 hc_inv\nAy6 [g6] [m_y6] hc_out\nBy6 o_y6 gnd V = v(m_y6)*v(vcc,gnd)\nRy6 o_y6 y6 50\nRq vcc gnd 1meg\n.model hc_fb dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=1n t_fall=1n)\n.model hc_in adc_bridge(in_low=0.5 in_high=0.5)\n.model hc_inv d_inverter(rise_delay=7n fall_delay=7n)\n.model hc_out dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=4n t_fall=4n)\n.ends HC14"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-b2e7e250824a",
+      "name": "74HC32",
+      "category": "Logic",
+      "description": "Quad 2-input OR gate: gates A to D, power E",
+      "prefix": "U",
+      "default_value": "74HC32",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-c1e8bc2f8edd"
+        },
+        {
+          "name": "B",
+          "symbol": "5ce10000-0000-4000-9000-bee8bc2f89c4"
+        },
+        {
+          "name": "C",
+          "symbol": "5ce10000-0000-4000-9000-bfe8bc2f8b77"
+        },
+        {
+          "name": "D",
+          "symbol": "5ce10000-0000-4000-9000-bce8bc2f865e"
+        },
+        {
+          "name": "E",
+          "symbol": "5ce10000-0000-4000-9000-bde8bc2f8811"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-710f0816e950",
+          "name": "DIP-14",
+          "footprint": "5ce10000-0000-4000-9000-af3fab8a5388",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-a590ef9fa8dd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-168f40dff305"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a490ef9fa72a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-138f40dfedec"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a390ef9fa577",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-148f40dfef9f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a290ef9fa3c4",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f6165f56324b"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a190ef9fa211",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f5165f563098"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a090ef9fa05e",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f8165f5635b1"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9f90ef9f9eab",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-de1cf7798fa7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9e90ef9f9cf8",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-c78e43c274c0"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9d90ef9f9b45",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-c88e43c27673"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9c90ef9f9992",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-9cbd2386b041"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bc472c48f12e",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-e7869249db01"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bd472c48f2e1",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-e4869249d5e8"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ba472c48edc8",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-e5869249d79b"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bb472c48ef7b",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-7a388389aacf"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-803315a80b2f",
+          "name": "SOIC-14",
+          "footprint": "5ce10000-0000-4000-9000-498d8e441fa3",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-92dbd4961b96",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-168f40dff305"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-93dbd4961d49",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-138f40dfedec"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-90dbd4961830",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-148f40dfef9f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-91dbd49619e3",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f6165f56324b"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-96dbd4962262",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f5165f563098"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-97dbd4962415",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f8165f5635b1"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-94dbd4961efc",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-de1cf7798fa7"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-95dbd49620af",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-c78e43c274c0"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9adbd496292e",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-c88e43c27673"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9bdbd4962ae1",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-9cbd2386b041"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b78a3b14149b",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-e7869249db01"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b68a3b1412e8",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-e4869249d5e8"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b98a3b141801",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-e5869249d79b"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b88a3b14164e",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-7a388389aacf"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* HC32: 4 gates.\n* XSPICE digital: inputs switch at VCC/2, outputs follow VCC through 50 ohm, typical\n* 5 V delays. Supply current isn't modelled.\n.subckt HC32 a1 b1 y1 a2 b2 y2 a3 b3 y3 a4 b4 y4 vcc gnd\nCa1 a1 gnd 3.5p\nBa1 n_a1 0 V = v(a1,gnd)/max(v(vcc,gnd),1)\nAa1 [n_a1] [d_a1] hc_in\nCb1 b1 gnd 3.5p\nBb1 n_b1 0 V = v(b1,gnd)/max(v(vcc,gnd),1)\nAb1 [n_b1] [d_b1] hc_in\nAU1 [d_a1 d_b1] g1 hc_or\nAy1 [g1] [m_y1] hc_out\nBy1 o_y1 gnd V = v(m_y1)*v(vcc,gnd)\nRy1 o_y1 y1 50\nCa2 a2 gnd 3.5p\nBa2 n_a2 0 V = v(a2,gnd)/max(v(vcc,gnd),1)\nAa2 [n_a2] [d_a2] hc_in\nCb2 b2 gnd 3.5p\nBb2 n_b2 0 V = v(b2,gnd)/max(v(vcc,gnd),1)\nAb2 [n_b2] [d_b2] hc_in\nAU2 [d_a2 d_b2] g2 hc_or\nAy2 [g2] [m_y2] hc_out\nBy2 o_y2 gnd V = v(m_y2)*v(vcc,gnd)\nRy2 o_y2 y2 50\nCa3 a3 gnd 3.5p\nBa3 n_a3 0 V = v(a3,gnd)/max(v(vcc,gnd),1)\nAa3 [n_a3] [d_a3] hc_in\nCb3 b3 gnd 3.5p\nBb3 n_b3 0 V = v(b3,gnd)/max(v(vcc,gnd),1)\nAb3 [n_b3] [d_b3] hc_in\nAU3 [d_a3 d_b3] g3 hc_or\nAy3 [g3] [m_y3] hc_out\nBy3 o_y3 gnd V = v(m_y3)*v(vcc,gnd)\nRy3 o_y3 y3 50\nCa4 a4 gnd 3.5p\nBa4 n_a4 0 V = v(a4,gnd)/max(v(vcc,gnd),1)\nAa4 [n_a4] [d_a4] hc_in\nCb4 b4 gnd 3.5p\nBb4 n_b4 0 V = v(b4,gnd)/max(v(vcc,gnd),1)\nAb4 [n_b4] [d_b4] hc_in\nAU4 [d_a4 d_b4] g4 hc_or\nAy4 [g4] [m_y4] hc_out\nBy4 o_y4 gnd V = v(m_y4)*v(vcc,gnd)\nRy4 o_y4 y4 50\nRq vcc gnd 1meg\n.model hc_in adc_bridge(in_low=0.5 in_high=0.5)\n.model hc_or d_or(rise_delay=8n fall_delay=8n)\n.model hc_out dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=4n t_fall=4n)\n.ends HC32"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-30e7e27074a1",
+      "name": "74HC86",
+      "category": "Logic",
+      "description": "Quad 2-input XOR gate: gates A to D, power E",
+      "prefix": "U",
+      "default_value": "74HC86",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-9844fa982426"
+        },
+        {
+          "name": "B",
+          "symbol": "5ce10000-0000-4000-9000-9744fa982273"
+        },
+        {
+          "name": "C",
+          "symbol": "5ce10000-0000-4000-9000-9644fa9820c0"
+        },
+        {
+          "name": "D",
+          "symbol": "5ce10000-0000-4000-9000-9d44fa982ca5"
+        },
+        {
+          "name": "E",
+          "symbol": "5ce10000-0000-4000-9000-9c44fa982af2"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-9184a91a8059",
+          "name": "DIP-14",
+          "footprint": "5ce10000-0000-4000-9000-af3fab8a5388",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-a590ef9fa8dd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2d0b97f5e552"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a490ef9fa72a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2c0b97f5e39f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a390ef9fa577",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2b0b97f5e1ec"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a290ef9fa3c4",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-0c063f77a370"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a190ef9fa211",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-0d063f77a523"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a090ef9fa05e",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-0e063f77a6d6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9f90ef9f9eab",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-5e21e5aada2c"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9e90ef9f9cf8",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-dc1c8371e803"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9d90ef9f9b45",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-db1c8371e650"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9c90ef9f9992",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-c1735aa15808"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bc472c48f12e",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-508a1918c9f4"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bd472c48f2e1",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-538a1918cf0d"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ba472c48edc8",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-528a1918cd5a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bb472c48ef7b",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-7f99414b3d36"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b35d1afcdc58",
+          "name": "SOIC-14",
+          "footprint": "5ce10000-0000-4000-9000-498d8e441fa3",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-92dbd4961b96",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2d0b97f5e552"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-93dbd4961d49",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2c0b97f5e39f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-90dbd4961830",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2b0b97f5e1ec"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-91dbd49619e3",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-0c063f77a370"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-96dbd4962262",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-0d063f77a523"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-97dbd4962415",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-0e063f77a6d6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-94dbd4961efc",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-5e21e5aada2c"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-95dbd49620af",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-dc1c8371e803"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9adbd496292e",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-db1c8371e650"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9bdbd4962ae1",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-c1735aa15808"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b78a3b14149b",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-508a1918c9f4"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b68a3b1412e8",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-538a1918cf0d"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b98a3b141801",
+              "unit": 3,
+              "pin": "5ce10000-0000-4000-9000-528a1918cd5a"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b88a3b14164e",
+              "unit": 4,
+              "pin": "5ce10000-0000-4000-9000-7f99414b3d36"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* HC86: 4 gates.\n* XSPICE digital: inputs switch at VCC/2, outputs follow VCC through 50 ohm, typical\n* 5 V delays. Supply current isn't modelled.\n.subckt HC86 a1 b1 y1 a2 b2 y2 a3 b3 y3 a4 b4 y4 vcc gnd\nCa1 a1 gnd 3.5p\nBa1 n_a1 0 V = v(a1,gnd)/max(v(vcc,gnd),1)\nAa1 [n_a1] [d_a1] hc_in\nCb1 b1 gnd 3.5p\nBb1 n_b1 0 V = v(b1,gnd)/max(v(vcc,gnd),1)\nAb1 [n_b1] [d_b1] hc_in\nAU1 [d_a1 d_b1] g1 hc_xor\nAy1 [g1] [m_y1] hc_out\nBy1 o_y1 gnd V = v(m_y1)*v(vcc,gnd)\nRy1 o_y1 y1 50\nCa2 a2 gnd 3.5p\nBa2 n_a2 0 V = v(a2,gnd)/max(v(vcc,gnd),1)\nAa2 [n_a2] [d_a2] hc_in\nCb2 b2 gnd 3.5p\nBb2 n_b2 0 V = v(b2,gnd)/max(v(vcc,gnd),1)\nAb2 [n_b2] [d_b2] hc_in\nAU2 [d_a2 d_b2] g2 hc_xor\nAy2 [g2] [m_y2] hc_out\nBy2 o_y2 gnd V = v(m_y2)*v(vcc,gnd)\nRy2 o_y2 y2 50\nCa3 a3 gnd 3.5p\nBa3 n_a3 0 V = v(a3,gnd)/max(v(vcc,gnd),1)\nAa3 [n_a3] [d_a3] hc_in\nCb3 b3 gnd 3.5p\nBb3 n_b3 0 V = v(b3,gnd)/max(v(vcc,gnd),1)\nAb3 [n_b3] [d_b3] hc_in\nAU3 [d_a3 d_b3] g3 hc_xor\nAy3 [g3] [m_y3] hc_out\nBy3 o_y3 gnd V = v(m_y3)*v(vcc,gnd)\nRy3 o_y3 y3 50\nCa4 a4 gnd 3.5p\nBa4 n_a4 0 V = v(a4,gnd)/max(v(vcc,gnd),1)\nAa4 [n_a4] [d_a4] hc_in\nCb4 b4 gnd 3.5p\nBb4 n_b4 0 V = v(b4,gnd)/max(v(vcc,gnd),1)\nAb4 [n_b4] [d_b4] hc_in\nAU4 [d_a4 d_b4] g4 hc_xor\nAy4 [g4] [m_y4] hc_out\nBy4 o_y4 gnd V = v(m_y4)*v(vcc,gnd)\nRy4 o_y4 y4 50\nRq vcc gnd 1meg\n.model hc_in adc_bridge(in_low=0.5 in_high=0.5)\n.model hc_out dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=4n t_fall=4n)\n.model hc_xor d_xor(rise_delay=10n fall_delay=10n)\n.ends HC86"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-1ce7e244f90c",
+      "name": "74HC74",
+      "category": "Logic",
+      "description": "Dual D flip-flop with preset and clear (active low): flip-flops A and B, power C",
+      "prefix": "U",
+      "default_value": "74HC74",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-87c76d29736f"
+        },
+        {
+          "name": "B",
+          "symbol": "5ce10000-0000-4000-9000-88c76d297522"
+        },
+        {
+          "name": "C",
+          "symbol": "5ce10000-0000-4000-9000-89c76d2976d5"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-1110d6fb815a",
+          "name": "DIP-14",
+          "footprint": "5ce10000-0000-4000-9000-af3fab8a5388",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-a590ef9fa8dd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-71d25d725ee3"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a490ef9fa72a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-72d25d726096"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a390ef9fa577",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-73d25d726249"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a290ef9fa3c4",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-74d25d7263fc"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a190ef9fa211",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-75d25d7265af"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-a090ef9fa05e",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-76d25d726762"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9f90ef9f9eab",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-02eb6f56020b"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9e90ef9f9cf8",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-c9676616ee81"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9d90ef9f9b45",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-c8676616ecce"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9c90ef9f9992",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f5b278dcf732"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bc472c48f12e",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f6b278dcf8e5"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bd472c48f2e1",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f3b278dcf3cc"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ba472c48edc8",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f4b278dcf57f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bb472c48ef7b",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-310e2f36734b"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-dfe119188901",
+          "name": "SOIC-14",
+          "footprint": "5ce10000-0000-4000-9000-498d8e441fa3",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-92dbd4961b96",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-71d25d725ee3"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-93dbd4961d49",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-72d25d726096"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-90dbd4961830",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-73d25d726249"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-91dbd49619e3",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-74d25d7263fc"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-96dbd4962262",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-75d25d7265af"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-97dbd4962415",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-76d25d726762"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-94dbd4961efc",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-02eb6f56020b"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-95dbd49620af",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-c9676616ee81"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9adbd496292e",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-c8676616ecce"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-9bdbd4962ae1",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f5b278dcf732"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b78a3b14149b",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f6b278dcf8e5"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b68a3b1412e8",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f3b278dcf3cc"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b98a3b141801",
+              "unit": 1,
+              "pin": "5ce10000-0000-4000-9000-f4b278dcf57f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b88a3b14164e",
+              "unit": 2,
+              "pin": "5ce10000-0000-4000-9000-310e2f36734b"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* HC74: two D flip-flops, preset and clear active low.\n* XSPICE digital: inputs switch at VCC/2, outputs follow VCC through 50 ohm, typical\n* 5 V delays. Supply current isn't modelled.\n.subckt HC74 clr1 d1 clk1 pre1 q1 nq1 clr2 d2 clk2 pre2 q2 nq2 vcc gnd\nCclr1 clr1 gnd 3.5p\nBclr1 n_clr1 0 V = v(clr1,gnd)/max(v(vcc,gnd),1)\nAclr1 [n_clr1] [d_clr1] hc_in\nCd1 d1 gnd 3.5p\nBd1 n_d1 0 V = v(d1,gnd)/max(v(vcc,gnd),1)\nAd1 [n_d1] [d_d1] hc_in\nCclk1 clk1 gnd 3.5p\nBclk1 n_clk1 0 V = v(clk1,gnd)/max(v(vcc,gnd),1)\nAclk1 [n_clk1] [d_clk1] hc_in\nCpre1 pre1 gnd 3.5p\nBpre1 n_pre1 0 V = v(pre1,gnd)/max(v(vcc,gnd),1)\nApre1 [n_pre1] [d_pre1] hc_in\nAU2 d_pre1 x1 hc_not\nAU4 d_clr1 x3 hc_not\nAU5 d_d1 d_clk1 x1 x3 q1_ nq1_ hc_dff\nAq1 [q1_] [m_q1] hc_out\nBq1 o_q1 gnd V = v(m_q1)*v(vcc,gnd)\nRq1 o_q1 q1 50\nAnq1 [nq1_] [m_nq1] hc_out\nBnq1 o_nq1 gnd V = v(m_nq1)*v(vcc,gnd)\nRnq1 o_nq1 nq1 50\nCclr2 clr2 gnd 3.5p\nBclr2 n_clr2 0 V = v(clr2,gnd)/max(v(vcc,gnd),1)\nAclr2 [n_clr2] [d_clr2] hc_in\nCd2 d2 gnd 3.5p\nBd2 n_d2 0 V = v(d2,gnd)/max(v(vcc,gnd),1)\nAd2 [n_d2] [d_d2] hc_in\nCclk2 clk2 gnd 3.5p\nBclk2 n_clk2 0 V = v(clk2,gnd)/max(v(vcc,gnd),1)\nAclk2 [n_clk2] [d_clk2] hc_in\nCpre2 pre2 gnd 3.5p\nBpre2 n_pre2 0 V = v(pre2,gnd)/max(v(vcc,gnd),1)\nApre2 [n_pre2] [d_pre2] hc_in\nAU7 d_pre2 x6 hc_not\nAU9 d_clr2 x8 hc_not\nAU10 d_d2 d_clk2 x6 x8 q2_ nq2_ hc_dff\nAq2 [q2_] [m_q2] hc_out\nBq2 o_q2 gnd V = v(m_q2)*v(vcc,gnd)\nRq2 o_q2 q2 50\nAnq2 [nq2_] [m_nq2] hc_out\nBnq2 o_nq2 gnd V = v(m_nq2)*v(vcc,gnd)\nRnq2 o_nq2 nq2 50\nRq vcc gnd 1meg\n.model hc_dff d_dff(clk_delay=14n set_delay=14n reset_delay=14n)\n.model hc_in adc_bridge(in_low=0.5 in_high=0.5)\n.model hc_not d_inverter(rise_delay=1p fall_delay=1p)\n.model hc_out dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=4n t_fall=4n)\n.ends HC74"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-a90585ca7978",
+      "name": "74HC595",
+      "category": "Logic",
+      "description": "8-bit shift register with output latches and 3-state outputs (clear and output enable active low)",
+      "prefix": "U",
+      "default_value": "74HC595",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-34d16b5bc7e8"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-3947b3bd1858",
+          "name": "DIP-16",
+          "footprint": "5ce10000-0000-4000-9000-e3a4ef629182",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-f191a861421f",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-756f22a4b390"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-f091a861406c",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-786f22a4b8a9"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-f391a8614585",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-776f22a4b6f6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-f291a86143d2",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-7a6f22a4bc0f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ed91a8613b53",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-796f22a4ba5c"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ec91a86139a0",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-7c6f22a4bf75"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ef91a8613eb9",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-7b6f22a4bdc2"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-ee91a8613d06",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-7e6f22a4c2db"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-f991a8614fb7",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-7d6f22a4c128"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-f891a8614e04",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2bd7dddd38e0"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-23811d405c54",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2cd7dddd3a93"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-24811d405e07",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2dd7dddd3c46"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-25811d405fba",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2ed7dddd3df9"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-26811d40616d",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2fd7dddd3fac"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-1f811d405588",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-30d7dddd415f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-20811d40573b",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-31d7dddd4312"
+            }
+          ]
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-9b935c56fa97",
+          "name": "SOIC-16",
+          "footprint": "5ce10000-0000-4000-9000-24a6359b9de4",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-c51db39b9131",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-756f22a4b390"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-c41db39b8f7e",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-786f22a4b8a9"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-c31db39b8dcb",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-776f22a4b6f6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-c21db39b8c18",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-7a6f22a4bc0f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-c91db39b97fd",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-796f22a4ba5c"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-c81db39b964a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-7c6f22a4bf75"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-c71db39b9497",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-7b6f22a4bdc2"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-c61db39b92e4",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-7e6f22a4c2db"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bd1db39b8399",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-7d6f22a4c128"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-bc1db39b81e6",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2bd7dddd38e0"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-8c783154818a",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2cd7dddd3a93"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-8d783154833d",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2dd7dddd3c46"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-8a7831547e24",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2ed7dddd3df9"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-8b7831547fd7",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-2fd7dddd3fac"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-887831547abe",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-30d7dddd415f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-897831547c71",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-31d7dddd4312"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* HC595: 8-bit shift register (SRCLK, cleared by SRCLR low) into a storage register\n* (RCLK); QA…QH drive while OE is low, QH' (qhs) is the shift register's last stage.\n* XSPICE digital: inputs switch at VCC/2, outputs follow VCC through 50 ohm, typical\n* 5 V delays. Supply current isn't modelled.\n.subckt HC595 ser srclk srclr rclk oe qa qb qc qd qe qf qg qh qhs vcc gnd\nCser ser gnd 3.5p\nBser n_ser 0 V = v(ser,gnd)/max(v(vcc,gnd),1)\nAser [n_ser] [d_ser] hc_in\nCsrclk srclk gnd 3.5p\nBsrclk n_srclk 0 V = v(srclk,gnd)/max(v(vcc,gnd),1)\nAsrclk [n_srclk] [d_srclk] hc_in\nCsrclr srclr gnd 3.5p\nBsrclr n_srclr 0 V = v(srclr,gnd)/max(v(vcc,gnd),1)\nAsrclr [n_srclr] [d_srclr] hc_in\nCrclk rclk gnd 3.5p\nBrclk n_rclk 0 V = v(rclk,gnd)/max(v(vcc,gnd),1)\nArclk [n_rclk] [d_rclk] hc_in\nCoe oe gnd 3.5p\nBoe n_oe 0 V = v(oe,gnd)/max(v(vcc,gnd),1)\nAoe [n_oe] [d_oe] hc_in\nAU2 d_srclr x1 hc_not\nAU4 d_oe x3 hc_not\nAen [x3] [m_en] hc_fb\nAU5 d_ser d_srclk NULL x1 sr0 nsr0 hc_dff\nAU6 sr0 d_rclk NULL NULL st0 nst0 hc_dff\nAqa [st0] [m_qa] hc_out\nBqa o_qa gnd V = v(m_qa)*v(vcc,gnd)\nSqa o_qa qa m_en 0 hc_sw\nAU7 sr0 d_srclk NULL x1 sr1 nsr1 hc_dff\nAU8 sr1 d_rclk NULL NULL st1 nst1 hc_dff\nAqb [st1] [m_qb] hc_out\nBqb o_qb gnd V = v(m_qb)*v(vcc,gnd)\nSqb o_qb qb m_en 0 hc_sw\nAU9 sr1 d_srclk NULL x1 sr2 nsr2 hc_dff\nAU10 sr2 d_rclk NULL NULL st2 nst2 hc_dff\nAqc [st2] [m_qc] hc_out\nBqc o_qc gnd V = v(m_qc)*v(vcc,gnd)\nSqc o_qc qc m_en 0 hc_sw\nAU11 sr2 d_srclk NULL x1 sr3 nsr3 hc_dff\nAU12 sr3 d_rclk NULL NULL st3 nst3 hc_dff\nAqd [st3] [m_qd] hc_out\nBqd o_qd gnd V = v(m_qd)*v(vcc,gnd)\nSqd o_qd qd m_en 0 hc_sw\nAU13 sr3 d_srclk NULL x1 sr4 nsr4 hc_dff\nAU14 sr4 d_rclk NULL NULL st4 nst4 hc_dff\nAqe [st4] [m_qe] hc_out\nBqe o_qe gnd V = v(m_qe)*v(vcc,gnd)\nSqe o_qe qe m_en 0 hc_sw\nAU15 sr4 d_srclk NULL x1 sr5 nsr5 hc_dff\nAU16 sr5 d_rclk NULL NULL st5 nst5 hc_dff\nAqf [st5] [m_qf] hc_out\nBqf o_qf gnd V = v(m_qf)*v(vcc,gnd)\nSqf o_qf qf m_en 0 hc_sw\nAU17 sr5 d_srclk NULL x1 sr6 nsr6 hc_dff\nAU18 sr6 d_rclk NULL NULL st6 nst6 hc_dff\nAqg [st6] [m_qg] hc_out\nBqg o_qg gnd V = v(m_qg)*v(vcc,gnd)\nSqg o_qg qg m_en 0 hc_sw\nAU19 sr6 d_srclk NULL x1 sr7 nsr7 hc_dff\nAU20 sr7 d_rclk NULL NULL st7 nst7 hc_dff\nAqh [st7] [m_qh] hc_out\nBqh o_qh gnd V = v(m_qh)*v(vcc,gnd)\nSqh o_qh qh m_en 0 hc_sw\nAqhs [sr7] [m_qhs] hc_out\nBqhs o_qhs gnd V = v(m_qhs)*v(vcc,gnd)\nRqhs o_qhs qhs 50\nRq vcc gnd 1meg\n.model hc_dff d_dff(clk_delay=14n set_delay=14n reset_delay=14n)\n.model hc_fb dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=1n t_fall=1n)\n.model hc_in adc_bridge(in_low=0.5 in_high=0.5)\n.model hc_not d_inverter(rise_delay=1p fall_delay=1p)\n.model hc_out dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=4n t_fall=4n)\n.model hc_sw sw(vt=0.5 vh=0.1 ron=50 roff=1g)\n.ends HC595"
+        }
+      }
+    },
+    {
       "id": "5ce10000-0000-4000-9000-c2699b2b9768",
       "name": "VSource",
       "category": "Simulation",
@@ -177047,7 +182623,7 @@
       "sim": {
         "device": {
           "type": "subckt",
-          "text": "* Quad 2-input NAND, behavioural: inputs switch at VCC/2, outputs rail to rail.\n.subckt HC00 a1 b1 y1 a2 b2 y2 a3 b3 y3 a4 b4 y4 vcc gnd\nX1 a1 b1 y1 vcc gnd HC00_NAND\nX2 a2 b2 y2 vcc gnd HC00_NAND\nX3 a3 b3 y3 vcc gnd HC00_NAND\nX4 a4 b4 y4 vcc gnd HC00_NAND\nRq vcc gnd 1meg\n.ends HC00\n.subckt HC00_NAND a b y vcc gnd\nBo o gnd V = v(vcc,gnd) * (1 - (0.5+0.5*tanh(10*(v(a,gnd)-0.5*v(vcc,gnd)))) * (0.5+0.5*tanh(10*(v(b,gnd)-0.5*v(vcc,gnd)))))\nRd o d 1k\nCd d gnd 7p\nEo e gnd d gnd 1\nRo e y 50\nCa a gnd 3p\nCb b gnd 3p\n.ends HC00_NAND"
+          "text": "* HC00: 4 gates.\n* XSPICE digital: inputs switch at VCC/2, outputs follow VCC through 50 ohm, typical\n* 5 V delays. Supply current isn't modelled.\n.subckt HC00 a1 b1 y1 a2 b2 y2 a3 b3 y3 a4 b4 y4 vcc gnd\nCa1 a1 gnd 3.5p\nBa1 n_a1 0 V = v(a1,gnd)/max(v(vcc,gnd),1)\nAa1 [n_a1] [d_a1] hc_in\nCb1 b1 gnd 3.5p\nBb1 n_b1 0 V = v(b1,gnd)/max(v(vcc,gnd),1)\nAb1 [n_b1] [d_b1] hc_in\nAU1 [d_a1 d_b1] g1 hc_nand\nAy1 [g1] [m_y1] hc_out\nBy1 o_y1 gnd V = v(m_y1)*v(vcc,gnd)\nRy1 o_y1 y1 50\nCa2 a2 gnd 3.5p\nBa2 n_a2 0 V = v(a2,gnd)/max(v(vcc,gnd),1)\nAa2 [n_a2] [d_a2] hc_in\nCb2 b2 gnd 3.5p\nBb2 n_b2 0 V = v(b2,gnd)/max(v(vcc,gnd),1)\nAb2 [n_b2] [d_b2] hc_in\nAU2 [d_a2 d_b2] g2 hc_nand\nAy2 [g2] [m_y2] hc_out\nBy2 o_y2 gnd V = v(m_y2)*v(vcc,gnd)\nRy2 o_y2 y2 50\nCa3 a3 gnd 3.5p\nBa3 n_a3 0 V = v(a3,gnd)/max(v(vcc,gnd),1)\nAa3 [n_a3] [d_a3] hc_in\nCb3 b3 gnd 3.5p\nBb3 n_b3 0 V = v(b3,gnd)/max(v(vcc,gnd),1)\nAb3 [n_b3] [d_b3] hc_in\nAU3 [d_a3 d_b3] g3 hc_nand\nAy3 [g3] [m_y3] hc_out\nBy3 o_y3 gnd V = v(m_y3)*v(vcc,gnd)\nRy3 o_y3 y3 50\nCa4 a4 gnd 3.5p\nBa4 n_a4 0 V = v(a4,gnd)/max(v(vcc,gnd),1)\nAa4 [n_a4] [d_a4] hc_in\nCb4 b4 gnd 3.5p\nBb4 n_b4 0 V = v(b4,gnd)/max(v(vcc,gnd),1)\nAb4 [n_b4] [d_b4] hc_in\nAU4 [d_a4 d_b4] g4 hc_nand\nAy4 [g4] [m_y4] hc_out\nBy4 o_y4 gnd V = v(m_y4)*v(vcc,gnd)\nRy4 o_y4 y4 50\nRq vcc gnd 1meg\n.model hc_in adc_bridge(in_low=0.5 in_high=0.5)\n.model hc_nand d_nand(rise_delay=8n fall_delay=8n)\n.model hc_out dac_bridge(out_low=0 out_high=1 out_undef=0.5 t_rise=4n t_fall=4n)\n.ends HC00"
         }
       }
     },

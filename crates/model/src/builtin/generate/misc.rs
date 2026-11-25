@@ -181,7 +181,7 @@ fn dual_row(f: &mut Fp, n: usize, x: f64, pitch: f64, pad: &mut dyn FnMut(&mut F
 
 fn packages(b: &mut Builder) {
     sot23_5(b);
-    for (n, length) in [(8, 4.9), (14, 8.65)] {
+    for (n, length) in [(8, 4.9), (14, 8.65), (16, 9.9)] {
         let name = format!("SOIC-{n}_3.9x{:.1}mm_P1.27mm", length);
         let mut f = Fp::new(&name, format!("SOIC-{n}, 3.9 mm body, 1.27 mm pitch"));
         let y1 = dual_row(&mut f, n, 2.475, 1.27, &mut |f, name, x, y| {
@@ -192,7 +192,7 @@ fn packages(b: &mut Builder) {
         f.keep([-4.15, y1 - 0.15, -3.85, y1 + 0.15]);
         b.footprint(f.finish());
     }
-    for n in [8, 14] {
+    for n in [8, 14, 16] {
         let name = format!("DIP-{n}_W7.62mm");
         let mut f = Fp::new(&name, format!("DIP-{n}, 7.62 mm row spacing, 2.54 mm pitch"));
         dual_row(&mut f, n, 3.81, 2.54, &mut |f, name, x, y| {

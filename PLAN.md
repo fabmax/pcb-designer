@@ -731,10 +731,23 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   `Inductor_Sim` (Simulation category, a "No footprint" variant only, so off the board by
   the existing rule). The `_Sim` passives share the board passives' symbols (a
   symbol's category needn't match its parts': it stays in Passives). The hand-made parts' texts
-  (behavioural op amp, LM358, regulators, quad NAND) are `pub` there and stored in the
+  (behavioural op amp, LM358, regulators) are `pub` there and stored in the
   file; changing one means setting it again on the part (a one-off program or the app),
   then `gen_builtin`. `every_part_simulates` checks every part has a model with real
   pins.
+- **Logic models** (`builtin::generate::logic`, the 74HC parts; `merge` gives the
+  hand-made 74HC00 the same `hc00_model`): XSPICE digital inside a subcircuit, so every
+  pin stays an analog net. An input: `v(pin)/v(vcc)` from a B-source into an
+  `adc_bridge` at 0.5 (Schmitt inputs: ±0.1 shifted by their own state, fed back
+  through a fast `dac_bridge`); the gates, `d_dff`s; an output: `dac_bridge` 0…1 times
+  `v(vcc,gnd)` in a B-source, 50 Ω out (the 595's QA…QH through an `sw` that opens
+  with ~OE). So levels and thresholds follow VCC, but delays are fixed (typical 5 V)
+  and the output current comes from GND, not VCC. XSPICE gotchas: bridges take arrays
+  (`[n]`) even for one node; `d_dff` takes `NULL` for an unused set/reset; a subcircuit
+  `gnd` isn't ground (the B-sources reference node 0 for the 0…1 signals); digital
+  nodes aren't in the raw file (fine here, they never leave the subcircuit). Every
+  input has 3.5 pF and `Rq` 1 MΩ keeps VCC from floating. `tests/all/logic.rs` checks
+  truth tables at 5 and 3.3 V, Schmitt thresholds, the flip-flop and the 595.
 - **Session** (`sim::Session`, the app's `SimPanel` holds one): one run at a time. The
   netlist is built on the UI thread (it needs the project), only `Backend::run` goes to
   the worker (`SharedBackend = Arc<dyn Backend + Send + Sync>`); `poll` each frame
@@ -1381,7 +1394,12 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   SMD, socket; JST PH/XH 2–8, SH 2–6, screw terminals 2–4) and `Conn_02x01`…`Conn_02x20`
   (headers, socket; odd pins left), `Crystal`, `Crystal_GND24`, `TestPoint`, `SW_Push`,
   board parts `MountingHole_M2`…`M4` (plated / plain) and `Fiducial`; hand-made `OpAmp`,
-  `LM358`, `74HC00`, `AMS1117-3.3`, `AP2112K-3.3`, `LM7805`.
+  `LM358`, `74HC00`, `AMS1117-3.3`, `AP2112K-3.3`, `LM7805`; generated logic
+  (`generate::logic`): `74HC02`, `04`, `08`, `14`, `32`, `86` (a unit per gate plus a
+  power unit, distinctive-shape symbols with names hidden) and `74HC74` (two
+  flip-flop units plus power), `74HC595` (one unit), in DIP and SOIC. Active-low pins
+  are named with `~` (`~CLR`, `~OE`): there's no overbar markup, and a bubble on a
+  shortened pin pushes the pin's name onto the body edge.
   - Categories: `PartSpec::category`, also set on the part's symbol. Footprints are "SMD"
     or, with any plated through-hole pad, "Through hole" (`Fp::pad_category`), unless
     `Fp::category` overrides it (mounting holes and the fiducial are "Mechanical").
@@ -1955,8 +1973,15 @@ defers.
   (tighter `reltol`, a max step from the source frequency) instead of `.options` in
   Extra; a known fundamental (the source's) instead of the measured one; spectrum window
   choices (flat top for levels) and averaging; harmonic markers on the spectrum.
-- Digital and mixed-signal (XSPICE digital models for 74HC parts, A/D bridges), logic
-  traces in the viewer.
+- Digital nets: today the 74HC models bridge to analog at every pin, so every net is
+  analog. Nets between digital pins could stay XSPICE digital nodes (faster for big
+  logic): sort nets into digital and analog, insert bridges where they meet, and read
+  digital nodes back (not in the raw file: the shared library's event callbacks or a
+  VCD dump), also through the worker.
+- 74HC supply current: the logic models' outputs take their current from GND, not
+  through VCC, and there's no quiescent or switching current, so a power analysis
+  shows the parts taking none. A B-source current from VCC matching each output's,
+  plus a small quiescent current, would fix it.
 - Switch models (voltage/time-controlled) for `SW_Push` and relays, transformers and
   coupled inductors (`K` lines), transmission lines.
 - Sweeps: two parameters (nested), a measurement plotted over the stepped value (the

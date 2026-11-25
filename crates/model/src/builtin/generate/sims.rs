@@ -4,7 +4,7 @@
 //! Models are generic: typical values of a common part of each kind (1N4148, 2N3904,
 //! 2N7002), not the exact part in the value field. Vendor macromodels aren't bundled
 //! (their licences usually forbid it). The hand-made parts' models (op amps,
-//! regulators, logic) are the `pub` texts here, set in the bundled file.
+//! regulators) are the `pub` texts here, set in the bundled file; logic is in `logic.rs`.
 
 use std::collections::BTreeMap;
 
@@ -93,27 +93,6 @@ Iq in gnd {{iq}}
 .ends {name}"
     )
 }
-
-/// The quad NAND: four behavioural gates (thresholds at half the supply, ~7 ns edges,
-/// 50 Ω outputs). Nodes: 1A 1B 1Y … 4A 4B 4Y VCC GND (the units' pin order).
-pub const NAND4: &str = "\
-* Quad 2-input NAND, behavioural: inputs switch at VCC/2, outputs rail to rail.
-.subckt HC00 a1 b1 y1 a2 b2 y2 a3 b3 y3 a4 b4 y4 vcc gnd
-X1 a1 b1 y1 vcc gnd HC00_NAND
-X2 a2 b2 y2 vcc gnd HC00_NAND
-X3 a3 b3 y3 vcc gnd HC00_NAND
-X4 a4 b4 y4 vcc gnd HC00_NAND
-Rq vcc gnd 1meg
-.ends HC00
-.subckt HC00_NAND a b y vcc gnd
-Bo o gnd V = v(vcc,gnd) * (1 - (0.5+0.5*tanh(10*(v(a,gnd)-0.5*v(vcc,gnd)))) * (0.5+0.5*tanh(10*(v(b,gnd)-0.5*v(vcc,gnd)))))
-Rd o d 1k
-Cd d gnd 7p
-Eo e gnd d gnd 1
-Ro e y 50
-Ca a gnd 3p
-Cb b gnd 3p
-.ends HC00_NAND";
 
 /// The model of each generated part, by name.
 /// A model: the device, its pins by number or name (empty: the symbol's order), parameters.

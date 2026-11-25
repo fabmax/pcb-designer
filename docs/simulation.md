@@ -197,6 +197,12 @@ it and see its values on the schematic.
 Every Built-in part has a simulation model. Resistors, capacitors and inductors take their
 value: `10k`, `4k7`, `100n`, `1M` is mega.
 
+The 74HC logic parts simulate as digital logic (ngspice's XSPICE), which stays fast
+with many gates. Their inputs switch at half the supply (the 74HC14's at about 60 % going
+up and 40 % going down), and their outputs swing to the supply through 50 Ω. Delays
+are typical 5 V values whatever the supply. Their supply current isn't modelled: a
+power analysis shows them taking none.
+
 ### Models of your parts
 
 The part form's **Simulation** section:

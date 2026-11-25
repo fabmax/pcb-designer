@@ -78,7 +78,7 @@ fn run(b: &Bench, analysis: &Analysis) -> Option<Result<SimResult, SimError>> {
     Some(first)
 }
 
-fn ok(b: &Bench, analysis: &Analysis) -> Option<SimResult> {
+pub(crate) fn ok(b: &Bench, analysis: &Analysis) -> Option<SimResult> {
     run(b, analysis).map(|r| r.unwrap_or_else(|e| panic!("{e}: {e:?}")))
 }
 

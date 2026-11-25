@@ -9,6 +9,7 @@
 
 mod connectors;
 mod fp;
+mod logic;
 mod misc;
 mod passives;
 mod semis;
@@ -29,6 +30,7 @@ pub fn library() -> Library {
     semis::add(&mut b);
     connectors::add(&mut b);
     misc::add(&mut b);
+    logic::add(&mut b);
     sims::add(&mut b);
     b.lib
 }
@@ -47,6 +49,10 @@ pub fn merge(file: &Library) -> Library {
     }
     for p in file.parts.iter().filter(|p| !is_generated(p.id)) {
         out.parts.insert(p.clone());
+    }
+    // The hand-made 74HC00 has the generated logic parts' kind of model.
+    if let Some(p) = out.parts.get_mut(super::PART_74HC00) {
+        p.sim = Some(logic::hc00_model());
     }
     out
 }
