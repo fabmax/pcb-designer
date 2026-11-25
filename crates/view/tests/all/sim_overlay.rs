@@ -104,3 +104,60 @@ fn the_overlay_draws_on_the_simulation_layer() {
     doc.set_sim_overlay(SimOverlay { hover_nets: vec![net], ..Default::default() });
     assert_eq!(on_layer(&doc), 0);
 }
+
+/// The tags overlapping texts (part references and values, labels, free texts) or each
+/// other, with every net's voltage and every two-pin part's current shown at once.
+fn crowding(doc: &mut Document) -> (usize, usize, usize) {
+    let p = doc.project();
+    let conn = doc.connectivity();
+    let mut nets: Vec<String> =
+        p.schematic.wires.iter().filter_map(|w| conn.net_of(ObjectId::Wire(w.id)).map(|n| n.name.clone())).collect();
+    nets.sort();
+    nets.dedup();
+    let currents: Vec<(Id, Id, String)> = p
+        .schematic
+        .symbols
+        .iter()
+        .filter_map(|s| {
+            let pins = &symbol_of_instance(p, s)?.pins;
+            (pins.len() == 2).then(|| (s.id, pins.iter().next().unwrap().id, "1.23 mA".to_string()))
+        })
+        .collect();
+    let voltages = nets.into_iter().map(|n| (n, "12.3 V".to_string())).collect();
+    doc.set_sim_overlay(SimOverlay { voltages, currents, ..Default::default() });
+    let (mut on_text, mut on_tag, mut tags) = (0, 0, 0);
+    let sheets: Vec<Id> = doc.project().schematic.sheets.iter().map(|s| s.id).collect();
+    for sheet in sheets {
+        let v = doc.view(view::ViewId::Sheet(sheet));
+        tags += v.sim_tags.len();
+        for (i, t) in v.sim_tags.iter().enumerate() {
+            let texts = v
+                .index
+                .in_rect(*t, true)
+                .into_iter()
+                .filter(|id| matches!(id, ObjectId::SymbolField(_) | ObjectId::Label(_) | ObjectId::SchText(_)));
+            on_text += usize::from(texts.count() > 0);
+            on_tag += usize::from(
+                v.sim_tags[..i]
+                    .iter()
+                    .any(|u| u.min.x < t.max.x && t.min.x < u.max.x && u.min.y < t.max.y && t.min.y < u.max.y),
+            );
+        }
+    }
+    (tags, on_text, on_tag)
+}
+
+#[test]
+fn value_tags_keep_clear_of_texts_and_each_other() {
+    for example in view::demo::Example::ALL {
+        let mut doc = Document::new(example.project());
+        let (tags, on_text, on_tag) = crowding(&mut doc);
+        let name = example.name();
+        assert!(tags > 10, "{name}: {tags} tags");
+        assert_eq!(on_tag, 0, "{name}: tags on tags");
+        // The LED demo's +5V label next to J1 leaves no free spot for two of its tags (they
+        // touch it by a sliver); before, 5 of 13 sat on texts there and 9 of 41 in the amp.
+        let most = if name == "led" { 2 } else { 0 };
+        assert!(on_text <= most, "{name}: {on_text} of {tags} tags on texts");
+    }
+}

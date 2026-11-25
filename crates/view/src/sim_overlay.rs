@@ -10,6 +10,7 @@ use render::font::{self, HAlign as FH, VAlign as FV};
 use render::{Color, Instance};
 
 use crate::draw::{Painter, mmf};
+use crate::index::SpatialIndex;
 use crate::style::WIRE_WIDTH;
 use crate::style::pal;
 use crate::view::View;
@@ -170,7 +171,8 @@ pub(crate) struct Layers {
     pub hover: render::LayerId,
 }
 
-/// The overlay on `sheet`. `here` tells whether a symbol is drawn on this sheet.
+/// The overlay on `sheet`; `index`: the sheet's objects (frames around parts, and
+/// what value tags keep clear of). Returns where the value tags went.
 pub(crate) fn draw(
     project: &Project,
     conn: &Connectivity,
@@ -178,8 +180,9 @@ pub(crate) fn draw(
     o: &SimOverlay,
     layers: Layers,
     p: &mut Painter,
-    bounds: &dyn Fn(ObjectId) -> Option<Rect>,
-) {
+    index: &SpatialIndex,
+) -> Vec<Rect> {
+    let bounds = |id| index.bounds(id);
     let sch = &project.schematic;
     let on_sheet = |symbol: Id| sch.symbols.get(symbol).is_some_and(|s| s.sheet == sheet);
     // Probed nets (and the hovered one): their wires, thick.
@@ -232,54 +235,149 @@ pub(crate) fn draw(
     }
     let alpha = |c: Color| if o.dim { c.with_alpha(0x70) } else { c };
     let (fg, bg) = (alpha(pal().sim_value), alpha(pal().sim_value_bg));
-    // Voltages: at the first label of the net on this sheet, else the middle of its
-    // longest wire here.
-    if !o.voltages.is_empty() {
-        let mut at: std::collections::HashMap<&str, (Point, bool)> = Default::default();
-        for l in sch.labels.iter().filter(|l| l.sheet == sheet) {
-            if let Some(net) = conn.net_of(ObjectId::Label(l.id)) {
-                at.entry(net.name.as_str()).or_insert((l.pos, true));
-            }
-        }
-        let mut longest: std::collections::HashMap<&str, (Coord, Point)> = Default::default();
-        for w in sch.wires.iter().filter(|w| w.sheet == sheet) {
-            if let Some(net) = conn.net_of(ObjectId::Wire(w.id)) {
-                let len = (w.b - w.a).length() as Coord;
-                let e = longest.entry(net.name.as_str()).or_insert((-1, w.a));
-                if len > e.0 {
-                    *e = (len, Point::new((w.a.x + w.b.x) / 2, (w.a.y + w.b.y) / 2));
-                }
-            }
-        }
-        for (net, (_, mid)) in longest {
-            at.entry(net).or_insert((mid, false));
-        }
-        for (net, text) in &o.voltages {
-            if let Some(&(pos, label)) = at.get(net.as_str()) {
-                // Above a label (clear of its text), just above a wire.
-                let pos = pos + Point::new(0, if label { mm(1.6) } else { mm(0.5) });
-                tag(p, layer, pos, text, FH::Center, FV::Bottom, fg, bg);
-            }
-        }
-    }
-    // Currents of two-pin parts: an arrow on the pin the current flows into, the value
-    // beside it.
+    let mut placer = Placer { index, placed: Vec::new() };
+    // Currents of two-pin parts first (they have the fewest places to go): an arrow on
+    // the pin the current flows into, the value beside it.
     for (symbol, pin, text) in o.currents.iter().filter(|(s, ..)| on_sheet(*s)) {
         let Some((a, b)) = pin_ends(project, *symbol, *pin) else { continue };
         arrow(p, layer, a, b, mm(0.9), fg);
-        // Beside the pin, reaching away from the body (clear of the reference and
-        // value, which sit at the body).
-        let mid = Point::new((a.x + b.x) / 2, (a.y + b.y) / 2);
-        let d = b - a;
-        let (pos, h, v) = if d.x.abs() >= d.y.abs() {
-            let h = if d.x > 0 { FH::Right } else { FH::Left };
-            (mid + Point::new(0, mm(0.5)), h, FV::Bottom)
-        } else {
-            let v = if d.y > 0 { FV::Top } else { FV::Bottom };
-            (mid - Point::new(mm(0.6), 0), FH::Right, v)
-        };
-        tag(p, layer, pos, text, h, v, fg, bg);
+        let spot = placer.place(&current_spots(a, b), text, Some(*symbol));
+        tag(p, layer, spot.0, text, spot.1, spot.2, fg, bg);
     }
+    // Voltages: by the net's labels on this sheet, else along its wires, longest first.
+    if !o.voltages.is_empty() {
+        let mut labels: std::collections::HashMap<&str, Vec<Point>> = Default::default();
+        for l in sch.labels.iter().filter(|l| l.sheet == sheet) {
+            if let Some(net) = conn.net_of(ObjectId::Label(l.id)) {
+                labels.entry(net.name.as_str()).or_default().push(l.pos);
+            }
+        }
+        let mut wires: std::collections::HashMap<&str, Vec<(Point, Point)>> = Default::default();
+        for w in sch.wires.iter().filter(|w| w.sheet == sheet) {
+            if let Some(net) = conn.net_of(ObjectId::Wire(w.id)) {
+                wires.entry(net.name.as_str()).or_default().push((w.a, w.b));
+            }
+        }
+        for (net, text) in &o.voltages {
+            let mut ws = wires.get(net.as_str()).cloned().unwrap_or_default();
+            ws.sort_by_key(|(a, b)| std::cmp::Reverse((*b - *a).length() as Coord));
+            let spots = voltage_spots(labels.get(net.as_str()).map_or(&[][..], |l| &l[..]), &ws);
+            if spots.is_empty() {
+                continue;
+            }
+            let spot = placer.place(&spots, text, None);
+            tag(p, layer, spot.0, text, spot.1, spot.2, fg, bg);
+        }
+    }
+    placer.placed
+}
+
+/// Where a value tag may go: its anchor and alignment.
+type Spot = (Point, FH, FV);
+
+/// A voltage tag's spots: above, then below each of the net's labels (clear of the
+/// label's text above it), then along its wires (`wires` longest first): just above
+/// or below a horizontal one, beside a vertical one, at its middle, then its quarters.
+fn voltage_spots(labels: &[Point], wires: &[(Point, Point)]) -> Vec<Spot> {
+    let mut out = Vec::new();
+    for &l in labels.iter().take(4) {
+        out.push((l + Point::new(0, mm(1.6)), FH::Center, FV::Bottom));
+        out.push((l - Point::new(0, mm(1.6)), FH::Center, FV::Top));
+    }
+    for &(a, b) in wires.iter().take(8) {
+        let d = b - a;
+        let at = |t: f64| Point::new(a.x + (d.x as f64 * t) as Coord, a.y + (d.y as f64 * t) as Coord);
+        for t in [0.5, 0.25, 0.75] {
+            let q = at(t);
+            if d.x.abs() >= d.y.abs() {
+                out.push((q + Point::new(0, mm(0.5)), FH::Center, FV::Bottom));
+                out.push((q - Point::new(0, mm(0.5)), FH::Center, FV::Top));
+            } else {
+                out.push((q + Point::new(mm(0.6), 0), FH::Left, FV::Center));
+                out.push((q - Point::new(mm(0.6), 0), FH::Right, FV::Center));
+            }
+        }
+    }
+    out
+}
+
+/// A current tag's spots beside the pin from `a` (its outer end) to `b`: reaching away
+/// from the body (clear of the reference and value, which sit at the body), on one side
+/// of the pin, then the other, then out past its end.
+fn current_spots(a: Point, b: Point) -> Vec<Spot> {
+    let mid = Point::new((a.x + b.x) / 2, (a.y + b.y) / 2);
+    let d = b - a;
+    if d.x.abs() >= d.y.abs() {
+        let h = if d.x > 0 { FH::Right } else { FH::Left };
+        let (up, down) = (Point::new(0, mm(0.5)), Point::new(0, -mm(0.5)));
+        vec![(mid + up, h, FV::Bottom), (mid + down, h, FV::Top), (a + up, h, FV::Bottom), (a + down, h, FV::Top)]
+    } else {
+        let v = if d.y > 0 { FV::Top } else { FV::Bottom };
+        let (left, right) = (Point::new(-mm(0.6), 0), Point::new(mm(0.6), 0));
+        vec![(mid + left, FH::Right, v), (mid + right, FH::Left, v), (a + left, FH::Right, v), (a + right, FH::Left, v)]
+    }
+}
+
+/// Places value tags clear of what the sheet shows: a tag takes the first of its spots
+/// that covers nothing, else the one covering least (texts and other tags weigh most,
+/// symbols less, wires least).
+struct Placer<'a> {
+    index: &'a SpatialIndex,
+    placed: Vec<Rect>,
+}
+
+impl Placer<'_> {
+    /// How much `r` covers, in weighted mm². `own`: the symbol a current tag belongs
+    /// to (its pin is under the tag on purpose).
+    fn cost(&self, r: Rect, own: Option<Id>) -> f64 {
+        let mut cost = 0.0;
+        for id in self.index.in_rect(r, true) {
+            let weight = match id {
+                ObjectId::SymbolField(_) | ObjectId::Label(_) | ObjectId::SchText(_) => 4.0,
+                ObjectId::Symbol(s) if Some(s) == own => 0.0,
+                ObjectId::Symbol(_) | ObjectId::Sheet(_) => 2.0,
+                ObjectId::Wire(_) | ObjectId::BusWire(_) => 1.0,
+                _ => 0.5,
+            };
+            if let Some(b) = self.index.bounds(id) {
+                cost += weight * overlap(r, b);
+            }
+        }
+        cost + self.placed.iter().map(|p| 4.0 * overlap(r, *p)).sum::<f64>()
+    }
+
+    /// The best of `spots` for a tag of `text` (the first when nothing is better); it
+    /// counts as taken from now on.
+    fn place(&mut self, spots: &[Spot], text: &str, own: Option<Id>) -> Spot {
+        let mut best = (f64::INFINITY, spots[0]);
+        for &spot in spots {
+            let cost = self.cost(tag_rect(spot, text), own);
+            if cost < best.0 {
+                best = (cost, spot);
+            }
+            if cost == 0.0 {
+                break;
+            }
+        }
+        self.placed.push(tag_rect(best.1, text));
+        best.1
+    }
+}
+
+/// The area two rectangles share, in mm².
+fn overlap(a: Rect, b: Rect) -> f64 {
+    let w = (a.max.x.min(b.max.x) - a.min.x.max(b.min.x)).max(0) as f64 * 1e-6;
+    let h = (a.max.y.min(b.max.y) - a.min.y.max(b.min.y)).max(0) as f64 * 1e-6;
+    w * h
+}
+
+/// The rectangle a tag covers, with its background.
+fn tag_rect((pos, h, v): Spot, text: &str) -> Rect {
+    let height = (TAG_HEIGHT as f64 * 1e-6) as f32;
+    let [x0, y0, x1, y1] = font::text_box(text, height, h, v);
+    let pad = height * 0.3;
+    let nm = |f: f32| (f as f64 * 1e6) as Coord;
+    Rect::from_points(pos + Point::new(nm(x0 - pad), nm(y0 - pad)), pos + Point::new(nm(x1 + pad), nm(y1 + pad)))
 }
 
 fn mm(v: f64) -> Coord {

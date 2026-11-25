@@ -873,8 +873,14 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   "Simulation" layer (in the layer menu, so its visibility is saved with the
   workspace; `View::drawing` leaves it out of prints), hover marks on the hover layer. Everything shows only while the panel or tab is
   open. Values come from the panel's operating point, else the last one run;
-  voltage tags sit at a net's first label on the sheet, else the middle of its longest
-  wire there; ground gets none; current tags reach away from the part body. Tags use
+  ground gets no tag. Tags avoid texts and each other (`sim_overlay::Placer`): each has
+  candidate spots (a voltage: above/below its net's labels, then both sides of its
+  wires at ½, ¼, ¾, longest first; a current: either side of the part's middle, then
+  its outer end) and takes the first one that overlaps nothing in the view's
+  `SpatialIndex` or the tags placed so far, else the least covered (overlap area,
+  weighted: texts and tags 4, other symbols 2, wires 1; the own part's body is free).
+  Currents go first, as they have fewer spots. `View::sim_tags` keeps the rects for
+  tests. Tags use
   `sim_value` / `sim_value_bg`, three significant digits, and are world-sized. Parts
   with more than two pins get a hover tooltip (pin V, I, power). `SimPanel::hover` is
   cleared each frame before the tree draws and set by the Probe tool or a hovered
@@ -1960,8 +1966,7 @@ defers.
 - Plot: overlays of earlier runs, PNG export from the GUI (MCP's screenshot renders it
   offscreen already), the zoom saved in the workspace; several plot panes per analysis
   (stacked, shared x), saved plot layouts.
-- Schematic values: placement that avoids other texts (tags can overlap a part's
-  reference or another tag), values at the cursor of a sweep (scrubbing), currents of
+- Schematic values: values at the cursor of a sweep (scrubbing), currents of
   bigger parts as tags; a pinned "always" (they only show while the Simulation panel or
   a simulation tab is open).
 - Expressions of signals (`V(OUT)/V(IN)`, `abs(I(R1.1))`); complex power for AC.

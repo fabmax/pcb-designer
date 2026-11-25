@@ -153,7 +153,8 @@ colours.
 
 **Values on the schematic** (with the panel or tab open):
 after an operating point run, each net shows its voltage once per sheet, and two-pin parts
-their current with an arrow in its direction; hover a bigger part for each pin's voltage
+their current with an arrow in its direction, placed clear of texts and each other where
+there's room; hover a bigger part for each pin's voltage
 and current and its power. They dim when the schematic changed since the run.
 
 Probes and values are on the schematic's **Simulation** layer: hide it in the layer menu

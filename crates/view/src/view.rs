@@ -138,6 +138,8 @@ pub struct View {
     pub kind: ViewKind,
     pub scene: Scene,
     pub index: SpatialIndex,
+    /// Where the simulation overlay's value tags went (tests check they stay clear).
+    pub sim_tags: Vec<Rect>,
     layers: Layers,
     hover_layer: RLayer,
     selection_layer: RLayer,
@@ -217,6 +219,7 @@ impl View {
             kind,
             scene,
             index: SpatialIndex::default(),
+            sim_tags: Vec::new(),
             layers,
             hover_layer,
             selection_layer,
@@ -660,11 +663,11 @@ impl View {
         let layers = crate::sim_overlay::Layers { sim: l.sim, hover: self.hover_layer };
         if o.is_empty() {
             self.scene.remove_item(SIM_ITEM);
+            self.sim_tags.clear();
             return;
         }
         let mut p = Painter::default();
-        let index = &self.index;
-        crate::sim_overlay::draw(project, c, sheet, o, layers, &mut p, &|id| index.bounds(id));
+        self.sim_tags = crate::sim_overlay::draw(project, c, sheet, o, layers, &mut p, &self.index);
         self.scene.set_item(SIM_ITEM, p.out);
     }
 
