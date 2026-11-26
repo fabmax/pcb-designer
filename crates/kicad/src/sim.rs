@@ -9,7 +9,7 @@
 //!   milli, `Meg` mega).
 //! * Models from libraries (`Sim.Library` + `Sim.Name`) are embedded: the `.model` card,
 //!   or the `.subckt` with the cards and subcircuits it uses from the same file.
-//! * What has no equivalent here (IBIS, XSPICE digital models, switches, transmission
+//! * What has no equivalent here (IBIS, switches, transmission
 //!   lines, potentiometers) is left unsimulated with a warning; sources KiCad generates
 //!   differently (AM, FM, noise, random) and KiCad's raw SPICE device become SPICE line
 //!   models, as KiCad writes them.
@@ -583,11 +583,13 @@ fn map(f: &Fields, value: &str, sym: &KiSymbol, libs: &mut Libs) -> Result<Mappe
     let device = f.device.as_str();
     match device {
         "IBIS" | "KIBIS" => return Err("IBIS models aren't supported".into()),
-        "XSPICE" => return Err("XSPICE code models aren't supported".into()),
         "SW" => return Err("switch models aren't supported".into()),
         "TLINE" => return Err("transmission lines aren't supported".into()),
         "K" => return Err("coupled inductors aren't supported".into()),
         _ => {}
+    }
+    if device == "XSPICE" {
+        return xspice(f, sym, libs);
     }
     if !f.library.is_empty() && device != "SPICE" {
         return library_model(f, sym, libs);
@@ -1004,6 +1006,58 @@ fn library_model(f: &Fields, sym: &KiSymbol, libs: &mut Libs) -> Result<Mapped, 
     let mut m = mapped(SimModel { pins, ..SimModel::new(SimDevice::Subckt { text: def }) }, header.name);
     m.sim.params = f.params.iter().filter(|(k, _)| !k.is_empty()).map(|(k, v)| (k.clone(), to_spice(v))).collect();
     Ok(m)
+}
+
+/// KiCad's XSPICE code model (`Sim.Device XSPICE`, the `.model` card from
+/// `Sim.Library`): KiCad writes `A${REF} node… NAME`, a node per pin; here a subcircuit
+/// around that line with the card. Vector ports of the code models whose port layout is
+/// known get their brackets (ngspice needs them; [`xspice_nodes`]). Digital ports need
+/// bridges to analog nets, placed by the user as in KiCad. `Sim.Params` override the
+/// card's parameters.
+fn xspice(f: &Fields, sym: &KiSymbol, libs: &mut Libs) -> Result<Mapped, String> {
+    if f.library.is_empty() {
+        return Err("an XSPICE code model without its library (Sim.Library)".into());
+    }
+    let text = libs.text(&f.library)?;
+    let items = LibItems::parse(&text);
+    let (subckt, def) =
+        items.with_dependencies(&f.name).ok_or_else(|| format!("{} has no model {}", f.library, f.name))?;
+    if subckt {
+        return library_model(f, sym, libs);
+    }
+    let line = logical_lines(&def).into_iter().next().unwrap_or_default();
+    let card = ModelCard::parse(&line).ok_or_else(|| format!("{}: unreadable model {}", f.library, f.name))?;
+    let overrides: Vec<(String, String)> =
+        f.params.iter().filter(|(k, _)| !k.is_empty()).map(|(k, v)| (k.clone(), to_spice(v))).collect();
+    // Rewritten only to override: vector values (`[0.5 1]`) don't survive the round trip.
+    let card_text = if overrides.is_empty() { line } else { card.clone().with(&overrides).text() };
+    let count = if f.pins.is_empty() { symbol_pins(sym).len() } else { f.pins.len() };
+    let numbers: Vec<String> = (1..=count).map(|k| k.to_string()).collect();
+    let numbers: Vec<&str> = numbers.iter().map(String::as_str).collect();
+    let pins = map_pins(f, &numbers, 0, sym)?;
+    let ports: Vec<String> = (1..=pins.len()).map(|k| format!("p{k}")).collect();
+    let name = &card.name;
+    let text = format!(
+        ".subckt {name}_A {}\nA1 {} {name}\n.ends\n{card_text}",
+        ports.join(" "),
+        xspice_nodes(&card.kind, &ports)
+    );
+    Ok(mapped(SimModel { pins, ..SimModel::new(SimDevice::Subckt { text }) }, name.clone()))
+}
+
+/// The nodes of an XSPICE instance: gates take their inputs as one vector (`[a b] y`),
+/// bridges their inputs and outputs (`[a b] [x y]`, half each); others a node per port.
+fn xspice_nodes(kind: &str, nodes: &[String]) -> String {
+    let n = nodes.len();
+    match kind.to_ascii_lowercase().as_str() {
+        "d_and" | "d_nand" | "d_or" | "d_nor" | "d_xor" | "d_xnor" if n >= 2 => {
+            format!("[{}] {}", nodes[..n - 1].join(" "), nodes[n - 1])
+        }
+        "adc_bridge" | "dac_bridge" if n >= 2 && n.is_multiple_of(2) => {
+            format!("[{}] [{}]", nodes[..n / 2].join(" "), nodes[n / 2..].join(" "))
+        }
+        _ => nodes.join(" "),
+    }
 }
 
 /// Controlled sources: E, G by a voltage (4 pins), F, H by a source's current.

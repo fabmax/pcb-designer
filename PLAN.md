@@ -1360,8 +1360,13 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
     match). Kinds without an equivalent become SPICE lines as KiCad writes them (AM,
     SFFM, noise, random sources, behavioral R/C/L, E/F/G/H, KiCad's raw SPICE device);
     a pin on several model ports (`3=3 3=4`) or a 4-pin MOSFET/BJT gets a wrapper
-    subcircuit beside the original (ngspice refuses some nested ones). IBIS, XSPICE,
-    switches, transmission lines and potentiometers are reported, not simulated.
+    subcircuit beside the original (ngspice refuses some nested ones). XSPICE code
+    models (`Sim.Device XSPICE`, card from `Sim.Library`) become a subcircuit around
+    `A1 nodes NAME` with the card: KiCad writes a node per pin, without brackets, so
+    `xspice_nodes` groups the vector ports of gates (`[ins] out`) and bridges (`[ins]
+    [outs]`); `Sim.Params` override the card (rewritten only then: vector values don't
+    survive `ModelCard`); bridges are the user's, as in KiCad. IBIS, switches,
+    transmission lines and potentiometers are reported, not simulated.
     Values in fields are SI (`M` mega; `1UF`, `1g`, `100uF;16V` read as KiCad does
     them or better), directives SPICE (`spice_number`: `M` milli). Text items with a
     known dot command (`is_directive`) give the analyses (`.op`, `.tran`, `.ac`
@@ -1374,7 +1379,9 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
     with each field form; with `KICAD_CLI`, KiCad's simulation demos (pinned commit,
     fetched sparse into `target/kicad-sim-demos` or `KICAD_SIM_DEMOS`) netlisted by
     `kicad-cli` and by us must give every device pin the same operating point
-    (IBIS, the XSPICE counter and Q17, which `kicad-cli` can't netlist, are skipped).
+    (IBIS; the XSPICE counter, whose `d_state` file KiCad's netlist doesn't find
+    either, and whose failure takes the shared library down; Q17, which `kicad-cli`
+    can't netlist, are skipped).
 
 - Project export (`kicad::export`, KiCad 9 formats: sch 20250114, pcb 20241229, sym
   20241209): `render_project` builds the files in memory, `export_project` writes them
@@ -1974,7 +1981,7 @@ defers.
 - A crash inside the in-app library (a segfault, not ngspice's `ControlledExit`) takes
   the app down unless "In a separate process" is on. A long-lived worker could hold the
   library instead and be restarted after a crash, making that the default.
-- KiCad simulation import gaps: IBIS (KIBIS) and XSPICE code models, switches,
+- KiCad simulation import gaps: IBIS (KIBIS), switches,
   transmission lines, coupled inductors (`K`), potentiometers; the workbook (`.wbk`:
   plotted signals, cursors) and `.probe` / `.save` become no probes; `.control` scripts
   are dropped; a subcircuit's instance parameters aren't passed through a pin-joining

@@ -46,7 +46,8 @@ first.
 KiCad's simulation fields become part models and source waveforms (models from
 `Sim.Library` files are copied into the parts), and SPICE directive texts (`.tran`, `.ac`,
 `.dc`, `.op`, `.param`, `.include`, …) become the [Simulation panel](simulation.md)'s
-analyses and extra lines. What has no equivalent (IBIS, XSPICE digital models, switches,
+analyses and extra lines. XSPICE code models come along with their `.model` card; place
+the analog-digital bridges as in KiCad. What has no equivalent (IBIS, switches,
 transmission lines) is listed in the report and left out of the simulation.
 
 ### Without a window

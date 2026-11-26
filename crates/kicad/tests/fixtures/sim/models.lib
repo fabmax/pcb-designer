@@ -6,3 +6,5 @@ R1 out 0 1k
 .ends BUF
 .model QBUF NPN(BF=100)
 .model UNUSED D()
+.model INV1 d_inverter(rise_delay=1n fall_delay=1n)
+.model NAND1 d_nand(rise_delay=1n fall_delay=1n)

@@ -80,6 +80,17 @@ fn simulation_fields_of_a_project() {
     let SimDevice::Subckt { text } = &u1.device else { panic!("{u1:?}") };
     assert!(text.starts_with(".subckt BUF"), "{text}");
     assert!(text.contains(".model QBUF NPN"), "{text}");
+    // XSPICE code models: an A line in a subcircuit with the card; a gate's inputs as a
+    // vector; Sim.Params override the card.
+    let u2 = model("U2").unwrap_or_else(|| panic!("{report}"));
+    let SimDevice::Subckt { text } = &u2.device else { panic!("{u2:?}") };
+    assert!(text.contains("A1 p1 p2 INV1"), "{text}");
+    assert!(text.contains(".model INV1 d_inverter(rise_delay=1n fall_delay=1n)"), "{text}");
+    let u3 = model("U3").unwrap();
+    let SimDevice::Subckt { text } = &u3.device else { panic!("{u3:?}") };
+    assert!(text.contains("A1 [p1 p2] p3 NAND1"), "{text}");
+    assert!(text.contains("rise_delay=2e-9") && text.contains("fall_delay=1n"), "{text}");
+    assert_eq!(pin_numbers("U3"), ["1", "2", "3"]);
     // Excluded from the simulation, and not simulated (no model): no warning for those.
     assert!(c("R3").sim.exclude);
     assert!(model("J1").is_none());
@@ -104,7 +115,9 @@ const KICAD_GIT: &str = "https://gitlab.com/kicad/code/kicad.git";
 /// Demos left out, and why.
 const SKIPPED: [(&str, &str); 3] = [
     ("ibis", "IBIS drivers aren't supported"),
-    ("up-down-c", "XSPICE digital models aren't supported"),
+    // Its d_state model reads a state file by a relative path: KiCad's own netlist
+    // fails in ngspice too (and takes the shared library down with it).
+    ("up-down-c", "its XSPICE state file isn't found, by KiCad's netlist either"),
     ("Q17ng", "kicad-cli can't netlist it"),
 ];
 
