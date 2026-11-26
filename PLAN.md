@@ -731,7 +731,10 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
 - **Built-in models** (`builtin::generate::sims`): a table by part name sets the
   generated parts' models (1N4148, B5819, zener with `BV=${VALUE}`, 2N3904/2N3906,
   2N7002/BSS84 as VDMOS, a Butterworth–Van Dyke crystal with `f=${VALUE}`, ferrite and
-  fuse as 0.1 Ω) and adds `VSource` / `ISource` and `Resistor_Sim` / `Capacitor_Sim` /
+  fuse as 0.1 Ω; switches and the potentiometer as subcircuits whose `state` / `pos`
+  parameter is the control: `SWITCH` R = `state > 0.5 ? ron : roff` (a numparam
+  ternary), `SWITCH_SPDT` COM to A at 0, `POT` `r=${VALUE}` split at `pos`, 0 at pin 1,
+  each side at least 1 mΩ; `SimModel::control` finds them by that parameter) and adds `VSource` / `ISource` and `Resistor_Sim` / `Capacitor_Sim` /
   `Inductor_Sim` (Simulation category, a "No footprint" variant only, so off the board by
   the existing rule). The `_Sim` passives share the board passives' symbols (a
   symbol's category needn't match its parts': it stays in Passives). The hand-made parts' texts
@@ -1436,6 +1439,7 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   SOT-223, DPAK, TO-220), `Conn_01x01`…`Conn_01x40` (pin header straight / right angle /
   SMD, socket; JST PH/XH 2–8, SH 2–6, screw terminals 2–4) and `Conn_02x01`…`Conn_02x20`
   (headers, socket; odd pins left), `Crystal`, `Crystal_GND24`, `TestPoint`, `SW_Push`,
+  `SW_SPST` / `SW_SPDT` (slide switch CK OS102011MS2Q), `Potentiometer` (Bourns 3386P),
   board parts `MountingHole_M2`…`M4` (plated / plain) and `Fiducial`; hand-made `OpAmp`,
   `LM358`, `74HC00`, `AMS1117-3.3`, `AP2112K-3.3`, `LM7805`; generated logic
   (`generate::logic`): `74HC02`, `04`, `08`, `14`, `32`, `86` (a unit per gate plus a
@@ -2028,7 +2032,8 @@ defers.
   through VCC, and there's no quiescent or switching current, so a power analysis
   shows the parts taking none. A B-source current from VCC matching each output's,
   plus a small quiescent current, would fix it.
-- Switch models (voltage/time-controlled) for `SW_Push` and relays, transformers and
+- Switches that change during a transient (time- or voltage-controlled), contact
+  bounce, relays; transformers and
   coupled inductors (`K` lines), transmission lines.
 - Sweeps: two parameters (nested), a measurement plotted over the stepped value (the
   −3 dB point against R1), steps of a model parameter or the temperature; the Simulation

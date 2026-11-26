@@ -38,6 +38,28 @@ pub const NMOS: &str = ".model M2N7002 VDMOS(Vto=2.1 Kp=0.5 Rd=1 Rs=0.5 Rg=10 Cg
 Is=1e-14 Rb=0.5)";
 pub const PMOS: &str = ".model MBSS84 VDMOS(pchan Vto=-1.6 Kp=0.15 Rd=3 Rs=1 Rg=10 Cgdmax=20p Cgdmin=3p Cgs=20p \
 Cjo=12p Is=1e-14 Rb=1)";
+/// A switch: closed (`ron`) when `state` is 1, open (`roff`) when 0. Pushbuttons and
+/// on/off switches; the schematic toggles `state` during a simulation.
+pub const SWITCH: &str = "\
+* Switch: closed (ron) when state is 1, open (roff) when 0.
+.subckt SWITCH 1 2 params: state=0 ron=0.05 roff=1e9
+R1 1 2 {state > 0.5 ? ron : roff}
+.ends SWITCH";
+/// A changeover switch, nodes A COM B: COM to A when `state` is 0, to B when 1.
+pub const SWITCH_SPDT: &str = "\
+* Changeover switch: COM to A when state is 0, to B when 1.
+.subckt SWITCH_SPDT a com b params: state=0 ron=0.05 roff=1e9
+R1 com a {state > 0.5 ? roff : ron}
+R2 com b {state > 0.5 ? ron : roff}
+.ends SWITCH_SPDT";
+/// A potentiometer, nodes 1 W 3: `r` from 1 to 3, the wiper at `pos` (0 at 1, 1 at 3).
+pub const POT: &str = "\
+* Potentiometer: r from 1 to 3, the wiper at pos (0: at 1, 1: at 3).
+.subckt POT 1 w 3 params: r=10k pos=0.5
+.param p={min(max(pos,0),1)}
+R1 1 w {max(r*p,1m)}
+R2 w 3 {max(r*(1-p),1m)}
+.ends POT";
 /// Butterworth–Van Dyke equivalent; the series resonance `f` comes from the value.
 pub const CRYSTAL: &str = "\
 * Quartz crystal: motional arm (Lm, Cm = 16 fF, Rm = 30 ohm) parallel to C0 = 5 pF.
@@ -119,10 +141,12 @@ fn model_of(name: &str) -> Option<ModelSpec> {
         "PMOS" => (prim(PrimitiveKind::Pmos, PMOS), &["D", "G", "S"], &[]),
         "Crystal" => (SimDevice::Subckt { text: CRYSTAL.into() }, &[], &[("f", "${VALUE}")]),
         "Crystal_GND24" => (SimDevice::Subckt { text: CRYSTAL.into() }, &["1", "3"], &[("f", "${VALUE}")]),
-        n if n.starts_with("Conn_")
-            || n.starts_with("MountingHole")
-            || matches!(n, "TestPoint" | "SW_Push" | "Fiducial") =>
-        {
+        "SW_Push" | "SW_SPST" => (SimDevice::Subckt { text: SWITCH.into() }, &[], &[("state", "0")]),
+        "SW_SPDT" => (SimDevice::Subckt { text: SWITCH_SPDT.into() }, &["1", "2", "3"], &[("state", "0")]),
+        "Potentiometer" => {
+            (SimDevice::Subckt { text: POT.into() }, &["1", "2", "3"], &[("r", "${VALUE}"), ("pos", "0.5")])
+        }
+        n if n.starts_with("Conn_") || n.starts_with("MountingHole") || matches!(n, "TestPoint" | "Fiducial") => {
             (SimDevice::Ignore, &[], &[])
         }
         _ => return None,

@@ -1,4 +1,4 @@
-//! Crystals, test points, push buttons, mounting holes, fiducials, and the IC packages
+//! Crystals, test points, switches, potentiometers, mounting holes, fiducials, and the IC packages
 //! of the hand-made parts (SOIC, DIP, SOT-23-5).
 
 use super::fp::{Fp, row};
@@ -12,6 +12,7 @@ pub(super) fn add(b: &mut Builder) {
     crystals(b);
     test_points(b);
     switches(b);
+    potentiometers(b);
     mounting_holes(b);
     packages(b);
 }
@@ -120,6 +121,61 @@ fn switches(b: &mut Builder) {
         value: "SW_Push".into(),
         symbol: Some("SW_Push"),
         variants: vec![variant("Tactile 6 × 6 mm THT", name, Map::ByNumber)],
+    });
+
+    // CK OS102011MS2Q: pads 1, 2 (common), 3 on 2 mm, two plated mounting tabs.
+    let slide = "SW_Slide_SPDT_Straight_CK_OS102011MS2Q";
+    let mut f = Fp::new(slide, "Slide switch SPDT, CK OS102011MS2Q, 2 mm pitch, through-hole");
+    for (n, x) in [("1", -2.0), ("2", 0.0), ("3", 2.0)] {
+        f.tht(n, x, 0.0, 1.5, 2.5, 0.8);
+    }
+    for x in [-4.1, 4.1] {
+        f.tht("", x, 0.0, 2.2, 3.5, 1.5);
+    }
+    f.outline([-4.3, -2.15, 4.3, 2.15], 0.12);
+    f.fab(Shape::rect(Point::mm(-2.0, -1.0), Point::mm(2.0, 1.0), mm(0.1)));
+    b.footprint(f.finish());
+    b.symbol(sym::switch_spst());
+    b.symbol(sym::switch_spdt());
+    b.part(PartSpec {
+        name: "SW_SPST".into(),
+        category: "Switches",
+        description: "Switch, single pole single throw (on/off)".into(),
+        prefix: "SW",
+        value: "SW_SPST".into(),
+        symbol: Some("SW_SPST"),
+        variants: vec![variant("Slide CK OS102011MS2Q, pads 1–2", slide, Map::Pairs(&[("1", "1"), ("2", "2")]))],
+    });
+    b.part(PartSpec {
+        name: "SW_SPDT".into(),
+        category: "Switches",
+        description: "Switch, single pole double throw (changeover)".into(),
+        prefix: "SW",
+        value: "SW_SPDT".into(),
+        symbol: Some("SW_SPDT"),
+        variants: vec![variant("Slide CK OS102011MS2Q", slide, Map::ByNumber)],
+    });
+}
+
+fn potentiometers(b: &mut Builder) {
+    // Bourns 3386P: a 9.5 mm square trimmer, pins 1 and 3 on one side, the wiper opposite.
+    let name = "Potentiometer_Bourns_3386P_Vertical";
+    let mut f = Fp::new(name, "Trimmer potentiometer, Bourns 3386P, 9.5 × 9.5 mm, through-hole");
+    for (n, x, y) in [("1", 0.0, -2.54), ("2", 2.54, 0.0), ("3", 0.0, 2.54)] {
+        f.tht_round(n, x, y, 1.44, 0.8);
+    }
+    f.outline([-4.765, -4.765, 4.765, 4.765], 0.12);
+    f.silk_circle(0.0, 0.0, 1.5);
+    b.footprint(f.finish());
+    b.symbol(sym::potentiometer());
+    b.part(PartSpec {
+        name: "Potentiometer".into(),
+        category: "Passives",
+        description: "Potentiometer: a resistor between 1 and 3, wiper 2".into(),
+        prefix: "RV",
+        value: "10k".into(),
+        symbol: Some("Potentiometer"),
+        variants: vec![variant("Trimmer Bourns 3386P", name, Map::ByNumber)],
     });
 }
 

@@ -41,6 +41,33 @@ impl SimModel {
         SimModel { device, pins: Vec::new(), params: BTreeMap::new() }
     }
 
+    /// The control the schematic shows on a part of this model while simulating: a
+    /// subcircuit with a `state` parameter is a switch, one with `pos` a potentiometer.
+    pub fn control(&self) -> Option<SimControl> {
+        if !matches!(self.device, SimDevice::Subckt { .. }) {
+            return None;
+        }
+        if self.params.contains_key(SimControl::Switch.param()) {
+            Some(SimControl::Switch)
+        } else if self.params.contains_key(SimControl::Position.param()) {
+            Some(SimControl::Position)
+        } else {
+            None
+        }
+    }
+
+    /// The control's setting for a component (its parameter override, else the model's
+    /// default), clamped to 0..=1; a switch reads 0 or 1.
+    pub fn control_value(&self, control: SimControl, component: &ComponentSim) -> f64 {
+        let key = control.param();
+        let text = component.params.get(key).or_else(|| self.params.get(key));
+        let v = text.and_then(|t| crate::si::parse(t)).unwrap_or(0.0).clamp(0.0, 1.0);
+        match control {
+            SimControl::Switch => (v > 0.5) as u8 as f64,
+            SimControl::Position => v,
+        }
+    }
+
     /// Problems of the model itself (its text and pin count), `pins` being the mapped
     /// pins (explicit or automatic).
     pub fn problems(&self, pins: usize) -> Vec<String> {
@@ -83,6 +110,35 @@ impl SimModel {
             }
         }
         out
+    }
+}
+
+/// A part's setting changed on the schematic while simulating (see [`SimModel::control`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SimControl {
+    /// `state`: 0 or 1 (open/closed, or a changeover switch's throw A/B).
+    Switch,
+    /// `pos`: a potentiometer's wiper, 0 (at pin 1) to 1 (at pin 3).
+    Position,
+}
+
+impl SimControl {
+    pub fn param(self) -> &'static str {
+        match self {
+            SimControl::Switch => "state",
+            SimControl::Position => "pos",
+        }
+    }
+
+    /// The parameter's text for a setting.
+    pub fn format(self, v: f64) -> String {
+        match self {
+            SimControl::Switch => if v > 0.5 { "1" } else { "0" }.into(),
+            SimControl::Position => {
+                let v = (v.clamp(0.0, 1.0) * 1000.0).round() / 1000.0;
+                format!("{v}")
+            }
+        }
     }
 }
 

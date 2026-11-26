@@ -321,6 +321,48 @@ pub fn push_button() -> Symbol {
     s.finish()
 }
 
+/// Toggle switch, single throw: pins 1 (left) and 2 (right), the lever open.
+pub fn switch_spst() -> Symbol {
+    let mut s = Sym::new("SW_SPST");
+    s.pin("1", "1", -2.0 * G, 0.0, 0.0, 2.0 * G - 2.032);
+    s.pin("2", "2", 2.0 * G, 0.0, 180.0, 2.0 * G - 2.032);
+    s.circle(-1.524, 0.0, 0.508, false);
+    s.circle(1.524, 0.0, 0.508, false);
+    s.line(&[(-1.1, 0.3), (1.6, 1.4)]);
+    s.ref_value(2.0, -1.0);
+    s.finish()
+}
+
+/// Toggle switch, double throw: COM (2) left, A (1) right top, B (3) right bottom; the
+/// lever on A.
+pub fn switch_spdt() -> Symbol {
+    let mut s = Sym::new("SW_SPDT");
+    s.pin("2", "COM", -2.0 * G, 0.0, 0.0, 2.0 * G - 2.032);
+    s.pin("1", "A", 2.0 * G, G, 180.0, 2.0 * G - 2.032);
+    s.pin("3", "B", 2.0 * G, -G, 180.0, 2.0 * G - 2.032);
+    s.circle(-1.524, 0.0, 0.508, false);
+    s.circle(1.524, G, 0.508, false);
+    s.circle(1.524, -G, 0.508, false);
+    s.line(&[(-1.1, 0.25), (1.2, 2.0)]);
+    s.text("${REF}", 0.0, G + 1.2, HAlign::Center, VAlign::Bottom);
+    s.text("${VALUE}", 0.0, -G - 1.2, HAlign::Center, VAlign::Top);
+    s.finish()
+}
+
+/// Potentiometer: a resistor between pins 1 (left) and 3 (right), the wiper (2) from
+/// above with an arrow onto the body.
+pub fn potentiometer() -> Symbol {
+    let mut s = Sym::new("Potentiometer");
+    s.pin("1", "1", -2.0 * G, 0.0, 0.0, G);
+    s.pin("3", "3", 2.0 * G, 0.0, 180.0, G);
+    s.pin("2", "2", 0.0, G, 270.0, 1.016);
+    s.rect(-G, -0.9, G, 0.9, false);
+    s.poly(&[(0.0, 0.9), (-0.5, 1.6), (0.5, 1.6)], true);
+    s.text("${REF}", 0.8, 1.6, HAlign::Left, VAlign::Bottom);
+    s.text("${VALUE}", 0.0, -1.4, HAlign::Center, VAlign::Top);
+    s.finish()
+}
+
 /// An independent source: a circle between pin 1 (+, top) and pin 2 (−, bottom).
 fn source(name: &str) -> Sym {
     let mut s = Sym::new(name);

@@ -17320,6 +17320,239 @@
       ]
     },
     {
+      "id": "5ce10000-0000-4000-9000-d7ce22cd2c60",
+      "name": "SW_SPST",
+      "category": "Switches",
+      "graphics": [
+        {
+          "type": "circle",
+          "center": [-1524000, 0],
+          "radius": 508000,
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "circle",
+          "center": [1524000, 0],
+          "radius": 508000,
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "line",
+          "a": [-1100000, 300000],
+          "b": [1600000, 1400000],
+          "width": 254000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 2000000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -1000000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-f140f8dcb208",
+          "name": "1",
+          "number": "1",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 3048000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-f440f8dcb721",
+          "name": "2",
+          "number": "2",
+          "pos": [5080000, 0],
+          "direction": 180.0,
+          "length": 3048000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-99ce229cfdbf",
+      "name": "SW_SPDT",
+      "category": "Switches",
+      "graphics": [
+        {
+          "type": "circle",
+          "center": [-1524000, 0],
+          "radius": 508000,
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "circle",
+          "center": [1524000, 2540000],
+          "radius": 508000,
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "circle",
+          "center": [1524000, -2540000],
+          "radius": 508000,
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "line",
+          "a": [-1100000, 250000],
+          "b": [1200000, 2000000],
+          "width": 254000
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [0, 3740000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -3740000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-b43cbacc64e6",
+          "name": "COM",
+          "number": "2",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 3048000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b33cbacc6333",
+          "name": "A",
+          "number": "1",
+          "pos": [5080000, 2540000],
+          "direction": 180.0,
+          "length": 3048000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b53cbacc6699",
+          "name": "B",
+          "number": "3",
+          "pos": [5080000, -2540000],
+          "direction": 180.0,
+          "length": 3048000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-596b09984656",
+      "name": "Potentiometer",
+      "category": "Passives",
+      "graphics": [
+        {
+          "type": "rect",
+          "a": [-2540000, -900000],
+          "b": [2540000, 900000],
+          "width": 254000,
+          "fill": false
+        },
+        {
+          "type": "polygon",
+          "points": [
+            [0, 900000],
+            [-500000, 1600000],
+            [500000, 1600000]
+          ],
+          "width": 254000,
+          "fill": true
+        }
+      ],
+      "texts": [
+        {
+          "text": "${REF}",
+          "pos": [800000, 1600000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "left",
+          "valign": "bottom"
+        },
+        {
+          "text": "${VALUE}",
+          "pos": [0, -1400000],
+          "size": 1270000,
+          "rotation": 0.0,
+          "halign": "center",
+          "valign": "top"
+        }
+      ],
+      "pins": [
+        {
+          "id": "5ce10000-0000-4000-9000-26f296d7a142",
+          "name": "1",
+          "number": "1",
+          "pos": [-5080000, 0],
+          "direction": 0.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-24f296d79ddc",
+          "name": "3",
+          "number": "3",
+          "pos": [5080000, 0],
+          "direction": 180.0,
+          "length": 2540000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-25f296d79f8f",
+          "name": "2",
+          "number": "2",
+          "pos": [0, 2540000],
+          "direction": 270.0,
+          "length": 1016000,
+          "kind": "passive",
+          "show_name": false,
+          "show_number": false
+        }
+      ]
+    },
+    {
       "id": "5ce10000-0000-4000-9000-0402f8d1456a",
       "name": "74HC02 A",
       "category": "Logic",
@@ -146997,6 +147230,325 @@
       ]
     },
     {
+      "id": "5ce10000-0000-4000-9000-7dff69573907",
+      "name": "SW_Slide_SPDT_Straight_CK_OS102011MS2Q",
+      "category": "Through hole",
+      "description": "Slide switch SPDT, CK OS102011MS2Q, 2 mm pitch, through-hole",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-b4c283c30042",
+          "name": "1",
+          "pos": [-2000000, 0],
+          "rotation": 0.0,
+          "size": [1500000, 2500000],
+          "shape": {
+            "type": "round_rect",
+            "ratio": 0.15
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b5c283c301f5",
+          "name": "2",
+          "pos": [0, 0],
+          "rotation": 0.0,
+          "size": [1500000, 2500000],
+          "shape": {
+            "type": "oval"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b2c283c2fcdc",
+          "name": "3",
+          "pos": [2000000, 0],
+          "rotation": 0.0,
+          "size": [1500000, 2500000],
+          "shape": {
+            "type": "oval"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b3c283c2fe8f",
+          "name": "",
+          "pos": [-4100000, 0],
+          "rotation": 0.0,
+          "size": [2200000, 3500000],
+          "shape": {
+            "type": "oval"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1500000, 1500000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-b0c283c2f976",
+          "name": "",
+          "pos": [4100000, 0],
+          "rotation": 0.0,
+          "size": [2200000, 3500000],
+          "shape": {
+            "type": "oval"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [1500000, 1500000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-4300000, -2150000],
+            "b": [4300000, 2150000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4420000, -2270000],
+            "b": [4420000, -2270000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4420000, 2270000],
+            "b": [4420000, 2270000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4420000, -2270000],
+            "b": [-4420000, -2010000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4420000, 2010000],
+            "b": [-4420000, 2270000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [4420000, -2270000],
+            "b": [4420000, -2010000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [4420000, 2010000],
+            "b": [4420000, 2270000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-2000000, -1000000],
+            "b": [2000000, 1000000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-5750000, -2700000],
+            "b": [5750000, 2700000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 2900000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-be1d1944eb4d",
+      "name": "Potentiometer_Bourns_3386P_Vertical",
+      "category": "Through hole",
+      "description": "Trimmer potentiometer, Bourns 3386P, 9.5 × 9.5 mm, through-hole",
+      "pads": [
+        {
+          "id": "5ce10000-0000-4000-9000-82b56dc1f9d8",
+          "name": "1",
+          "pos": [0, -2540000],
+          "rotation": 0.0,
+          "size": [1440000, 1440000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-83b56dc1fb8b",
+          "name": "2",
+          "pos": [2540000, 0],
+          "rotation": 0.0,
+          "size": [1440000, 1440000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        },
+        {
+          "id": "5ce10000-0000-4000-9000-84b56dc1fd3e",
+          "name": "3",
+          "pos": [0, 2540000],
+          "rotation": 0.0,
+          "size": [1440000, 1440000],
+          "shape": {
+            "type": "circle"
+          },
+          "kind": {
+            "type": "through_hole",
+            "drill": [800000, 800000]
+          },
+          "paste": false
+        }
+      ],
+      "graphics": [
+        {
+          "layer": "fabrication",
+          "shape": {
+            "type": "rect",
+            "a": [-4765000, -4765000],
+            "b": [4765000, 4765000],
+            "width": 100000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4885000, -4885000],
+            "b": [4885000, -4885000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4885000, 4885000],
+            "b": [4885000, 4885000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [-4885000, -4885000],
+            "b": [-4885000, 4885000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "line",
+            "a": [4885000, -4885000],
+            "b": [4885000, 4885000],
+            "width": 120000
+          }
+        },
+        {
+          "layer": "silkscreen",
+          "shape": {
+            "type": "circle",
+            "center": [0, 0],
+            "radius": 1500000,
+            "width": 120000,
+            "fill": false
+          }
+        },
+        {
+          "layer": "courtyard",
+          "shape": {
+            "type": "rect",
+            "a": [-5300000, -5300000],
+            "b": [5300000, 5300000],
+            "width": 50000,
+            "fill": false
+          }
+        }
+      ],
+      "texts": [
+        {
+          "layer": "silkscreen",
+          "text": {
+            "text": "${REF}",
+            "pos": [0, 5500000],
+            "size": 1000000,
+            "bold": true,
+            "rotation": 0.0,
+            "halign": "center",
+            "valign": "bottom"
+          }
+        }
+      ]
+    },
+    {
       "id": "5ce10000-0000-4000-9000-f87688d2604a",
       "name": "MountingHole_2.2mm_M2_Pad",
       "category": "Mechanical",
@@ -180409,7 +180961,176 @@
       ],
       "sim": {
         "device": {
-          "type": "ignore"
+          "type": "subckt",
+          "text": "* Switch: closed (ron) when state is 1, open (roff) when 0.\n.subckt SWITCH 1 2 params: state=0 ron=0.05 roff=1e9\nR1 1 2 {state > 0.5 ? ron : roff}\n.ends SWITCH"
+        },
+        "params": {
+          "state": "0"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-0e0d646e02b0",
+      "name": "SW_SPST",
+      "category": "Switches",
+      "description": "Switch, single pole single throw (on/off)",
+      "prefix": "SW",
+      "default_value": "SW_SPST",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-d7ce22cd2c60"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-48900b5e8fd6",
+          "name": "Slide CK OS102011MS2Q, pads 1–2",
+          "footprint": "5ce10000-0000-4000-9000-7dff69573907",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-b4c283c30042",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f140f8dcb208"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b5c283c301f5",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-f440f8dcb721"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Switch: closed (ron) when state is 1, open (roff) when 0.\n.subckt SWITCH 1 2 params: state=0 ron=0.05 roff=1e9\nR1 1 2 {state > 0.5 ? ron : roff}\n.ends SWITCH"
+        },
+        "params": {
+          "state": "0"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-100d64995faf",
+      "name": "SW_SPDT",
+      "category": "Switches",
+      "description": "Switch, single pole double throw (changeover)",
+      "prefix": "SW",
+      "default_value": "SW_SPDT",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-99ce229cfdbf"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-cfdadfaf92c7",
+          "name": "Slide CK OS102011MS2Q",
+          "footprint": "5ce10000-0000-4000-9000-7dff69573907",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-b4c283c30042",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-b33cbacc6333"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b5c283c301f5",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-b43cbacc64e6"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-b2c283c2fcdc",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-b53cbacc6699"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Changeover switch: COM to A when state is 0, to B when 1.\n.subckt SWITCH_SPDT a com b params: state=0 ron=0.05 roff=1e9\nR1 com a {state > 0.5 ? roff : ron}\nR2 com b {state > 0.5 ? ron : roff}\n.ends SWITCH_SPDT"
+        },
+        "pins": [
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-b33cbacc6333"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-b43cbacc64e6"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-b53cbacc6699"
+          }
+        ],
+        "params": {
+          "state": "0"
+        }
+      }
+    },
+    {
+      "id": "5ce10000-0000-4000-9000-6bc8abfedc26",
+      "name": "Potentiometer",
+      "category": "Passives",
+      "description": "Potentiometer: a resistor between 1 and 3, wiper 2",
+      "prefix": "RV",
+      "default_value": "10k",
+      "units": [
+        {
+          "name": "A",
+          "symbol": "5ce10000-0000-4000-9000-596b09984656"
+        }
+      ],
+      "variants": [
+        {
+          "id": "5ce10000-0000-4000-9000-8334f3a583c2",
+          "name": "Trimmer Bourns 3386P",
+          "footprint": "5ce10000-0000-4000-9000-be1d1944eb4d",
+          "connections": [
+            {
+              "pad": "5ce10000-0000-4000-9000-82b56dc1f9d8",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-26f296d7a142"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-83b56dc1fb8b",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-25f296d79f8f"
+            },
+            {
+              "pad": "5ce10000-0000-4000-9000-84b56dc1fd3e",
+              "unit": 0,
+              "pin": "5ce10000-0000-4000-9000-24f296d79ddc"
+            }
+          ]
+        }
+      ],
+      "sim": {
+        "device": {
+          "type": "subckt",
+          "text": "* Potentiometer: r from 1 to 3, the wiper at pos (0: at 1, 1: at 3).\n.subckt POT 1 w 3 params: r=10k pos=0.5\n.param p={min(max(pos,0),1)}\nR1 1 w {max(r*p,1m)}\nR2 w 3 {max(r*(1-p),1m)}\n.ends POT"
+        },
+        "pins": [
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-26f296d7a142"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-25f296d79f8f"
+          },
+          {
+            "unit": 0,
+            "pin": "5ce10000-0000-4000-9000-24f296d79ddc"
+          }
+        ],
+        "params": {
+          "pos": "0.5",
+          "r": "${VALUE}"
         }
       }
     },

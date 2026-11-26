@@ -634,3 +634,44 @@ fn a_worker_reports_what_goes_wrong() {
     let r = w.run("* x\nR1 a 0 bogus_value\n.op\n.end\n", &Cancel::default(), &sim::Live::default());
     assert!(matches!(&r, Err(SimError::Failed { .. })), "{r:?}");
 }
+
+#[test]
+fn switches_and_potentiometers() {
+    let mut b = Bench::new();
+    b.dc(10.0, "IN", "GND");
+    // Symbol pin order: SW_SPDT COM A B; Potentiometer 1 3 2 (wiper last).
+    let (push, _) = b.place("SW_Push", "", &["IN", "P"]);
+    b.place("Resistor", "1k", &["P", "GND"]);
+    let (spdt, _) = b.place("SW_SPDT", "", &["IN", "A", "B"]);
+    b.place("Resistor", "1k", &["A", "GND"]);
+    b.place("Resistor", "1k", &["B", "GND"]);
+    let (pot, _) = b.place("Potentiometer", "10k", &["IN", "GND", "W"]);
+    let lib = model::builtin::builtin_library();
+    let control = |name: &str| lib.parts.iter().find(|p| p.name == name).unwrap().sim.as_ref().unwrap().control();
+    assert_eq!(control("SW_Push"), Some(model::simulation::SimControl::Switch));
+    assert_eq!(control("SW_SPDT"), Some(model::simulation::SimControl::Switch));
+    assert_eq!(control("Potentiometer"), Some(model::simulation::SimControl::Position));
+    assert_eq!(control("Resistor"), None);
+    let a = op(&mut b);
+    let Some(r) = ok(&b, &a) else { return };
+    // Open push button, changeover on A, wiper in the middle.
+    assert!(r.op_voltage("P").unwrap() < 1e-3);
+    assert!(near(r.op_voltage("A").unwrap(), 10.0, 1e-2));
+    assert!(r.op_voltage("B").unwrap() < 1e-3);
+    assert!(near(r.op_voltage("W").unwrap(), 5.0, 1e-6));
+
+    let set = |b: &mut Bench, c, k: &str, v: &str| {
+        b.update_component(c, |c| {
+            c.sim.params.insert(k.into(), v.into());
+        })
+    };
+    set(&mut b, push, "state", "1");
+    set(&mut b, spdt, "state", "1");
+    set(&mut b, pot, "pos", "0.3");
+    let r = ok(&b, &a).unwrap();
+    assert!(near(r.op_voltage("P").unwrap(), 10.0, 1e-2));
+    assert!(r.op_voltage("A").unwrap() < 1e-3);
+    assert!(near(r.op_voltage("B").unwrap(), 10.0, 1e-2));
+    // 0 at pin 1 (IN), 1 at pin 3 (GND).
+    assert!(near(r.op_voltage("W").unwrap(), 7.0, 1e-6));
+}

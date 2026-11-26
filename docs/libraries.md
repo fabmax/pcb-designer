@@ -52,7 +52,8 @@ variant in use can't be removed, and neither can a symbol or footprint a used pa
 
 A standard library of generic parts: resistors, capacitors (also polarised), inductors,
 ferrite beads, fuses, diodes (Schottky, Zener, TVS), LEDs, NPN/PNP transistors, N/P
-MOSFETs, crystals, test points, a push button, connectors `Conn_01x01`…`Conn_01x40` and
+MOSFETs, crystals, test points, a push button, slide switches (on/off and changeover), a
+trimmer potentiometer, connectors `Conn_01x01`…`Conn_01x40` and
 `Conn_02x01`…`Conn_02x20` (pin headers and sockets; single rows also JST PH/XH/SH and
 screw terminals), a few ICs (op amps, regulators, 74HC logic: the 74HC00, 02, 04, 08, 14,
 32 and 86 gates, the 74HC74 flip-flop and the 74HC595 shift register), board parts (mounting holes M2
