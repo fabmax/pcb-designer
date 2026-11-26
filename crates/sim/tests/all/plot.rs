@@ -287,3 +287,12 @@ fn traces_are_in_name_order_and_keep_their_colour() {
     let order: Vec<(&str, usize)> = d.traces.iter().map(|t| (t.label.as_str(), t.signal)).collect();
     assert_eq!(order, [("V(IN)", 1), ("V(OUT)", 0)]);
 }
+
+/// Read-out volts under 1 µV are 0 V (solver noise), never −0; other units keep theirs.
+#[test]
+fn readings_drop_femtovolts() {
+    assert_eq!(plot::value_label(-2.009e-15, "V"), "0 V");
+    assert_eq!(plot::value_label(-0.0, "V"), "0 V");
+    assert_eq!(plot::value_label(1.5e-6, "V"), "1.5 µV");
+    assert_eq!(plot::value_label(2e-12, "A"), "2 pA");
+}

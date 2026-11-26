@@ -828,11 +828,12 @@ fn draw(
     }
 }
 
-/// A trace's value as text: a logic trace's level first ("1 · 4.98 V").
+/// A trace's value as text: a logic trace's level ("0" or "1"), else its value read out.
 fn value_text(t: &plot::Trace, y: f64) -> String {
     match t.logic {
-        Some(threshold) => format!("{} · {}", if y > threshold { "1" } else { "0" }, plot::label(y, t.unit)),
-        None => plot::label(y, t.unit),
+        // Its level only: the voltage is what the analog trace is for.
+        Some(threshold) => (if y > threshold { "1" } else { "0" }).to_string(),
+        None => plot::value_label(y, t.unit),
     }
 }
 
@@ -1107,7 +1108,11 @@ fn readout(
                     toggle = Some(t.label.clone());
                 }
                 let value = |i: Option<usize>| i.map_or(String::new(), |i| value_text(t, t.y[i]));
-                let delta = a.zip(b).map_or(String::new(), |(i, j)| plot::label(t.y[j] - t.y[i], t.unit));
+                // Logic traces: no difference of levels.
+                let delta = a
+                    .zip(b)
+                    .filter(|_| t.logic.is_none())
+                    .map_or(String::new(), |(i, j)| plot::value_label(t.y[j] - t.y[i], t.unit));
                 for v in [value(a), value(b), delta] {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(RichText::new(v).monospace())

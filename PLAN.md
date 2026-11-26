@@ -833,6 +833,10 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   alone they fill it, up to 48 px each). `logic_runs` gives a lane's levels with
   interpolated edges over the visible range; runs under a pixel wide become one bar
   per column, so a busy clock costs a line per pixel. The data key includes the flags.
+  Hover and readout show a logic trace's level (0 or 1, no B − A). Read-out values go
+  through `plot::value_label` (`reading`: volts under 1 µV are 0 V, the solver's
+  femtovolt noise; −0 is 0), also the result tables and the schematic's voltage tags;
+  axis ticks keep `label`.
   MCP's plot screenshots (`plot_scene`) still draw logic traces as voltages. `Scale`
   (linear or log) does fractions, zoom around a point, pan and a minimum width (flat
   traces still get an axis). `linear_ticks` divides rather than multiplies for negative

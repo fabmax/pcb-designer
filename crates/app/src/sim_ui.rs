@@ -335,7 +335,7 @@ impl SimPanel {
                 if node != "0"
                     && let Some(v) = r.op_voltage(net)
                 {
-                    o.voltages.push((net.clone(), si::format(three_digits(v), "V")));
+                    o.voltages.push((net.clone(), si::format(three_digits(sim::plot::reading(v, "V")), "V")));
                 }
             }
             devices = sim::report::devices(r);

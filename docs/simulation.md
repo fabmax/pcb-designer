@@ -110,7 +110,7 @@ the simulation has run, the tab says so and has a **Run** button.
   logic**, to show it as a logic level
   instead: a lane under the plot, high or low, like a logic analyser (transient and DC
   sweep). It switches halfway between the trace's lowest and highest voltage, so it
-  works at any supply. Values read `1 · 4.98 V`. With only logic traces, the lanes fill
+  works at any supply. Its values read 0 or 1. With only logic traces, the lanes fill
   the plot. The setting is saved with the probe.
 - **Export CSV…** saves the traces shown (a spectrum when it shows one).
 - An operating point shows a sortable table.

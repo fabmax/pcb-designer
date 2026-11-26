@@ -543,6 +543,17 @@ fn log_ticks(lo: f64, hi: f64, count: usize) -> Vec<f64> {
 }
 
 /// A tick label: SI prefixed for V, A, s, Hz; plain for dB and degrees.
+/// A value as read out: volts under 1 µV are 0 V (the solver's noise around a level is
+/// femtovolts), and −0 is 0.
+pub fn reading(value: f64, unit: &str) -> f64 {
+    if value == 0.0 || (unit == "V" && value.abs() < 0.5e-6) { 0.0 } else { value }
+}
+
+/// [`label`] of a value read out ([`reading`]): hover, readout, result tables.
+pub fn value_label(value: f64, unit: &str) -> String {
+    label(reading(value, unit), unit)
+}
+
 pub fn label(value: f64, unit: &str) -> String {
     match unit {
         "dB" | "°" => {

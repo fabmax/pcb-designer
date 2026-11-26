@@ -156,7 +156,7 @@ pub fn rows(r: &SimResult) -> Vec<Row> {
         .into_iter()
         .map(|s| {
             let v = &s.vector;
-            let f = |x: f64| si::format(x, s.unit);
+            let f = |x: f64| crate::plot::value_label(x, s.unit);
             let values = if op {
                 vec![f(v.re.first().copied().unwrap_or(f64::NAN))]
             } else if r.plot.complex {
