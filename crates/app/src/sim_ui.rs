@@ -985,7 +985,8 @@ impl SimPanel {
             ui.painter().layout_no_wrap(t.to_string(), font, theme::text_dim()).size().x
         };
         let plot_w = if sweep { text_width(ui, "Plot", egui::TextStyle::Body).max(check) } else { 0.0 };
-        let logic_w = if logic_column { text_width(ui, "Logic", egui::TextStyle::Body).max(check) } else { 0.0 };
+        // Some air around Logic: it sits at the panel's edge (the signals have room to spare).
+        let logic_w = if logic_column { text_width(ui, "Logic", egui::TextStyle::Body).max(check) + 16.0 } else { 0.0 };
         let value_w = if sweep {
             0.0
         } else {
