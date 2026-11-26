@@ -70,7 +70,9 @@ applied.
   running simulation and, with the shared library, how far it is.
 - The **result table** lists the named nets (all of them with **Show all nets**) and the
   measured currents; click a net to select it. An operating point measures the current
-  into every pin (`I(R1.1)`) and each part's power (`P(R1)`). Tick signals to plot them.
+  into every pin (`I(R1.1)`) and each part's power (`P(R1)`), and shows their values.
+  After a sweep, tick **Plot** to plot a signal, and **Logic** to show a net as a logic
+  level (it plots the net too; transient and DC sweep).
 - When the schematic changes in a way that changes the netlist, the results dim with
   "Changed since the run".
 - **Circuit** holds the ground net, supplies, temperature and extra SPICE lines, and shows
@@ -104,7 +106,8 @@ the simulation has run, the tab says so and has a **Run** button.
   points and the phase margin (loop gain at 0 dB). **Copy** copies them as text.
 - Drag the handle between the plot and the table to give either more room;
   double-click it for the automatic size.
-- Right-click a voltage probe's row → **Show as logic** to show it as a logic level
+- Tick **Logic** in the result table, or right-click a voltage probe's row → **Show as
+  logic**, to show it as a logic level
   instead: a lane under the plot, high or low, like a logic analyser (transient and DC
   sweep). It switches halfway between the trace's lowest and highest voltage, so it
   works at any supply. Values read `1 · 4.98 V`. With only logic traces, the lanes fill

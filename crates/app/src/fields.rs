@@ -296,7 +296,8 @@ pub fn section_note(ui: &mut egui::Ui, title: &str, note: &str) {
     ui.horizontal(|ui| {
         theme::bold_label(ui, title, SECTION_SIZE, ui.visuals().strong_text_color());
         if !note.is_empty() {
-            ui.label(RichText::new(note).color(theme::text_dim()));
+            // Truncated to the panel (the whole note on hover).
+            ui.add(egui::Label::new(RichText::new(note).color(theme::text_dim())).truncate());
         }
     });
     ui.add_space(2.0);
@@ -326,10 +327,15 @@ pub fn grid(ui: &mut egui::Ui, salt: impl std::hash::Hash + std::fmt::Debug, add
     IN_GRID.set(outer);
 }
 
+/// The width left up to the form's right edge ([`form_scope`]), else the available width.
+pub fn form_width(ui: &egui::Ui) -> f32 {
+    let right = SCOPE.with_borrow(|s| s.as_ref().map_or(f32::INFINITY, |s| s.right));
+    ui.available_width().min(right - ui.cursor().left()).max(0.0)
+}
+
 /// Width a value widget takes: its column's in a [`grid`] (`None` elsewhere: its own).
 pub fn value_width(ui: &egui::Ui) -> Option<f32> {
-    let right = SCOPE.with_borrow(|s| s.as_ref().map_or(f32::INFINITY, |s| s.right));
-    IN_GRID.get().then(|| ui.available_width().min(right - ui.cursor().left()).max(0.0))
+    IN_GRID.get().then(|| form_width(ui))
 }
 
 /// Add `widget` as wide as the value column in a [`grid`] (else at its own size).

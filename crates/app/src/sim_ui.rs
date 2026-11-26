@@ -136,6 +136,28 @@ fn toggle(probes: &mut Vec<Probe>, probe: Probe, conn: &editor_core::connectivit
     }
 }
 
+/// A change from the results table.
+enum RowEdit {
+    /// Plot a signal, or stop plotting it.
+    Toggle(Probe),
+    /// Show a net's voltage as a logic level (plotting it if it isn't), or as a voltage.
+    Logic(String, bool),
+}
+
+/// Show the voltage of `net` (to ground) as a logic level or not; a net not probed yet
+/// gets a probe.
+fn set_logic(probes: &mut Vec<Probe>, net: &str, on: bool) {
+    let probe = probes.iter_mut().find_map(|p| match p {
+        Probe::Voltage { net: n, reference: None, logic, .. } if n == net => Some(logic),
+        _ => None,
+    });
+    match probe {
+        Some(logic) => *logic = on,
+        None if on => probes.push(Probe::Voltage { net: net.to_string(), at: None, reference: None, logic: true }),
+        None => {}
+    }
+}
+
 /// The kinds of analyses, in the Add simulation menu's order: the kind (also a new
 /// analysis' name) and its label, which says what the SPICE names mean.
 pub const KINDS: [(&str, &str); 4] = [
@@ -624,8 +646,10 @@ impl SimPanel {
                 self.analysis_ui(ui, &mut setup.analyses[i], doc.project());
                 ui.add_space(8.0);
                 let a = setup.analyses[i].clone();
-                if let Some(probe) = self.results_ui(ui, doc, &a, &mut act) {
-                    toggle(&mut setup.analyses[i].probes, probe, doc.connectivity());
+                match self.results_ui(ui, doc, &a, &mut act) {
+                    Some(RowEdit::Toggle(probe)) => toggle(&mut setup.analyses[i].probes, probe, doc.connectivity()),
+                    Some(RowEdit::Logic(net, on)) => set_logic(&mut setup.analyses[i].probes, &net, on),
+                    None => {}
                 }
                 ui.add_space(8.0);
                 crate::fields::collapsing(ui, "Circuit", "sim_circuit", |ui| {
@@ -893,7 +917,10 @@ impl SimPanel {
     /// probed and named nets (all with "Show all nets") and the probed currents. Dimmed
     /// when the schematic changed since. The result table. Returns a probe to add or remove (a row's check box: the
     /// signals the plot shows).
-    fn results_ui(&mut self, ui: &mut Ui, doc: &Document, a: &Analysis, act: &mut Option<SimAct>) -> Option<Probe> {
+    /// The last result of `a`: its signals, to plot (and show as logic) in a sweep, with
+    /// their values in an operating point. Fits the panel's width: the signal column
+    /// takes what the others leave, its names truncated.
+    fn results_ui(&mut self, ui: &mut Ui, doc: &Document, a: &Analysis, act: &mut Option<SimAct>) -> Option<RowEdit> {
         let overrides = self.overrides(doc.project(), a);
         let stale = self.session.is_stale(doc.project(), doc.connectivity(), a, &overrides, doc.revision);
         // A run going shows its points so far (backends that stream).
@@ -905,7 +932,9 @@ impl SimPanel {
             return None;
         };
         let sweep = done.result.scale().is_some();
-        let mut toggle = None;
+        // Logic levels: transient and DC sweeps, not AC.
+        let logic_column = sweep && !done.result.plot.complex;
+        let mut edit = None;
         let took = format!("{} · {:.2} s", sim::report::title(&done.result), done.duration.as_secs_f64());
         crate::fields::section_note(ui, "Results", &took);
         if stale {
@@ -918,6 +947,14 @@ impl SimPanel {
             .probes
             .iter()
             .filter_map(|p| if let Probe::Voltage { net, .. } = p { Some(net.as_str()) } else { None })
+            .collect();
+        let logic: HashSet<&str> = a
+            .probes
+            .iter()
+            .filter_map(|p| match p {
+                Probe::Voltage { net, reference: None, logic: true, .. } => Some(net.as_str()),
+                _ => None,
+            })
             .collect();
         let filter = self.filter.to_lowercase();
         let rows: Vec<&sim::report::Row> = done
@@ -935,46 +972,158 @@ impl SimPanel {
         }
         let plotted: HashSet<sim::plot::Signal> =
             a.probes.iter().map(|p| sim::plot::Signal::of_probe(p, conn)).collect();
-        let columns = sim::report::columns(&done.result);
         let dim = |t: String| if stale { RichText::new(t).color(theme::text_dim()) } else { RichText::new(t) };
-        egui::Grid::new(("sim_results", a.id)).striped(true).spacing([14.0, 3.0]).show(ui, |ui| {
-            if sweep {
-                label(ui, "Plot");
+
+        // Column widths: the check boxes and values at their size, the signal the rest.
+        let gap = 14.0;
+        // A check box's width (its frame and padding), as measured the last frame.
+        let check_id = egui::Id::unique("sim_results_check");
+        let check: f32 = ui.data(|d| d.get_temp(check_id)).unwrap_or(ui.spacing().interact_size.y);
+        let mut check_seen = 0.0f32;
+        let text_width = |ui: &Ui, t: &str, style: egui::TextStyle| {
+            let font = style.resolve(ui.style());
+            ui.painter().layout_no_wrap(t.to_string(), font, theme::text_dim()).size().x
+        };
+        let plot_w = if sweep { text_width(ui, "Plot", egui::TextStyle::Body).max(check) } else { 0.0 };
+        let logic_w = if logic_column { text_width(ui, "Logic", egui::TextStyle::Body).max(check) } else { 0.0 };
+        let value_w = if sweep {
+            0.0
+        } else {
+            rows.iter()
+                .take(500)
+                .flat_map(|r| r.values.iter())
+                .map(|v| text_width(ui, v, egui::TextStyle::Monospace))
+                .fold(text_width(ui, "Value", egui::TextStyle::Body), f32::max)
+        };
+        let others = [plot_w, logic_w, value_w].iter().filter(|w| **w > 0.0).map(|w| w + gap).sum::<f32>();
+        let total = crate::fields::form_width(ui);
+        let signal_w = (total - others).max(40.0);
+        let height = ui.spacing().interact_size.y;
+        // A cell `width` wide (left aligned).
+        let cell = |ui: &mut Ui, width: f32, add: &mut dyn FnMut(&mut Ui)| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(width, height),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.set_width(width);
+                    add(ui)
+                },
+            );
+        };
+        let centered = |ui: &mut Ui, width: f32, add: &mut dyn FnMut(&mut Ui)| {
+            let layout = egui::Layout::centered_and_justified(egui::Direction::LeftToRight);
+            ui.allocate_ui_with_layout(egui::vec2(width, height), layout, |ui| {
+                ui.set_width(width);
+                add(ui)
+            });
+        };
+        let right = |ui: &mut Ui, width: f32, add: &mut dyn FnMut(&mut Ui)| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(width, height),
+                egui::Layout::right_to_left(egui::Align::Center),
+                |ui| {
+                    ui.set_width(width);
+                    add(ui)
+                },
+            );
+        };
+        // A row: cells left to right `gap` apart, every other one striped (laid out by
+        // hand: an egui grid gives its cells more room than asked, past the panel).
+        let stripe = ui.visuals().faint_bg_color;
+        let row = |ui: &mut Ui, n: usize, add: &mut dyn FnMut(&mut Ui)| {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(total, height), egui::Sense::hover());
+            if n % 2 == 1 {
+                ui.painter().rect_filled(rect.expand2(egui::vec2(0.0, 1.5)), 2.0, stripe);
             }
-            label(ui, "Signal");
-            for c in columns {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| label(ui, c));
-            }
-            ui.end_row();
-            for row in rows.iter().take(500) {
-                let sig = row_signal(row);
+            let layout = egui::Layout::left_to_right(egui::Align::Center);
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(layout));
+            child.spacing_mut().item_spacing.x = gap;
+            add(&mut child);
+        };
+        // Column headers at their own width (not the form's label column).
+        let head = |ui: &mut Ui, t: &str| _ = ui.label(RichText::new(t).color(theme::text_dim()));
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing.y = 3.0;
+            let mut n = 0;
+            row(ui, n, &mut |ui| {
                 if sweep {
-                    let mut on = sig.as_ref().is_some_and(|s| plotted.contains(s));
-                    let tip = if a.probes.is_empty() { "Plot only the ticked signals" } else { "Plot this signal" };
-                    if ui.checkbox(&mut on, "").on_hover_text(tip).changed() {
-                        toggle = sig.as_ref().map(|s| s.probe());
-                    }
+                    cell(ui, plot_w, &mut |ui| head(ui, "Plot"));
                 }
-                let r = ui.add(egui::Button::selectable(false, dim(row.label.clone())));
-                if sig.as_ref().is_some_and(|s| plotted.contains(s)) {
-                    r.context_menu(|ui| {
-                        if ui.button("Remove probe").clicked() {
-                            toggle = sig.as_ref().map(|s| s.probe());
-                            ui.close();
+                cell(ui, signal_w, &mut |ui| {
+                    // In line with the names (selectable buttons pad their text).
+                    ui.add_space(ui.spacing().button_padding.x);
+                    head(ui, "Signal")
+                });
+                if logic_column {
+                    centered(ui, logic_w, &mut |ui| head(ui, "Logic"));
+                }
+                if !sweep {
+                    right(ui, value_w, &mut |ui| head(ui, "Value"));
+                }
+            });
+            for r in rows.iter().take(500) {
+                n += 1;
+                row(ui, n, &mut |ui| {
+                    let row = r;
+                    let sig = row_signal(row);
+                    let is_plotted = sig.as_ref().is_some_and(|s| plotted.contains(s));
+                    if sweep {
+                        cell(ui, plot_w, &mut |ui| {
+                            let mut on = is_plotted;
+                            let tip =
+                                if a.probes.is_empty() { "Plot only the ticked signals" } else { "Plot this signal" };
+                            let r = ui.add(egui::Checkbox::without_text(&mut on));
+                            check_seen = check_seen.max(r.rect.width());
+                            if r.on_hover_text(tip).changed() {
+                                edit = sig.as_ref().map(|s| RowEdit::Toggle(s.probe()));
+                            }
+                        });
+                    }
+                    cell(ui, signal_w, &mut |ui| {
+                        let button = egui::Button::selectable(false, dim(row.label.clone()))
+                            .wrap_mode(egui::TextWrapMode::Truncate);
+                        let r = ui.add(button);
+                        if is_plotted {
+                            r.context_menu(|ui| {
+                                if ui.button("Remove probe").clicked() {
+                                    edit = sig.as_ref().map(|s| RowEdit::Toggle(s.probe()));
+                                    ui.close();
+                                }
+                            });
+                        }
+                        // The whole name (it may be truncated).
+                        match &row.net {
+                            Some(net) => {
+                                if r.on_hover_text(format!("{} · click to select the net", row.label)).clicked() {
+                                    *act = Some(SimAct::SelectNet(net.clone()));
+                                }
+                            }
+                            None => _ = r.on_hover_text(&row.label),
                         }
                     });
-                }
-                if let Some(net) = &row.net
-                    && r.on_hover_text("Select the net").clicked()
-                {
-                    *act = Some(SimAct::SelectNet(net.clone()));
-                }
-                for v in &row.values {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(dim(v.clone()).monospace())
-                    });
-                }
-                ui.end_row();
+                    if logic_column {
+                        centered(ui, logic_w, &mut |ui| {
+                            if let Some(net) = &row.net {
+                                let mut on = logic.contains(net.as_str());
+                                let tip = if on {
+                                    "Shown as a logic level: untick for its voltage"
+                                } else {
+                                    "Show as a logic level (high or low) under the plot"
+                                };
+                                if ui.add(egui::Checkbox::without_text(&mut on)).on_hover_text(tip).changed() {
+                                    edit = Some(RowEdit::Logic(net.clone(), on));
+                                }
+                            }
+                        });
+                    }
+                    if !sweep {
+                        right(ui, value_w, &mut |ui| {
+                            for v in &row.values {
+                                ui.label(dim(v.clone()).monospace());
+                            }
+                        });
+                    }
+                });
             }
             // Probes without data in this result, and why.
             if sweep {
@@ -983,27 +1132,42 @@ impl SimPanel {
                     if have.contains(&sig) {
                         continue;
                     }
-                    let mut on = true;
-                    if ui.checkbox(&mut on, "").on_hover_text("Remove the probe").changed() {
-                        toggle = Some(sig.probe());
-                    }
-                    let label = probe_label(doc.project(), &sig);
-                    let reason = sim::plot::missing_reason(&done.result, &sig, conn);
-                    let r = ui.label(RichText::new(format!("{label} · {reason}")).color(theme::text_dim()));
-                    r.context_menu(|ui| {
-                        if ui.button("Remove probe").clicked() {
-                            toggle = Some(sig.probe());
-                            ui.close();
-                        }
+                    n += 1;
+                    row(ui, n, &mut |ui| {
+                        cell(ui, plot_w, &mut |ui| {
+                            let mut on = true;
+                            if ui.add(egui::Checkbox::without_text(&mut on)).on_hover_text("Remove the probe").changed()
+                            {
+                                edit = Some(RowEdit::Toggle(sig.probe()));
+                            }
+                        });
+                        let label = probe_label(doc.project(), &sig);
+                        let reason = sim::plot::missing_reason(&done.result, &sig, conn);
+                        let text = format!("{label} · {reason}");
+                        cell(ui, signal_w, &mut |ui| {
+                            let r = ui.add(
+                                egui::Label::new(RichText::new(&text).color(theme::text_dim()))
+                                    .wrap_mode(egui::TextWrapMode::Truncate),
+                            );
+                            r.context_menu(|ui| {
+                                if ui.button("Remove probe").clicked() {
+                                    edit = Some(RowEdit::Toggle(sig.probe()));
+                                    ui.close();
+                                }
+                            });
+                        });
                     });
-                    ui.end_row();
                 }
             }
         });
+        if check_seen > 0.0 && check_seen != check {
+            ui.data_mut(|d| d.insert_temp(check_id, check_seen));
+            ui.ctx().request_repaint();
+        }
         if rows.len() > 500 {
             hint(ui, &format!("… and {} more", rows.len() - 500));
         }
-        toggle
+        edit
     }
 
     /// Ground, supplies, temperature and extra lines (for every analysis), and the netlist
@@ -1438,6 +1602,20 @@ mod tests {
     fn run_all_says_how_it_went() {
         assert_eq!(batch_text(1, 0), "Ran 1 simulation");
         assert_eq!(batch_text(4, 1), "Ran 4 simulations, 1 failed");
+    }
+
+    #[test]
+    fn logic_ticks_set_the_probe_or_add_one() {
+        let mut probes = vec![Probe::voltage("A", None), Probe::Current { symbol: Id::new(), pin: Id::new() }];
+        set_logic(&mut probes, "A", true);
+        assert!(matches!(&probes[0], Probe::Voltage { logic: true, .. }));
+        set_logic(&mut probes, "A", false);
+        assert!(matches!(&probes[0], Probe::Voltage { logic: false, .. }));
+        // A net not probed yet: plotted as logic; unticking one never probed adds nothing.
+        set_logic(&mut probes, "B", true);
+        assert!(matches!(&probes[2], Probe::Voltage { net, logic: true, .. } if net == "B"));
+        set_logic(&mut probes, "C", false);
+        assert_eq!(probes.len(), 3);
     }
 
     #[test]

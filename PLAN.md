@@ -803,9 +803,15 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   single run (also the tuner's and an agent's) drop the queue.
 - **Panel** (`app/src/sim_ui.rs`): the current simulation's name, Run/Run all/Show/Stop
   with the last attempt's error count linking to Messages, its form, the result table
-  (named and probed nets, "Show all nets", a filter; a click selects the net), and
+  (named and probed nets, "Show all nets", a filter; a click selects the net; a sweep's
+  rows Plot, Signal and Logic, which `set_logic` turns on, probing the net if needed;
+  an operating point's Signal and Value), and
   "Circuit" collapsed (ground, supplies, temperature, extra lines, netlist and log
-  window); with the Simulation node selected, Circuit only. Every edit is one
+  window); with the Simulation node selected, Circuit only. The result table lays its
+  rows out by hand (`results_ui`'s `row`): fixed check box and value columns (the check
+  box's width measured the last frame), the signal column the rest of
+  `fields::form_width`, names truncated; an egui grid gave its cells more than asked and
+  ran past the panel. Every edit is one
   `SetSimulation`; value fields keep their own text buffer while focused and keep text
   that doesn't parse (red, not committed). ngspice is
   looked for once (when the panel shows or on Run; `SimPanel::engine`) and again when
