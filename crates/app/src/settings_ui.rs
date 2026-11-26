@@ -462,7 +462,7 @@ impl SettingsWindow {
             let changed = color != default;
             rows.row_with(ui, c.label(), COLOR_KEYWORDS, None, |ui| {
                 crate::color_edit::color_edit(ui, &mut color.0);
-                if changed && ui.small_button("Reset").on_hover_text("Back to the theme's colour").clicked() {
+                if changed && ui.button("Reset").on_hover_text("Back to the theme's colour").clicked() {
                     color = default;
                 }
             });

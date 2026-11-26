@@ -311,7 +311,7 @@ impl PartForm {
                 if let Some(new) = self.fields.text_sized(ui, ("prop", id, k.as_str()), v, 360.0) {
                     *v = new;
                 }
-                if ui.small_button("Remove").clicked() {
+                if ui.button("Remove").clicked() {
                     remove_prop = Some(k.clone());
                 }
                 ui.end_row();

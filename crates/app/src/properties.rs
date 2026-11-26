@@ -544,7 +544,7 @@ impl Properties {
                                 self.update(cx, Object::Zone(z.clone()), true);
                             }
                             if current.is_some() {
-                                if ui.small_button("Rule").on_hover_text("Use the design rule").clicked() {
+                                if ui.button("Rule").on_hover_text("Use the design rule").clicked() {
                                     *field(&mut z) = None;
                                     self.update(cx, Object::Zone(z.clone()), false);
                                 }

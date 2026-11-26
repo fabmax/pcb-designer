@@ -227,8 +227,10 @@ pub fn layer_menu(ui: &mut Ui, scene: &mut Scene, entries: &[LayerEntry]) {
     ui.horizontal(|ui| {
         ui.label(RichText::new("Layers").strong());
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            // The app's own button look: a menu draws its buttons without a background.
+            *ui.style_mut() = (*ui.ctx().global_style()).clone();
             for (label, visible) in [("None", false), ("All", true)] {
-                if ui.small_button(label).clicked() {
+                if ui.button(label).clicked() {
                     for e in entries {
                         scene.layer_mut(e.layer).visible = visible;
                     }

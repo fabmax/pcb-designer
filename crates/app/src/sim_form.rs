@@ -230,15 +230,12 @@ fn pins_ui(ui: &mut egui::Ui, lib: &Library, part: &Part, m: &mut SimModel) {
         if auto {
             ui.label(RichText::new("automatic: symbol order").color(theme::text_dim()));
         }
-        if ui
-            .small_button("Auto-map")
-            .on_hover_text("Ports to pins by name and number (A/K, C/B/E, D/G/S, +/−)")
-            .clicked()
+        if ui.button("Auto-map").on_hover_text("Ports to pins by name and number (A/K, C/B/E, D/G/S, +/−)").clicked()
         {
             m.pins = lib.auto_map_pins(part, &ports);
         }
         if spice {
-            if ui.small_button("+").on_hover_text("Add a node").clicked() {
+            if ui.button("+").on_hover_text("Add a node").clicked() {
                 let mut pins = current.clone();
                 if let Some(next) = options.iter().filter_map(|o| o.0).find(|p| !pins.contains(p)) {
                     pins.push(next);
@@ -246,7 +243,7 @@ fn pins_ui(ui: &mut egui::Ui, lib: &Library, part: &Part, m: &mut SimModel) {
                 m.pins = pins;
             }
             if ui
-                .add_enabled(!current.is_empty(), egui::Button::new("−").small())
+                .add_enabled(!current.is_empty(), egui::Button::new("−"))
                 .on_hover_text("Remove the last node")
                 .clicked()
             {
@@ -275,7 +272,7 @@ fn pins_ui(ui: &mut egui::Ui, lib: &Library, part: &Part, m: &mut SimModel) {
                 }
             });
             if i >= ports.len() && !spice {
-                if ui.small_button("✕").on_hover_text("Not a port of the model: remove").clicked() {
+                if ui.button("✕").on_hover_text("Not a port of the model: remove").clicked() {
                     remove = Some(i);
                 }
             } else {
@@ -317,7 +314,7 @@ fn params_ui(ui: &mut egui::Ui, f: &mut Fields, new_param: &mut String, id: Id, 
                 if let Some(new) = f.text_sized(ui, ("sim_param", id, k.as_str()), v, 200.0) {
                     *v = new;
                 }
-                if ui.small_button("✕").on_hover_text("Remove").clicked() {
+                if ui.button("✕").on_hover_text("Remove").clicked() {
                     remove = Some(k.clone());
                 }
                 ui.end_row();

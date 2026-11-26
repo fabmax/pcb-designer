@@ -67,10 +67,10 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document) -> Option<PlotAct> 
                         })
                         .collect();
                     ui.label(RichText::new(format!("Tuned: {}", text.join(" · "))).color(theme::warn()));
-                    if ui.small_button("Apply").on_hover_text("Write the tuned values into the schematic").clicked() {
+                    if ui.button("Apply").on_hover_text("Write the tuned values into the schematic").clicked() {
                         act = Some(PlotAct::ApplyTune(None));
                     }
-                    if ui.small_button("Reset").on_hover_text("Back to the schematic's values").clicked() {
+                    if ui.button("Reset").on_hover_text("Back to the schematic's values").clicked() {
                         panel.tuner.reset();
                         act = Some(PlotAct::TuneRun);
                     }
@@ -174,14 +174,10 @@ fn row_ui(ui: &mut Ui, panel: &mut SimPanel, project: &Project, row: &TuneRow, l
     if edit != *row && valid {
         out = RowAct::Edit(edit);
     }
-    if ui
-        .add_enabled(changed, egui::Button::new("Apply").small())
-        .on_hover_text("Write it into the schematic")
-        .clicked()
-    {
+    if ui.add_enabled(changed, egui::Button::new("Apply")).on_hover_text("Write it into the schematic").clicked() {
         out = RowAct::Apply;
     }
-    if ui.small_button("✕").on_hover_text("Remove from the tuner").clicked() {
+    if ui.button("✕").on_hover_text("Remove from the tuner").clicked() {
         out = RowAct::Remove;
     }
     out

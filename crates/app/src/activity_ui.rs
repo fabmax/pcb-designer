@@ -49,7 +49,7 @@ pub fn ui(ui: &mut Ui, entries: &VecDeque<ActivityEntry>, url: Option<&str>, err
         cols.cell(ui, cols.result, title("Result"));
         ui.label(title("What"));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.small_button("Clear").on_hover_text("Clear the list").clicked() {
+            if ui.button("Clear").on_hover_text("Clear the list").clicked() {
                 act = Some(Act::Clear);
             }
         });

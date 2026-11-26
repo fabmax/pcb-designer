@@ -659,7 +659,7 @@ impl KicadImport {
                     egui::ScrollArea::vertical().id_salt("kicad_paths_scroll").max_height(100.0).show(ui, |ui| {
                         for (i, p) in paths.iter().enumerate() {
                             ui.horizontal(|ui| {
-                                if i < added && ui.small_button("Remove").clicked() {
+                                if i < added && ui.button("Remove").clicked() {
                                     remove = Some(i);
                                 }
                                 ui.label(RichText::new(p.display().to_string()).monospace());
@@ -853,15 +853,12 @@ impl KicadImport {
                     field_keys,
                     |ui, i| {
                         let r = &results[i];
-                        if ui.small_button("Add").clicked() {
+                        if ui.button("Add").clicked() {
                             add = Some(r.clone());
                         }
                         if kind == Kind::Footprints
                             && let Some(sym) = &active
-                            && ui
-                                .small_button("Use")
-                                .on_hover_text(format!("Add as a footprint variant of {sym}"))
-                                .clicked()
+                            && ui.button("Use").on_hover_text(format!("Add as a footprint variant of {sym}")).clicked()
                         {
                             assign = Some(r.clone());
                         }
@@ -945,7 +942,7 @@ impl KicadImport {
                         frame.show(ui, |ui| {
                             ui.set_width(ui.available_width());
                             ui.horizontal(|ui| {
-                                if ui.small_button("Remove").clicked() {
+                                if ui.button("Remove").clicked() {
                                     remove = Some(i);
                                 }
                                 let units = if p.units > 1 { format!(", {} units", p.units) } else { String::new() };
@@ -991,7 +988,7 @@ impl KicadImport {
                 }
                 for (i, f) in self.footprints.iter().enumerate() {
                     let row = ui.horizontal(|ui| {
-                        if ui.small_button("Remove").clicked() {
+                        if ui.button("Remove").clicked() {
                             remove_fp = Some(i);
                         }
                         ui.label(RichText::new("Footprint").color(theme::text_dim()));

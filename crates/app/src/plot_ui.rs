@@ -242,7 +242,7 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
                 } else if let Some(at) = panel.session.result(analysis.id).and_then(stopped_at) {
                     ui.label(RichText::new(format!("Stopped at {at}")).color(theme::warn()));
                 } else if stale {
-                    if ui.small_button("Run").on_hover_text("⌘R").clicked() {
+                    if ui.button("Run").on_hover_text("⌘R").clicked() {
                         act = Some(PlotAct::Run(analysis.id));
                     }
                     ui.label(RichText::new("Changed since the run").color(theme::warn()));
@@ -1047,7 +1047,7 @@ fn readout(
                 }
             };
             ui.label(RichText::new(what).color(theme::text_dim()));
-            if ui.small_button("Copy").on_hover_text("The table as text, tab-separated").clicked() {
+            if ui.button("Copy").on_hover_text("The table as text, tab-separated").clicked() {
                 let mut text = format!("Signal\t{}\n", cols.join("\t"));
                 for (t, row) in data.traces.iter().zip(rows) {
                     text.push_str(&format!("{}\t{}\n", t.label, row.join("\t")));

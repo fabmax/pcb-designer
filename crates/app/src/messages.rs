@@ -352,7 +352,7 @@ fn excluded_section(
                     ui.horizontal(|ui| {
                         let text = format!("{unused} unused (the finding no longer occurs)");
                         ui.label(RichText::new(text).color(theme::text_dim()));
-                        remove_unused = ui.small_button("Remove unused").clicked();
+                        remove_unused = ui.button("Remove unused").clicked();
                     });
                 }
             })
@@ -463,10 +463,10 @@ fn board(ui: &mut egui::Ui, doc: &mut Document) -> Option<Show> {
             let count = |s: Severity| r.violations.iter().filter(|v| !v.excluded && v.severity == s).count();
             counts_label(ui, count(Severity::Error), count(Severity::Warning));
         }
-        if ui.small_button("Run DRC").clicked() {
+        if ui.button("Run DRC").clicked() {
             doc.run_drc();
         }
-        if doc.drc().is_some() && ui.small_button("Clear").clicked() {
+        if doc.drc().is_some() && ui.button("Clear").clicked() {
             doc.clear_drc();
         }
     });

@@ -116,6 +116,10 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), `sim` on
   afterwards (`theme::round_corners`).
 - **File dialogs:** never call a blocking `rfd::FileDialog` (it can crash winit on
   macOS); use `file_dialog::Dialog` (PLAN.md, "Native file dialogs").
+- **Buttons:** `ui.button`, not `small_button` (it looks squashed next to our fields);
+  only the keyboard settings' shortcut chips are small. Menus draw buttons without a
+  background: a menu that wants real buttons draws them with the global style
+  (`toolbar::layer_menu`).
 - **egui 0.37 deprecations:** use `Id::unique` / `IdSalt` instead of `Id::new`, and
   `ui.scope_id()` instead of `ui.id()`.
 

@@ -630,7 +630,7 @@ fn net_classes(ui: &mut egui::Ui, doc: &mut Document, message: &mut Option<Strin
                     changed = true;
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("Remove").clicked() {
+                    if ui.button("Remove").clicked() {
                         remove = Some(i);
                     }
                 });
