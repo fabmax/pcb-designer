@@ -91,6 +91,23 @@ fn simulation_fields_of_a_project() {
     assert!(text.contains("A1 [p1 p2] p3 NAND1"), "{text}");
     assert!(text.contains("rise_delay=2e-9") && text.contains("fall_delay=1n"), "{text}");
     assert_eq!(pin_numbers("U3"), ["1", "2", "3"]);
+    // A potentiometer: the built-in model, so the schematic's slider sets its position.
+    let rv1 = model("RV1").unwrap();
+    assert_eq!(rv1.control(), Some(SimControl::Position));
+    assert_eq!(rv1.params["r"], "${VALUE}");
+    assert_eq!(c("RV1").value, "10k");
+    assert_eq!(c("RV1").sim.params["pos"], "0.3");
+    assert_eq!(pin_numbers("RV1"), ["1", "2", "3"]);
+    // Controlled switches: ngspice's S and W (through a 0 V source) in a subcircuit.
+    let s1 = model("S1").unwrap();
+    let SimDevice::Subckt { text } = &s1.device else { panic!("{s1:?}") };
+    assert!(text.contains("S1 nop non cp cn KSW"), "{text}");
+    assert!(text.contains("SW(vt=2.5 vh=0.1 ron=1 roff=1e6)"), "{text}");
+    assert_eq!(pin_numbers("S1"), ["1", "2", "3", "4"]);
+    let s2 = model("S2").unwrap();
+    let SimDevice::Subckt { text } = &s2.device else { panic!("{s2:?}") };
+    assert!(text.contains("Vc cp cn 0\nW1 nop non Vc KCSW"), "{text}");
+    assert!(text.contains("CSW(it=0.001 ron=1)"), "{text}");
     // Excluded from the simulation, and not simulated (no model): no warning for those.
     assert!(c("R3").sim.exclude);
     assert!(model("J1").is_none());

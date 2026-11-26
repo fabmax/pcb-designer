@@ -9,8 +9,11 @@
 //!   milli, `Meg` mega).
 //! * Models from libraries (`Sim.Library` + `Sim.Name`) are embedded: the `.model` card,
 //!   or the `.subckt` with the cards and subcircuits it uses from the same file.
-//! * What has no equivalent here (IBIS, switches, transmission
-//!   lines, potentiometers) is left unsimulated with a warning; sources KiCad generates
+//! * Potentiometers become the built-in `POT` model (its `pos` is the schematic's
+//!   slider); voltage and current controlled switches subcircuits around ngspice's `S`
+//!   and `W`.
+//! * What has no equivalent here (IBIS, transmission lines, coupled inductors) is left
+//!   unsimulated with a warning; sources KiCad generates
 //!   differently (AM, FM, noise, random) and KiCad's raw SPICE device become SPICE line
 //!   models, as KiCad writes them.
 
@@ -583,13 +586,15 @@ fn map(f: &Fields, value: &str, sym: &KiSymbol, libs: &mut Libs) -> Result<Mappe
     let device = f.device.as_str();
     match device {
         "IBIS" | "KIBIS" => return Err("IBIS models aren't supported".into()),
-        "SW" => return Err("switch models aren't supported".into()),
         "TLINE" => return Err("transmission lines aren't supported".into()),
         "K" => return Err("coupled inductors aren't supported".into()),
         _ => {}
     }
     if device == "XSPICE" {
         return xspice(f, sym, libs);
+    }
+    if device == "SW" {
+        return switch(f, sym);
     }
     if !f.library.is_empty() && device != "SPICE" {
         return library_model(f, sym, libs);
@@ -612,6 +617,9 @@ fn spice_line(letter: &str, nodes: usize, rest: &str) -> SimDevice {
 }
 
 fn passive(f: &Fields, value: &str, sym: &KiSymbol) -> Result<Mapped, String> {
+    if f.device == "R" && f.kind == "POT" {
+        return potentiometer(f, value, sym);
+    }
     let pins = map_pins(f, &["+", "-"], 0, sym)?;
     let letter = f.device.as_str();
     let key = letter.to_ascii_lowercase();
@@ -630,7 +638,6 @@ fn passive(f: &Fields, value: &str, sym: &KiSymbol) -> Result<Mapped, String> {
     }
     match f.kind.as_str() {
         "" | "=" => {}
-        "POT" => return Err("potentiometer models aren't supported".into()),
         other => return Err(format!("KiCad's {letter} model {other} isn't supported")),
     }
     let device = match letter {
@@ -657,6 +664,56 @@ fn passive(f: &Fields, value: &str, sym: &KiSymbol) -> Result<Mapped, String> {
         }
     }
     Ok(m)
+}
+
+/// KiCad's potentiometer (`r`, `pos`; pins r0, wiper, r1): the built-in `POT`, the
+/// resistance as the value, the position the component's (0 at r0, as ngspice's).
+fn potentiometer(f: &Fields, value: &str, sym: &KiSymbol) -> Result<Mapped, String> {
+    let pins = map_pins(f, &["r0", "wiper", "r1"], 0, sym)?;
+    let params = [("r", "${VALUE}"), ("pos", "0.5")].map(|(k, v)| (k.to_string(), v.to_string())).into();
+    let text = model::builtin::generate::sims::POT.to_string();
+    let mut m = mapped(SimModel { device: SimDevice::Subckt { text }, pins, params }, "POT");
+    if let Some(r) = f.param("r") {
+        let v = si_number(r).ok_or_else(|| format!("the resistance {r:?} is not a number"))?;
+        if si_number(value) != Some(v) {
+            m.value = Some(si::value_text(v));
+        }
+    } else if si_number(value).is_none() {
+        return Err("a potentiometer without its resistance (r)".into());
+    }
+    if let Some(pos) = f.param("pos") {
+        let v = si_number(pos).ok_or_else(|| format!("the position {pos:?} is not a number"))?;
+        m.sim.params.insert("pos".into(), SimControl::Position.format(v));
+    }
+    Ok(m)
+}
+
+/// KiCad's switches: voltage (`V`: ngspice `S`, `thr`/`his` as `vt`/`vh`) or current
+/// controlled (`I`: `W`, through a 0 V source between ctrl+ and ctrl−, `it`/`ih`); pins
+/// no+, no−, ctrl+, ctrl−.
+fn switch(f: &Fields, sym: &KiSymbol) -> Result<Mapped, String> {
+    let pins = map_pins(f, &["no+", "no-", "ctrl+", "ctrl-"], 0, sym)?;
+    let (current, prefix) = match f.kind.as_str() {
+        "V" | "" => (false, "v"),
+        "I" => (true, "i"),
+        other => return Err(format!("KiCad's switch model {other} isn't supported")),
+    };
+    let mut card = Vec::new();
+    for (key, ours) in [("thr", "t"), ("his", "h"), ("ron", "ron"), ("roff", "roff")] {
+        if let Some(v) = f.param(key) {
+            let name = if ours.starts_with('r') { ours.to_string() } else { format!("{prefix}{ours}") };
+            card.push(format!("{name}={}", to_spice(v)));
+        }
+    }
+    let card = card.join(" ");
+    let (name, body) = if current {
+        ("KSW_I", format!("Vc cp cn 0\nW1 nop non Vc KCSW\n.model KCSW CSW({card})"))
+    } else {
+        ("KSW_V", format!("S1 nop non cp cn KSW\n.model KSW SW({card})"))
+    };
+    let text = format!(".subckt {name} nop non cp cn\n{body}\n.ends {name}");
+    let model = SimModel { pins, ..SimModel::new(SimDevice::Subckt { text }) };
+    Ok(mapped(model, if current { "CSW" } else { "SW" }))
 }
 
 /// The waveform of a KiCad source, or (for kinds that have no waveform here) its SPICE

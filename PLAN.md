@@ -1385,8 +1385,12 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
     `A1 nodes NAME` with the card: KiCad writes a node per pin, without brackets, so
     `xspice_nodes` groups the vector ports of gates (`[ins] out`) and bridges (`[ins]
     [outs]`); `Sim.Params` override the card (rewritten only then: vector values don't
-    survive `ModelCard`); bridges are the user's, as in KiCad. IBIS, switches,
-    transmission lines and potentiometers are reported, not simulated.
+    survive `ModelCard`); bridges are the user's, as in KiCad. `R` `POT` (pins r0,
+    wiper, r1) becomes the built-in `POT` (`r=${VALUE}`, the value set to `r`, `pos` in
+    the component's params: ngspice's `potentiometer` code model, which KiCad netlists,
+    has the same orientation, 0 at r0). `SW` `V` / `I` (no+, no−, ctrl+, ctrl−) become a
+    subcircuit with `S` (`thr`/`his` → `vt`/`vh`) or `W` behind a 0 V source between the
+    control pins. IBIS, transmission lines and `K` are reported, not simulated.
     Values in fields are SI (`M` mega; `1UF`, `1g`, `100uF;16V` read as KiCad does
     them or better), directives SPICE (`spice_number`: `M` milli). Text items with a
     known dot command (`is_directive`) give the analyses (`.op`, `.tran`, `.ac`
@@ -1976,8 +1980,8 @@ defers.
   category folder, setting the category of several selected items at once, category
   suggestions from all open libraries (only the item's own library and the Built-in
   library today).
-- Built-in library: trimmer potentiometers (Bourns 3362P, TC33), SMD tactile switches
-  (6×6, 3×4) and a slide switch, HC-49 SMD crystal, USB-C (USB 2.0) and Micro-B
+- Built-in library: more potentiometers (Bourns 3362P, TC33, panel RK09), SMD tactile
+  switches (6×6, 3×4), toggle switches, HC-49 SMD crystal, USB-C (USB 2.0) and Micro-B
   receptacles; 1.27 / 2.00 mm pin rows, RGB LEDs, dual diodes (BAV99), resistor arrays,
   crystal oscillators, barrel jacks, more logic and regulators. Check the generic land
   patterns (power inductors, SMD electrolytics, DPAK, JST, screw terminals) against
@@ -2002,8 +2006,8 @@ defers.
 - A crash inside the in-app library (a segfault, not ngspice's `ControlledExit`) takes
   the app down unless "In a separate process" is on. A long-lived worker could hold the
   library instead and be restarted after a crash, making that the default.
-- KiCad simulation import gaps: IBIS (KIBIS), switches,
-  transmission lines, coupled inductors (`K`), potentiometers; the workbook (`.wbk`:
+- KiCad simulation import gaps: IBIS (KIBIS), transmission lines, coupled inductors
+  (`K`), a potentiometer's `log` taper; the workbook (`.wbk`:
   plotted signals, cursors) and `.probe` / `.save` become no probes; `.control` scripts
   are dropped; a subcircuit's instance parameters aren't passed through a pin-joining
   wrapper; nested DC sweeps keep the first.
