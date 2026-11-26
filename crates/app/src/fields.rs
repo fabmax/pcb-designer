@@ -199,6 +199,9 @@ struct Scope {
     /// Widest label this frame.
     widest: f32,
     cap: f32,
+    /// The form's right edge: a grid's value column may have grown past it (egui grids
+    /// keep a column as wide as it once was), value widgets stop there.
+    right: f32,
 }
 
 thread_local! {
@@ -217,7 +220,12 @@ pub fn form_scope<R>(
     let key = egui::Id::unique(("form_scope", salt));
     let last: Option<f32> = ui.data(|d| d.get_temp(key));
     let cap = (ui.available_width() * LABEL_SHARE).max(60.0);
-    let outer = SCOPE.replace(Some(Scope { width: last.unwrap_or(0.0).min(cap), widest: 0.0, cap }));
+    let outer = SCOPE.replace(Some(Scope {
+        width: last.unwrap_or(0.0).min(cap),
+        widest: 0.0,
+        cap,
+        right: ui.max_rect().right(),
+    }));
     let r = add(ui);
     let scope = SCOPE.replace(outer).expect("set above");
     let widest = scope.widest.min(scope.cap).ceil();
@@ -320,7 +328,8 @@ pub fn grid(ui: &mut egui::Ui, salt: impl std::hash::Hash + std::fmt::Debug, add
 
 /// Width a value widget takes: its column's in a [`grid`] (`None` elsewhere: its own).
 pub fn value_width(ui: &egui::Ui) -> Option<f32> {
-    IN_GRID.get().then(|| ui.available_width())
+    let right = SCOPE.with_borrow(|s| s.as_ref().map_or(f32::INFINITY, |s| s.right));
+    IN_GRID.get().then(|| ui.available_width().min(right - ui.cursor().left()).max(0.0))
 }
 
 /// Add `widget` as wide as the value column in a [`grid`] (else at its own size).
@@ -331,11 +340,12 @@ pub fn fill(ui: &mut egui::Ui, widget: impl egui::Widget) -> egui::Response {
     }
 }
 
-/// A combo box filling the value column in a [`grid`].
+/// A combo box filling the value column in a [`grid`] (its text truncated to fit).
 pub fn combo_box(ui: &egui::Ui, salt: impl std::hash::Hash + std::fmt::Debug) -> egui::ComboBox<'static> {
     let c = egui::ComboBox::from_id_salt(salt);
     match value_width(ui) {
-        Some(w) => c.width(w),
+        // Truncated: a long selection would widen it past the column.
+        Some(w) => c.width(w).wrap_mode(egui::TextWrapMode::Truncate),
         None => c,
     }
 }

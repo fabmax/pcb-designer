@@ -74,8 +74,11 @@ applied.
 - When the schematic changes in a way that changes the netlist, the results dim with
   "Changed since the run".
 - **Circuit** holds the ground net, supplies, temperature and extra SPICE lines, and shows
-  the SPICE netlist and ngspice's log. Power nets that no source or supply powers are
-  listed with the voltage their name suggests (`+3V3` → 3.3 V) and an **Add** button.
+  the SPICE netlist and ngspice's log. Power nets whose name says their voltage (`+5V`,
+  `+3V3`) get a supply automatically when no source drives them; they're listed there.
+  Type another voltage to change one, or click ✕ to leave the net without a supply (when
+  something else powers it). Power nets without a source (`VCC`, a regulator's output,
+  or one you left out) are listed below with an **Add** button.
 
 Every change undoes like any other edit.
 
@@ -191,7 +194,8 @@ it and see its values on the schematic.
 - **Resistor_Sim**, **Capacitor_Sim** and **Inductor_Sim** (category Simulation) are
   passives without footprint, for loads, a source's impedance or parasitics that belong
   in the simulation but not on the board.
-- **Supplies** in the simulation setup power nets like `+5V` without drawing a source.
+- **Supplies** power nets like `+5V` without drawing a source: automatic for power ports
+  whose name says the voltage, unless a regulator's output is on the net.
 - **Test bench:** keep sources on a sheet of their own ("Testbench" in the demo): a source
   stands in for a connector's supply or signal, and has no footprint, so the board doesn't
   change.

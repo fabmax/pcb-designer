@@ -653,8 +653,12 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   every pin of every device (cheap there, and a sweep keeps its few probes), so its
   netlist differs from a sweep's. `Netlist::pins` lists every simulated pin
   (`DevicePin`: component, refdes, symbol, pin, key, outer node) for labels (`I(R1.1)`)
-  and the device table. Supplies are `VSUPPLY_…` to
-  ground. Problems carry the component's symbols for zooming.
+  and the device table. Supplies are `VSUPPLY_…` to ground: the setup's, then
+  `automatic_supplies` (power port nets that `unpowered_nets` finds without a voltage
+  source pin or a setup supply, whose name says the voltage, without a `PowerOut` pin,
+  i.e. a regulator, and not in `Simulation::unsupplied`). Automatic at netlist time
+  rather than written into the setup on the first run: the setup doesn't change behind
+  the user's back, and renaming or deleting a net leaves no stale supply. Problems carry the component's symbols for zooming.
 - **ngspice output gotchas:** plots come last analysis first (reversed on read); an
   operating point has no scale vector; vector names are `v(node)` and `i(vsource)`
   (older versions `v1#branch`); `No. Points` can exceed the data of a stopped run (the
@@ -909,9 +913,13 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   window is the time view's cursors, else its visible x, cached in the time state;
   Measure there shows `spectrum::table` of the time traces over that window
   (`Measuring`). MCP: `distortion` per transient signal, `screenshot` `spectrum`.
-- **Panel extras:** `suggested_supplies` lists power port nets that no supply and no
-  voltage source pin powers, with `supply_voltage` from the name (`None` for `VCC`, the
-  user types it).
+- **Panel extras:** Circuit lists the setup's supplies, then the automatic ones (typing
+  another voltage makes it a setup supply, ✕ adds it to `unsupplied`), then
+  `unsupplied_nets` (no voltage in the name like `VCC`, a regulator on it, or left
+  out) with **Add** (a left-out net at its name's voltage goes back to automatic).
+  Value widgets in grids stop at `form_scope`'s right edge (`value_width`): egui grids
+  keep a column as wide as it ever was, so one wide frame made fields overflow the
+  panel for good; grid combos truncate their text for the same reason.
 - **Tuner** (`sim::tune`, `app/src/tune_ui.rs`): rows are `Simulation::tune`
   (`TuneParam` = a part's value or a source's field by key, from `Source::fields_mut`;
   the setup check refuses a parameter twice, min ≥ max, and min ≤ 0 on log rows). The

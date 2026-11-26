@@ -1014,7 +1014,7 @@ impl SimPanel {
             nets.sort_by(|a, b| natural_cmp(a, b));
             grid(ui, "sim_circuit_grid", |ui| {
                 label(ui, "Ground");
-                let options: Vec<(Option<String>, String)> = std::iter::once((None, "Automatic (GND ports)".into()))
+                let options: Vec<(Option<String>, String)> = std::iter::once((None, "GND ports".into()))
                     .chain(nets.iter().map(|n| (Some(n.clone()), n.clone())))
                     .collect();
                 if let Some(g) = crate::fields::combo(ui, "sim_ground", &setup.ground, &options) {
@@ -1029,73 +1029,92 @@ impl SimPanel {
             });
             ui.add_space(4.0);
             label(ui, "Supplies (DC sources for power nets without one drawn)");
+            let conn = doc.connectivity();
+            let automatic = sim::netlist::automatic_supplies(doc.project(), conn);
+            let unsupplied = sim::netlist::unsupplied_nets(doc.project(), conn);
+            // Applied after the grids: a supply removed, an automatic one left out,
+            // supplies added (an automatic one set to another voltage becomes one).
             let mut remove = None;
+            let mut leave_out = None;
+            let mut add: Vec<Supply> = Vec::new();
             grid(ui, "sim_supplies", |ui| {
                 for (i, s) in setup.supplies.iter_mut().enumerate() {
                     let options: Vec<(String, String)> = nets.iter().map(|n| (n.clone(), n.clone())).collect();
                     if let Some(n) = crate::fields::combo(ui, ("sim_supply", i), &s.net, &options) {
                         s.net = n;
                     }
-                    ui.horizontal(|ui| {
+                    if trailing_button(ui, "✕", "Remove", true, |ui| {
                         if let Some(Some(v)) = self.si_field(ui, ("supply", i), Some(s.voltage), "V", "") {
                             s.voltage = v;
                         }
-                        if ui.small_button("✕").on_hover_text("Remove").clicked() {
-                            remove = Some(i);
+                    }) {
+                        remove = Some(i);
+                    }
+                    ui.end_row();
+                }
+                for a in &automatic {
+                    ui.label(&a.net).on_hover_text("Automatic: the voltage its name says");
+                    let hint = "Leave it without a supply (something else powers it)";
+                    if trailing_button(ui, "✕", hint, true, |ui| {
+                        if let Some(Some(v)) = self.si_field(ui, ("auto", a.net.as_str()), Some(a.voltage), "V", "")
+                            && v != a.voltage
+                        {
+                            add.push(Supply { net: a.net.clone(), voltage: v });
                         }
-                    });
+                    }) {
+                        leave_out = Some(a.net.clone());
+                    }
                     ui.end_row();
                 }
             });
-            if let Some(i) = remove {
-                setup.supplies.remove(i);
-                self.texts.clear();
-                self.si.clear();
+            if ui.button("Add supply").clicked() {
+                let net = unsupplied.first().map(|s| s.net.clone()).or(nets.first().cloned()).unwrap_or_default();
+                let voltage = sim::netlist::supply_voltage(&net).unwrap_or(0.0);
+                add.push(Supply { net, voltage });
             }
-            let suggested = suggested_supplies(doc);
-            if ui.small_button("Add supply").clicked() {
-                let net = suggested.first().map(|s| s.0.clone()).or(nets.first().cloned()).unwrap_or_default();
-                let voltage = supply_voltage(&net).unwrap_or(0.0);
-                setup.supplies.push(Supply { net, voltage });
-            }
-            if !suggested.is_empty() {
+            if !unsupplied.is_empty() {
                 ui.add_space(4.0);
                 label(ui, "Power nets without a source");
-                let mut add = Vec::new();
                 grid(ui, "sim_suggested", |ui| {
-                    for (net, guess) in &suggested {
-                        ui.label(net);
-                        let typed = self.suggest.get(net).copied();
-                        let v = typed.or(*guess);
-                        ui.horizontal(|ui| {
-                            if let Some(new) = self.si_field(ui, ("suggest", net.as_str()), v, "V", "volts") {
+                    for n in &unsupplied {
+                        let r = ui.label(&n.net);
+                        if n.power_out {
+                            r.on_hover_text("A power output pin (a regulator) is on it");
+                        } else if n.voltage.is_some() {
+                            r.on_hover_text("Left without its automatic supply");
+                        }
+                        let v = self.suggest.get(&n.net).copied().or(n.voltage);
+                        let hint = if v.is_some() { "Power it with a supply" } else { "Enter its voltage first" };
+                        if trailing_button(ui, "Add", hint, v.is_some(), |ui| {
+                            if let Some(new) = self.si_field(ui, ("suggest", n.net.as_str()), v, "V", "volts") {
                                 match new {
-                                    Some(x) => _ = self.suggest.insert(net.clone(), x),
-                                    None => _ = self.suggest.remove(net),
+                                    Some(x) => _ = self.suggest.insert(n.net.clone(), x),
+                                    None => _ = self.suggest.remove(&n.net),
                                 }
                             }
-                            let r = ui.add_enabled(v.is_some(), egui::Button::new("Add").small());
-                            if r.on_disabled_hover_text("Enter its voltage first").clicked()
-                                && let Some(v) = v
-                            {
-                                add.push(Supply { net: net.clone(), voltage: v });
-                            }
-                        });
+                        }) && let Some(v) = v
+                        {
+                            add.push(Supply { net: n.net.clone(), voltage: v });
+                        }
                         ui.end_row();
                     }
                 });
-                let known: Vec<Supply> = suggested
-                    .iter()
-                    .filter_map(|(n, g)| Some(Supply { net: n.clone(), voltage: self.suggest.get(n).copied().or(*g)? }))
-                    .collect();
-                if known.len() > 1 && ui.small_button("Add all").on_hover_text("Those with a voltage").clicked() {
-                    add = known;
+            }
+            if remove.is_some() || leave_out.is_some() || !add.is_empty() {
+                if let Some(i) = remove {
+                    setup.supplies.remove(i);
                 }
-                if !add.is_empty() {
-                    setup.supplies.extend(add);
-                    self.texts.clear();
-                    self.si.clear();
+                setup.unsupplied.extend(leave_out);
+                for s in add {
+                    // A net left out goes back to automatic at the voltage its name says.
+                    let left_out = setup.unsupplied.contains(&s.net);
+                    setup.unsupplied.retain(|n| n != &s.net);
+                    if !(left_out && sim::netlist::supply_voltage(&s.net) == Some(s.voltage)) {
+                        setup.supplies.push(s);
+                    }
                 }
+                self.texts.clear();
+                self.si.clear();
             }
             ui.add_space(4.0);
             label(ui, "Extra SPICE lines (.param, .options, models)");
@@ -1331,56 +1350,26 @@ pub fn sources(project: &Project) -> Vec<(Id, String, &'static str)> {
     out
 }
 
-/// The nets of power ports, but not ground.
-fn power_nets(doc: &Document) -> Vec<String> {
-    let mut nets: Vec<String> = doc
-        .project()
-        .schematic
-        .labels
-        .iter()
-        .filter(|l| l.kind == LabelKind::Power)
-        .filter(|l| !matches!(l.power_style(), PowerStyle::Ground | PowerStyle::SignalGround))
-        .filter_map(|l| Some(doc.connectivity().net_of(ObjectId::Label(l.id))?.name.clone()))
-        .collect();
-    nets.sort_by(|a, b| natural_cmp(a, b));
-    nets.dedup();
-    nets
-}
-
-/// The voltage a supply net's name suggests (`+5V` → 5, `3V3` → 3.3, `-12V` → −12),
-/// none for names without one (`VCC`).
-pub fn supply_voltage(net: &str) -> Option<f64> {
-    si::parse(net.trim_start_matches('+'))
-}
-
-/// Power port nets (not ground) that neither a supply nor a voltage source's pin
-/// powers, with the voltage their name suggests.
-pub fn suggested_supplies(doc: &Document) -> Vec<(String, Option<f64>)> {
-    let p = doc.project();
-    let conn = doc.connectivity();
-    let setup = &p.schematic.simulation;
-    let mut sourced: HashSet<String> = HashSet::new();
-    for (c, _, kind) in sources(p) {
-        if kind != "V" {
-            continue;
+/// `field` filling a grid's value column up to `text`, a button at its right end;
+/// whether the button was clicked.
+fn trailing_button(ui: &mut Ui, text: &str, hint: &str, enabled: bool, field: impl FnOnce(&mut Ui)) -> bool {
+    let galley = egui::WidgetText::from(text).into_galley(ui, None, f32::INFINITY, egui::TextStyle::Button);
+    let button = galley.size().x + 2.0 * ui.spacing().button_padding.x;
+    let gap = ui.spacing().item_spacing.x;
+    ui.horizontal(|ui| {
+        let width = (crate::fields::value_width(ui).unwrap_or(ui.available_width()) - button - gap).max(60.0);
+        let height = ui.spacing().interact_size.y;
+        ui.allocate_ui(egui::vec2(width, height), field);
+        let r = ui.add_enabled(enabled, egui::Button::new(text));
+        let clicked = r.clicked();
+        if enabled {
+            r.on_hover_text(hint);
+        } else {
+            r.on_disabled_hover_text(hint);
         }
-        for s in p.schematic.symbols.iter().filter(|s| s.component == c) {
-            let Some(sym) = editor_core::query::symbol_of_instance(p, s) else { continue };
-            for pin in sym.pins.iter() {
-                if let Some(n) = conn.net_of_pin(s.id, pin.id) {
-                    sourced.insert(n.name.clone());
-                }
-            }
-        }
-    }
-    power_nets(doc)
-        .into_iter()
-        .filter(|n| !sourced.contains(n) && !setup.supplies.iter().any(|s| &s.net == n))
-        .map(|n| {
-            let v = supply_voltage(&n);
-            (n, v)
-        })
-        .collect()
+        clicked
+    })
+    .inner
 }
 
 #[cfg(test)]
@@ -1449,33 +1438,6 @@ mod tests {
     fn run_all_says_how_it_went() {
         assert_eq!(batch_text(1, 0), "Ran 1 simulation");
         assert_eq!(batch_text(4, 1), "Ran 4 simulations, 1 failed");
-    }
-
-    #[test]
-    fn supply_voltages_from_names() {
-        assert_eq!(supply_voltage("+5V"), Some(5.0));
-        assert_eq!(supply_voltage("3V3"), Some(3.3));
-        assert_eq!(supply_voltage("-12V"), Some(-12.0));
-        assert_eq!(supply_voltage("VCC"), None);
-    }
-
-    #[test]
-    fn supplies_suggested_for_power_nets_without_a_source() {
-        let mut doc = Document::new(view::demo::demo_project());
-        doc.update_connectivity(false);
-        assert!(suggested_supplies(&doc).is_empty(), "V1 powers +5V");
-        let v1 = doc.project().schematic.components.iter().find(|c| c.refdes == "V1").unwrap().id;
-        let symbols: Vec<ObjectId> = doc
-            .project()
-            .schematic
-            .symbols
-            .iter()
-            .filter(|s| s.component == v1)
-            .map(|s| ObjectId::Symbol(s.id))
-            .collect();
-        doc.execute(editor_core::Command::Delete { ids: symbols }).unwrap();
-        doc.update_connectivity(false);
-        assert_eq!(suggested_supplies(&doc), vec![("+5V".to_string(), Some(5.0))]);
     }
 
     #[test]

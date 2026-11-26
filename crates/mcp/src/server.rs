@@ -784,7 +784,10 @@ impl PcbTools {
         each signal per step (step, step_value), an operating point its values per step. \
         Set analyses up with the set_simulation command \
         (execute); give parts models in the library (edit_library) and sources their waveform \
-        through their component's sim field.")]
+        through their component's sim field. Power ports whose name says the voltage (+5V, \
+        3V3) get a DC supply by themselves unless a source or a regulator's power output \
+        powers them (get_spice_netlist shows them as VSUPPLY_…); the setup's supplies power \
+        others (VCC) or set another voltage, its unsupplied lists nets to leave alone.")]
     async fn simulate(&self, Parameters(p): Parameters<SimulateParams>) -> Result<CallToolResult, ErrorData> {
         let points = p.points.unwrap_or_default();
         let values = p

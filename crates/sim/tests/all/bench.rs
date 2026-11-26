@@ -1,5 +1,5 @@
 //! Test circuits built with commands: parts from the Built-in library, their pins joined
-//! by labels at the pin ends (global labels, `GND` a ground power port).
+//! by labels at the pin ends (global labels; `GND` and names like `+5V` power ports).
 
 use editor_core::connectivity::Connectivity;
 use editor_core::query::pin_positions;
@@ -82,7 +82,8 @@ impl Bench {
             if net.is_empty() {
                 continue;
             }
-            let kind = if *net == "GND" { LabelKind::Power } else { LabelKind::Global };
+            // GND and supply names (`+5V`) are power ports.
+            let kind = if *net == "GND" || net.starts_with('+') { LabelKind::Power } else { LabelKind::Global };
             self.ed
                 .execute(Command::AddLabel {
                     sheet: None,

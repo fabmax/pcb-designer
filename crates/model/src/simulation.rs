@@ -717,9 +717,14 @@ pub struct Simulation {
     /// The net that is SPICE node 0; `None`: the nets of ground power ports.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ground: Option<String>,
-    /// DC supplies for power nets that have no source drawn.
+    /// DC supplies for power nets that have no source drawn. Power nets whose name says
+    /// their voltage (`+5V`) get one automatically (`sim::netlist::automatic_supplies`);
+    /// these set another voltage or power the others (`VCC`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub supplies: Vec<Supply>,
+    /// Power nets left without their automatic supply (something else powers them).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unsupplied: Vec<String>,
     /// Circuit temperature in °C.
     #[serde(default = "room", skip_serializing_if = "is_room")]
     pub temperature: f64,
@@ -818,6 +823,7 @@ impl Default for Simulation {
             analyses: Vec::new(),
             ground: None,
             supplies: Vec::new(),
+            unsupplied: Vec::new(),
             temperature: room(),
             extra: String::new(),
             tune: Vec::new(),

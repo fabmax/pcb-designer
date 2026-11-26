@@ -86,6 +86,95 @@ impl Netlist {
     }
 }
 
+/// The voltage a supply net's name says (`+5V` → 5, `3V3` → 3.3, `-12V` → −12), none
+/// for names without one (`VCC`).
+pub fn supply_voltage(net: &str) -> Option<f64> {
+    si::parse(net.trim_start_matches('+'))
+}
+
+/// A power port net (not ground) that no voltage source's pin and no supply of the
+/// setup powers.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PowerNet {
+    pub net: String,
+    /// What its name says ([`supply_voltage`]).
+    pub voltage: Option<f64>,
+    /// A power output pin (a regulator's) is on it.
+    pub power_out: bool,
+}
+
+impl PowerNet {
+    /// Whether the netlist powers it by itself: its name says the voltage, no regulator
+    /// drives it, and the setup doesn't leave it out.
+    fn automatic(&self, sim: &Simulation) -> bool {
+        self.voltage.is_some() && !self.power_out && !sim.unsupplied.contains(&self.net)
+    }
+}
+
+/// The power port nets nothing powers (before automatic supplies), in name order.
+pub fn unpowered_nets(project: &Project, conn: &Connectivity) -> Vec<PowerNet> {
+    let sch = &project.schematic;
+    let sim = &sch.simulation;
+    let ground = |net: &str| sim.ground.as_deref() == Some(net) || net == "0" || net.eq_ignore_ascii_case("GND");
+    let mut nets: Vec<String> = sch
+        .labels
+        .iter()
+        .filter(|l| l.kind == LabelKind::Power)
+        .filter(|l| !matches!(l.power_style(), PowerStyle::Ground | PowerStyle::SignalGround))
+        .filter_map(|l| Some(conn.net_of(ObjectId::Label(l.id))?.name.clone()))
+        .filter(|n| !ground(n) && !sim.supplies.iter().any(|s| &s.net == n))
+        .collect();
+    nets.sort_by(|a, b| natural_cmp(a, b));
+    nets.dedup();
+    if nets.is_empty() {
+        return Vec::new();
+    }
+    // The nets of voltage sources' pins, and of power output pins.
+    let (mut sourced, mut power_out) = (HashSet::new(), HashSet::new());
+    for s in sch.symbols.iter() {
+        let Some(c) = sch.components.get(s.component) else { continue };
+        let source = project
+            .library
+            .parts
+            .get(c.part)
+            .and_then(|p| p.sim.as_ref())
+            .is_some_and(|m| m.device == SimDevice::VoltageSource);
+        let Some(sym) = editor_core::query::symbol_of_instance(project, s) else { continue };
+        for pin in sym.pins.iter().filter(|p| source || p.kind == PinKind::PowerOut) {
+            if let Some(n) = conn.net_of_pin(s.id, pin.id) {
+                if source {
+                    sourced.insert(n.name.as_str());
+                } else {
+                    power_out.insert(n.name.as_str());
+                }
+            }
+        }
+    }
+    nets.into_iter()
+        .filter(|n| !sourced.contains(n.as_str()))
+        .map(|net| PowerNet { voltage: supply_voltage(&net), power_out: power_out.contains(net.as_str()), net })
+        .collect()
+}
+
+/// The supplies the netlist adds by itself: one for each unpowered power net whose name
+/// says its voltage (`+5V`, `3V3`), unless a power output pin (a regulator) is on it or
+/// the setup leaves it out (`Simulation::unsupplied`).
+pub fn automatic_supplies(project: &Project, conn: &Connectivity) -> Vec<Supply> {
+    let sim = &project.schematic.simulation;
+    unpowered_nets(project, conn)
+        .into_iter()
+        .filter(|n| n.automatic(sim))
+        .map(|n| Supply { voltage: n.voltage.unwrap_or_default(), net: n.net })
+        .collect()
+}
+
+/// The power nets left unpowered after the automatic supplies: no voltage in their name
+/// (`VCC`), a regulator on them, or left out.
+pub fn unsupplied_nets(project: &Project, conn: &Connectivity) -> Vec<PowerNet> {
+    let sim = &project.schematic.simulation;
+    unpowered_nets(project, conn).into_iter().filter(|n| !n.automatic(sim)).collect()
+}
+
 /// The netlist of `project` for `analysis` (its analysis line and its current probes).
 pub fn build(project: &Project, conn: &Connectivity, analysis: &Analysis) -> Netlist {
     build_with(project, conn, analysis, &Overrides::default())
@@ -105,7 +194,7 @@ pub fn build_with(project: &Project, conn: &Connectivity, analysis: &Analysis, o
     let mut lines = Vec::new();
     let mut models = Models::default();
     b.devices(conn, analysis, &mut lines, &mut models);
-    b.supplies(&mut lines);
+    b.supplies(conn, &mut lines);
     let analysis_line = b.analysis_line(analysis);
 
     let sim = &project.schematic.simulation;
@@ -489,8 +578,9 @@ impl Builder<'_> {
         })
     }
 
-    fn supplies(&mut self, lines: &mut Vec<String>) {
-        let supplies = self.project.schematic.simulation.supplies.clone();
+    fn supplies(&mut self, conn: &Connectivity, lines: &mut Vec<String>) {
+        let mut supplies = self.project.schematic.simulation.supplies.clone();
+        supplies.extend(automatic_supplies(self.project, conn));
         for s in supplies {
             match self.out.nodes.get(&s.net).cloned() {
                 Some(node) if node == "0" => {

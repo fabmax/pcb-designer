@@ -229,6 +229,51 @@ fn supplies_power_nets() {
     assert_eq!(warnings, vec!["Supply +12V: no such net"]);
 }
 
+/// Power ports whose name says the voltage get a supply by themselves, unless a source,
+/// a supply of the setup or a regulator's output powers them, or the setup leaves them
+/// out.
+#[test]
+fn power_nets_get_automatic_supplies() {
+    let mut b = Bench::new();
+    b.place("Resistor", "1k", &["+5V", "GND"]);
+    b.place("Resistor", "1k", &["+12V", "GND"]);
+    b.place("Resistor", "1k", &["+3V3", "GND"]);
+    b.place("Resistor", "1k", &["+VCC", "GND"]);
+    b.place("Resistor", "1k", &["+9V", "GND"]);
+    b.dc(9.0, "+9V", "GND");
+    b.place("AMS1117-3.3", "", &["+5V", "+3V3", "GND"]);
+    let supplied = |b: &Bench| -> Vec<(String, f64)> {
+        netlist::automatic_supplies(b.project(), &b.conn()).into_iter().map(|s| (s.net, s.voltage)).collect()
+    };
+    assert_eq!(supplied(&b), [("+5V".to_string(), 5.0), ("+12V".to_string(), 12.0)]);
+    let n = netlist::build(b.project(), &b.conn(), &op());
+    has_line(&n, "VSUPPLY_P5V p5v 0 DC 5");
+    has_line(&n, "VSUPPLY_P12V p12v 0 DC 12");
+    // What's left: +3V3 (the regulator's output) and +VCC (no voltage in the name).
+    let left: Vec<(String, Option<f64>, bool)> =
+        netlist::unsupplied_nets(b.project(), &b.conn()).into_iter().map(|n| (n.net, n.voltage, n.power_out)).collect();
+    assert_eq!(left, [("+3V3".to_string(), Some(3.3), true), ("+VCC".to_string(), None, false)]);
+
+    // A supply of the setup sets another voltage; +12V left out.
+    let mut sim = b.project().schematic.simulation.clone();
+    sim.supplies.push(Supply { net: "+5V".into(), voltage: 4.5 });
+    sim.unsupplied.push("+12V".into());
+    b.ed.execute(editor_core::Command::SetSimulation { simulation: sim }).unwrap();
+    assert_eq!(supplied(&b), []);
+    let n = netlist::build(b.project(), &b.conn(), &op());
+    has_line(&n, "VSUPPLY_P5V p5v 0 DC 4.5");
+    assert!(!n.text.contains("VSUPPLY_P12V"), "{}", n.text);
+    assert!(netlist::unsupplied_nets(b.project(), &b.conn()).iter().any(|n| n.net == "+12V"));
+}
+
+#[test]
+fn supply_voltages_from_names() {
+    assert_eq!(netlist::supply_voltage("+5V"), Some(5.0));
+    assert_eq!(netlist::supply_voltage("3V3"), Some(3.3));
+    assert_eq!(netlist::supply_voltage("-12V"), Some(-12.0));
+    assert_eq!(netlist::supply_voltage("VCC"), None);
+}
+
 #[test]
 fn analysis_lines() {
     let mut b = Bench::new();
