@@ -335,7 +335,9 @@ pub struct SimulateParams {
     /// Values for this run only (the schematic doesn't change): a part's value by its
     /// reference ("R1": "4k7"; a DC source's level: "V1": 5) or a source's field
     /// ("V1.amplitude": 0.2; fields: ac, and the waveform's: value, offset, amplitude,
-    /// frequency, low, high, rise, fall, width, period, …).
+    /// frequency, low, high, rise, fall, width, period, …), a switch's state ("SW1.state":
+    /// 1 closed, or a changeover switch at B) or a potentiometer's wiper ("RV1.pos": 0.3,
+    /// 0 at pin 1, 1 at pin 3).
     #[serde(default)]
     pub values: Option<std::collections::BTreeMap<String, serde_json::Value>>,
 }

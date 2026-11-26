@@ -140,6 +140,8 @@ pub struct View {
     pub index: SpatialIndex,
     /// Where the simulation overlay's value tags went (tests check they stay clear).
     pub sim_tags: Vec<Rect>,
+    /// Where the simulation's switch and potentiometer controls are (schematic sheets).
+    pub sim_controls: Vec<crate::sim_overlay::ControlArea>,
     layers: Layers,
     hover_layer: RLayer,
     selection_layer: RLayer,
@@ -220,6 +222,7 @@ impl View {
             scene,
             index: SpatialIndex::default(),
             sim_tags: Vec::new(),
+            sim_controls: Vec::new(),
             layers,
             hover_layer,
             selection_layer,
@@ -664,11 +667,24 @@ impl View {
         if o.is_empty() {
             self.scene.remove_item(SIM_ITEM);
             self.sim_tags.clear();
+            self.sim_controls.clear();
             return;
         }
         let mut p = Painter::default();
-        self.sim_tags = crate::sim_overlay::draw(project, c, sheet, o, layers, &mut p, &self.index);
+        let drawn = crate::sim_overlay::draw(project, c, sheet, o, layers, &mut p, &self.index);
+        self.sim_tags = drawn.tags;
+        self.sim_controls = drawn.controls;
         self.scene.set_item(SIM_ITEM, p.out);
+    }
+
+    /// The simulation control under `p` (world coordinates), when the Simulation layer
+    /// is shown.
+    pub fn sim_control_at(&self, p: Point) -> Option<&crate::sim_overlay::ControlArea> {
+        let Layers::Sch(l) = &self.layers else { return None };
+        if !self.scene.layer(l.sim).visible {
+            return None;
+        }
+        self.sim_controls.iter().find(|c| c.rect.contains(p))
     }
 
     /// The markers layer is shown: ERC markers on schematic sheets, DRC markers on the

@@ -75,7 +75,7 @@ Wherever a sheet is asked for (`sheet`, `parent`), an id, a name or a path like
 
 | Tool | What it does |
 | --- | --- |
-| `simulate` | Runs an analysis and answers its values: an operating point's voltages, currents and powers, or per signal of a sweep (`OUT`, `V(OUT,IN)`, `R1.1`, `P(R1)`) up to 200 points, the values at given x and the measurements of the Measure table, with a periodic transient signal's `distortion` (THD, THD+N, harmonics). `values` tries part values and source settings for that run only. The run shows in the app |
+| `simulate` | Runs an analysis and answers its values: an operating point's voltages, currents and powers, or per signal of a sweep (`OUT`, `V(OUT,IN)`, `R1.1`, `P(R1)`) up to 200 points, the values at given x and the measurements of the Measure table, with a periodic transient signal's `distortion` (THD, THD+N, harmonics). `values` tries part values, source settings, switch states and wiper positions (`SW1.state`, `RV1.pos`) for that run only. The run shows in the app |
 | `get_spice_netlist` | The netlist an analysis would run, with node and device names and problems |
 
 ### Parts and libraries

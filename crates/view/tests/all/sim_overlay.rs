@@ -161,3 +161,38 @@ fn value_tags_keep_clear_of_texts_and_each_other() {
         assert!(on_text <= most, "{name}: {on_text} of {tags} tags on texts");
     }
 }
+
+/// Switch and potentiometer controls go next to their part, clear of it, and say
+/// where they are for clicks; a slider maps its track to 0…1.
+#[test]
+fn controls_sit_by_their_part_and_take_clicks() {
+    let mut doc = Document::new(demo_project());
+    let r1 = symbol(&doc, "R1");
+    let id = view::ViewId::Sheet(r1.sheet);
+    doc.set_sim_overlay(SimOverlay {
+        controls: vec![view::sim_overlay::Control { component: r1.component, kind: SimControl::Position, value: 0.3 }],
+        ..Default::default()
+    });
+    let v = doc.view(id);
+    let [area] = v.sim_controls.as_slice() else { panic!("{:?}", v.sim_controls) };
+    assert_eq!((area.component, area.kind), (r1.component, SimControl::Position));
+    let body = v.index.bounds(ObjectId::Symbol(r1.id)).unwrap();
+    let r = area.rect;
+    assert!(r.max.x <= body.min.x || r.min.x >= body.max.x || r.max.y <= body.min.y || r.min.y >= body.max.y);
+    let mid = Point::new((r.min.x + r.max.x) / 2, (r.min.y + r.max.y) / 2);
+    assert_eq!(v.sim_control_at(mid).map(|a| a.component), Some(r1.component));
+    assert!(v.sim_control_at(Point::new(r.max.x + 1_000_000, mid.y)).is_none());
+    let (a, b) = area.track.unwrap();
+    assert_eq!(area.value_at(Point::new(a - 5_000_000, mid.y)), 0.0);
+    assert_eq!(area.value_at(Point::new(b + 5_000_000, mid.y)), 1.0);
+    assert!((area.value_at(Point::new((a + b) / 2, mid.y)) - 0.5).abs() < 1e-6);
+
+    // A switch: no track; gone with the overlay.
+    doc.set_sim_overlay(SimOverlay {
+        controls: vec![view::sim_overlay::Control { component: r1.component, kind: SimControl::Switch, value: 1.0 }],
+        ..Default::default()
+    });
+    assert_eq!(doc.view(id).sim_controls[0].track, None);
+    doc.set_sim_overlay(SimOverlay::default());
+    assert!(doc.view(id).sim_controls.is_empty());
+}

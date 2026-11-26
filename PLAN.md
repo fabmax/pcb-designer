@@ -902,6 +902,21 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   get a hover tooltip (pin V, I, power). `SimPanel::hover` is
   cleared each frame before the tree draws and set by the Probe tool or a hovered
   table row.
+- **Switch and potentiometer controls:** a part whose model has a `state` or `pos`
+  parameter (`SimModel::control`) gets a toggle or slider (`SimOverlay::controls`, added
+  after the overlay cache by `SimPanel::controls`: the component list is cached per
+  revision, the value is the drag's, else the tuner's, else the component's). They are
+  placed first, by the Placer (below, above, right, left of the first unit), and
+  `View::sim_controls` keeps their rects and slider tracks for `View::sim_control_at`
+  (nothing while the Simulation layer is hidden). `sim_controls_ui` in app.rs runs in
+  the select branch before `Interaction` and takes the pointer over a control (so
+  clicking the symbol still selects it): a click toggles, a press starts
+  `SimPanel::control_drag`, which `SimPanel::overrides` puts on top of the tuner's
+  (live reruns under `tune::LIVE`), and the release writes it with
+  `SimPanel::set_control` (one `Update`, forgets a tuned value), then `TuneRun`. ← / →
+  are taken from the raw events (`consume_key` ignores Shift). A wiper is kept to per
+  mille. `tune_run` and `tune_live` fall back to the values' operating point when no
+  analysis is shown.
 - **Measurements** (`sim::measure`): over a window with interpolated ends; average and
   RMS integrate linear pieces exactly (uneven transient steps weigh right); frequency
   from mean crossings with 10 % hysteresis, upward ones when there are two, else every
@@ -934,7 +949,9 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   keep a column as wide as it ever was, so one wide frame made fields overflow the
   panel for good; grid combos truncate their text for the same reason.
 - **Tuner** (`sim::tune`, `app/src/tune_ui.rs`): rows are `Simulation::tune`
-  (`TuneParam` = a part's value or a source's field by key, from `Source::fields_mut`;
+  (`TuneParam` = a part's value, a source's field by key, from `Source::fields_mut`, or
+  a model parameter in `ComponentSim::params`: only controls (`state`, `pos`, linear
+  0–1; a switch's sweep steps 0 and 1, its text reads 0/1 so the tuner holds that);
   the setup check refuses a parameter twice, min ≥ max, and min ≤ 0 on log rows). The
   slider values live in `SimPanel::tuner` (`Tuner`, not saved); `Tuner::changed` is
   what differs from the document, and `Overrides` (component copies with the values
@@ -2036,9 +2053,10 @@ defers.
   bounce, relays; transformers and
   coupled inductors (`K` lines), transmission lines.
 - Sweeps: two parameters (nested), a measurement plotted over the stepped value (the
-  −3 dB point against R1), steps of a model parameter or the temperature; the Simulation
+  −3 dB point against R1), steps of other model parameters or the temperature; the Simulation
   panel's result table shows the first step only.
-- Tuner: model parameter overrides as rows; agents have no tuner tool (`simulate`'s
+- Tuner: other model parameter overrides as rows (`TuneParam::Param` carries them; ranges
+  are the missing part); agents have no tuner tool (`simulate`'s
   `values` do the same for one run).
 - Probes and operating point values on sub-sheet instances once sheets can be reused.
 - Board-aware simulation (track resistance, parasitic capacitance from the layout).

@@ -147,7 +147,11 @@ pub fn parse_values(project: &Project, values: &[(String, String)]) -> Result<Ov
             // A source's own value is its DC level.
             None if c.sim.source.is_some() => TuneParam::Source { component: c.id, field: "value".into() },
             None => TuneParam::Value { component: c.id },
-            Some(f) => TuneParam::Source { component: c.id, field: f.to_ascii_lowercase() },
+            Some(f) => {
+                let f = f.to_ascii_lowercase();
+                let param = TuneParam::Param { component: c.id, name: f.clone() };
+                if tunable.contains(&param) { param } else { TuneParam::Source { component: c.id, field: f } }
+            }
         };
         if !tunable.contains(&param) {
             let fields: Vec<String> = tunable
@@ -155,7 +159,9 @@ pub fn parse_values(project: &Project, values: &[(String, String)]) -> Result<Ov
                 .filter(|p| p.component() == c.id)
                 .map(|p| match p {
                     TuneParam::Value { .. } => c.refdes.clone(),
-                    TuneParam::Source { field, .. } => format!("{}.{field}", c.refdes),
+                    TuneParam::Source { field, .. } | TuneParam::Param { name: field, .. } => {
+                        format!("{}.{field}", c.refdes)
+                    }
                 })
                 .collect();
             let hint = if fields.is_empty() {

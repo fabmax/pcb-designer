@@ -1,7 +1,8 @@
 //! Simulation on the schematic: what the Probe tool would probe under the pointer, and
 //! the overlay of a simulation: probed nets' wires in their trace colour, arrows on
 //! probed pins, and operating point values (net voltages, the currents of two-pin
-//! parts). The app decides what to show; this draws it.
+//! parts), and the controls of switches and potentiometers (a toggle, a slider) that
+//! change them. The app decides what to show; this draws it.
 
 use editor_core::connectivity::Connectivity;
 use editor_core::query::symbol_of_instance;
@@ -146,6 +147,44 @@ pub struct SimOverlay {
     pub hover_nets: Vec<String>,
     pub hover_pins: Vec<(Id, Id)>,
     pub hover_parts: Vec<Id>,
+    /// Switches and potentiometers: a control on each, at its setting.
+    pub controls: Vec<Control>,
+}
+
+/// A switch's toggle or a potentiometer's slider on the schematic.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Control {
+    pub component: Id,
+    pub kind: SimControl,
+    /// 0 or 1 (a switch), 0…1 (a wiper).
+    pub value: f64,
+}
+
+/// Where a control went on a sheet, to click and drag it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ControlArea {
+    pub component: Id,
+    pub kind: SimControl,
+    pub rect: Rect,
+    /// A slider's track, left and right end (x).
+    pub track: Option<(Coord, Coord)>,
+}
+
+impl ControlArea {
+    /// The setting at `p`: a slider's under the pointer (clamped to its track).
+    pub fn value_at(&self, p: Point) -> f64 {
+        match self.track {
+            Some((a, b)) if b > a => ((p.x - a) as f64 / (b - a) as f64).clamp(0.0, 1.0),
+            _ => 0.0,
+        }
+    }
+}
+
+/// What a sheet's overlay drew: where the value tags and the controls went.
+#[derive(Clone, Debug, Default)]
+pub struct Drawn {
+    pub tags: Vec<Rect>,
+    pub controls: Vec<ControlArea>,
 }
 
 impl SimOverlay {
@@ -158,6 +197,7 @@ impl SimOverlay {
             && self.hover_nets.is_empty()
             && self.hover_pins.is_empty()
             && self.hover_parts.is_empty()
+            && self.controls.is_empty()
     }
 }
 
@@ -172,7 +212,7 @@ pub(crate) struct Layers {
 }
 
 /// The overlay on `sheet`; `index`: the sheet's objects (frames around parts, and
-/// what value tags keep clear of). Returns where the value tags went.
+/// what value tags keep clear of). Returns where the value tags and controls went.
 pub(crate) fn draw(
     project: &Project,
     conn: &Connectivity,
@@ -181,7 +221,7 @@ pub(crate) fn draw(
     layers: Layers,
     p: &mut Painter,
     index: &SpatialIndex,
-) -> Vec<Rect> {
+) -> Drawn {
     let bounds = |id| index.bounds(id);
     let sch = &project.schematic;
     let on_sheet = |symbol: Id| sch.symbols.get(symbol).is_some_and(|s| s.sheet == sheet);
@@ -236,6 +276,25 @@ pub(crate) fn draw(
     let alpha = |c: Color| if o.dim { c.with_alpha(0x70) } else { c };
     let (volts, amps, bg) = (alpha(pal().sim_voltage), alpha(pal().sim_current), alpha(pal().sim_value_bg));
     let mut placer = Placer { index, placed: Vec::new() };
+    // Controls first, next to their part: they are what's clicked.
+    let mut controls = Vec::new();
+    for c in &o.controls {
+        let Some(s) =
+            sch.symbols.iter().filter(|s| s.component == c.component && s.sheet == sheet).min_by_key(|s| s.unit)
+        else {
+            continue;
+        };
+        let Some(b) = bounds(ObjectId::Symbol(s.id)) else { continue };
+        let size = control_size(c.kind);
+        let r = placer.place_rect(&control_spots(b, size), Some(s.id));
+        let part = sch.components.get(c.component).and_then(|c| project.library.parts.get(c.part));
+        let pins = |p: &Part| {
+            p.units.iter().filter_map(|u| project.library.symbols.get(u.symbol)).map(|s| s.pins.len()).sum::<usize>()
+        };
+        let three_pins = part.is_some_and(|p| pins(p) == 3usize);
+        let track = draw_control(p, layer, r, c, three_pins);
+        controls.push(ControlArea { component: c.component, kind: c.kind, rect: r, track });
+    }
     // Currents of two-pin parts first (they have the fewest places to go): an arrow on
     // the pin the current flows into, the value beside it.
     for (symbol, pin, text) in o.currents.iter().filter(|(s, ..)| on_sheet(*s)) {
@@ -269,7 +328,99 @@ pub(crate) fn draw(
             tag(p, layer, spot.0, text, spot.1, spot.2, volts, bg);
         }
     }
-    placer.placed
+    Drawn { tags: placer.placed, controls }
+}
+
+const CONTROL_HEIGHT: f64 = 1.8;
+const SWITCH_WIDTH: f64 = 4.6;
+const TRACK: f64 = 7.0;
+const CONTROL_TEXT: f64 = 0.8;
+
+/// A control's width and height in mm: a slider leaves room for "100 %".
+fn control_size(kind: SimControl) -> (f64, f64) {
+    match kind {
+        SimControl::Switch => (SWITCH_WIDTH, CONTROL_HEIGHT),
+        SimControl::Position => {
+            let [x0, _, x1, _] = font::text_box("100 %", CONTROL_TEXT as f32, FH::Left, FV::Center);
+            (TRACK + 2.0 * 0.9 + (x1 - x0) as f64 + 0.4, CONTROL_HEIGHT)
+        }
+    }
+}
+
+/// Where a control may go around a symbol's bounds `b`: below it, above, right, left.
+fn control_spots(b: Rect, (w, h): (f64, f64)) -> Vec<Rect> {
+    let (w, h, gap) = (mm(w), mm(h), mm(0.6));
+    let cx = (b.min.x + b.max.x) / 2;
+    let cy = (b.min.y + b.max.y) / 2;
+    let r = |x0: Coord, y0: Coord| Rect::from_points(Point::new(x0, y0), Point::new(x0 + w, y0 + h));
+    vec![
+        r(cx - w / 2, b.min.y - gap - h),
+        r(cx - w / 2, b.max.y + gap),
+        r(b.max.x + gap, cy - h / 2),
+        r(b.min.x - gap - w, cy - h / 2),
+    ]
+}
+
+/// Draws a control into `r`; returns a slider's track.
+fn draw_control(
+    p: &mut Painter,
+    layer: render::LayerId,
+    r: Rect,
+    c: &Control,
+    three_pins: bool,
+) -> Option<(Coord, Coord)> {
+    let accent = pal().sim_voltage;
+    let bg = pal().sim_value_bg.with_alpha(0xff);
+    let (x0, y0) = (r.min.x as f64 * 1e-6, r.min.y as f64 * 1e-6);
+    let (w, h) = ((r.max.x - r.min.x) as f64 * 1e-6, (r.max.y - r.min.y) as f64 * 1e-6);
+    let cy = y0 + h / 2.0;
+    let at = |x: f64, y: f64| Point::new(mm(x), mm(y));
+    let f = |x: f64| x as f32;
+    let text = |p: &mut Painter, s: &str, x: f64, h: HAlign, color: Color| {
+        let mut t = Text::new(s, at(x, cy), mm(CONTROL_TEXT));
+        t.halign = h;
+        t.valign = VAlign::Center;
+        p.text(layer, &t, color, &|s| s.to_string(), false);
+    };
+    match c.kind {
+        SimControl::Switch => {
+            let on = c.value > 0.5;
+            // A changeover switch is always "on" (to A or to B).
+            let filled = on || three_pins;
+            let center = [f(x0 + w / 2.0), f(cy)];
+            let corner = f(h / 2.0);
+            p.push(layer, Instance::rect(center, [f(w), f(h)], corner, 0.0, accent));
+            if !filled {
+                p.push(layer, Instance::rect(center, [f(w - 0.4), f(h - 0.4)], corner - 0.2, 0.0, bg));
+            }
+            let knob = if on { x0 + w - h / 2.0 } else { x0 + h / 2.0 };
+            p.circle(layer, at(knob, cy), mm(h / 2.0 - 0.3), if filled { bg } else { accent });
+            let label = match (three_pins, on) {
+                (true, false) => "A",
+                (true, true) => "B",
+                (false, false) => "OFF",
+                (false, true) => "ON",
+            };
+            // The label in the part the knob leaves free.
+            let free = if on { x0 + (w - h) / 2.0 } else { x0 + h + (w - h) / 2.0 };
+            text(p, label, free, HAlign::Center, if filled { bg } else { accent });
+            p.grow(r);
+            None
+        }
+        SimControl::Position => {
+            p.push(layer, Instance::rect([f(x0 + w / 2.0), f(cy)], [f(w), f(h)], f(h / 2.0), 0.0, pal().sim_value_bg));
+            let (a, b) = (x0 + 0.9, x0 + 0.9 + TRACK);
+            let k = a + c.value.clamp(0.0, 1.0) * TRACK;
+            p.line(layer, at(a, cy), at(b, cy), mm(0.4), accent.with_alpha(0x50));
+            p.line(layer, at(a, cy), at(k, cy), mm(0.4), accent);
+            p.circle(layer, at(k, cy), mm(0.75), bg);
+            p.circle(layer, at(k, cy), mm(0.55), accent);
+            let pct = format!("{:.0} %", c.value * 100.0);
+            text(p, &pct, b + 0.9, HAlign::Left, accent);
+            p.grow(r);
+            Some((mm(a), mm(b)))
+        }
+    }
 }
 
 /// Where a value tag may go: its anchor and alignment.
@@ -344,6 +495,23 @@ impl Placer<'_> {
             }
         }
         cost + self.placed.iter().map(|p| 4.0 * overlap(r, *p)).sum::<f64>()
+    }
+
+    /// The best of `rects` (the first when nothing is better); it counts as taken from
+    /// now on.
+    fn place_rect(&mut self, rects: &[Rect], own: Option<Id>) -> Rect {
+        let mut best = (f64::INFINITY, rects[0]);
+        for &r in rects {
+            let cost = self.cost(r, own);
+            if cost < best.0 {
+                best = (cost, r);
+            }
+            if cost == 0.0 {
+                break;
+            }
+        }
+        self.placed.push(best.1);
+        best.1
     }
 
     /// The best of `spots` for a tag of `text` (the first when nothing is better); it

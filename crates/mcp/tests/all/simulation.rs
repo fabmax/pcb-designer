@@ -295,3 +295,38 @@ fn simulate_with_ngspice() {
     assert_eq!(v["signals"][1]["unit"], "W");
     assert!(v["signals"][1]["average"].as_f64().unwrap() > 1e-3, "{v}");
 }
+
+/// `values` set a switch's state and a potentiometer's position for one run.
+#[test]
+fn simulate_values_set_switches_and_wipers() {
+    use editor_core::Command;
+    use model::*;
+    let mut doc = Document::new(view::demo::demo_project());
+    let lib = model::builtin::builtin_library();
+    let id = |name: &str| lib.parts.iter().find(|p| p.name == name).unwrap().id;
+    doc.execute(Command::import_parts(&lib, &[id("Potentiometer"), id("SW_Push")]).unwrap()).unwrap();
+    for (part, x) in [("Potentiometer", 20.0), ("SW_Push", 40.0)] {
+        let place = Command::PlacePart {
+            part: id(part),
+            variant: None,
+            sheet: None,
+            pos: Point::mm(x, 20.0),
+            rotation: Angle::ZERO,
+            mirror: false,
+            refdes: None,
+            value: None,
+        };
+        doc.execute(place).unwrap();
+    }
+    let project = doc.project();
+    let values = [("RV1.pos".to_string(), "0.2".to_string()), ("SW1.state".to_string(), "1".to_string())];
+    let o = mcp::simulation::parse_values(project, &values).unwrap();
+    let params = |refdes: &str| {
+        let c = project.schematic.components.iter().find(|c| c.refdes == refdes).unwrap();
+        o.component(c).sim.params.clone()
+    };
+    assert_eq!(params("RV1")["pos"], "0.2");
+    assert_eq!(params("SW1")["state"], "1");
+    let e = mcp::simulation::parse_values(project, &[("RV1.nope".to_string(), "1".to_string())]).unwrap_err();
+    assert!(e.contains("RV1.pos"), "{e}");
+}

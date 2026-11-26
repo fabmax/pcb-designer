@@ -140,3 +140,38 @@ fn overrides_stack_a_step_on_the_tuned_values() {
     assert!(tuned.try_with(b.project(), &TuneParam::Source { component: v1, field: "width".into() }, 1.0).is_none());
     assert!(tuned.try_with(b.project(), &TuneParam::Value { component: Id::new() }, 1.0).is_none());
 }
+
+/// A switch's state and a potentiometer's position: tunable, read from the model's
+/// default until set, written into the component's parameters.
+#[test]
+fn switch_states_and_wiper_positions_are_tunable() {
+    let mut b = Bench::new();
+    let (sw, _) = b.place("SW_SPDT", "", &["IN", "A", "B"]);
+    let (rv, _) = b.place("Potentiometer", "10k", &["IN", "GND", "W"]);
+    let state = TuneParam::Param { component: sw, name: "state".into() };
+    let pos = TuneParam::Param { component: rv, name: "pos".into() };
+    let params = tune::tunable(b.project());
+    assert!(params.contains(&state) && params.contains(&pos));
+    assert!(params.contains(&TuneParam::Value { component: rv }));
+    assert_eq!(tune::current(b.project(), &state), Some(0.0));
+    assert_eq!(tune::current(b.project(), &pos), Some(0.5));
+    assert_eq!(tune::label(b.project(), &pos), "RV1 position");
+    assert_eq!(tune::short_label(b.project(), &state), "SW1.state");
+    let row = tune::default_row(b.project(), &pos).unwrap();
+    assert_eq!((row.min, row.max, row.param.is_log()), (0.0, 1.0, false));
+    // A switch steps through its two states.
+    let step = tune::default_step(b.project(), &state).unwrap();
+    assert_eq!(step.values, StepValues::Linear { start: 0.0, stop: 1.0, step: 1.0 });
+
+    let a = Analysis::new("OP", AnalysisKind::Op);
+    let o = Overrides::new(b.project(), &[(state.clone(), 0.8), (pos.clone(), 0.25)]);
+    let text = sim::netlist::build_with(b.project(), &b.conn(), &a, &o).text;
+    assert!(text.contains("state=1") && text.contains("pos=0.25"), "{text}");
+    let mut c = b.component(rv);
+    assert!(tune::apply(&mut c, &pos, 0.3333));
+    assert_eq!(c.sim.params["pos"], "0.333");
+    // The tuner keeps what the component would read back.
+    let mut t = Tuner::default();
+    t.set(&state, 0.7);
+    assert_eq!(t.value(b.project(), &state), Some(1.0));
+}

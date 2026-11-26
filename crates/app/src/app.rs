@@ -4390,7 +4390,8 @@ impl PcbApp {
         }
     }
 
-    /// "Tune R1": adds the component's value (a source: its first field) to the tuner
+    /// "Tune R1": adds the component's value (a source: its level; a switch or
+    /// potentiometer: its state or position) to the tuner
     /// and shows the Simulation tab.
     fn tune_component(&mut self, component: Id) {
         let project = self.doc().project();
@@ -4402,7 +4403,9 @@ impl PcbApp {
             TuneParam::Source { field, .. } => {
                 ["value", "amplitude", "high", "v2"].iter().position(|f| f == field).unwrap_or(9)
             }
-            TuneParam::Value { .. } => 0,
+            // A switch's state, a potentiometer's position before its value.
+            TuneParam::Param { .. } => 0,
+            TuneParam::Value { .. } => 1,
         };
         params.sort_by_key(rank);
         if !params.iter().any(|p| setup.tune.iter().any(|r| &r.param == p))
@@ -5285,6 +5288,13 @@ impl TreeBehavior<'_> {
             let mut on_grip = false;
             if kind == ViewKind::Board && !on_edit {
                 let (consumed, err) = corner_handles(ui, &response, pane, doc);
+                on_grip = consumed;
+                if let Some(e) = err {
+                    *self.status = Some((e, Instant::now()));
+                }
+            }
+            if sheet.is_some() && !on_edit && !on_grip && pane.it.is_idle() {
+                let (consumed, err) = sim_controls_ui(ui, &response, pane, doc, self.sim, view, self.deferred);
                 on_grip = consumed;
                 if let Some(e) = err {
                     *self.status = Some((e, Instant::now()));
@@ -6199,6 +6209,99 @@ fn default_tree(root: ViewId) -> Tree<Tab> {
 /// dragged (one undo step per drag; Alt: no snapping, Shift: 0°/45°/90° to the next
 /// corners). A double click on a corner deletes it. Returns whether the pointer input
 /// went to a handle (the selection interaction skips it) and an error to show.
+/// The switches' toggles and potentiometers' sliders on a sheet while simulating: a
+/// click toggles a switch, a drag moves a wiper (runs follow it when they're quick),
+/// ← / → step a hovered wiper by 1 % (Shift: 10 %). Each change is an undo step and
+/// runs the simulation again. Returns whether it took the pointer, and an error.
+fn sim_controls_ui(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    pane: &mut Pane,
+    doc: &mut Document,
+    sim: &mut SimPanel,
+    view: ViewId,
+    deferred: &mut Vec<Deferred>,
+) -> (bool, Option<String>) {
+    let (pressed, down) = ui.input(|i| (i.pointer.primary_pressed(), i.pointer.primary_down()));
+    let pointer = response.hover_pos().or_else(|| ui.input(|i| i.pointer.latest_pos())).map(|p| {
+        let [x, y] = pane.canvas.screen_to_world(p);
+        Point::mm(x, y)
+    });
+    let mut set = |sim: &mut SimPanel, doc: &mut Document, component, kind, v| {
+        let err = sim.set_control(doc, component, kind, v).err();
+        deferred.push(Deferred::Plot(PlotAct::TuneRun));
+        err
+    };
+    // A slider being dragged: follow the pointer, write the position on release.
+    if let Some((component, v)) = sim.control_drag {
+        if !down {
+            return (true, set(sim, doc, component, SimControl::Position, v));
+        }
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        let area = doc.view(view).sim_controls.iter().find(|a| a.component == component).cloned();
+        if let (Some(area), Some(p)) = (area, pointer) {
+            let nv = round_position(area.value_at(p));
+            if nv != v {
+                sim.control_drag = Some((component, nv));
+                if sim.tune_live(doc.project()) {
+                    deferred.push(Deferred::Plot(PlotAct::TuneRun));
+                }
+            }
+        }
+        return (true, None);
+    }
+    if !response.hovered() {
+        return (false, None);
+    }
+    let Some(p) = pointer else { return (false, None) };
+    let Some(area) = doc.view(view).sim_control_at(p).cloned() else { return (false, None) };
+    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    let current = doc.sim_overlay().controls.iter().find(|c| c.component == area.component).map_or(0.0, |c| c.value);
+    let mut err = None;
+    match area.kind {
+        SimControl::Switch => {
+            if pressed {
+                err = set(sim, doc, area.component, SimControl::Switch, 1.0 - current);
+            }
+        }
+        SimControl::Position => {
+            if pressed {
+                sim.control_drag = Some((area.component, round_position(area.value_at(p))));
+                if sim.tune_live(doc.project()) {
+                    deferred.push(Deferred::Plot(PlotAct::TuneRun));
+                }
+            } else {
+                // Shift is read from the key events (`consume_key` ignores it).
+                let mut delta = 0.0;
+                ui.input_mut(|i| {
+                    i.events.retain(|e| match e {
+                        egui::Event::Key { key, pressed: true, modifiers, .. }
+                            if matches!(key, egui::Key::ArrowLeft | egui::Key::ArrowRight)
+                                && !modifiers.command
+                                && !modifiers.alt =>
+                        {
+                            let step = if modifiers.shift { 0.1 } else { 0.01 };
+                            delta += if *key == egui::Key::ArrowRight { step } else { -step };
+                            false
+                        }
+                        _ => true,
+                    })
+                });
+                if delta != 0.0 {
+                    let v = round_position((current + delta).clamp(0.0, 1.0));
+                    err = set(sim, doc, area.component, SimControl::Position, v);
+                }
+            }
+        }
+    }
+    (true, err)
+}
+
+/// A wiper position to whole per mille (what the component keeps).
+fn round_position(v: f64) -> f64 {
+    (v.clamp(0.0, 1.0) * 1000.0).round() / 1000.0
+}
+
 fn corner_handles(
     ui: &egui::Ui,
     response: &egui::Response,

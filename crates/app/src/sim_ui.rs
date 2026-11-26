@@ -92,6 +92,11 @@ pub struct SimPanel {
     /// The tuner changed a value while a run was going: run the tab's analysis again
     /// when it ends.
     pub tune_pending: bool,
+    /// A potentiometer's slider dragged on the schematic: the component and the
+    /// position. Runs use it until the release writes it into the component.
+    pub control_drag: Option<(Id, f64)>,
+    /// The components with a control (switches, potentiometers), as of a revision.
+    controlled: Option<(u64, Vec<(Id, SimControl)>)>,
 }
 
 /// How a Run all went so far.
@@ -116,6 +121,8 @@ struct OverlayKey {
     hover: Option<ProbeTarget>,
     dark: bool,
     tuned: Vec<(TuneParam, f64)>,
+    /// The dragged control's position (as bits: the key is `Eq`).
+    drag: Option<(Id, u64)>,
 }
 
 /// `v` rounded to three significant digits (the schematic's tags).
@@ -280,8 +287,63 @@ impl SimPanel {
 
     /// What the schematic shows (`shown`: the Simulation panel or tab is open): the probe
     /// analysis' probes in their trace colours, the operating point's voltages and the
-    /// currents of two-pin parts, and the hovered target.
+    /// currents of two-pin parts, the hovered target, and the controls of switches and
+    /// potentiometers.
     pub fn overlay(&mut self, doc: &Document, shown: bool) -> SimOverlay {
+        let mut o = self.values_overlay(doc, shown);
+        if shown {
+            o.controls = self.controls(doc);
+        }
+        o
+    }
+
+    /// The controls of switches and potentiometers at their settings: dragged, tuned,
+    /// else the component's.
+    fn controls(&mut self, doc: &Document) -> Vec<view::sim_overlay::Control> {
+        let project = doc.project();
+        if self.controlled.as_ref().is_none_or(|(r, _)| *r != doc.revision) {
+            let list = project
+                .schematic
+                .components
+                .iter()
+                .filter(|c| !c.sim.exclude)
+                .filter_map(|c| {
+                    let model = project.library.parts.get(c.part)?.sim.as_ref()?;
+                    Some((c.id, model.control()?))
+                })
+                .collect();
+            self.controlled = Some((doc.revision, list));
+        }
+        let list = &self.controlled.as_ref().expect("set above").1;
+        list.iter()
+            .map(|&(component, kind)| {
+                let param = TuneParam::Param { component, name: kind.param().into() };
+                let value = match self.control_drag {
+                    Some((c, v)) if c == component => v,
+                    _ => self.tuner.value(project, &param).unwrap_or(0.0),
+                };
+                view::sim_overlay::Control { component, kind, value }
+            })
+            .collect()
+    }
+
+    /// Sets a switch or potentiometer on the schematic: writes it into the component
+    /// (one undo step) and forgets its tuned value and drag.
+    pub fn set_control(&mut self, doc: &mut Document, component: Id, kind: SimControl, v: f64) -> Result<(), String> {
+        self.control_drag = None;
+        let param = TuneParam::Param { component, name: kind.param().into() };
+        self.tuner.forget(&param);
+        if sim::tune::current(doc.project(), &param) == Some(v) {
+            return Ok(());
+        }
+        let Some(mut c) = doc.project().schematic.components.get(component).cloned() else { return Ok(()) };
+        if !sim::tune::apply(&mut c, &param, v) {
+            return Ok(());
+        }
+        doc.execute(Command::Update { objects: vec![Object::Component(c)] }).map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    fn values_overlay(&mut self, doc: &Document, shown: bool) -> SimOverlay {
         // Its colours are the schematic's.
         let _theme = view::style::scope(view::style::Editor::Schematic);
         let setup = &doc.project().schematic.simulation;
@@ -297,6 +359,7 @@ impl SimPanel {
             hover: self.hover.clone().filter(|_| shown),
             dark: view::style::theme() == view::style::Theme::Dark,
             tuned: self.tuned(doc.project()),
+            drag: self.control_drag.map(|(c, v)| (c, v.to_bits())),
         };
         if let Some((k, o, _)) = &self.overlay
             && *k == key
@@ -375,14 +438,22 @@ impl SimPanel {
     /// sweeps).
     pub fn overrides(&self, project: &Project, a: &Analysis) -> sim::tune::Overrides {
         let swept = a.step.as_ref().map(|s| &s.param);
-        self.tuner.overrides(project, &project.schematic.simulation.tune, swept)
+        let o = self.tuner.overrides(project, &project.schematic.simulation.tune, swept);
+        match self.control_drag {
+            Some((component, v)) => {
+                let param = TuneParam::Param { component, name: SimControl::Position.param().into() };
+                o.try_with(project, &param, v).unwrap_or(o)
+            }
+            None => o,
+        }
     }
 
     /// The tuner changed a value: runs the tab's analysis with it, or once the run going
     /// ends. Quiet when ngspice is missing (the panel says so) or the netlist has errors
     /// (the panel's problems show them).
     pub fn tune_run(&mut self, doc: &mut Document, engine: &sim::EngineSettings) {
-        let Some(id) = self.current(&doc.project().schematic.simulation).map(|a| a.id) else { return };
+        let setup = &doc.project().schematic.simulation;
+        let Some(id) = self.current(setup).or_else(|| self.values_analysis(setup)).map(|a| a.id) else { return };
         if self.session.running().is_some() {
             self.tune_pending = true;
             return;
@@ -404,7 +475,9 @@ impl SimPanel {
 
     /// Whether the tab's last run was quick enough to re-run while a slider moves.
     pub fn tune_live(&self, project: &Project) -> bool {
-        self.current(&project.schematic.simulation)
+        let setup = &project.schematic.simulation;
+        self.current(setup)
+            .or_else(|| self.values_analysis(setup))
             .and_then(|a| self.session.result(a.id))
             .is_some_and(|f| f.duration < sim::tune::LIVE)
     }

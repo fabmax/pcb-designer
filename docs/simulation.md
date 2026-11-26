@@ -163,14 +163,21 @@ parts their current with an arrow in its direction (magenta), placed clear of te
 each other where there's room; hover a bigger part for each pin's voltage and current
 and its power. They dim when the schematic changed since the run.
 
-Probes and values are on the schematic's **Simulation** layer: hide it in the layer menu
+**Switches and potentiometers** (with the panel or tab open) show a control next to
+the part: click a switch's toggle to open or close it (a changeover switch: from A to
+B), drag a potentiometer's slider to move its wiper (0 % at pin 1), or hover it and
+press ← / → for 1 % steps (Shift: 10 %). Each change is an undo step and runs the
+simulation shown again (while dragging when runs are quick), as the tuner does; the
+component keeps the setting. Clicking the symbol itself still selects it.
+
+Probes, values and controls are on the schematic's **Simulation** layer: hide it in the layer menu
 to see the schematic without them. Prints and PDFs never show it.
 
 ## Tuner
 
 Under the plot, the tuner tries values without changing the schematic. Right-click a part →
 **Tune R1**, or **Tune…** lists every part value and source setting (amplitude, frequency,
-AC level, …). A row has a slider (log over a decade either way for values, snapped to E24
+AC level, …), and switch states and potentiometer positions. A row has a slider (log over a decade either way for values, snapped to E24
 for resistors and E12 for capacitors and inductors; 0 to twice the value for source
 settings), the value, the slider's range and snapping. Moving a slider runs the analysis
 again on release (while dragging when runs are quick); plot and schematic values show the
@@ -180,8 +187,8 @@ values aren't.
 
 ## Parameter sweeps
 
-Tick **Parameter sweep** under an analysis' settings, pick a part value or source setting
-and its values (a list like `1k, 2.2k, 4.7k`, linear from/to/step, or log per decade; at
+Tick **Parameter sweep** under an analysis' settings, pick a part value, source setting,
+switch state (both states) or potentiometer position, and its values (a list like `1k, 2.2k, 4.7k`, linear from/to/step, or log per decade; at
 most 64). Each value runs in its own process, several at once. The plot shows a
 trace per signal and step ("V(OUT) · R1 = 4.7 kΩ"; one signal: a colour per step, several:
 each signal's steps in fading shades), the table groups them under the signal (click it to
@@ -208,7 +215,10 @@ it and see its values on the schematic.
 ### Parts that simulate out of the box
 
 Every Built-in part has a simulation model. Resistors, capacitors and inductors take their
-value: `10k`, `4k7`, `100n`, `1M` is mega.
+value: `10k`, `4k7`, `100n`, `1M` is mega. Switches (`SW_Push`, `SW_SPST`, `SW_SPDT`) are
+0.05 Ω closed and 1 GΩ open; the `Potentiometer` takes its value as the end-to-end
+resistance. Their setting is the `state` (0 or 1) or `pos` (0 to 1) parameter: set it
+with the control on the schematic, or under the component's simulation parameters.
 
 The 74HC logic parts simulate as digital logic (ngspice's XSPICE), which stays fast
 with many gates. Their inputs switch at half the supply (the 74HC14's at about 60 % going

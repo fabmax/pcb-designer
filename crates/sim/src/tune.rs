@@ -76,7 +76,24 @@ pub fn apply(c: &mut Component, param: &TuneParam, v: f64) -> bool {
             true
         }
         TuneParam::Source { field, .. } => c.sim.source.as_mut().is_some_and(|s| s.set_field(field, v)),
+        TuneParam::Param { name, .. } => {
+            c.sim.params.insert(name.clone(), param_text(name, v));
+            true
+        }
     }
+}
+
+/// A model parameter's text: a control's as it reads it (a switch 0 or 1), others as
+/// SPICE numbers.
+fn param_text(name: &str, v: f64) -> String {
+    match control_of(name) {
+        Some(control) => control.format(v),
+        None => si::spice(v),
+    }
+}
+
+fn control_of(name: &str) -> Option<SimControl> {
+    [SimControl::Switch, SimControl::Position].into_iter().find(|c| c.param() == name)
 }
 
 /// The document's value of `param`.
@@ -85,6 +102,13 @@ pub fn current(project: &Project, param: &TuneParam) -> Option<f64> {
     match param {
         TuneParam::Value { .. } => si::parse(&c.value),
         TuneParam::Source { field, .. } => c.sim.source.as_ref()?.field(field),
+        TuneParam::Param { name, .. } => {
+            let model = project.library.parts.get(c.part)?.sim.as_ref()?;
+            match control_of(name).filter(|k| model.control() == Some(*k)) {
+                Some(control) => Some(model.control_value(control, &c.sim)),
+                None => si::parse(c.sim.params.get(name).or_else(|| model.params.get(name))?),
+            }
+        }
     }
 }
 
@@ -95,7 +119,13 @@ pub fn label(project: &Project, param: &TuneParam) -> String {
         TuneParam::Value { .. } => format!("{refdes} value"),
         TuneParam::Source { field, .. } if field == "ac" => format!("{refdes} AC"),
         TuneParam::Source { field, .. } => format!("{refdes} {field}"),
+        TuneParam::Param { name, .. } => format!("{refdes} {}", param_label(name)),
     }
+}
+
+/// "position" for `pos`, "state" for `state`.
+fn param_label(name: &str) -> &str {
+    if name == "pos" { "position" } else { name }
 }
 
 /// "R1", "V1.amplitude": a parameter's short name (the tuned summary, sweep steps, MCP).
@@ -103,7 +133,7 @@ pub fn short_label(project: &Project, param: &TuneParam) -> String {
     let refdes = project.schematic.components.get(param.component()).map_or("?", |c| c.refdes.as_str());
     match param {
         TuneParam::Value { .. } => refdes.to_string(),
-        TuneParam::Source { field, .. } => format!("{refdes}.{field}"),
+        TuneParam::Source { field, .. } | TuneParam::Param { name: field, .. } => format!("{refdes}.{field}"),
     }
 }
 
@@ -144,6 +174,7 @@ pub fn unit(project: &Project, param: &TuneParam) -> &'static str {
             let level = if matches!(device, Some(SimDevice::CurrentSource)) { "A" } else { "V" };
             Source::field_unit(field, level)
         }
+        TuneParam::Param { .. } => "",
     }
 }
 
@@ -157,7 +188,8 @@ fn takes_value(model: &SimModel) -> bool {
 }
 
 /// Every parameter that can be tuned, by component in reference order: values that
-/// are numbers of parts whose model takes them, and sources' numeric fields.
+/// are numbers of parts whose model takes them, sources' numeric fields, and the
+/// controls of switches and potentiometers.
 pub fn tunable(project: &Project) -> Vec<TuneParam> {
     let mut components: Vec<&Component> = project.schematic.components.iter().collect();
     components.sort_by(|a, b| natural_cmp(&a.refdes, &b.refdes));
@@ -170,6 +202,13 @@ pub fn tunable_of(project: &Project, c: &Component) -> Vec<TuneParam> {
         return Vec::new();
     }
     let Some(model) = project.library.parts.get(c.part).and_then(|p| p.sim.as_ref()) else { return Vec::new() };
+    let control = model.control().map(|k| TuneParam::Param { component: c.id, name: k.param().into() });
+    let mut out: Vec<TuneParam> = control.into_iter().collect();
+    out.extend(tunable_values(model, c));
+    out
+}
+
+fn tunable_values(model: &SimModel, c: &Component) -> Vec<TuneParam> {
     if let Some(source) = &c.sim.source {
         let mut s = source.clone();
         s.fields_mut()
@@ -203,6 +242,7 @@ pub fn default_row(project: &Project, param: &TuneParam) -> Option<TuneRow> {
         TuneParam::Source { .. } if v > 0.0 => (0.0, 2.0 * v, Snap::None),
         TuneParam::Source { .. } if v < 0.0 => (2.0 * v, -2.0 * v, Snap::None),
         TuneParam::Source { .. } => (-1.0, 1.0, Snap::None),
+        TuneParam::Param { .. } => (0.0, 1.0, Snap::None),
     };
     Some(TuneRow { param: param.clone(), min, max, snap })
 }
@@ -211,7 +251,11 @@ pub fn default_row(project: &Project, param: &TuneParam) -> Option<TuneRow> {
 /// source field 0 to twice its value in 4 steps (−2× to 2×; ±1 around 0).
 pub fn default_step(project: &Project, param: &TuneParam) -> Option<Step> {
     let row = default_row(project, param)?;
-    let values = if param.is_log() {
+    let values = if let TuneParam::Param { name, .. } = param
+        && control_of(name) == Some(SimControl::Switch)
+    {
+        StepValues::Linear { start: 0.0, stop: 1.0, step: 1.0 }
+    } else if param.is_log() {
         StepValues::Log { start: row.min, stop: row.max, points_per_decade: 3 }
     } else {
         StepValues::Linear { start: row.min, stop: row.max, step: (row.max - row.min) / 4.0 }
@@ -266,6 +310,7 @@ impl Tuner {
         let v = match param {
             TuneParam::Value { .. } => si::parse(&si::value_text(v)).unwrap_or(v),
             TuneParam::Source { .. } => v,
+            TuneParam::Param { name, .. } => si::parse(&param_text(name, v)).unwrap_or(v),
         };
         self.values.insert(param.clone(), v);
     }

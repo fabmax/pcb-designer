@@ -800,12 +800,17 @@ pub enum TuneParam {
     Value { component: Id },
     /// A source's field: a waveform field (`amplitude`, `frequency`, `value`, …) or `ac`.
     Source { component: Id, field: String },
+    /// A model parameter of a component (a switch's `state`, a potentiometer's `pos`:
+    /// see [`SimModel::control`]), in `ComponentSim::params`.
+    Param { component: Id, name: String },
 }
 
 impl TuneParam {
     pub fn component(&self) -> Id {
         match self {
-            TuneParam::Value { component } | TuneParam::Source { component, .. } => *component,
+            TuneParam::Value { component }
+            | TuneParam::Source { component, .. }
+            | TuneParam::Param { component, .. } => *component,
         }
     }
 
