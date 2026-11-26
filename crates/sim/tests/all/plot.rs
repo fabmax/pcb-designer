@@ -269,3 +269,21 @@ fn logic_traces_switch_halfway_and_stay_off_the_axes() {
     plot::set_logic(&mut d, &signals, &[true, true]);
     assert_eq!(d.axis_unit(Axis::Left), "");
 }
+
+/// Traces come in name order whatever order the probes were added in, each keeping its
+/// probe's index (its colour).
+#[test]
+fn traces_are_in_name_order_and_keep_their_colour() {
+    let (b, _, _) = rc();
+    let r = tran(&b, &[0.0, 0.5, 1.0], 5.0);
+    let mut a = Analysis::new("T", AnalysisKind::Tran { stop: 1.0, step: None, start: 0.0, max_step: None });
+    a.probes = vec![Probe::voltage("OUT", None), Probe::voltage("IN", None)];
+    let conn = b.conn();
+    let (signals, _) = plot::signals(&a, &r, &conn);
+    let mut d = plot::data(&r, &signals, false, &conn).unwrap();
+    let order: Vec<(&str, usize)> = d.traces.iter().map(|t| (t.label.as_str(), t.signal)).collect();
+    assert_eq!(order, [("V(OUT)", 0), ("V(IN)", 1)], "the probes' order (MCP answers in it)");
+    d.sort_by_name();
+    let order: Vec<(&str, usize)> = d.traces.iter().map(|t| (t.label.as_str(), t.signal)).collect();
+    assert_eq!(order, [("V(IN)", 1), ("V(OUT)", 0)]);
+}

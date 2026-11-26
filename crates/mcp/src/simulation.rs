@@ -448,6 +448,7 @@ pub fn plot_scene(
     height: u32,
 ) -> Option<(Scene, Camera)> {
     let mut data = plot::data_steps(&sim::tune::steps(project, done), signals, true, conn)?;
+    data.sort_by_name();
     if spectrum {
         let (lo, hi) = (*data.x.first()?, *data.x.last()?);
         data = sim::spectrum::data(&data, lo, hi)?;

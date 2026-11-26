@@ -3,7 +3,7 @@
 //! zoom and pan, nice tick values, min/max decimation per pixel column, snapping to
 //! samples and fitting y to the visible part.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use editor_core::connectivity::Connectivity;
 use model::{Analysis, Id, Probe, natural_cmp, si};
@@ -173,6 +173,18 @@ pub struct Missing {
 }
 
 impl PlotData {
+    /// Orders the traces by their signal's name (natural: `Q2` before `Q10`), whatever
+    /// order they were probed in: a signal's phase after its magnitude, its steps in
+    /// order. Each keeps `Trace::signal`, so its colour.
+    pub fn sort_by_name(&mut self) {
+        let mut names: Vec<(usize, &str)> =
+            self.traces.iter().filter(|t| !t.dashed && t.step == 0).map(|t| (t.signal, t.label.as_str())).collect();
+        names.sort_by(|a, b| natural_cmp(a.1, b.1));
+        let rank: HashMap<usize, usize> = names.iter().enumerate().map(|(k, (signal, _))| (*signal, k)).collect();
+        self.traces.sort_by_key(|t| (rank.get(&t.signal).copied().unwrap_or(usize::MAX), t.dashed, t.step));
+        self.missing.sort_by(|a, b| natural_cmp(&a.label, &b.label));
+    }
+
     /// The units on each axis (empty: the axis is unused; logic traces use none).
     pub fn axis_unit(&self, axis: Axis) -> &'static str {
         self.traces.iter().find(|t| t.axis == axis && t.logic.is_none()).map_or("", |t| t.unit)
@@ -240,7 +252,8 @@ pub fn data_steps(
     })
 }
 
-/// The plot of `signals` in `result` (`None` for an operating point). AC: magnitude in
+/// The plot of `signals` in `result` (`None` for an operating point), its traces in their
+/// order ([`PlotData::sort_by_name`] for a plot's). AC: magnitude in
 /// dB on the left, with `phase` the unwrapped phase in degrees on the right (dashed).
 /// Else one axis per unit in the order volts, amperes, watts: the first present on the
 /// left, the next on the right, a third on a second right axis.

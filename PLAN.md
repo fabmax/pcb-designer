@@ -952,7 +952,10 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   the tuner's overrides leave the swept parameter out (`SimPanel::overrides(project,
   analysis)`), and its row is disabled. `plot::data_steps` merges the steps onto the
   union of their x samples (transients step differently; the first step's x past
-  400k), traces by signal then step, labelled "V(OUT) · R1 = 4.7 kΩ"; `PlotData::color`
+  400k), traces by signal then step (`plot::data` keeps the probes' order, which MCP's
+  answers follow; plots call `PlotData::sort_by_name`, natural order, each trace keeping
+  its probe index in `Trace::signal`, which picks its colour and is what the readout's
+  actions pass), labelled "V(OUT) · R1 = 4.7 kΩ"; `PlotData::color`
   gives a colour per step for one signal, else per signal with steps faded towards the
   chart. The readout puts a header row before each signal's steps (hides them all).
   An operating point gets a column per step; sorting by one shows its values on the
@@ -1977,7 +1980,8 @@ defers.
   sources, diode, BJT, MOS level 1 first. A port of ngspice isn't realistic (~730k lines
   of C; matching its convergence behaviour and the quirks vendor models rely on is the
   hard part), so ngspice would stay for vendor models and KiCad projects.
-- Plot: overlays of earlier runs, PNG export from the GUI (MCP's screenshot renders it
+- Plot: trace order of the user's choosing (buttons or drag and drop in the readout;
+  traces are in name order now), overlays of earlier runs, PNG export from the GUI (MCP's screenshot renders it
   offscreen already), the zoom saved in the workspace; several plot panes per analysis
   (stacked, shared x), saved plot layouts.
 - Schematic values: values at the cursor of a sweep (scrubbing), currents of

@@ -312,6 +312,7 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         let steps = sim::tune::steps(doc.project(), done);
         let Some(mut data) = plot::data_steps(&steps, &signals, phase, doc.connectivity()) else { return act };
         plot::set_logic(&mut data, &signals, &logic);
+        data.sort_by_name();
         let range =
             done.range.unwrap_or((data.x.first().copied().unwrap_or(0.0), data.x.last().copied().unwrap_or(1.0)));
         state.full = done.range;
