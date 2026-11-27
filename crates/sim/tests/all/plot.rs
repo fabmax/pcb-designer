@@ -163,6 +163,14 @@ fn ac_traces_are_db_and_phase() {
     assert_eq!(d.traces.len(), 1);
     let (lo, hi) = plot::fit_y(&d, Axis::Left, 1.0, 10.0, &HashSet::new()).unwrap();
     assert!(lo > -1.0 && hi < 1.0, "{lo} {hi}");
+    // A net without AC signal (a supply: −∞ dB) doesn't stretch the axis.
+    let mut flat = d.clone();
+    let mut supply = flat.traces[0].clone();
+    supply.label = "V(VDD)".into();
+    supply.y = vec![-6000.0; supply.y.len()];
+    flat.traces.push(supply);
+    assert_eq!(plot::fit_y(&flat, Axis::Left, 1.0, 10.0, &HashSet::new()), Some((lo, hi)));
+    assert_eq!(plot::label(-6000.0, "dB"), "−∞ dB");
     let csv = plot::csv(&d, &HashSet::new());
     assert!(csv.starts_with("Frequency (Hz),V(OUT) (dB)\n1,"), "{csv}");
     assert_eq!(csv.lines().count(), 52);

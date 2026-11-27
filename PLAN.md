@@ -829,7 +829,8 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   `signals` = the analysis' probes, or without any the named nets (at most 8, not
   saved). `Signal` is `Voltage`, `Diff`, `Current` or `Power`; `plot::vector` and
   `signal_label` read any of them from a result. `data` makes the traces: AC is dB left
-  and unwrapped phase right (dashed, "V(X) phase"); else one axis per unit in the order
+  and unwrapped phase right (dashed, "V(X) phase"; a net without AC signal, a supply,
+  is −6000 dB, `NO_SIGNAL_DB` and below reads "−∞ dB" and `fit_y` leaves it out); else one axis per unit in the order
   V, A, W: the first present left, the next right, a third on `Axis::Right2` further
   out. **Logic traces**: `Probe::Voltage::logic` (to ground only); `set_logic` marks
   those traces with their threshold (`Trace::logic`, `logic_threshold`: halfway between
@@ -1946,8 +1947,11 @@ files come in and go out through the file dialog's Upload and Download.
   `run` and reads no messages) and returns the streamed points (`stopped`); a dropped
   run (abandoned) terminates its worker too. A worker whose script fails is marked dead
   and removed later (not inside its own callback, which it owns). After ngspice asks to
-  exit, the worker starts a fresh instance from its compiled module. ngspice's start-up
-  output (no spinit: no code models) isn't the first run's log. Shipping:
+  exit, the worker starts a fresh instance from its compiled module. Each instance
+  gets the code models written to `/cm` in its `FS` and loaded with `codemodel` (they
+  are fetched once per worker; what spinit does on the desktop); ngspice's start-up
+  output (no spinit) isn't the first run's log. Checked: KiCad's sallen_key demo (the
+  AD8051's POLY sources) runs in the browser. Shipping:
   `scripts/web-ngspice.sh` (Trunk post-build hook) copies the module and worker into
   `ngspice/` of the site, building it first when Emscripten is there; without it the
   site has no `ngspice/`, and `web::has_ngspice` (a HEAD request at start) makes
@@ -1961,7 +1965,14 @@ files come in and go out through the file dialog's Upload and Download.
   libraries there, so `make STATIC= libngspice_la_CFLAGS= libngspice_la_LDFLAGS=` builds
   a static `libngspice.a`, linked with `em++` (HICUM is C++); XSPICE stays on (47
   doesn't compile without it); `cmpp` is built with the host compiler first; `ivlng`
-  is dropped. Results: `write` a raw file into Emscripten's `FS`, read it back
+  is dropped. Code models: no patch: ngspice is an Emscripten `MAIN_MODULE=2` and each
+  `.cm` a `SIDE_MODULE` (wasm, ~350 kB together, table.cm left out as on the desktop)
+  that ngspice's own `dlopen` loads from its `FS` (synchronous compiling: fine in a
+  worker). `MAIN_MODULE=2` exports only what's listed: the side modules' imports (libc
+  and `stderr`; ngspice's functions reach them through `coreitf`), read with Node's
+  `WebAssembly.Module.imports` (a linked side module has no symbols for `nm`). Their
+  link flags in ngspice's `icm` makefile go by the host's `uname` (`-bundle` on macOS):
+  `LDFLAGS="-sSIDE_MODULE=1"` overrides them, and everything is built `-fPIC`. Results: `write` a raw file into Emscripten's `FS`, read it back
   (`sim::raw`). `ControlledExit` (e.g. after "Missing token") spends the instance as on
   the desktop; a new instance from the same compiled `WebAssembly.Module` takes ~2 ms,
   so the browser replaces it instead of falling back to processes. Speed: ~1.4× native
@@ -2195,8 +2206,6 @@ defers.
 - Cache the project tree nodes if big libraries make the per-frame rebuild slow.
 
 **Web**
-- XSPICE code models in the browser's ngspice, linked statically (dlopen'ed `.cm`
-  files on the desktop; needed for POLY sources of vendor op amps and digital parts).
 - CI doesn't build or test the browser's ngspice (Emscripten in the web job, then
   `node scripts/ngspice-wasm-test.mjs`).
 - MCP for agents in the browser (no sockets: a WebSocket bridge, or an extension).
