@@ -2,7 +2,8 @@
 //
 //   node crates/app/web-shot.mjs URL OUT.png ["STEPS"]
 //
-// STEPS, separated by `;`: `click X,Y` (CSS pixels), `drag X,Y X2,Y2`, `key KEY` (a
+// STEPS, separated by `;`: `click X,Y` (CSS pixels), `drag X,Y X2,Y2`, `wheel X,Y DY`
+// (a mouse wheel; DY in pixels, positive scrolls down), `key KEY` (a
 // DOM key name: `r`, `Delete`, `Escape`), `wait MS`, `shot FILE.png`, `eval JS` (prints
 // the result). The page's console is printed. The window is 1600×1000
 // at 2× (like the desktop screenshots). CHROME overrides the browser's path.
@@ -104,6 +105,11 @@ try {
         await sleep(30);
       }
       await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: x1, y: y1, button: "left", clickCount: 1 });
+      await sleep(300);
+    } else if (cmd === "wheel") {
+      const [x, y] = rest[0].split(",").map(Number);
+      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+      await send("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY: Number(rest[1]) });
       await sleep(300);
     } else if (cmd === "key") {
       const code = arg.length === 1 ? `Key${arg.toUpperCase()}` : arg;

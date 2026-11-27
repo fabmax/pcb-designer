@@ -277,6 +277,12 @@ impl Canvas {
         ui.input(|i| {
             for e in &i.events {
                 if let egui::Event::MouseWheel { unit, delta, source, modifiers, .. } = e {
+                    // A browser doesn't say what scrolled; the page classifies it.
+                    #[cfg(target_arch = "wasm32")]
+                    let source = &match source {
+                        egui::MouseWheelSource::Unknown => crate::web::wheel_source(),
+                        s => *s,
+                    };
                     if modifiers.command && self.command_wheel {
                         self.wheel_steps += match (source, unit) {
                             // macOS sends an event per notch of a mouse wheel, but with
@@ -307,6 +313,9 @@ impl Canvas {
                     if is_wheel {
                         // Mouse wheel zooms around the cursor, like most CAD tools.
                         let steps = match unit {
+                            // A browser sends an event per notch, its pixels depending on
+                            // the system and acceleration: a step each, as on the desktop.
+                            egui::MouseWheelUnit::Point if cfg!(target_arch = "wasm32") => delta.y.signum() as f64,
                             egui::MouseWheelUnit::Point => delta.y as f64 / 50.0,
                             egui::MouseWheelUnit::Line => delta.y as f64,
                             egui::MouseWheelUnit::Page => delta.y as f64 * 10.0,
