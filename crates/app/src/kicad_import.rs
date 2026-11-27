@@ -716,6 +716,16 @@ impl KicadImport {
 
     /// Download progress, the download offer when nothing was found, and updates.
     fn download_ui(&mut self, ui: &mut egui::Ui, nothing_found: bool) {
+        // No downloads in the browser: its libraries are uploaded folders.
+        if cfg!(target_arch = "wasm32") {
+            if nothing_found {
+                hint(
+                    ui,
+                    "Upload KiCad library folders (.kicad_sym files, .pretty folders) in the Add folder… dialog and choose them.",
+                );
+            }
+            return;
+        }
         if self.root.is_none() {
             return;
         }

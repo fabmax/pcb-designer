@@ -5,11 +5,16 @@ Firefox). It's experimental: the desktop app comes first.
 
 ## What works
 
-Schematic, PCB and part editing, libraries, design checks, and Gerber, assembly and
-schematic PDF export, as on the desktop.
+Schematic, PCB and part editing, libraries, design checks, Gerber, assembly and
+schematic PDF export, and KiCad import and export, as on the desktop.
 
-Not in the browser (yet): simulation (no ngspice), the MCP server for agents, KiCad
-import, recovery copies after a crash, and Paste from the Edit menu (Cmd/Ctrl+V works).
+Not in the browser (yet): simulation (no ngspice), the MCP server for agents,
+downloading KiCad's libraries (upload library folders instead, and choose them in the
+KiCad import window), recovery copies after a crash, and Paste from the Edit menu
+(Cmd/Ctrl+V works).
+
+To import a KiCad project, upload it (its folder as a `.zip`, or its files into a new
+folder), then **File → Import KiCad project…** and pick its `.kicad_pro`.
 
 ## Files
 

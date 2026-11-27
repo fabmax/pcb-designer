@@ -2,7 +2,8 @@
 //
 //   node crates/app/web-shot.mjs URL OUT.png ["STEPS"]
 //
-// STEPS, separated by `;`: `click X,Y` (CSS pixels), `rclick X,Y` (right button), `drag X,Y X2,Y2`, `wheel X,Y DY`
+// STEPS, separated by `;`: `click X,Y` (CSS pixels), `rclick X,Y` (right button),
+// `dclick X,Y` (double click), `drag X,Y X2,Y2`, `wheel X,Y DY`
 // (a mouse wheel; DY in pixels, positive scrolls down), `key KEY` (a
 // DOM key name: `r`, `Delete`, `Escape`, with modifiers `Meta+s`, `Control+Shift+z`),
 // `type TEXT`, `reload` (the page; its storage stays), `downloads DIR` (where downloads
@@ -100,6 +101,14 @@ try {
       for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
         await send("Input.dispatchMouseEvent", { type, x, y, button, clickCount: 1 });
         await sleep(50);
+      }
+      await sleep(300);
+    } else if (cmd === "dclick") {
+      const [x, y] = arg.split(",").map(Number);
+      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+      for (const clickCount of [1, 2]) {
+        await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount });
+        await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount });
       }
       await sleep(300);
     } else if (cmd === "drag") {

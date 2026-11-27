@@ -72,14 +72,14 @@ pub fn import_project(pro: &Path) -> Result<ProjectImport, String> {
     let stem = pro.file_stem().and_then(|s| s.to_str()).ok_or("not a KiCad project file")?.to_string();
     let sch_path = dir.join(format!("{stem}.kicad_sch"));
     let pcb_path = dir.join(format!("{stem}.kicad_pcb"));
-    if !sch_path.exists() {
-        if dir.join(format!("{stem}.sch")).exists() {
+    if !model::fs::exists(&sch_path) {
+        if model::fs::exists(dir.join(format!("{stem}.sch"))) {
             return Err(format!("{stem} is a KiCad 5 (legacy) project; open it in KiCad 6 or newer and save it first"));
         }
         return Err(format!("{} not found", sch_path.display()));
     }
     let mut report = Report::default();
-    let settings: serde_json::Value = std::fs::read_to_string(pro)
+    let settings: serde_json::Value = model::fs::read_to_string(pro)
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or(serde_json::Value::Null);
@@ -91,7 +91,7 @@ pub fn import_project(pro: &Path) -> Result<ProjectImport, String> {
             sch.refused.join("\n")
         ));
     }
-    let pcb = if pcb_path.exists() { pcb::import(&pcb_path, &mut report)? } else { PcbImport::default() };
+    let pcb = if model::fs::exists(&pcb_path) { pcb::import(&pcb_path, &mut report)? } else { PcbImport::default() };
     let mut project = assemble(&stem, dir, sch, pcb, &mut report);
     design_rules(&settings, &mut project.board.rules);
     check_settings(&settings, &mut project, &mut report);

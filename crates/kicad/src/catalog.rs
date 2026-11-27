@@ -51,12 +51,11 @@ pub struct Catalog {
 }
 
 fn read(path: &Path) -> Result<String, Error> {
-    std::fs::read_to_string(path).map_err(|e| Error::Io(path.to_path_buf(), e))
+    model::fs::read_to_string(path).map_err(|e| Error::Io(path.to_path_buf(), e))
 }
 
 fn entries(dir: &Path) -> Vec<PathBuf> {
-    let mut v: Vec<PathBuf> =
-        std::fs::read_dir(dir).map(|r| r.filter_map(|e| Some(e.ok()?.path())).collect()).unwrap_or_default();
+    let mut v: Vec<PathBuf> = model::fs::list_dir(dir).unwrap_or_default();
     v.sort();
     v
 }

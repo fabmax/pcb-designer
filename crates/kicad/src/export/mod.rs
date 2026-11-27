@@ -115,8 +115,8 @@ pub fn export_library(library: &Library, dir: &Path, name: &str) -> Result<Expor
 /// A folder may be written when it doesn't exist, is empty, or has one of `ours` in it
 /// (an earlier export, which is overwritten).
 fn check_target(dir: &Path, ours: &[&str]) -> Result<(), String> {
-    let entries: Vec<String> = match std::fs::read_dir(dir) {
-        Ok(rd) => rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect(),
+    let entries: Vec<String> = match model::fs::list_dir(dir) {
+        Ok(paths) => paths.iter().filter_map(|p| Some(p.file_name()?.to_string_lossy().into_owned())).collect(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(format!("{}: {e}", dir.display())),
     };
@@ -128,22 +128,22 @@ fn check_target(dir: &Path, ours: &[&str]) -> Result<(), String> {
 
 fn write(dir: &Path, export: &Export, pretty: &str) -> Result<(), String> {
     let err = |p: &Path, e: std::io::Error| format!("{}: {e}", p.display());
-    std::fs::create_dir_all(dir).map_err(|e| err(dir, e))?;
+    model::fs::create_dir_all(dir).map_err(|e| err(dir, e))?;
     // Footprints of an earlier export that are gone now.
     let pretty = dir.join(pretty);
-    if let Ok(rd) = std::fs::read_dir(&pretty) {
-        for e in rd.flatten() {
-            if e.path().extension().is_some_and(|x| x == "kicad_mod") {
-                std::fs::remove_file(e.path()).map_err(|x| err(&e.path(), x))?;
+    if let Ok(paths) = model::fs::list_dir(&pretty) {
+        for p in paths {
+            if p.extension().is_some_and(|x| x == "kicad_mod") {
+                model::fs::remove_file(&p).map_err(|x| err(&p, x))?;
             }
         }
     }
     for (rel, text) in &export.files {
         let path = dir.join(rel);
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| err(parent, e))?;
+            model::fs::create_dir_all(parent).map_err(|e| err(parent, e))?;
         }
-        std::fs::write(&path, text).map_err(|e| err(&path, e))?;
+        model::fs::write(&path, text).map_err(|e| err(&path, e))?;
     }
     Ok(())
 }

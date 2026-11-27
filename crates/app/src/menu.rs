@@ -197,7 +197,8 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
         action("Export schematic PDF", Action::ExportSchematicPdf, true),
         item("Export KiCad project…", Cmd::ExportKicadProject),
     ];
-    if !s.native {
+    // A page isn't quit (the browser closes it).
+    if !s.native && !cfg!(target_arch = "wasm32") {
         file.extend([Entry::Separator, item("Quit", Cmd::Quit)]);
     }
     out.push(menu("File", file));

@@ -238,7 +238,7 @@ pub fn parse_id(uuid: &str) -> Option<Id> {
 }
 
 fn read_schematic(path: &Path) -> Result<Node, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let text = model::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let root = sexpr::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     if root.head() != "kicad_sch" {
         return Err(format!("{}: not a KiCad schematic", path.display()));
