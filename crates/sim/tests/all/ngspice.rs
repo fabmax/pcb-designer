@@ -448,7 +448,7 @@ fn an_exited_library_runs_no_more() {
     let r = sim::simulate(b.project(), &b.conn(), &a, &lib, &Cancel::default());
     assert!(matches!(&r, Err(SimError::Failed { message, .. }) if message.contains("restart")), "{r:?}");
     // The engine runs it in a worker process instead.
-    let engine = sim::Engine { library: Some(lib), worker: worker(), error: None };
+    let engine = sim::Engine { library: Some(lib), worker: worker(), ..Default::default() };
     assert!(engine.describe().unwrap().ends_with("worker process"));
     let backend = engine.backend(&a).unwrap();
     let r = sim::simulate(b.project(), &b.conn(), &a, backend.as_ref(), &Cancel::default()).unwrap();

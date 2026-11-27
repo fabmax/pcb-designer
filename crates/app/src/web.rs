@@ -27,6 +27,7 @@ pub fn start() {
             Err(e) => log::error!("browser storage not loaded (nothing will be kept): {e:?}"),
         }
         let _ = model::fs::create_dir_all(HOME);
+        sim::browser::set_available(has_ngspice().await);
         let opts = Options::new(startup());
         let document = web_sys::window().and_then(|w| w.document()).expect("a document");
         let canvas = document
@@ -149,6 +150,21 @@ pub fn download(name: &str, data: &[u8]) {
 }
 
 /// Whether the browser offers WebGPU (the only backend of the browser build).
+/// Whether the site comes with ngspice (`ngspice/`, put there by
+/// scripts/web-ngspice.sh when Emscripten was installed for the build).
+async fn has_ngspice() -> bool {
+    let Some(window) = web_sys::window() else { return false };
+    let init = web_sys::RequestInit::new();
+    init.set_method("HEAD");
+    let response =
+        wasm_bindgen_futures::JsFuture::from(window.fetch_with_str_and_init("ngspice/ngspice.wasm", &init)).await;
+    let found = response.ok().and_then(|r| r.dyn_into::<web_sys::Response>().ok()).is_some_and(|r| r.ok());
+    if !found {
+        log::info!("built without ngspice: no simulation");
+    }
+    found
+}
+
 fn has_webgpu() -> bool {
     web_sys::window().is_some_and(|w| js_sys::Reflect::has(&w.navigator(), &"gpu".into()).unwrap_or(false))
 }

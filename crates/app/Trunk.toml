@@ -2,3 +2,9 @@
 [build]
 target = "index.html"
 dist = "../../target/web"
+
+# ngspice for simulation (built with Emscripten when it's installed).
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = ["../../scripts/web-ngspice.sh"]

@@ -12,6 +12,9 @@
 //! A single run streams into a [`Live`] plot when the backend does (libngspice):
 //! [`live`](Session::live) is it as a result, refreshed at most ten times a second.
 //! [`stop`](Session::stop) keeps what a single run has so far (`Finished::stopped`).
+//!
+//! Backends that can't block (the browser's, [`Backend::start`]) aren't run on threads:
+//! [`poll`](Session::poll) polls their runs and starts a sweep's next steps.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -24,7 +27,7 @@ use model::{Analysis, Id, Probe, Project, TuneParam};
 
 use crate::netlist::{self, Level, Netlist, SimProblem};
 use crate::tune::Overrides;
-use crate::{Backend, Cancel, Live, Output, SimError, SimResult, report};
+use crate::{Backend, Cancel, Live, Output, Pending, SimError, SimResult, report};
 
 /// A backend the worker thread can own.
 pub type SharedBackend = Arc<dyn Backend + Send + Sync>;
@@ -94,12 +97,61 @@ struct Run {
     extra: Vec<Probe>,
     overrides: Overrides,
     outputs: Outputs,
-    workers: Vec<JoinHandle<()>>,
+    steps: Steps,
     /// The single run's points so far, and them as a result (with the revision and
     /// time it was made).
     live: Live,
     shown: Option<(u64, Instant, Finished)>,
     range: Option<(f64, f64)>,
+}
+
+/// How a run's steps run.
+enum Steps {
+    /// Threads running [`Backend::run`], taking the next step until none is left.
+    Threads(Vec<JoinHandle<()>>),
+    /// Runs [`Backend::start`]ed, up to `slots` at once; [`Session::poll`] polls them and
+    /// starts the next steps.
+    Polled {
+        backend: SharedBackend,
+        texts: Arc<Vec<String>>,
+        /// The next step to start.
+        next: usize,
+        going: Vec<(usize, Box<dyn Pending + Send>)>,
+        slots: usize,
+    },
+}
+
+impl Steps {
+    /// Polls started runs, starts the next steps while there are free slots. Returns
+    /// whether all ended.
+    fn advance(&mut self, outputs: &Outputs, cancel: &Cancel, live: &Live, single: bool) -> bool {
+        let Steps::Polled { backend, texts, next, going, slots } = self else {
+            let Steps::Threads(workers) = self else { unreachable!() };
+            return workers.iter().all(|w| w.is_finished());
+        };
+        going.retain_mut(|(k, run)| {
+            let Some(out) = run.poll() else { return true };
+            // A failed step ends the sweep.
+            if out.is_err() {
+                cancel.cancel();
+            }
+            outputs.lock().expect("outputs")[*k] = Some(out);
+            false
+        });
+        while going.len() < *slots && *next < texts.len() && !cancel.is_cancelled() {
+            let live = if single { live.clone() } else { Live::default() };
+            match backend.start(&texts[*next], cancel, &live) {
+                Some(run) => going.push((*next, run)),
+                None => {
+                    let message = "the backend stopped starting runs".to_string();
+                    outputs.lock().expect("outputs")[*next] = Some(Err(SimError::NotFound(message)));
+                    cancel.cancel();
+                }
+            }
+            *next += 1;
+        }
+        going.is_empty() && (*next >= texts.len() || cancel.is_cancelled())
+    }
 }
 
 /// How often a live result is refreshed.
@@ -206,34 +258,26 @@ impl Session {
         let cancel = Cancel::default();
         let texts: Arc<Vec<String>> = Arc::new(netlists.iter().map(|n| n.text.clone()).collect());
         let outputs: Outputs = Arc::new(Mutex::new((0..texts.len()).map(|_| None).collect()));
-        let next = Arc::new(AtomicUsize::new(0));
         let cores = if backend.parallel() { std::thread::available_parallelism().map_or(4, |n| n.get()) } else { 1 };
         // Only a single run streams (a sweep's steps would mix).
         let live = Live::default();
-        let workers = (0..texts.len().min(cores))
-            .map(|_| {
-                let (texts, outputs, next, backend, c) =
-                    (texts.clone(), outputs.clone(), next.clone(), backend.clone(), cancel.clone());
-                let live = if step.is_none() { live.clone() } else { Live::default() };
-                std::thread::Builder::new()
-                    .name("simulation".into())
-                    .spawn(move || {
-                        loop {
-                            let k = next.fetch_add(1, Ordering::SeqCst);
-                            if k >= texts.len() || c.is_cancelled() {
-                                break;
-                            }
-                            let out = backend.run(&texts[k], &c, &live);
-                            // A failed step ends the sweep.
-                            if out.is_err() {
-                                c.cancel();
-                            }
-                            outputs.lock().expect("outputs")[k] = Some(out);
-                        }
-                    })
-                    .expect("spawn simulation thread")
-            })
-            .collect();
+        let single = step.is_none();
+        let first_live = if single { live.clone() } else { Live::default() };
+        let steps = match backend.start(&texts[0], &cancel, &first_live) {
+            // A backend that can't block: polled.
+            Some(first) => {
+                let mut steps = Steps::Polled {
+                    backend,
+                    texts: texts.clone(),
+                    next: 1,
+                    going: vec![(0, first)],
+                    slots: texts.len().min(cores),
+                };
+                steps.advance(&outputs, &cancel, &live, single);
+                steps
+            }
+            None => Steps::Threads(threads(&texts, &outputs, &backend, &cancel, &live, single, cores)),
+        };
         let (extra, overrides) = (extra.to_vec(), overrides.clone());
         let started = Instant::now();
         let base = base.text;
@@ -248,7 +292,7 @@ impl Session {
             extra,
             overrides,
             outputs,
-            workers,
+            steps,
             live,
             shown: None,
             range,
@@ -331,13 +375,18 @@ impl Session {
 
     /// Collects a finished run. Returns its outcome when one finished since the last call.
     pub fn poll(&mut self) -> Option<Outcome> {
-        if !self.run.as_ref()?.workers.iter().all(|w| w.is_finished()) {
+        let run = self.run.as_mut()?;
+        let single = run.step.is_none();
+        if !run.steps.advance(&run.outputs, &run.cancel, &run.live, single) {
             self.refresh_live();
             return None;
         }
         let run = self.run.take()?;
         let duration = run.started.elapsed();
-        let panicked = run.workers.into_iter().any(|w| w.join().is_err());
+        let panicked = match run.steps {
+            Steps::Threads(workers) => workers.into_iter().any(|w| w.join().is_err()),
+            Steps::Polled { .. } => false,
+        };
         let outputs = std::mem::take(&mut *run.outputs.lock().expect("outputs"));
         let stepped = run.step.is_some();
         let labels: Vec<String> = match &run.step {
@@ -489,4 +538,42 @@ fn with_probes(analysis: &Analysis, extra: &[Probe]) -> Analysis {
     let mut a = analysis.clone();
     a.probes.extend(extra.iter().cloned());
     a
+}
+
+/// Threads running `texts` on `backend` (up to `cores`), each taking the next step until
+/// none is left or the run is cancelled.
+fn threads(
+    texts: &Arc<Vec<String>>,
+    outputs: &Outputs,
+    backend: &SharedBackend,
+    cancel: &Cancel,
+    live: &Live,
+    single: bool,
+    cores: usize,
+) -> Vec<JoinHandle<()>> {
+    let next = Arc::new(AtomicUsize::new(0));
+    (0..texts.len().min(cores))
+        .map(|_| {
+            let (texts, outputs, next, backend, c) =
+                (texts.clone(), outputs.clone(), next.clone(), backend.clone(), cancel.clone());
+            let live = if single { live.clone() } else { Live::default() };
+            std::thread::Builder::new()
+                .name("simulation".into())
+                .spawn(move || {
+                    loop {
+                        let k = next.fetch_add(1, Ordering::SeqCst);
+                        if k >= texts.len() || c.is_cancelled() {
+                            break;
+                        }
+                        let out = backend.run(&texts[k], &c, &live);
+                        // A failed step ends the sweep.
+                        if out.is_err() {
+                            c.cancel();
+                        }
+                        outputs.lock().expect("outputs")[k] = Some(out);
+                    }
+                })
+                .expect("spawn simulation thread")
+        })
+        .collect()
 }

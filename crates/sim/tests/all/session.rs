@@ -226,3 +226,107 @@ fn a_sweep_of_a_deleted_part_does_not_start() {
     assert_eq!(a.outcome, Outcome::NetlistErrors);
     assert!(a.problems.iter().any(|p| p.message.contains("no longer exists")));
 }
+
+/// A backend that can't block (as the browser's): its runs end on their `polls`-th poll,
+/// stream a point when started, and stop with it when cancelled.
+#[derive(Default)]
+struct Polled {
+    polls: usize,
+    /// Runs going now, and the most at once.
+    going: Arc<Mutex<(usize, usize)>>,
+    netlists: Arc<Mutex<Vec<String>>>,
+    serial: bool,
+}
+
+struct PolledRun {
+    left: usize,
+    cancel: Cancel,
+    live: sim::Live,
+    going: Arc<Mutex<(usize, usize)>>,
+}
+
+fn op_plot(v: f64) -> Plot {
+    let out = Vector { name: "v(out)".into(), kind: "voltage".into(), re: vec![v], im: None };
+    Plot { name: "Operating Point".into(), complex: false, vectors: vec![out] }
+}
+
+impl sim::Pending for PolledRun {
+    fn poll(&mut self) -> Option<Result<Output, SimError>> {
+        let stopped = self.cancel.is_cancelled();
+        if !stopped && self.left > 1 {
+            self.left -= 1;
+            return None;
+        }
+        self.going.lock().unwrap().0 -= 1;
+        let plot = if stopped { self.live.plot().unwrap() } else { op_plot(1.0) };
+        Some(Ok(Output { plots: vec![plot], log: "the log".into(), warnings: Vec::new(), stopped }))
+    }
+}
+
+impl Backend for Polled {
+    fn run(&self, _: &str, _: &Cancel, _: &sim::Live) -> Result<Output, SimError> {
+        panic!("a polled backend isn't run on a thread")
+    }
+
+    fn start(&self, netlist: &str, cancel: &Cancel, live: &sim::Live) -> Option<Box<dyn sim::Pending + Send>> {
+        self.netlists.lock().unwrap().push(netlist.to_string());
+        let mut g = self.going.lock().unwrap();
+        g.0 += 1;
+        g.1 = g.1.max(g.0);
+        let mut empty = op_plot(0.0);
+        empty.vectors[0].re.clear();
+        live.begin(empty);
+        live.push(&[(0.5, 0.0)]);
+        Some(Box::new(PolledRun {
+            left: self.polls,
+            cancel: cancel.clone(),
+            live: live.clone(),
+            going: self.going.clone(),
+        }))
+    }
+
+    fn parallel(&self) -> bool {
+        !self.serial
+    }
+
+    fn describe(&self) -> String {
+        "polled".into()
+    }
+}
+
+#[test]
+fn backends_that_cannot_block_are_polled() {
+    let b = divider();
+    let op = Analysis::new("OP", AnalysisKind::Op);
+    let mut s = Session::default();
+    // Polled at the start already, then by each `poll`.
+    assert!(s.start(b.project(), &b.conn(), &op, Arc::new(Polled { polls: 3, ..Default::default() })));
+    assert!(s.poll().is_none());
+    assert_eq!(s.poll(), Some(Outcome::Done));
+    assert_eq!(s.result(op.id).unwrap().result.op_voltage("OUT"), Some(1.0));
+
+    // Stopped, it keeps the points streamed so far.
+    assert!(s.start(b.project(), &b.conn(), &op, Arc::new(Polled { polls: 100, ..Default::default() })));
+    assert!(s.poll().is_none());
+    s.stop();
+    assert_eq!(s.poll(), Some(Outcome::Done));
+    let done = s.result(op.id).unwrap();
+    assert!(done.stopped);
+    assert_eq!(done.result.op_voltage("OUT"), Some(0.5));
+
+    // A sweep: every step, no more at once than the backend allows (one when serial).
+    let r2 = b.project().schematic.components.iter().find(|c| c.refdes == "R2").unwrap().id;
+    let mut sweep = Analysis::new("OP", AnalysisKind::Op);
+    let values = vec![1e3, 2.2e3, 4.7e3, 10e3];
+    sweep.step = Some(Step { param: TuneParam::Value { component: r2 }, values: StepValues::List { values } });
+    for serial in [true, false] {
+        let backend = Polled { polls: 2, serial, ..Default::default() };
+        let (going, netlists) = (backend.going.clone(), backend.netlists.clone());
+        assert!(s.start(b.project(), &b.conn(), &sweep, Arc::new(backend)));
+        assert_eq!(wait(&mut s), Outcome::Done);
+        assert_eq!(netlists.lock().unwrap().len(), 4);
+        assert_eq!(s.result(sweep.id).unwrap().results().len(), 4);
+        let most = going.lock().unwrap().1;
+        assert!(if serial { most == 1 } else { most > 1 }, "serial {serial}: {most} at once");
+    }
+}

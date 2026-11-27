@@ -767,7 +767,10 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   single run streams into a `Live` (`Arc<Mutex<…>>`); `poll` brings `live(analysis)`, a
   `Finished` with a new `run` number, up to date by appending the new points
   (`Live::update`), every 100 ms, less often past 200k points (the plot rebuilds its
-  data from all of them). The plot and the panel's table show it while it runs
+  data from all of them). Backends that can't block (the browser's, `Backend::start`
+  returns a `Pending`) aren't run on threads: `Steps::Polled` polls them in `poll`
+  and starts a sweep's next steps as slots free up (the desktop keeps its threads).
+  The plot and the panel's table show it while it runs
   (`range` fixes x; not dimmed), with `progress` as "Running… 42 %" and a bar along
   the top of the plot. Results
   are kept per analysis id with the summary rows (`report::rows`, computed once), and
@@ -1919,7 +1922,8 @@ files come in and go out through the file dialog's Upload and Download.
 - **What the browser lacks**, and how the build copes:
   - Threads: `std::thread::spawn` panics. App work goes through `background::spawn`
     (a thread on the desktop, run in place in the browser). sim's workers and the
-    offscreen renderer's threads are unreachable there (no ngspice, no MCP).
+    offscreen renderer's threads are unreachable there (no MCP; ngspice runs in Web
+    Workers, below).
   - Clocks: `std::time::Instant::now()` panics; use `web_time::{Instant, SystemTime}`
     (std's types on the desktop). `recovery.rs` keeps std's `SystemTime` for file times.
   - Files: `std::fs` compiles and fails at run time and `std::env::temp_dir()` panics:
@@ -1928,11 +1932,27 @@ files come in and go out through the file dialog's Upload and Download.
     menu Paste finds nothing (`clipboard::read`).
   - Crates: `mcp` builds `server`/`stdio` for the desktop only (a stub `McpServer`
     that never starts, `server_web.rs`; tokio with `sync` only). `sim` loads no
-    libngspice (`Engine::find` reports it). `kicad` downloads through `download::get`,
+    libngspice (`sim::browser` instead). `kicad` downloads through `download::get`,
     an error in the browser (no `ureq`). `model` gets `uuid`'s `js` randomness.
   - Keys: eframe calls `preventDefault` on every event, so Cmd+S, Cmd+D … reach the
     app; Cmd+W, Cmd+N, Cmd+T, Cmd+Q stay the browser's.
-- **ngspice (Emscripten), not yet in the app:** `scripts/build-ngspice-wasm.sh` builds
+- **Simulation (`sim::browser`):** each run goes to a Web Worker
+  (`crates/sim/web/ngspice-worker.mjs`) running the Emscripten ngspice (below) as
+  libngspice: `ngSpice_Circ`, a synchronous `run`, `write` to its `FS`. Messages back,
+  by run id: `init` (vectors), `data` (points batched every 50 ms), `stat`, `done` (log,
+  raw file, exited / not loaded), `failed`. The decoding (`Stream`, `finish`, `stopped`)
+  is plain Rust tested on the desktop; the pool (`web`, thread-local) keeps idle workers
+  for the next run and starts more for sweeps. Stop terminates the worker (it's busy in
+  `run` and reads no messages) and returns the streamed points (`stopped`); a dropped
+  run (abandoned) terminates its worker too. A worker whose script fails is marked dead
+  and removed later (not inside its own callback, which it owns). After ngspice asks to
+  exit, the worker starts a fresh instance from its compiled module. ngspice's start-up
+  output (no spinit: no code models) isn't the first run's log. Shipping:
+  `scripts/web-ngspice.sh` (Trunk post-build hook) copies the module and worker into
+  `ngspice/` of the site, building it first when Emscripten is there; without it the
+  site has no `ngspice/`, and `web::has_ngspice` (a HEAD request at start) makes
+  `Engine::find` say so. Checked against the desktop: the amp example's op is equal.
+- **ngspice (Emscripten):** `scripts/build-ngspice-wasm.sh` builds
   the pinned release into `target/ngspice/wasm32-emscripten/` (`ngspice.mjs` + `.wasm`:
   5 MB, 1.1 MB brotli); `node scripts/ngspice-wasm-test.mjs` runs an op and a transient
   through the shared API. Build gotchas: no `-pthread` (Emscripten's pthread functions
@@ -1946,7 +1966,7 @@ files come in and go out through the file dialog's Upload and Download.
   the desktop; a new instance from the same compiled `WebAssembly.Module` takes ~2 ms,
   so the browser replaces it instead of falling back to processes. Speed: ~1.4× native
   (a 20k-point nonlinear transient, 190 vs 133 ms). It can't link into the Rust wasm
-  (different ABIs): it will run in a Web Worker of its own, talked to by messages.
+  (different ABIs), hence the workers.
 - **Wheel:** eframe passes every wheel event as `MouseWheelSource::Unknown`, and Chrome
   and Safari report mouse wheels in pixels like trackpads (the canvas would pan). A
   capture listener on the window (before eframe's on the canvas) classifies each event
@@ -2175,11 +2195,10 @@ defers.
 - Cache the project tree nodes if big libraries make the per-frame rebuild slow.
 
 **Web**
-- Simulation in the browser (ngspice builds, above): a Web Worker running it, a
-  browser path in `sim::Session` (it runs `Backend::run` on a thread today) with live
-  points as messages; then XSPICE code models linked statically (dlopen'ed `.cm` files
-  on the desktop; needed for POLY sources of vendor op amps); then the tuner (one
-  instance kept warm) and parallel sweeps (several workers).
+- XSPICE code models in the browser's ngspice, linked statically (dlopen'ed `.cm`
+  files on the desktop; needed for POLY sources of vendor op amps and digital parts).
+- CI doesn't build or test the browser's ngspice (Emscripten in the web job, then
+  `node scripts/ngspice-wasm-test.mjs`).
 - MCP for agents in the browser (no sockets: a WebSocket bridge, or an extension).
 - Hosting (GitHub Pages on a private repo needs a paid plan: Cloudflare Pages, Netlify).
 - Performance with `--stress`-sized boards; threads need COOP/COEP headers.

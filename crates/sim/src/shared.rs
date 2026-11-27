@@ -140,16 +140,18 @@ unsafe extern "C" fn send_char(s: *mut c_char, _id: c_int, _user: *mut c_void) -
 }
 
 unsafe extern "C" fn send_stat(s: *mut c_char, _id: c_int, _user: *mut c_void) -> c_int {
-    // "tran: 42.3%", "--ready--".
-    let status = unsafe { text(s) };
-    let percent = status
-        .split_once(':')
-        .and_then(|(_, p)| p.trim().trim_end_matches('%').trim().parse::<f64>().ok())
-        .map(|p| (p / 100.0).clamp(0.0, 1.0));
-    if let Some(p) = percent {
+    if let Some(p) = progress(&unsafe { text(s) }) {
         with_sink(|sink| sink.live.set_progress(p));
     }
     0
+}
+
+/// How far a status line says the analysis is, 0…1: "tran: 42.3%" (not "--ready--").
+pub(crate) fn progress(status: &str) -> Option<f64> {
+    status
+        .split_once(':')
+        .and_then(|(_, p)| p.trim().trim_end_matches('%').trim().parse::<f64>().ok())
+        .map(|p| (p / 100.0).clamp(0.0, 1.0))
 }
 
 unsafe extern "C" fn controlled_exit(
@@ -172,16 +174,31 @@ unsafe extern "C" fn send_init_data(info: *mut VecInfoAll, _id: c_int, _user: *m
     let kind = unsafe { text(info.kind) };
     let mut vectors = Vec::new();
     for k in 0..info.veccount.max(0) as usize {
-        let v = unsafe { (*info.vecs.add(k)).as_ref() };
-        if let Some(v) = v {
-            vectors.push(Vector {
-                name: vector_name(&unsafe { text(v.vecname) }),
-                kind: String::new(),
-                re: Vec::new(),
-                im: (!v.is_real).then(Vec::new),
-            });
+        if let Some(v) = unsafe { (*info.vecs.add(k)).as_ref() } {
+            vectors.push((unsafe { text(v.vecname) }, !v.is_real));
         }
     }
+    let (order, plot) = live_plot(&kind, &vectors);
+    with_sink(|sink| {
+        sink.order = order;
+        sink.live.begin(plot);
+    });
+    0
+}
+
+/// The empty plot a run streams into, from ngspice's plot kind ("tran1") and its vectors
+/// (name, complex) in the order it sends them; and that order (the scale first), as
+/// indices into the vectors.
+pub(crate) fn live_plot(kind: &str, sent: &[(String, bool)]) -> (Vec<usize>, Plot) {
+    let mut vectors: Vec<Vector> = sent
+        .iter()
+        .map(|(name, complex)| Vector {
+            name: vector_name(name),
+            kind: String::new(),
+            re: Vec::new(),
+            im: complex.then(Vec::new),
+        })
+        .collect();
     // The scale first (ngspice sends it anywhere).
     let is_scale = |n: &str| matches!(n, "time" | "frequency") || n.ends_with("-sweep)");
     let mut order: Vec<usize> = (0..vectors.len()).collect();
@@ -208,11 +225,7 @@ unsafe extern "C" fn send_init_data(info: *mut VecInfoAll, _id: c_int, _user: *m
     for v in vectors.iter_mut().skip(1) {
         v.kind = if v.name.starts_with("i(") { "current" } else { "voltage" }.into();
     }
-    with_sink(|sink| {
-        sink.order = order;
-        sink.live.begin(Plot { name: name.into(), complex, vectors });
-    });
-    0
+    (order, Plot { name: name.into(), complex, vectors })
 }
 
 /// A vector's name as the raw file has it: `out` → `v(out)`, `v1#branch` → `i(v1)`.
@@ -573,6 +586,24 @@ impl Backend for Libngspice {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn live_plots_put_the_scale_first() {
+        let sent = [("out".to_string(), false), ("time".to_string(), false), ("V1#branch".to_string(), false)];
+        let (order, plot) = live_plot("tran1", &sent);
+        assert_eq!(order, [1, 0, 2]);
+        assert_eq!(plot.name, "Transient Analysis");
+        let names: Vec<_> = plot.vectors.iter().map(|v| (v.name.as_str(), v.kind.as_str())).collect();
+        assert_eq!(names, [("time", "time"), ("v(out)", "voltage"), ("i(v1)", "current")]);
+        assert!(!plot.complex);
+        assert!(live_plot("ac1", &[("frequency".into(), true)]).1.complex);
+    }
+
+    #[test]
+    fn progress_of_status_lines() {
+        assert_eq!(progress("tran: 42.5%"), Some(0.425));
+        assert_eq!(progress("--ready--"), None);
+    }
 
     #[test]
     fn vector_names() {
