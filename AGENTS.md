@@ -78,6 +78,10 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), `sim` on
   net no longer matches is flagged, never deleted. The one exception to "the board
   follows the schematic" is board parts (parts without symbol: mounting holes, logos):
   they are placed and deleted on the board only, and their pads have no net.
+- The app also builds for the browser: keep `cargo clippy -p app --target
+  wasm32-unknown-unknown` clean. There, `std::thread::spawn` and
+  `std::time::Instant::now()` panic: use `background::spawn` and `web_time`. The
+  desktop has priority: ask before a change for the web makes the desktop worse.
 - Performance budget: about 10k footprints at 60 fps, and an edit → board → GPU update
   within one frame. Measure with `--release` and `--stress N`. Anything that scans all
   objects per item needs an index (see `RegionIndex`, `rstar`).
@@ -168,6 +172,11 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
   - A script brings the schematic tab to the front at its start (unless `--show` opened
     a tab) and on `board` / `schematic` steps; clicks may switch tabs afterwards.
   - `ui-click` on menus is unreliable.
+- The browser build (PLAN.md, "Web"): `cd crates/app && trunk build --release`, serve
+  `target/web/` (`python3 -m http.server -d target/web 8765`), then `node
+  crates/app/web-shot.mjs http://127.0.0.1:8765/ OUT.png "click X,Y; drag X,Y X2,Y2;
+  key r; wait MS; shot F.png; eval JS"` (headless Chrome, CSS pixels; prints the
+  console).
 - Without a window: `cargo run -p mcp --example render_board -- out.png [w h] [--light]
   [--schematic] [--example amp] [--show-layer "Top Solder Mask"]`.
 - Gerber files of the demo: `cargo run -p view --example export_demo -- DIR`.

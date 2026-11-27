@@ -10,7 +10,6 @@
 
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
-use std::time::Duration;
 
 /// KiCad major version whose libraries the importer is tested with. Newer majors are only
 /// offered once this is raised.
@@ -39,6 +38,7 @@ pub enum DownloadError {
     Cancelled,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl From<ureq::Error> for DownloadError {
     fn from(e: ureq::Error) -> Self {
         DownloadError::Http(e.to_string())
@@ -125,21 +125,35 @@ pub fn library_paths(root: Option<&Path>) -> Vec<PathBuf> {
     s.into_iter().chain(f).collect()
 }
 
-fn agent() -> ureq::Agent {
-    ureq::Agent::config_builder()
+/// Fetches `url`, reading at most `limit` bytes of the body.
+#[cfg(not(target_arch = "wasm32"))]
+fn get(url: &str, limit: u64) -> Result<Box<dyn Read + Send>, DownloadError> {
+    use std::time::Duration;
+    let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(20)))
         .timeout_recv_body(Some(Duration::from_secs(60)))
         .user_agent("pcb-designer")
         .build()
-        .into()
+        .into();
+    let response = agent.get(url).call()?;
+    Ok(Box::new(response.into_body().into_with_config().limit(limit).reader()))
 }
+
+/// No blocking HTTP in the browser.
+#[cfg(target_arch = "wasm32")]
+fn get(_url: &str, _limit: u64) -> Result<Box<dyn Read + Send>, DownloadError> {
+    Err(DownloadError::Http("downloads aren't available in the browser".into()))
+}
+
+/// Tag lists are small.
+const MAX_TAGS_BYTES: u64 = 10_000_000;
 
 /// The newest stable release of [`SUPPORTED_MAJOR`] that both repositories have.
 pub fn latest_version(source: &Source) -> Result<String, DownloadError> {
-    let agent = agent();
     let mut common: Option<Vec<String>> = None;
     for (repo, _) in REPOS {
-        let json = agent.get(source.tags_url(repo)).call()?.into_body().read_to_string()?;
+        let mut json = String::new();
+        get(&source.tags_url(repo), MAX_TAGS_BYTES)?.read_to_string(&mut json)?;
         let tags: serde_json::Value =
             serde_json::from_str(&json).map_err(|e| DownloadError::Http(format!("unexpected tag list: {e}")))?;
         let names: Vec<String> = tags
@@ -227,11 +241,9 @@ pub fn install(
         if tmp.exists() {
             std::fs::remove_dir_all(&tmp)?;
         }
-        let agent = agent();
         let mut done = 0;
         for (repo, folder) in REPOS {
-            let response = agent.get(source.archive_url(repo, version)).call()?;
-            let body = response.into_body().into_with_config().limit(MAX_ARCHIVE_BYTES).reader();
+            let body = get(&source.archive_url(repo, version), MAX_ARCHIVE_BYTES)?;
             let mut report = |n: u64| progress(done + n);
             let mut counting = Counting { inner: body, read: 0, progress: &mut report, cancelled: false };
             let unpacked = unpack(&mut counting, &tmp.join(folder));

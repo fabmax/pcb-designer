@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use editor_core::connectivity::Connectivity;
 use model::{Analysis, Id, Probe, Project, TuneParam};

@@ -7,7 +7,7 @@
 //! is one `SetSimulation` command.
 
 use std::collections::{HashSet, VecDeque};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use editor_core::Command;
 use egui::{RichText, Ui};
