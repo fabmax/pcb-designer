@@ -27,6 +27,8 @@ schematic, board, and the spectrum of a 1 kHz sine through it.
 
 ## Documentation
 
+Also as a website: [fabmax.github.io/pcb-designer](https://fabmax.github.io/pcb-designer/).
+
 - [User interface and settings](docs/user-interface.md)
 - [Schematic](docs/schematic.md)
 - [PCB](docs/pcb.md)
@@ -56,7 +58,7 @@ Linux and Windows (x86_64).
 
 [ngspice](https://ngspice.sourceforge.io/) comes with the app for simulation.
 
-Or try it in the browser, without installing: [fabmax.github.io/pcb-designer/](https://fabmax.github.io/pcb-designer/)
+Or try it in the browser, without installing: [fabmax.github.io/pcb-designer/app/](https://fabmax.github.io/pcb-designer/app/)
 (experimental; needs WebGPU, see [the browser version](docs/web.md)).
 
 ## Build from source

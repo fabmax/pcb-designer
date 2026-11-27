@@ -7,7 +7,8 @@ of JSON files, and an MCP server lets agents edit the open project.
 - Decisions, the design of each area with its gotchas, and the Later list:
   [PLAN.md](PLAN.md). Read its section on the area you're touching before changing a
   design decision.
-- User documentation, a file per area: [docs/](docs/README.md). The top-level
+- User documentation, a file per area: [docs/](docs/README.md), also published as a
+  website (mdBook): a new file goes into `docs/SUMMARY.md` (the sidebar) as well. The top-level
   README.md stays short: overview, links to the docs, install, build, license.
 
 ## Workflow

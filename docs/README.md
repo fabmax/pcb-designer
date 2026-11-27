@@ -1,5 +1,14 @@
 # PCB Designer documentation
 
+PCB Designer is a schematic, PCB and part editor: schematic changes show up on the board
+immediately, projects are folders of JSON files, and AI agents can work on the open
+project through MCP. Download it from the
+[releases](https://github.com/fabmax/pcb-designer/releases) (macOS, Linux, Windows), or
+[try it in the browser](https://fabmax.github.io/pcb-designer/app/) (experimental, see
+[the browser version](web.md)).
+
+![The audio amplifier example's schematic](images/amplifier-schematic.png)
+
 - [User interface and settings](user-interface.md): tabs, panels, settings, recovery
 - [Schematic](schematic.md): sheets, labels, power ports, moving objects between sheets
 - [PCB](pcb.md): routing (push and shove), net classes, vias, zones and keepouts

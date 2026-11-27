@@ -47,4 +47,4 @@ pcb-designer export-kicad PROJECT_DIR OUT_DIR
   `OUT_DIR` and prints the report.
 
 Options for development (screenshots, scripted input, stress boards) are in
-[AGENTS.md](../AGENTS.md#seeing-the-app).
+[AGENTS.md](https://github.com/fabmax/pcb-designer/blob/main/AGENTS.md#seeing-the-app).
