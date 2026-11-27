@@ -4,7 +4,7 @@ A schematic, PCB and part editor written in Rust (egui + wgpu). Schematic change
 the board immediately, projects are folders of JSON files that diff well, and AI agents can
 work on the open project through MCP while you watch.
 
-- **Schematic:** hierarchical sheets, buses, labels and power ports as in KiCad, live ERC.
+- **Schematic:** hierarchical sheets, buses, labels and power ports, live ERC.
 - **PCB:** push-and-shove routing, net classes, blind and buried vias, copper zones,
   keepouts, DRC.
 - **Libraries:** a built-in library of generic parts, symbol, footprint and part editors,
