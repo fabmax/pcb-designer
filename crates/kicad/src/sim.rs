@@ -126,7 +126,7 @@ impl Libs {
 
 /// A library file with its `.include`s inlined.
 fn read_lib(path: &Path, depth: usize) -> Result<String, String> {
-    let text = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let text = model::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let text = String::from_utf8_lossy(&text).into_owned();
     if depth > 8 {
         return Ok(text);

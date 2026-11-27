@@ -54,7 +54,7 @@ pub struct PcbImport {
 }
 
 pub fn import(path: &Path, report: &mut Report) -> Result<PcbImport, String> {
-    let source = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let source = model::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let root = sexpr::parse(&source).map_err(|e| format!("{}: {e}", path.display()))?;
     if root.head() != "kicad_pcb" {
         return Err(format!("{}: not a KiCad board", path.display()));

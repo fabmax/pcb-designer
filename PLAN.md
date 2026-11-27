@@ -1878,7 +1878,9 @@ files come in and go out through the file dialog's Upload and Download.
   write needs its folder, unchanged writes aren't recorded) in a thread-local. Tests set
   up files with `std::fs`, which is the same on the desktop. Not converted: `desktop.rs`
   (desktop only), `recovery.rs` (needs OS file locks; `recovery::root` is `None` in the
-  browser), `kicad` (W3).
+  browser), and in `kicad` the library download (`download.rs`) and the search for a
+  KiCad installation (`catalog::default_paths`). KiCad projects and library folders are
+  read through it, so uploaded ones import in the browser.
 - **Storage (`web_store.rs`):** `MemFs` kept in IndexedDB (`pcb-designer`, store
   `files`, key = path, value = kind byte, 8-byte mtime, content). `web::start` loads all
   of it before the app starts; `web::after_frame` (top of `PcbApp::ui`) writes
@@ -1898,6 +1900,7 @@ files come in and go out through the file dialog's Upload and Download.
   or a folder as `<name>.zip` with the folder in it (`gerber::zip::zip`;
   `gerber::zip::unzip` reads stored or deflated entries), to the browser (`web::download`:
   a blob URL and an `<a download>` click).
+- **Menus:** no Quit in the browser (a page isn't quit).
 - **Reveal / open:** in the browser `project_panel::reveal` and `open_file` download
   (labelled "Download"; "Open" of output files isn't offered twice); the Gerber folder
   downloads the manufacturer's zip next to it.
@@ -1966,8 +1969,6 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`) a
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-- **W3, web: imports.** KiCad import from uploaded files (`kicad` through `model::fs`;
-  libraries and projects; no remote download in the browser).
 
 
 ## Later
