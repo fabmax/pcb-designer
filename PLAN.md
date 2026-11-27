@@ -1945,7 +1945,8 @@ files come in and go out through the file dialog's Upload and Download.
   is plain Rust tested on the desktop; the pool (`web`, thread-local) keeps idle workers
   for the next run and starts more for sweeps. Stop terminates the worker (it's busy in
   `run` and reads no messages) and returns the streamed points (`stopped`); a dropped
-  run (abandoned) terminates its worker too. A worker whose script fails is marked dead
+  run (abandoned: Run again while one goes) terminates its worker too; the tuner never
+  abandons (`tune_pending` waits for the run going), so its reruns reuse warm workers. A worker whose script fails is marked dead
   and removed later (not inside its own callback, which it owns). After ngspice asks to
   exit, the worker starts a fresh instance from its compiled module. Each instance
   gets the code models written to `/cm` in its `FS` and loaded with `codemodel` (they
