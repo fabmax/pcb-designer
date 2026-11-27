@@ -1989,8 +1989,11 @@ files come in and go out through the file dialog's Upload and Download.
 - **Window title:** eframe ignores `ViewportCommand::Title` on the web; `update_title`
   sets `document.title` instead.
 - **Hosting:** GitHub Pages (`.github/workflows/pages.yml`, on version tags and by
-  hand): the site lives under `/pcb-designer/` (`trunk build --public-url`; every URL
-  the app fetches itself, `ngspice/…`, is relative to the page). The origin
+  hand), one site with the documentation (`docs/` with mdBook, `docs/book.toml`, the
+  sidebar `docs/SUMMARY.md`) at `/pcb-designer/` and the app at `/pcb-designer/app/`
+  (`trunk build --public-url`; every URL the app fetches itself, `ngspice/…`, is
+  relative to the page). Both deploy together (Pages replaces the whole site), so the
+  docs describe the release; docs links to files outside `docs/` point at GitHub. The origin
   `fabmax.github.io` is shared with the owner's other Pages sites, so is the browser
   storage's quota. No custom headers there (COOP/COEP for threads would need another
   host, e.g. Cloudflare Pages: 25 MB per file, the app's wasm is 19 MB). The workflow

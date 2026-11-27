@@ -1,7 +1,7 @@
 # The browser version
 
 PCB Designer also runs in a web browser with WebGPU (a recent Chrome, Edge, Safari or
-Firefox), at [fabmax.github.io/pcb-designer/](https://fabmax.github.io/pcb-designer/) (the latest release). It's
+Firefox), at [fabmax.github.io/pcb-designer/app/](https://fabmax.github.io/pcb-designer/app/) (the latest release). It's
 experimental: the desktop app comes first.
 
 ## What works

@@ -1,9 +1,11 @@
 # Development
 
 PCB Designer is a Cargo workspace of crates; the dependency order, the invariants and the
-workflow for changes are in [AGENTS.md](../AGENTS.md), and the design of each area with
-its gotchas, plus what's planned, in [PLAN.md](../PLAN.md). Requirements are in
-[pcb-designer.md](../pcb-designer.md).
+workflow for changes are in
+[AGENTS.md](https://github.com/fabmax/pcb-designer/blob/main/AGENTS.md), and the design
+of each area with its gotchas, plus what's planned, in
+[PLAN.md](https://github.com/fabmax/pcb-designer/blob/main/PLAN.md). Requirements are in
+[pcb-designer.md](https://github.com/fabmax/pcb-designer/blob/main/pcb-designer.md).
 
 ## Building and testing
 
@@ -73,12 +75,18 @@ publishes them as a GitHub Release:
    `crates/view/tests/saved/0.5.0/`: later versions must keep loading them. Commit.
 3. `git tag -a v0.5.0 -m "pcb-designer 0.5.0"`, then push `main` and the tag.
 
-The **Pages** workflow deploys the browser version to GitHub Pages
-(`https://fabmax.github.io/pcb-designer/`) on the same version tags, or by hand from any
-branch (Actions → Pages → Run workflow). It builds ngspice with Emscripten (cached),
-checks it with `scripts/ngspice-wasm-test.mjs`, and builds the site with
-`--public-url /pcb-designer/` (it's served under the repository's name). The repository's
-**Settings → Pages → Source** must be "GitHub Actions".
+The **Pages** workflow publishes the documentation and the browser version to GitHub
+Pages on the same version tags, or by hand from any branch (Actions → Pages → Run
+workflow): this folder as a website at `https://fabmax.github.io/pcb-designer/`
+([mdBook](https://rust-lang.github.io/mdBook/): `book.toml`, the sidebar in
+`SUMMARY.md`), the app in `app/` under it. It builds ngspice with Emscripten (cached),
+checks it with `scripts/ngspice-wasm-test.mjs`, and builds the app with `--public-url
+/pcb-designer/app/`. The repository's **Settings → Pages → Source** must be "GitHub
+Actions".
+
+Preview the website with `mdbook serve docs` (`cargo install mdbook`). A new page goes
+into `SUMMARY.md` too (and `README.md`'s list); links stay relative `.md` links between
+the pages here, and point at GitHub for files outside `docs/`.
 
 ## Example projects
 

@@ -1,0 +1,19 @@
+# The documentation as a website (mdBook): `mdbook build docs` writes target/book/, and
+# `mdbook serve docs` previews it. The Pages workflow publishes it with the browser app
+# in app/ (https://fabmax.github.io/pcb-designer/).
+[book]
+title = "PCB Designer"
+language = "en"
+src = "."
+
+[build]
+build-dir = "../target/book"
+# Pages missing from SUMMARY.md aren't created (every page is listed there).
+create-missing = false
+
+[output.html]
+site-url = "/pcb-designer/"
+git-repository-url = "https://github.com/fabmax/pcb-designer"
+edit-url-template = "https://github.com/fabmax/pcb-designer/edit/main/docs/{path}"
+default-theme = "light"
+preferred-dark-theme = "navy"
