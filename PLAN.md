@@ -1874,6 +1874,13 @@ Experimental. `crates/app` also builds for `wasm32-unknown-unknown` with Trunk
 the last project, else the LED demo; projects are saved in the browser's storage, and
 files come in and go out through the file dialog's Upload and Download.
 
+- **Loading screen:** `#loading` in `index.html`, its progress bar fed by Trunk's
+  initializer (`data-initializer="loading.mjs"`), which streams the wasm download. Its
+  total is the size Trunk writes into `index.html`; Trunk 0.22 takes it before wasm-opt
+  (26 instead of 20 MB), so the post-build hook `scripts/web-wasm-size.sh` puts the
+  served file's size there. `web::start` removes `#loading` once the app runs, or shows
+  why it couldn't start. ngspice isn't part of it (its worker loads on the first run).
+
 - **Files (`model::fs`):** every file access of code the browser runs goes through it:
   `std::fs`'s functions plus `exists`/`is_file`/`is_dir` (not `Path::exists`, which asks
   the real file system), `list_dir`, `modified` (ms), `temp_dir`. On the desktop they

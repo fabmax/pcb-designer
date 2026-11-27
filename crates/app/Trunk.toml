@@ -8,3 +8,9 @@ dist = "../../target/web"
 stage = "post_build"
 command = "sh"
 command_arguments = ["../../scripts/web-ngspice.sh"]
+
+# The real wasm size for the loading progress (Trunk records it before wasm-opt).
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = ["../../scripts/web-wasm-size.sh"]
