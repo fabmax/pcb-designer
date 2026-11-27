@@ -93,6 +93,10 @@ impl Default for McpSettings {
 }
 
 pub fn config_dir() -> Option<PathBuf> {
+    // The browser's storage (`model::fs`).
+    if cfg!(target_arch = "wasm32") {
+        return Some("/config".into());
+    }
     if let Some(dir) = std::env::var_os("PCB_DESIGNER_CONFIG") {
         return Some(dir.into());
     }
@@ -128,7 +132,7 @@ impl Settings {
     }
 
     pub fn load_from(path: &Path) -> Settings {
-        match std::fs::read_to_string(path) {
+        match model::fs::read_to_string(path) {
             Ok(json) => serde_json::from_str(&json).unwrap_or_else(|e| {
                 log::warn!("ignoring settings {}: {e}", path.display());
                 Settings::default()
@@ -144,15 +148,15 @@ impl Settings {
 
     pub fn save_to(&self, path: &Path) -> Result<(), String> {
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            model::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
         let json = serde_json::to_string_pretty(self).expect("settings serialize");
-        std::fs::write(path, json).map_err(|e| format!("{}: {e}", path.display()))
+        model::fs::write(path, json).map_err(|e| format!("{}: {e}", path.display()))
     }
 
     /// Remember a project as the most recent one.
     pub fn add_recent(&mut self, path: &Path) {
-        let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let path = model::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         self.recent.retain(|p| p != &path);
         self.recent.insert(0, path);
         self.recent.truncate(RECENT);

@@ -97,9 +97,9 @@ struct ProjectFile {
 pub fn project_file(dir: &Path) -> Option<PathBuf> {
     [PROJECT_FILE, OLD_PROJECT_FILE].into_iter().map(|name| dir.join(name)).find(|path| {
         // A `project.json` counts only when it's ours (not, say, an npm project's).
-        path.is_file()
+        crate::fs::is_file(path)
             && (path.ends_with(PROJECT_FILE)
-                || std::fs::read_to_string(path).is_ok_and(|text| is_format(&text, FileKind::Project)))
+                || crate::fs::read_to_string(path).is_ok_and(|text| is_format(&text, FileKind::Project)))
     })
 }
 
@@ -112,7 +112,7 @@ pub fn is_project_dir(dir: &Path) -> bool {
 /// (`…/project.pcbproj`, opened from a file manager or the command line).
 pub fn project_dir(path: &Path) -> PathBuf {
     match (path.file_name(), path.parent()) {
-        (Some(name), Some(parent)) if path.is_file() && name == PROJECT_FILE => parent.to_path_buf(),
+        (Some(name), Some(parent)) if crate::fs::is_file(path) && name == PROJECT_FILE => parent.to_path_buf(),
         _ => path.to_path_buf(),
     }
 }
@@ -126,15 +126,16 @@ fn is_format(text: &str, kind: FileKind) -> bool {
 pub fn save_project(project: &Project, dir: impl AsRef<Path>) -> Result<(), FileError> {
     let dir = dir.as_ref();
     if !is_project_dir(dir)
-        && let Some(name) =
-            [PROJECT_FILE, LIBRARY_FILE, SCHEMATIC_FILE, BOARD_FILE].into_iter().find(|n| dir.join(n).exists())
+        && let Some(name) = [PROJECT_FILE, LIBRARY_FILE, SCHEMATIC_FILE, BOARD_FILE]
+            .into_iter()
+            .find(|n| crate::fs::exists(dir.join(n)))
     {
         return Err(FileError::Io {
             path: dir.join(name),
             source: std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists, and the folder is no project"),
         });
     }
-    std::fs::create_dir_all(dir).map_err(|e| FileError::Io { path: dir.into(), source: e })?;
+    crate::fs::create_dir_all(dir).map_err(|e| FileError::Io { path: dir.into(), source: e })?;
     let libraries = project.libraries.iter().map(|p| stored_path(p, dir)).collect();
     write_file(&dir.join(PROJECT_FILE), FileKind::Project, &ProjectFile { name: project.name.clone(), libraries })?;
     write_file(&dir.join(LIBRARY_FILE), FileKind::Library, &project.library)?;
@@ -142,8 +143,8 @@ pub fn save_project(project: &Project, dir: impl AsRef<Path>) -> Result<(), File
     write_file(&dir.join(BOARD_FILE), FileKind::Board, &project.board)?;
     // An older project's file, now replaced by `project.pcbproj`.
     let old = dir.join(OLD_PROJECT_FILE);
-    if std::fs::read_to_string(&old).is_ok_and(|text| is_format(&text, FileKind::Project)) {
-        std::fs::remove_file(&old).map_err(|e| FileError::Io { path: old, source: e })?;
+    if crate::fs::read_to_string(&old).is_ok_and(|text| is_format(&text, FileKind::Project)) {
+        crate::fs::remove_file(&old).map_err(|e| FileError::Io { path: old, source: e })?;
     }
     Ok(())
 }
@@ -153,14 +154,14 @@ pub fn load_project(dir: impl AsRef<Path>) -> Result<Project, FileError> {
     let dir = &project_dir(dir.as_ref());
     let read = |name: &str| {
         let path = dir.join(name);
-        std::fs::read_to_string(&path).map_err(|e| FileError::Io { path, source: e })
+        crate::fs::read_to_string(&path).map_err(|e| FileError::Io { path, source: e })
     };
     let project_file = project_file(dir).ok_or_else(|| FileError::Io {
         path: dir.clone(),
         source: std::io::Error::new(std::io::ErrorKind::NotFound, "not a project folder (no project.pcbproj)"),
     })?;
     let files = ProjectFiles {
-        project: &std::fs::read_to_string(&project_file)
+        project: &crate::fs::read_to_string(&project_file)
             .map_err(|e| FileError::Io { path: project_file, source: e })?,
         library: &read(LIBRARY_FILE)?,
         schematic: &read(SCHEMATIC_FILE)?,
@@ -324,12 +325,12 @@ fn write_file<T: Serialize>(path: &Path, kind: FileKind, data: &T) -> Result<(),
     let text = to_file_string(kind, data).map_err(|e| FileError::Json { path: path.into(), source: e })?;
     let tmp = path.with_extension("json.tmp");
     let io_err = |e| FileError::Io { path: path.into(), source: e };
-    std::fs::write(&tmp, text).map_err(io_err)?;
-    std::fs::rename(&tmp, path).map_err(io_err)
+    crate::fs::write(&tmp, text).map_err(io_err)?;
+    crate::fs::rename(&tmp, path).map_err(io_err)
 }
 
 fn read_file<T: DeserializeOwned>(path: &Path, kind: FileKind, migrations: &[Migration]) -> Result<T, FileError> {
-    let text = std::fs::read_to_string(path).map_err(|e| FileError::Io { path: path.into(), source: e })?;
+    let text = crate::fs::read_to_string(path).map_err(|e| FileError::Io { path: path.into(), source: e })?;
     from_file_str(&text, kind, migrations, path)
 }
 

@@ -175,7 +175,7 @@ pub fn ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Id, keyma
     // from it (see `chart_bg`).
     ui.painter().rect_filled(ui.max_rect(), 0.0, theme::color(view::style::pal().background));
     if let Some((csv, Some(path))) = panel.csv_dialog.poll()
-        && let Err(e) = std::fs::write(&path, csv)
+        && let Err(e) = model::fs::write(&path, csv)
     {
         log::warn!("can't write {}: {e}", path.display());
     }
@@ -360,7 +360,7 @@ fn plot_ui(ui: &mut Ui, panel: &mut SimPanel, doc: &Document, analysis: Analysis
         (state, data, Measuring::Plot, log_x)
     };
     if export {
-        let dialog = rfd::AsyncFileDialog::new()
+        let dialog = crate::file_dialog::FileDialog::new()
             .set_title("Export CSV")
             .set_file_name(format!("{}.csv", analysis.name))
             .add_filter("CSV", &["csv"]);

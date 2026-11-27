@@ -11,7 +11,7 @@ pub mod layers;
 pub mod pdf;
 pub mod reader;
 pub mod writer;
-mod zip;
+pub mod zip;
 
 use std::path::{Path, PathBuf};
 
@@ -185,7 +185,7 @@ pub fn assembly_dir(project_dir: &Path) -> PathBuf {
 
 /// The manifest of the last export, if there is one.
 pub fn read_manifest(project_dir: &Path) -> Option<Manifest> {
-    let text = std::fs::read_to_string(gerber_dir(project_dir).join(MANIFEST)).ok()?;
+    let text = model::fs::read_to_string(gerber_dir(project_dir).join(MANIFEST)).ok()?;
     serde_json::from_str(&text).ok()
 }
 
@@ -197,24 +197,24 @@ pub fn export(project: &Project, copper: &BoardConnectivity, project_dir: &Path)
     let assembly = generate_assembly(project);
     let dir = gerber_dir(project_dir);
     for (d, files) in [(&dir, &files), (&assembly_dir(project_dir), &assembly)] {
-        if d.exists() {
-            std::fs::remove_dir_all(d)?;
+        if model::fs::exists(d) {
+            model::fs::remove_dir_all(d)?;
         }
-        std::fs::create_dir_all(d)?;
+        model::fs::create_dir_all(d)?;
         for f in files {
-            std::fs::write(d.join(&f.name), &f.content)?;
+            model::fs::write(d.join(&f.name), &f.content)?;
         }
     }
     let zip_name = format!("{}-gerber.zip", stem(project));
     let entries: Vec<(String, Vec<u8>)> =
         files.iter().map(|f| (f.name.clone(), f.content.clone().into_bytes())).collect();
-    std::fs::write(dir.parent().expect("output folder").join(&zip_name), zip::zip(&entries)?)?;
+    model::fs::write(dir.parent().expect("output folder").join(&zip_name), zip::zip(&entries)?)?;
     let manifest = Manifest {
         hash: design_hash(project),
         zip: zip_name,
         files: files.iter().map(OutputFile::listed).collect(),
         assembly: assembly.iter().map(OutputFile::listed).collect(),
     };
-    std::fs::write(dir.join(MANIFEST), serde_json::to_string_pretty(&manifest).expect("serializable"))?;
+    model::fs::write(dir.join(MANIFEST), serde_json::to_string_pretty(&manifest).expect("serializable"))?;
     Ok(manifest)
 }

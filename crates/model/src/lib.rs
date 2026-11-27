@@ -12,6 +12,7 @@
 pub mod board;
 pub mod builtin;
 pub mod checks;
+pub mod fs;
 pub mod geom;
 pub mod hash;
 pub mod id;

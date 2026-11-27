@@ -1,4 +1,6 @@
-//! Native file dialogs that don't block the frame.
+//! File dialogs that don't block the frame: native ones on the desktop, the app's own
+//! file browser over the browser's storage on the web (`file_browser.rs`). Both are
+//! described by a [`FileDialog`].
 //!
 //! A blocking dialog (`rfd::FileDialog`) runs a nested event loop inside winit's event
 //! handler. On macOS the save panel can then deliver an event winit queued meanwhile,
@@ -16,15 +18,58 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 
-#[cfg(not(target_arch = "wasm32"))]
-fn path(file: &rfd::FileHandle) -> PathBuf {
-    file.path().to_path_buf()
+/// What a file dialog shows: built like rfd's `AsyncFileDialog`.
+#[derive(Clone, Debug, Default)]
+pub struct FileDialog {
+    pub title: Option<String>,
+    /// Name and extensions (without the dot).
+    pub filters: Vec<(String, Vec<String>)>,
+    pub file_name: Option<String>,
+    pub directory: Option<PathBuf>,
 }
 
-/// A browser hands over the file, not a path: only its name (W2 reads files).
-#[cfg(target_arch = "wasm32")]
-fn path(file: &rfd::FileHandle) -> PathBuf {
-    file.file_name().into()
+impl FileDialog {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub fn add_filter(mut self, name: impl Into<String>, extensions: &[&str]) -> Self {
+        self.filters.push((name.into(), extensions.iter().map(|e| e.to_string()).collect()));
+        self
+    }
+
+    pub fn set_file_name(mut self, name: impl Into<String>) -> Self {
+        self.file_name = Some(name.into());
+        self
+    }
+
+    pub fn set_directory(mut self, dir: impl AsRef<std::path::Path>) -> Self {
+        self.directory = Some(dir.as_ref().to_path_buf());
+        self
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn native(self) -> rfd::AsyncFileDialog {
+        let mut d = rfd::AsyncFileDialog::new();
+        if let Some(t) = self.title {
+            d = d.set_title(t);
+        }
+        for (name, extensions) in &self.filters {
+            d = d.add_filter(name, extensions);
+        }
+        if let Some(n) = self.file_name {
+            d = d.set_file_name(n);
+        }
+        if let Some(dir) = self.directory {
+            d = d.set_directory(dir);
+        }
+        d
+    }
 }
 
 /// What the dialog asks for.
@@ -35,16 +80,23 @@ pub enum Kind {
     PickFolder,
 }
 
-type Answer = Pin<Box<dyn Future<Output = Option<PathBuf>>>>;
+pub type Answer = Pin<Box<dyn Future<Output = Option<PathBuf>>>>;
 
 /// At most one open file dialog, and `T`: what to do with the chosen path.
 pub struct Dialog<T> {
     pending: Option<(T, Answer, Waker)>,
+    /// The browser build's dialog, drawn while it's open.
+    #[cfg(target_arch = "wasm32")]
+    browser: Option<crate::file_browser::Browser>,
 }
 
 impl<T> Default for Dialog<T> {
     fn default() -> Self {
-        Self { pending: None }
+        Self {
+            pending: None,
+            #[cfg(target_arch = "wasm32")]
+            browser: None,
+        }
     }
 }
 
@@ -65,20 +117,26 @@ impl<T> Dialog<T> {
 
     /// Show `dialog`; `then` comes back with the answer. Returns false (showing
     /// nothing) while another dialog is still open.
-    pub fn open(&mut self, ctx: &egui::Context, dialog: rfd::AsyncFileDialog, kind: Kind, then: T) -> bool {
+    pub fn open(&mut self, ctx: &egui::Context, dialog: FileDialog, kind: Kind, then: T) -> bool {
         if self.is_open() {
             return false;
         }
-        let file = match kind {
-            Kind::Save => Box::pin(dialog.save_file()) as Pin<Box<dyn Future<Output = _>>>,
-            Kind::PickFile => Box::pin(dialog.pick_file()),
-            #[cfg(not(target_arch = "wasm32"))]
-            Kind::PickFolder => Box::pin(dialog.pick_folder()),
-            // Browsers have no folder picker in rfd.
-            #[cfg(target_arch = "wasm32")]
-            Kind::PickFolder => Box::pin(std::future::ready(None)),
-        };
-        self.wait(ctx, Box::pin(async move { file.await.map(|f| path(&f)) }), then);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let dialog = dialog.native();
+            let file = match kind {
+                Kind::Save => Box::pin(dialog.save_file()) as Pin<Box<dyn Future<Output = _>>>,
+                Kind::PickFile => Box::pin(dialog.pick_file()),
+                Kind::PickFolder => Box::pin(dialog.pick_folder()),
+            };
+            self.wait(ctx, Box::pin(async move { file.await.map(|f| f.path().to_path_buf()) }), then);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let (browser, answer) = crate::file_browser::Browser::new(ctx, dialog, kind);
+            self.browser = Some(browser);
+            self.wait(ctx, answer, then);
+        }
         true
     }
 
@@ -97,10 +155,19 @@ impl<T> Dialog<T> {
 
     /// The answer once the dialog closed: what to do, and the path (`None` when
     /// cancelled).
+    /// (Draws the browser build's dialog: call it every frame while one is open.)
     pub fn poll(&mut self) -> Option<(T, Option<PathBuf>)> {
+        #[cfg(target_arch = "wasm32")]
+        if let Some(b) = &mut self.browser {
+            b.show();
+        }
         let (_, answer, waker) = self.pending.as_mut()?;
         let Poll::Ready(file) = answer.as_mut().poll(&mut Context::from_waker(waker)) else { return None };
         let (then, ..) = self.pending.take()?;
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.browser = None;
+        }
         Some((then, file))
     }
 }

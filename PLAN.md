@@ -1866,8 +1866,44 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
 ## Web (browser build)
 
 Experimental. `crates/app` also builds for `wasm32-unknown-unknown` with Trunk
-(`index.html`, `Trunk.toml`; output in `target/web/`). W1 (done): it opens an example
-(`?example=amp`, the LED demo otherwise) and edits it; nothing is saved.
+(`index.html`, `Trunk.toml`; output in `target/web/`). It opens `?example=NAME`, else
+the last project, else the LED demo; projects are saved in the browser's storage, and
+files come in and go out through the file dialog's Upload and Download.
+
+- **Files (`model::fs`):** every file access of code the browser runs goes through it:
+  `std::fs`'s functions plus `exists`/`is_file`/`is_dir` (not `Path::exists`, which asks
+  the real file system), `list_dir`, `modified` (ms), `temp_dir`. On the desktop they
+  are `std::fs` (re-exported or one-line wrappers), so nothing changes there. In the
+  browser a `MemFs` (rooted at `/`, behaving like std where the app relies on it: a
+  write needs its folder, unchanged writes aren't recorded) in a thread-local. Tests set
+  up files with `std::fs`, which is the same on the desktop. Not converted: `desktop.rs`
+  (desktop only), `recovery.rs` (needs OS file locks; `recovery::root` is `None` in the
+  browser), `kicad` (W3).
+- **Storage (`web_store.rs`):** `MemFs` kept in IndexedDB (`pcb-designer`, store
+  `files`, key = path, value = kind byte, 8-byte mtime, content). `web::start` loads all
+  of it before the app starts; `web::after_frame` (top of `PcbApp::ui`) writes
+  `MemFs::take_changes` in a transaction (they run in order), saves the workspace about
+  once a second (no `on_exit` in a page) and keeps the unsaved state for a
+  `beforeunload` warning. Layout: projects in `/Projects` (`web::HOME`), settings and
+  keymap in `/config` (`settings::config_dir`), the LED demo's library in `/tmp`.
+- **File dialogs:** `file_dialog::FileDialog` is a builder with rfd's method names; the
+  desktop turns it into rfd's `AsyncFileDialog` as before. In the browser `Dialog::open`
+  opens a `file_browser::Browser` (a modal drawn by `Dialog::poll`, which callers
+  already call each frame) that resolves the same answer future. It starts in the
+  dialog's folder (a project folder's parent; `HOME` otherwise); folder pickers list
+  folders only and a double-clicked project folder is chosen. Upload (rfd's browser
+  `pick_files`, read as bytes, polled like the answer) adds files without replacing
+  any (`name 2.ext`) and unpacks a `.zip` (as is when everything in it is in one folder,
+  else into a folder named after it; only plain relative paths). Download hands a file,
+  or a folder as `<name>.zip` with the folder in it (`gerber::zip::zip`;
+  `gerber::zip::unzip` reads stored or deflated entries), to the browser (`web::download`:
+  a blob URL and an `<a download>` click).
+- **Reveal / open:** in the browser `project_panel::reveal` and `open_file` download
+  (labelled "Download"; "Open" of output files isn't offered twice); the Gerber folder
+  downloads the manufacturer's zip next to it.
+- **Message boxes (`ask.rs`):** rfd shows `window.confirm` in the browser (OK/Cancel,
+  answering `Ok` rather than a custom button): `ask::confirm` answers the same on both,
+  `ask::save` asks twice there (save? else discard?).
 
 - **Entry:** `main.rs` picks `desktop::main` (command line, window, headless commands)
   or `web::start` (eframe's `WebRunner` on the page's canvas). `Options::new` is shared.
@@ -1883,10 +1919,8 @@ Experimental. `crates/app` also builds for `wasm32-unknown-unknown` with Trunk
     offscreen renderer's threads are unreachable there (no ngspice, no MCP).
   - Clocks: `std::time::Instant::now()` panics; use `web_time::{Instant, SystemTime}`
     (std's types on the desktop). `recovery.rs` keeps std's `SystemTime` for file times.
-  - Files: `std::fs` compiles and fails at run time; `std::env::temp_dir()` panics.
-    `settings::config_dir()` is `None` (no env vars), which turns off settings saving and
-    recovery. The LED demo has no demo library file. rfd's dialogs open files but hand
-    over a name, not a path (`file_dialog::path`); there's no folder picker.
+  - Files: `std::fs` compiles and fails at run time and `std::env::temp_dir()` panics:
+    use `model::fs` (above).
   - Clipboard: no arboard; keyboard copy and paste go through egui's web clipboard,
     menu Paste finds nothing (`clipboard::read`).
   - Crates: `mcp` builds `server`/`stdio` for the desktop only (a stub `McpServer`
@@ -1932,14 +1966,8 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`) a
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
 
-- **W2, web: projects in the browser.** A storage layer in `app` (file system on the
-  desktop; in the browser an in-memory project folder kept in IndexedDB;
-  `model::io::project_from_files` parses from strings). Open a project as files or a
-  `.zip`, Save / Save As download a `.zip`. Settings and keymap in localStorage (no
-  "Settings not saved" notice). Recovery copies in IndexedDB, written on the main
-  thread. The LED demo's demo library.
-- **W3, web: outputs and imports.** Gerber export downloads a `.zip`; project libraries
-  from an uploaded `.pcblib`; KiCad import from uploaded files (no remote download).
+- **W3, web: imports.** KiCad import from uploaded files (`kicad` through `model::fs`;
+  libraries and projects; no remote download in the browser).
 
 
 ## Later
@@ -2135,8 +2163,12 @@ defers.
 - MCP for agents in the browser (no sockets: a WebSocket bridge, or an extension).
 - Hosting (GitHub Pages on a private repo needs a paid plan: Cloudflare Pages, Netlify).
 - Performance with `--stress`-sized boards; threads need COOP/COEP headers.
-- Menu Paste in the browser (the async clipboard API), and a folder picker
+- Menu Paste in the browser (the async clipboard API), and opening a real folder
   (File System Access API, Chromium only).
+- Recovery copies in the browser (`recovery.rs` relies on file locks; a closed tab
+  loses unsaved changes, after the `beforeunload` warning).
+- The browser's storage can be evicted (`navigator.storage.persist()` asks to keep it);
+  no quota handling yet.
 - CI runs on pushes to main and pull requests only: the `web` branch is checked once
   it has a pull request (or is merged).
 

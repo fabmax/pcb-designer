@@ -477,9 +477,9 @@ impl Document {
         self.update_connectivity(false);
         let pdf = crate::print::schematic_pdf(self.editor.project(), &self.connectivity);
         let out = dir.join("output");
-        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        model::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
         let file = out.join(format!("{}-schematic.pdf", gerber::stem(self.editor.project())));
-        std::fs::write(&file, pdf).map_err(|e| e.to_string())?;
+        model::fs::write(&file, pdf).map_err(|e| e.to_string())?;
         Ok(file)
     }
 

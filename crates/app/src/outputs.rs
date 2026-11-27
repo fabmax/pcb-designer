@@ -55,7 +55,7 @@ impl Outputs {
 
     /// The export folders that exist.
     pub fn dirs(&self) -> Vec<PathBuf> {
-        [&self.dir, &self.assembly_dir].into_iter().flatten().filter(|d| d.exists()).cloned().collect()
+        [&self.dir, &self.assembly_dir].into_iter().flatten().filter(|d| model::fs::exists(d)).cloned().collect()
     }
 
     /// The design changed since the export. The hash is recomputed when the document
@@ -168,22 +168,21 @@ impl Outputs {
 /// The schematic PDF in the output folder (`<name>-schematic.pdf`; the newest if the
 /// project was renamed since).
 fn find_schematic_pdf(output: &Path) -> Option<PathBuf> {
-    let entries = std::fs::read_dir(output).ok()?;
+    let entries = model::fs::list_dir(output).ok()?;
     entries
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_name().to_string_lossy().ends_with("-schematic.pdf"))
-        .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok())
-        .map(|e| e.path())
+        .into_iter()
+        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().ends_with("-schematic.pdf")))
+        .max_by_key(|p| model::fs::modified(p))
 }
 
 /// The files in `dir` (not the manifest or hidden ones): those `listed` first in their
 /// order, then the others sorted.
 fn list(dir: Option<&Path>, listed: Option<&[gerber::ManifestFile]>) -> Vec<String> {
-    let mut on_disk: Vec<String> = match dir.map(std::fs::read_dir) {
+    let mut on_disk: Vec<String> = match dir.map(model::fs::list_dir) {
         Some(Ok(entries)) => entries
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().is_file())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .iter()
+            .filter(|p| model::fs::is_file(p))
+            .filter_map(|p| Some(p.file_name()?.to_string_lossy().into_owned()))
             .filter(|n| n != gerber::MANIFEST && !n.starts_with('.'))
             .collect(),
         _ => Vec::new(),

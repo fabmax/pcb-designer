@@ -117,7 +117,7 @@ pub fn respond(request: LibraryRequest, libs: &mut dyn Libraries) -> Result<Repl
             let path = path.map(|p| resolve(dir.as_deref(), &with_extension(p)));
             let path = path.or_else(|| dir.map(|d| d.join(format!("{name}.pcblib"))));
             match path {
-                Some(p) if p.exists() => {
+                Some(p) if model::fs::exists(&p) => {
                     return Err(format!("{} already exists: open it with open_library", p.display()));
                 }
                 Some(p) => {
@@ -253,7 +253,7 @@ fn resolve(dir: Option<&Path>, path: &Path) -> PathBuf {
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
-    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
+    a == b || matches!((model::fs::canonicalize(a), model::fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
 }
 
 /// Index of the open library named `name` (or with that file path).
