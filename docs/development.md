@@ -73,6 +73,13 @@ publishes them as a GitHub Release:
    `crates/view/tests/saved/0.5.0/`: later versions must keep loading them. Commit.
 3. `git tag -a v0.5.0 -m "pcb-designer 0.5.0"`, then push `main` and the tag.
 
+The **Pages** workflow deploys the browser version to GitHub Pages
+(`https://fabmax.github.io/pcb-designer/`) on the same version tags, or by hand from any
+branch (Actions → Pages → Run workflow). It builds ngspice with Emscripten (cached),
+checks it with `scripts/ngspice-wasm-test.mjs`, and builds the site with
+`--public-url /pcb-designer/` (it's served under the repository's name). The repository's
+**Settings → Pages → Source** must be "GitHub Actions".
+
 ## Example projects
 
 The audio amplifier example is a project folder, `crates/view/demo/amp/`, built

@@ -34,7 +34,7 @@ Work on the branch that is checked out (often `main`); don't create branches.
    the matching file in `docs/` too (how to use it, not how it's built).
 5. Commit on the current branch with a message like `M9: copper zones …` or `GUI:
    floating icon tool bars …`. End it with the attribution trailer.
-6. Don't push: the user tries changes out first, and pushes to `origin` (private GitHub
+6. Don't push: the user tries changes out first, and pushes to `origin` (public GitHub
    repo `fabmax/pcb-designer`) or asks for it. Then carry on with the next milestone
    without asking.
 
