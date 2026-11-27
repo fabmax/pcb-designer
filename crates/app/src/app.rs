@@ -4,7 +4,7 @@
 //! keyboard shortcuts and Save follow the focus.
 
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use editor_core::Command;
 use editor_core::clip::Clip;
@@ -95,6 +95,29 @@ pub struct Options {
     pub panels: Vec<String>,
     /// Scripted input, see [`crate::script`].
     pub script: Option<String>,
+}
+
+impl Options {
+    /// Starts with `startup` and nothing else.
+    pub fn new(startup: Startup) -> Options {
+        Options {
+            startup,
+            screenshot: None,
+            screenshot_frames: 30,
+            select: None,
+            keymap: None,
+            mcp: None,
+            library: Vec::new(),
+            show: Vec::new(),
+            kicad_paths: Vec::new(),
+            kicad_pick: Vec::new(),
+            kicad_import: false,
+            kicad_query: None,
+            panels: Vec::new(),
+            script: None,
+            side_by_side: false,
+        }
+    }
 }
 
 /// The name dialog's state: renaming a library item or a sheet, or naming a new sheet
@@ -4692,7 +4715,13 @@ impl PcbApp {
         let name = self.project_name();
         let title = format!("{}{} — PCB Designer", name, if self.doc().is_modified() { " •" } else { "" });
         if title != self.title {
+            #[cfg(not(target_arch = "wasm32"))]
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = ctx;
+                crate::web::set_title(&title);
+            }
             self.title = title;
         }
     }
@@ -6118,10 +6147,10 @@ fn sheet_node(p: &Project, id: Id) -> TreeNode {
 }
 
 /// An example project. The LED demo gets a demo library file (written to the temp
-/// folder) in its External Libraries.
+/// folder) in its External Libraries; not in the browser, which has no files.
 fn example_document(example: view::demo::Example) -> Document {
     let mut project = example.project();
-    if example != view::demo::Example::Led {
+    if example != view::demo::Example::Led || cfg!(target_arch = "wasm32") {
         return Document::new(project);
     }
     let path = std::env::temp_dir().join("pcb-designer-demo").join("Demo parts.pcblib");

@@ -6,6 +6,7 @@ license.workspace = true
 description = "Model -> render scenes, hit testing, selection and editing tools (GUI independent)"
 
 [dependencies]
+web-time.workspace = true
 model.workspace = true
 editor-core.workspace = true
 render.workspace = true

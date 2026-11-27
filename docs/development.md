@@ -35,10 +35,24 @@ software one).
 copies it to /Applications). Run from the bundle, the app is named "PCB Designer" in the
 menu bar and Dock; run with `cargo run`, macOS uses the binary's name, `pcb-designer`.
 
+## Browser build (experimental)
+
+The app also runs in the browser (WebGPU: a recent Chrome, Edge, Safari or Firefox).
+It opens an example and edits it; it can't save, simulate or talk to agents yet.
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install --locked trunk
+cd crates/app && trunk serve --release    # http://127.0.0.1:8080, ?example=amp
+```
+
+`trunk build --release` writes the static site to `target/web/`.
+
 ## CI and releases
 
 GitHub Actions runs the tests on macOS, Linux and Windows for every push to `main` and
-every pull request (**CI**), plus fmt and clippy on Linux.
+every pull request (**CI**), plus fmt and clippy on Linux, and clippy of the browser
+build.
 
 The **Release** workflow builds the macOS app (Apple Silicon) and the Linux and Windows
 (x86_64) binaries. Run by hand, it keeps them as workflow artifacts; a version tag

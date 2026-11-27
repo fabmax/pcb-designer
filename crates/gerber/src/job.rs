@@ -124,7 +124,7 @@ fn project_guid(project: &Project) -> String {
 
 /// The current time in UTC as ISO 8601 (`2026-11-18T09:30:00Z`).
 pub fn now() -> String {
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    let secs = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
     iso8601(secs)
 }
 

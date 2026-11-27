@@ -21,7 +21,7 @@ use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use crate::ngspice::{error_lines, warning_lines};
 use crate::raw::{self, Plot, Vector};
@@ -92,6 +92,7 @@ struct Api {
 }
 
 /// Libraries loaded so far, by path.
+#[cfg(not(target_arch = "wasm32"))]
 static LOADED: Mutex<Vec<(PathBuf, &'static Api)>> = Mutex::new(Vec::new());
 /// Held for a whole run: one at a time per process.
 static RUN: Mutex<()> = Mutex::new(());
@@ -352,6 +353,12 @@ impl Libngspice {
     }
 
     /// Loads the library at `path` (once per path).
+    #[cfg(target_arch = "wasm32")]
+    pub fn load(_path: &Path) -> Result<Libngspice, SimError> {
+        Err(SimError::NotFound("ngspice can't run in the browser".into()))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn load(path: &Path) -> Result<Libngspice, SimError> {
         let mut loaded = LOADED.lock().expect("loaded");
         if let Some((_, api)) = loaded.iter().find(|(p, _)| p == path) {

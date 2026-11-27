@@ -20,6 +20,7 @@ things to do **later**.
 | Simulation | ngspice 47, built from source and bundled: its shared library in the app (live traces), worker processes of our own for sweeps and isolation. Design in "Simulation (`sim`)" |
 | Routing | Push and shove after KiCad's PNS router (hulls, lines walked round a pusher's hull, a shove stack, spring-back by recomputing from the board at the last click). Design in "Connectivity, copper, zones, DRC" (Router, Shove) |
 | Platforms | macOS first. macOS-only chrome (native menu, title strip) is `cfg`'d; Windows/Linux keep the egui menu bar and system title bar |
+| Web | Experimental browser build of the app (wasm, WebGPU only), on the `web` branch. Desktop has priority: nothing may get worse there for the web. Design in "Web (browser build)" |
 | CI | GitHub Actions. `ci.yml`: fmt and clippy (`-D warnings`) on Linux, on the latest stable Rust (update locally with `rustup update` when its new lints fire), `cargo test --workspace` on macOS, Linux and Windows (`--no-fail-fast`) for pushes to main and pull requests (on Linux with Mesa's software Vulkan for offscreen rendering). `.github/actions/ngspice` builds the bundled ngspice with `scripts/build-ngspice.sh` on every OS (Windows in MSYS2 UCRT64, its `lib/` put on `PATH` for the MinGW runtime DLLs), cached by the script, version and patches, so the simulation tests run everywhere (`REQUIRE_NGSPICE` turns their skip without ngspice, `sim::skip_without_ngspice`, into a failure); it comes after `rust-cache`, whose post step cleans `target/` after this cache is saved. `release.yml` (manual, or a `v*` tag, which also publishes a GitHub Release): the ad-hoc signed `.app` for Apple Silicon (`bundle-macos.sh`: ngspice in `Contents/Frameworks` and `PlugIns/ngspice`, each signed before the app), and a `pcb-designer/` folder for Linux (`lib/libngspice.so.0`, `lib/ngspice/*.cm`; the binary's debug info stripped: the release profile's line tables would make it 4× the size; symbols stay) and Windows x86_64 (`ngspice.dll` and MinGW's runtime DLLs beside the exe, `ngspice\*.cm`), each with ngspice's COPYING. Linux system packages are in `.github/actions/linux-deps`. Dependabot (`.github/dependabot.yml`) opens weekly update PRs: egui's family with wgpu, winit and muda in one, other minor/patch crates in one, majors alone, actions in one. Cargo counts 0.x → 0.y as minor, so a breaking 0.x bump can hold up the grouped PR: split it off then. Tests that need a GPU adapter skip without one |
 
 ## Model and files (`model`)
@@ -1862,6 +1863,43 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
 - **Dev aids:** `--script` steps (see AGENTS.md), `--screenshot` (captures egui output:
   the native window buttons don't show), `--panel`, `--show`, `--select`.
 
+## Web (browser build)
+
+Experimental. `crates/app` also builds for `wasm32-unknown-unknown` with Trunk
+(`index.html`, `Trunk.toml`; output in `target/web/`). W1 (done): it opens an example
+(`?example=amp`, the LED demo otherwise) and edits it; nothing is saved.
+
+- **Entry:** `main.rs` picks `desktop::main` (command line, window, headless commands)
+  or `web::start` (eframe's `WebRunner` on the page's canvas). `Options::new` is shared.
+  The wasm build allows dead code crate-wide: the desktop build still checks it.
+- **WebGPU only:** eframe's `wgpu_no_default_features` and egui-wgpu without default
+  features leave out wgpu's `webgl` (2.5 MB of wasm, ~0.7 MB brotli). Native backends
+  come from the workspace `wgpu`'s defaults (checked: unchanged). Without
+  `navigator.gpu` the page says so (`web.rs`). Size (release, `wasm-opt -Oz`): 19 MB,
+  3.6 MB brotli.
+- **What the browser lacks**, and how the build copes:
+  - Threads: `std::thread::spawn` panics. App work goes through `background::spawn`
+    (a thread on the desktop, run in place in the browser). sim's workers and the
+    offscreen renderer's threads are unreachable there (no ngspice, no MCP).
+  - Clocks: `std::time::Instant::now()` panics; use `web_time::{Instant, SystemTime}`
+    (std's types on the desktop). `recovery.rs` keeps std's `SystemTime` for file times.
+  - Files: `std::fs` compiles and fails at run time; `std::env::temp_dir()` panics.
+    `settings::config_dir()` is `None` (no env vars), which turns off settings saving and
+    recovery. The LED demo has no demo library file. rfd's dialogs open files but hand
+    over a name, not a path (`file_dialog::path`); there's no folder picker.
+  - Clipboard: no arboard; keyboard copy and paste go through egui's web clipboard,
+    menu Paste finds nothing (`clipboard::read`).
+  - Crates: `mcp` builds `server`/`stdio` for the desktop only (a stub `McpServer`
+    that never starts, `server_web.rs`; tokio with `sync` only). `sim` loads no
+    libngspice (`Engine::find` reports it). `kicad` downloads through `download::get`,
+    an error in the browser (no `ureq`). `model` gets `uuid`'s `js` randomness.
+  - Keys: eframe calls `preventDefault` on every event, so Cmd+S, Cmd+D … reach the
+    app; Cmd+W, Cmd+N, Cmd+T, Cmd+Q stay the browser's.
+- **Window title:** eframe ignores `ViewportCommand::Title` on the web; `update_title`
+  sets `document.title` instead.
+- **Seeing it:** `node crates/app/web-shot.mjs URL OUT.png "STEPS"` drives headless
+  Chrome (see AGENTS.md).
+
 ## Performance (Apple M4, release)
 
 Budget: about 10k footprints at 60 fps, an edit → board → GPU update within one frame.
@@ -1886,6 +1924,15 @@ Measure with `edit_bench` (`cargo run -p view --release --example edit_bench`) a
 
 Usability work collected from the Later list, in the suggested order. Remove a milestone
 when it's done; what it defers goes back to **Later**.
+
+- **W2, web: projects in the browser.** A storage layer in `app` (file system on the
+  desktop; in the browser an in-memory project folder kept in IndexedDB;
+  `model::io::project_from_files` parses from strings). Open a project as files or a
+  `.zip`, Save / Save As download a `.zip`. Settings and keymap in localStorage (no
+  "Settings not saved" notice). Recovery copies in IndexedDB, written on the main
+  thread. The LED demo's demo library.
+- **W3, web: outputs and imports.** Gerber export downloads a `.zip`; project libraries
+  from an uploaded `.pcblib`; KiCad import from uploaded files (no remote download).
 
 
 ## Later
@@ -2075,6 +2122,16 @@ defers.
   library edits).
 - `Store` bulk removals (O(n) each), linear scans for refdes numbering and sync lookups.
 - Cache the project tree nodes if big libraries make the per-frame rebuild slow.
+
+**Web**
+- Simulation in the browser: ngspice built with Emscripten, run in a Web Worker.
+- MCP for agents in the browser (no sockets: a WebSocket bridge, or an extension).
+- Hosting (GitHub Pages on a private repo needs a paid plan: Cloudflare Pages, Netlify).
+- Performance with `--stress`-sized boards; threads need COOP/COEP headers.
+- Menu Paste in the browser (the async clipboard API), and a folder picker
+  (File System Access API, Chromium only).
+- CI runs on pushes to main and pull requests only: the `web` branch is checked once
+  it has a pull request (or is merged).
 
 **GUI**
 - Item tabs: a "Keep preview open" action and a "Close tab" key; a way to discard a

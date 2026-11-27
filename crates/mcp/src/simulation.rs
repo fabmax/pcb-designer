@@ -2,7 +2,7 @@
 //! ends), `get_spice_netlist` and the plot as an offscreen scene (`screenshot` target
 //! `simulation`). Shared by the app and the headless host.
 
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use editor_core::connectivity::Connectivity;
 use model::{Analysis, AnalysisKind, Id, Probe, Project, TuneParam, si};

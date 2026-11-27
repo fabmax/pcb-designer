@@ -9,7 +9,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::thread::JoinHandle;
 
 use egui::RichText;
 use kicad::download::{self, DownloadError, Installed, Source};
@@ -20,6 +19,7 @@ use mcp::host::{Reply, Responder};
 use view::LibraryDoc;
 use view::item::Item;
 
+use crate::background::{self, Job};
 use crate::fields::{self, hint};
 use crate::nav_list;
 use crate::preview::{Empty, Preview};
@@ -153,7 +153,7 @@ pub enum ImportAction {
 struct DownloadJob {
     bytes: Arc<AtomicU64>,
     cancel: Arc<AtomicBool>,
-    handle: JoinHandle<Result<(Installed, bool), DownloadError>>,
+    handle: Job<Result<(Installed, bool), DownloadError>>,
     /// Agents waiting for the result.
     replies: Vec<Responder>,
 }
@@ -162,7 +162,7 @@ struct DownloadJob {
 enum Remote {
     Idle,
     Failed(String),
-    Checking(JoinHandle<Result<String, DownloadError>>),
+    Checking(Job<Result<String, DownloadError>>),
     UpToDate,
     Available(String),
 }
@@ -179,7 +179,7 @@ pub struct KicadImport {
     catalog: Option<Catalog>,
     /// A catalog being scanned in the background (for the Parts panel's match count),
     /// with the folders it scans.
-    scanning: Option<(Vec<PathBuf>, std::thread::JoinHandle<Catalog>)>,
+    scanning: Option<(Vec<PathBuf>, Job<Catalog>)>,
     /// The Parts panel's last count: query, footprints, matches.
     counted: Option<(String, bool, KicadMatches)>,
     query: String,
@@ -303,7 +303,7 @@ impl KicadImport {
                 }
                 None => {
                     let scan = paths.clone();
-                    self.scanning = Some((paths, std::thread::spawn(move || Catalog::scan(&scan))));
+                    self.scanning = Some((paths, background::spawn(move || Catalog::scan(&scan))));
                     ctx.request_repaint_after(std::time::Duration::from_millis(100));
                     return KicadMatches::Scanning;
                 }
@@ -367,7 +367,7 @@ impl KicadImport {
         let bytes = Arc::new(AtomicU64::new(0));
         let cancel = Arc::new(AtomicBool::new(false));
         let (b, c, ctx) = (bytes.clone(), cancel.clone(), ctx.clone());
-        let handle = std::thread::spawn(move || {
+        let handle = background::spawn(move || {
             let mut progress = |n| {
                 b.store(n, Ordering::Relaxed);
                 ctx.request_repaint();
@@ -383,7 +383,7 @@ impl KicadImport {
 
     fn check_updates(&mut self, ctx: &egui::Context) {
         let ctx = ctx.clone();
-        self.remote = Remote::Checking(std::thread::spawn(move || {
+        self.remote = Remote::Checking(background::spawn(move || {
             let r = download::latest_version(&Source::default());
             ctx.request_repaint();
             r

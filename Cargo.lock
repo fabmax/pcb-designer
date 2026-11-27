@@ -242,6 +242,7 @@ dependencies = [
  "egui-wgpu",
  "egui_tiles",
  "env_logger",
+ "js-sys",
  "kicad",
  "log",
  "mcp",
@@ -260,6 +261,10 @@ dependencies = [
  "sim",
  "tempfile",
  "view",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
  "wgpu",
  "winit",
 ]
@@ -1066,6 +1071,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "web-time",
 ]
 
 [[package]]
@@ -1595,6 +1601,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "web-time",
 ]
 
 [[package]]
@@ -2482,6 +2489,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "view",
+ "web-time",
 ]
 
 [[package]]
@@ -3960,6 +3968,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "view",
+ "web-time",
 ]
 
 [[package]]
@@ -4749,6 +4758,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "web-time",
 ]
 
 [[package]]
@@ -5081,7 +5091,6 @@ dependencies = [
  "thiserror 2.0.21",
  "wgpu-core-deps-apple",
  "wgpu-core-deps-emscripten",
- "wgpu-core-deps-wasm",
  "wgpu-core-deps-windows-linux-android",
  "wgpu-hal",
  "wgpu-naga-bridge",
@@ -5102,15 +5111,6 @@ name = "wgpu-core-deps-emscripten"
 version = "30.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55ccf093bd215ae9dc4f96df293e675513ac1f2569f8293a2911cc34ca3505d1"
-dependencies = [
- "wgpu-hal",
-]
-
-[[package]]
-name = "wgpu-core-deps-wasm"
-version = "30.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b20f43aeb9962d05e61e3ccb717e2e27ba1b04e979d4ca7e361384f8ee03db56"
 dependencies = [
  "wgpu-hal",
 ]

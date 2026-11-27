@@ -16,6 +16,17 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll, Wake, Waker};
 
+#[cfg(not(target_arch = "wasm32"))]
+fn path(file: &rfd::FileHandle) -> PathBuf {
+    file.path().to_path_buf()
+}
+
+/// A browser hands over the file, not a path: only its name (W2 reads files).
+#[cfg(target_arch = "wasm32")]
+fn path(file: &rfd::FileHandle) -> PathBuf {
+    file.file_name().into()
+}
+
 /// What the dialog asks for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -61,9 +72,13 @@ impl<T> Dialog<T> {
         let file = match kind {
             Kind::Save => Box::pin(dialog.save_file()) as Pin<Box<dyn Future<Output = _>>>,
             Kind::PickFile => Box::pin(dialog.pick_file()),
+            #[cfg(not(target_arch = "wasm32"))]
             Kind::PickFolder => Box::pin(dialog.pick_folder()),
+            // Browsers have no folder picker in rfd.
+            #[cfg(target_arch = "wasm32")]
+            Kind::PickFolder => Box::pin(std::future::ready(None)),
         };
-        self.wait(ctx, Box::pin(async move { file.await.map(|f| f.path().to_path_buf()) }), then);
+        self.wait(ctx, Box::pin(async move { file.await.map(|f| path(&f)) }), then);
         true
     }
 

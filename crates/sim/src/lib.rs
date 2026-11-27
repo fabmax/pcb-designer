@@ -194,6 +194,10 @@ impl Engine {
     /// Finds the library ([`Libngspice::locate`]) and loads it here, unless
     /// `process_only` with a worker.
     pub fn find(settings: &EngineSettings) -> Engine {
+        if cfg!(target_arch = "wasm32") {
+            let error = "Simulation isn't available in the browser".to_string();
+            return Engine { error: Some(error), ..Engine::default() };
+        }
         let path = match Libngspice::locate(settings.library.as_deref()) {
             Ok(p) => p,
             Err(e) => return Engine { error: Some(e.to_string()), ..Engine::default() },

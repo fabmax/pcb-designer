@@ -6,21 +6,28 @@ license.workspace = true
 description = "MCP server: lets agents inspect and edit the open project"
 
 [dependencies]
+web-time.workspace = true
 model.workspace = true
 editor-core.workspace = true
 view.workspace = true
 render.workspace = true
 kicad.workspace = true
 sim.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+log.workspace = true
+
+# The MCP server (HTTP and stdio) is desktop only: the browser has no sockets.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rmcp.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 axum.workspace = true
 base64.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-schemars.workspace = true
-log.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { version = "1", default-features = false, features = ["sync"] }
 
 [dev-dependencies]
 rmcp = { workspace = true, features = ["client", "transport-streamable-http-client-reqwest"] }

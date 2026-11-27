@@ -111,7 +111,7 @@ pub fn shove_leg(
     via: Option<(Coord, LayerMask)>,
 ) -> Routed {
     // A frame or two at most, the search for where to stop included.
-    let deadline = std::time::Instant::now() + SHOVE_TIME;
+    let deadline = web_time::Instant::now() + SHOVE_TIME;
     let attempt =
         |path: &[Point]| shove::shove(project, copper, &shove::Head { layer, width, net, path, via, deadline });
     let walked = lay(project, copper, layer, width, net, points, true, &[]);
@@ -122,7 +122,7 @@ pub fn shove_leg(
     // Hug and push: walk round what the head pushed into the stuck cascade, push the rest.
     let mut hug = blocked.hug.clone();
     for _ in 0..HUGS {
-        if hug.is_empty() || std::time::Instant::now() > deadline {
+        if hug.is_empty() || web_time::Instant::now() > deadline {
             break;
         }
         let round = lay(project, copper, layer, width, net, points, true, &hug);
@@ -142,7 +142,7 @@ pub fn shove_leg(
     // The longest start of the leg that pushes clear, to 20 µm.
     let (mut lo, mut hi) = (0.0, walk::length(&walked.points));
     let mut best = shove::Shoved::default();
-    while hi - lo > 20_000.0 && std::time::Instant::now() < deadline {
+    while hi - lo > 20_000.0 && web_time::Instant::now() < deadline {
         let mid = (lo + hi) / 2.0;
         match attempt(&prefix(&walked.points, mid)) {
             Ok(pushed) => {
@@ -189,7 +189,7 @@ pub fn shove_via(
     if let Some(c) = check_via(project, copper, layer, net, pos, diameter, layers, true) {
         return Err(c);
     }
-    let deadline = std::time::Instant::now() + SHOVE_TIME;
+    let deadline = web_time::Instant::now() + SHOVE_TIME;
     let path = [pos];
     let head = shove::Head { layer, width: 0, net, path: &path, via: Some((diameter, layers)), deadline };
     shove::shove(project, copper, &head).map_err(|s| s.clash)
@@ -219,7 +219,7 @@ pub fn shove_moved(project: &Project, copper: &BoardConnectivity, moved: &[Objec
             net = net.or(copper.net_of(item));
         }
     }
-    let deadline = std::time::Instant::now() + SHOVE_TIME;
+    let deadline = web_time::Instant::now() + SHOVE_TIME;
     shove::shove_shapes(project, copper, shapes, net, islands, deadline).map_err(|s| s.clash)
 }
 

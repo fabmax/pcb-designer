@@ -52,7 +52,7 @@ pub struct Canvas {
     /// The last mouse wheel notch counted as a step: egui's time and direction.
     last_notch: Option<(f64, f64)>,
     /// A short note next to the pointer ([`Canvas::flash`]) and when it was set.
-    tip: Option<(String, std::time::Instant)>,
+    tip: Option<(String, web_time::Instant)>,
     /// A pan drag: where the pointer was last frame, and a cursor warp to the other side
     /// of the canvas that hasn't shown up in the pointer position yet.
     pan: Option<Pan>,
@@ -133,7 +133,7 @@ impl Canvas {
 
     /// Show `text` next to the pointer for a moment.
     pub fn flash(&mut self, text: String) {
-        self.tip = Some((text, std::time::Instant::now()));
+        self.tip = Some((text, web_time::Instant::now()));
     }
 
     fn tip_ui(&mut self, ui: &egui::Ui, response: &egui::Response) {

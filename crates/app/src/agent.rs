@@ -2,7 +2,7 @@
 
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use web_time::Instant;
 
 use mcp::host::{KicadImport as KicadJob, Responder, render_png};
 use mcp::library::LibraryRequest;

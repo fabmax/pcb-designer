@@ -93,7 +93,7 @@ pub struct Head<'a> {
     /// A via at the end of `path` (the L key while routing): its diameter and layers.
     pub via: Option<(Coord, LayerMask)>,
     /// Give up (fail) after this.
-    pub deadline: std::time::Instant,
+    pub deadline: web_time::Instant,
 }
 
 /// Push what's in the head's way. `Err`: something that can't move is in the way (of
@@ -129,7 +129,7 @@ pub fn shove_shapes(
     shapes: Vec<(Geo, LayerMask)>,
     net: Option<&str>,
     islands: Vec<u32>,
-    deadline: std::time::Instant,
+    deadline: web_time::Instant,
 ) -> Result<Shoved, Stuck> {
     let at = shapes.first().map_or(Point::ZERO, |s| s.0.bounds().center());
     let clearance = project.board.rules.for_net(net).clearance;
@@ -153,7 +153,7 @@ fn run(
     project: &Project,
     copper: &BoardConnectivity,
     head: HeadCopper,
-    deadline: std::time::Instant,
+    deadline: web_time::Instant,
 ) -> Result<Shoved, Stuck> {
     let mut e = Engine::new(project, copper, head, deadline);
     e.run()?;
@@ -224,16 +224,11 @@ struct Engine<'a> {
     moved_vias: HashMap<usize, Point>,
     /// What last pushed each line or via (nothing pushes its own pushers back).
     pushed_by: HashMap<Pusher, Pusher>,
-    deadline: std::time::Instant,
+    deadline: web_time::Instant,
 }
 
 impl<'a> Engine<'a> {
-    fn new(
-        project: &'a Project,
-        copper: &'a BoardConnectivity,
-        head: HeadCopper,
-        deadline: std::time::Instant,
-    ) -> Self {
+    fn new(project: &'a Project, copper: &'a BoardConnectivity, head: HeadCopper, deadline: web_time::Instant) -> Self {
         Engine {
             project,
             copper,
@@ -261,7 +256,7 @@ impl<'a> Engine<'a> {
         let mut pops = 0;
         while let Some(p) = stack.pop() {
             pops += 1;
-            if pops > MAX_PUSHES || std::time::Instant::now() > self.deadline {
+            if pops > MAX_PUSHES || web_time::Instant::now() > self.deadline {
                 let clash = Clash { at: self.head_at, message: "too much to push aside".into() };
                 return Err(Stuck { clash, hug: Vec::new() });
             }

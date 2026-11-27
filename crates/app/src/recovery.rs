@@ -12,11 +12,14 @@
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::thread::JoinHandle;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+// File times are std's; there's no recovery in the browser (no config folder).
+use std::time::{SystemTime, UNIX_EPOCH};
+use web_time::{Duration, Instant};
 
 use model::Project;
 use serde::{Deserialize, Serialize};
+
+use crate::background::{self, Job};
 
 /// How long changes wait before they are written to the recovery copy.
 pub const INTERVAL: Duration = Duration::from_secs(5 * 60);
@@ -119,7 +122,7 @@ pub struct Slot {
     written: Option<u64>,
     /// Since when there are changes the copy doesn't have.
     dirty_since: Option<Instant>,
-    job: Option<JoinHandle<()>>,
+    job: Option<Job<()>>,
 }
 
 impl Slot {
@@ -162,7 +165,7 @@ impl Slot {
         self.wait();
         let (project, folder) = copy();
         let dir = self.dir.clone();
-        self.job = Some(std::thread::spawn(move || {
+        self.job = Some(background::spawn(move || {
             if let Err(e) = write(&dir, &project, folder) {
                 log::warn!("recovery copy not written: {e}");
             }

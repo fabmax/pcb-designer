@@ -10,9 +10,11 @@ model.workspace = true
 editor-core.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
-ureq.workspace = true
 flate2.workspace = true
 tar.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq.workspace = true
 
 [dev-dependencies]
 view.workspace = true
