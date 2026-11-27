@@ -1,0 +1,74 @@
+# The browser version on GitHub Pages (https://<owner>.github.io/<repo>/), deployed
+# with each release: a version tag (v0.6.0), or by hand (any branch). Needs Settings →
+# Pages → Source: "GitHub Actions".
+# ngspice for simulation is built with Emscripten (scripts/build-ngspice-wasm.sh), cached
+# by its version, patches and scripts.
+name: Pages
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # The Emscripten ngspice was tested with (a new one: check the simulation in the browser).
+  EMSCRIPTEN_VERSION: "7.0.1"
+
+# One deployment at a time; a newer one waits rather than cancelling a running one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: trunk@0.22.2
+
+      - uses: actions/cache@v6
+        id: ngspice
+        with:
+          path: target/ngspice/wasm32-emscripten/
+          key: ngspice-wasm-${{ env.EMSCRIPTEN_VERSION }}-${{ hashFiles('scripts/ngspice.env', 'scripts/build-ngspice-wasm.sh', 'scripts/ngspice-patches/**') }}
+      - if: steps.ngspice.outputs.cache-hit != 'true'
+        run: sudo apt-get install -y --no-install-recommends bison flex
+      - if: steps.ngspice.outputs.cache-hit != 'true'
+        uses: mymindstorm/setup-emsdk@v16
+        with:
+          version: ${{ env.EMSCRIPTEN_VERSION }}
+      - if: steps.ngspice.outputs.cache-hit != 'true'
+        run: scripts/build-ngspice-wasm.sh
+      - name: Check ngspice
+        run: node scripts/ngspice-wasm-test.mjs
+
+      - name: Build the site
+        run: |
+          cd crates/app
+          # Served under /<repo>/, not the root.
+          trunk build --release --public-url "/${{ github.event.repository.name }}/"
+          # Without ngspice (its hook found no build) the site would have no simulation.
+          test -f ../../target/web/ngspice/ngspice.wasm
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: target/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

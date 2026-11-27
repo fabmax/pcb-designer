@@ -56,6 +56,9 @@ Linux and Windows (x86_64).
 
 [ngspice](https://ngspice.sourceforge.io/) comes with the app for simulation.
 
+Or try it in the browser, without installing: [fabmax.github.io/pcb-designer/](https://fabmax.github.io/pcb-designer/)
+(experimental; needs WebGPU, see [the browser version](docs/web.md)).
+
 ## Build from source
 
 With a current stable [Rust](https://rustup.rs):

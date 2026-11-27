@@ -1988,6 +1988,13 @@ files come in and go out through the file dialog's Upload and Download.
   mouse wheel zooms a step per event (pixels per notch vary by system).
 - **Window title:** eframe ignores `ViewportCommand::Title` on the web; `update_title`
   sets `document.title` instead.
+- **Hosting:** GitHub Pages (`.github/workflows/pages.yml`, on version tags and by
+  hand): the site lives under `/pcb-designer/` (`trunk build --public-url`; every URL
+  the app fetches itself, `ngspice/…`, is relative to the page). The origin
+  `fabmax.github.io` is shared with the owner's other Pages sites, so is the browser
+  storage's quota. No custom headers there (COOP/COEP for threads would need another
+  host, e.g. Cloudflare Pages: 25 MB per file, the app's wasm is 19 MB). The workflow
+  fails when the site has no `ngspice/` (the hook skips it without Emscripten).
 - **Seeing it:** `node crates/app/web-shot.mjs URL OUT.png "STEPS"` drives headless
   Chrome (see AGENTS.md).
 
@@ -2207,10 +2214,9 @@ defers.
 - Cache the project tree nodes if big libraries make the per-frame rebuild slow.
 
 **Web**
-- CI doesn't build or test the browser's ngspice (Emscripten in the web job, then
-  `node scripts/ngspice-wasm-test.mjs`).
+- CI (pushes, pull requests) doesn't build or test the browser's ngspice; the Pages
+  workflow does, on releases.
 - MCP for agents in the browser (no sockets: a WebSocket bridge, or an extension).
-- Hosting (GitHub Pages on a private repo needs a paid plan: Cloudflare Pages, Netlify).
 - Performance with `--stress`-sized boards; threads need COOP/COEP headers.
 - Menu Paste in the browser (the async clipboard API), and opening a real folder
   (File System Access API, Chromium only).
