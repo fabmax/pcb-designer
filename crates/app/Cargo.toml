@@ -29,10 +29,12 @@ serde.workspace = true
 serde_json.workspace = true
 kicad.workspace = true
 sim.workspace = true
+png.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 arboard.workspace = true
 env_logger.workspace = true
+ureq.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"

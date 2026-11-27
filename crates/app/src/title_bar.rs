@@ -6,13 +6,12 @@
 //! The AppKit bits winit doesn't expose (title bar metrics, the "unsaved" dot, the
 //! title bar double-click setting) are read from the `NSWindow` here.
 
-use egui::{Color32, Sense, TextureHandle, TextureOptions, pos2, vec2};
+use egui::{Color32, Sense, TextureHandle, pos2, vec2};
 use objc2::rc::Retained;
 use objc2_app_kit::{NSView, NSWindow, NSWindowButton};
 use objc2_foundation::{NSString, NSUserDefaults};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-use crate::icons::APP_ICON_PNG as ICON_PNG;
 use crate::theme;
 
 /// Size of the icon in the strip (points).
@@ -148,41 +147,9 @@ impl TitleBar {
     fn icon(&mut self, ctx: &egui::Context) -> &TextureHandle {
         self.icon.get_or_insert_with(|| {
             // 64² (4× the drawn size): sharp on Retina with linear filtering.
-            let image = eframe::icon_data::from_png_bytes(ICON_PNG).expect("embedded icon");
-            let small = downsample(&image.rgba, image.width as usize, 64);
-            let image = egui::ColorImage::from_rgba_unmultiplied([64, 64], &small);
-            ctx.load_texture("app icon", image, TextureOptions::LINEAR)
+            crate::icons::app_icon(ctx, 64)
         })
     }
-}
-
-/// Box-filters a square RGBA image of `size`² down to `to`² (`size` a multiple of `to`).
-/// Averages premultiplied colours so transparent pixels don't darken the edge.
-fn downsample(rgba: &[u8], size: usize, to: usize) -> Vec<u8> {
-    let f = size / to;
-    let mut out = vec![0u8; to * to * 4];
-    for y in 0..to {
-        for x in 0..to {
-            let mut sum = [0u32; 4];
-            for sy in 0..f {
-                for sx in 0..f {
-                    let i = ((y * f + sy) * size + x * f + sx) * 4;
-                    let a = rgba[i + 3] as u32;
-                    for c in 0..3 {
-                        sum[c] += rgba[i + c] as u32 * a;
-                    }
-                    sum[3] += a;
-                }
-            }
-            let o = (y * to + x) * 4;
-            let n = (f * f) as u32;
-            for c in 0..3 {
-                out[o + c] = sum[c].checked_div(sum[3]).unwrap_or(0) as u8;
-            }
-            out[o + 3] = (sum[3] / n) as u8;
-        }
-    }
-    out
 }
 
 #[cfg(test)]
@@ -202,16 +169,5 @@ mod tests {
     fn title_marks_unsaved_changes() {
         assert_eq!(title_parts("Demo", false), ("Demo".to_string(), None));
         assert_eq!(title_parts("Demo", true).1, Some(" — Edited"));
-    }
-
-    #[test]
-    fn downsampling_keeps_edges_clean() {
-        // Half opaque red, half transparent black: the average stays pure red, half alpha.
-        let mut img = vec![0u8; 2 * 2 * 4];
-        img[0..4].copy_from_slice(&[255, 0, 0, 255]);
-        img[8..12].copy_from_slice(&[255, 0, 0, 255]);
-        assert_eq!(downsample(&img, 2, 1), [255, 0, 0, 127]);
-        let icon = eframe::icon_data::from_png_bytes(ICON_PNG).unwrap();
-        assert_eq!((icon.width, icon.height), (1024, 1024));
     }
 }

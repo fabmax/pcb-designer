@@ -51,6 +51,7 @@
 // the desktop build still checks for dead code.
 #![cfg_attr(target_arch = "wasm32", allow(dead_code))]
 
+mod about;
 mod activity_ui;
 mod agent;
 mod agent_switch;

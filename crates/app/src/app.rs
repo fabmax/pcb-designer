@@ -383,6 +383,8 @@ pub struct PcbApp {
     name_prompt: Option<NamePrompt>,
     /// "Move to sheet…" asking for the sheet.
     sheet_picker: Option<SheetPicker>,
+    /// Help → About, while it's open.
+    about: Option<crate::about::About>,
     /// Array mode opened the Tool settings panel: the item tab and the panel it
     /// replaced, shown again when the mode ends.
     array_dock: Option<(u64, Option<Panel>)>,
@@ -542,6 +544,7 @@ impl PcbApp {
             sch,
             name_prompt: None,
             sheet_picker: None,
+            about: None,
             array_dock: None,
             saved_dock: Dock::default(),
             project_tree: ProjectPanel::default(),
@@ -593,7 +596,9 @@ impl PcbApp {
             }
         }
         for name in &opts.show {
-            if name == "gerber" {
+            if name == "about" {
+                app.about = Some(crate::about::About::default());
+            } else if name == "gerber" {
                 app.refresh_outputs();
                 app.open_gerber(None);
             } else if let Some(rest) = name.strip_prefix("simulation") {
@@ -3287,6 +3292,8 @@ impl PcbApp {
                     sizes;
             }
             Cmd::ShowShortcuts => self.settings_win.show(Some(SettingsPage::Keymap), &mut self.settings),
+            Cmd::OpenDocs => ctx.open_url(egui::OpenUrl::new_tab(crate::about::DOCS_URL)),
+            Cmd::About => self.about = Some(crate::about::About::default()),
         }
     }
 
@@ -5797,7 +5804,7 @@ impl eframe::App for PcbApp {
         self.paste_text = ctx.input(|i| {
             i.events.iter().find_map(|e| if let egui::Event::Paste(t) = e { Some(t.clone()) } else { None })
         });
-        let modal = self.name_prompt.is_some() || self.sheet_picker.is_some();
+        let modal = self.name_prompt.is_some() || self.sheet_picker.is_some() || self.about.is_some();
         if !modal && !ctx.egui_wants_keyboard_input() && self.editing_doc().is_some() {
             self.text_edit_input(&ctx);
         }
@@ -6055,6 +6062,11 @@ impl eframe::App for PcbApp {
         self.settings_window(&ctx);
         self.import_report_ui(&ctx);
         self.recovery_ui(&ctx);
+        if let Some(about) = &mut self.about
+            && !about.ui(&ctx)
+        {
+            self.about = None;
+        }
         let libs: Vec<(u64, String)> = self.libraries.iter().map(|l| (l.key, l.lib.name().to_string())).collect();
         self.kicad.poll();
         if let Some(ImportAction::Import(target, req)) = self.kicad.ui(&ctx, &libs) {

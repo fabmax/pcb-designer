@@ -153,6 +153,55 @@ fn rasterize(icon: Icon, px: u32) -> Result<ColorImage, String> {
     Ok(ColorImage::from_rgba_premultiplied([px as usize; 2], pixmap.data()))
 }
 
+/// The app icon's pixels (RGBA, 8 bits each) and its width (it's square).
+fn app_icon_rgba() -> (Vec<u8>, usize) {
+    let reader = png::Decoder::new(std::io::Cursor::new(APP_ICON_PNG)).read_info();
+    let mut reader = reader.expect("embedded icon");
+    let mut rgba = vec![0; reader.output_buffer_size().expect("icon size")];
+    let info = reader.next_frame(&mut rgba).expect("embedded icon");
+    assert_eq!((info.color_type, info.bit_depth), (png::ColorType::Rgba, png::BitDepth::Eight));
+    rgba.truncate(info.buffer_size());
+    (rgba, info.width as usize)
+}
+
+/// The app icon as a texture of `px`² pixels (a divisor of its 1024²), box-filtered so
+/// it's sharp when drawn at a quarter or half of that in points.
+pub fn app_icon(ctx: &Context, px: usize) -> TextureHandle {
+    let (rgba, size) = app_icon_rgba();
+    let small = downsample(&rgba, size, px);
+    let image = ColorImage::from_rgba_unmultiplied([px, px], &small);
+    ctx.load_texture(format!("app icon {px}"), image, TextureOptions::LINEAR)
+}
+
+/// Box-filters a square RGBA image of `size`² down to `to`² (`size` a multiple of `to`).
+/// Averages premultiplied colours so transparent pixels don't darken the edge.
+pub fn downsample(rgba: &[u8], size: usize, to: usize) -> Vec<u8> {
+    let f = size / to;
+    let mut out = vec![0u8; to * to * 4];
+    for y in 0..to {
+        for x in 0..to {
+            let mut sum = [0u32; 4];
+            for sy in 0..f {
+                for sx in 0..f {
+                    let i = ((y * f + sy) * size + x * f + sx) * 4;
+                    let a = rgba[i + 3] as u32;
+                    for c in 0..3 {
+                        sum[c] += rgba[i + c] as u32 * a;
+                    }
+                    sum[3] += a;
+                }
+            }
+            let o = (y * to + x) * 4;
+            let n = (f * f) as u32;
+            for c in 0..3 {
+                out[o + c] = sum[c].checked_div(sum[3]).unwrap_or(0) as u8;
+            }
+            out[o + 3] = (sum[3] / n) as u8;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,5 +218,16 @@ mod tests {
                 "{icon:?} has colours; draw it in currentColor"
             );
         }
+    }
+
+    #[test]
+    fn downsampling_keeps_edges_clean() {
+        // Half opaque red, half transparent black: the average stays pure red, half alpha.
+        let mut img = vec![0u8; 2 * 2 * 4];
+        img[0..4].copy_from_slice(&[255, 0, 0, 255]);
+        img[8..12].copy_from_slice(&[255, 0, 0, 255]);
+        assert_eq!(downsample(&img, 2, 1), [255, 0, 0, 127]);
+        let (rgba, size) = app_icon_rgba();
+        assert_eq!((rgba.len(), size), (1024 * 1024 * 4, 1024));
     }
 }

@@ -19,7 +19,7 @@ sim = { path = "crates/sim" }
 
 # `wgpu_no_default_features` and egui-wgpu without defaults: no WebGL2 fallback in the browser
 # build (WebGPU only, ~0.7 MB less download). Native backends come from `wgpu`'s defaults.
-eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu_no_default_features", "wayland", "x11", "accesskit", "clipboard"] }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu_no_default_features", "wayland", "x11", "accesskit", "clipboard", "links"] }
 egui = "0.37"
 egui-wgpu = { version = "0.37", default-features = false, features = ["fragile-send-sync-non-atomic-wasm", "macos-window-resize-jitter-fix"] }
 egui_tiles = "0.18"

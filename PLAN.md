@@ -1701,6 +1701,12 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
   equivalents, and picking one replays its shortcut as an egui key press (keymap context
   and typing rules still apply). The native menu syncs every frame, in place when only
   texts or states change. winit's default menu is off.
+- **Help menu, About** (`about.rs`): Documentation opens the Pages site, links open in a
+  new tab in the browser (eframe's `links` feature opens them on the desktop). About is
+  our dialog, in the app menu on macOS (replacing the system's panel) and in Help
+  elsewhere; `--show about` opens it. Check for updates (desktop only) asks GitHub's
+  `releases/latest` with `ureq` in the background and compares the numeric parts of the
+  tag with `CARGO_PKG_VERSION` (`is_newer`).
 - **macOS window** (`title_bar.rs`): transparent title bar with full-size content; our
   strip shows the icon, the project name and "— Edited". Height and button extent come
   from the `NSWindow` (32 pt on macOS 26). Drag → `StartDrag`; double-click follows

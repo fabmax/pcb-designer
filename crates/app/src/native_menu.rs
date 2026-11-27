@@ -231,7 +231,6 @@ fn accelerator(s: Shortcut) -> Option<Accelerator> {
 
 fn system(s: System) -> PredefinedMenuItem {
     match s {
-        System::About => PredefinedMenuItem::about(Some(&format!("About {}", menu::APP_NAME)), None),
         System::Services => PredefinedMenuItem::services(None),
         System::Hide => PredefinedMenuItem::hide(Some(&format!("Hide {}", menu::APP_NAME))),
         System::HideOthers => PredefinedMenuItem::hide_others(None),

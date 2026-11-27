@@ -154,7 +154,8 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
   - `--show footprint:SOT-23` (opens an item by name, searching the libraries from the
     last loaded one: with `--example led` the demo parts, then the built-in library, e.g.
     `--show part:74HC00`; `--show gerber` opens the Gerber tab of a saved project with an
-    export; `--show simulation:NAME` a simulation's output tab, `--show simulation` the first one's)
+    export; `--show simulation:NAME` a simulation's output tab, `--show simulation` the first one's;
+    `--show about` the About dialog)
   - `--panel messages` (repeatable; shows a panel for this run only, see `dock.rs`)
   - `--script "board; ui-click X,Y; ui-move X,Y; key W; click X,Y; wait N"`, plus
     `press X,Y` / `move X,Y` / `release X,Y` (a drag), `double-click X,Y`,

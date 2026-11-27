@@ -101,3 +101,10 @@ when the project is opened.
 Each saved project remembers its workspace: open tabs and splits, the zoom and position of
 each sheet, the board and each library tab, hidden layers and the routing layer. It's kept
 in the project folder in `.pcb-designer/`, which ignores itself for git.
+
+## Help
+
+**Help → Documentation** opens this documentation in the web browser. **About PCB
+Designer** (in the **PCB Designer** menu on macOS) shows the version and links to the
+documentation, the source code and the releases. On the desktop, **Check for updates**
+there looks for a newer release on GitHub; the browser version is always the latest.

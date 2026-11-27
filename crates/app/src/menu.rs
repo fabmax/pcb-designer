@@ -33,6 +33,9 @@ pub enum Cmd {
     ToggleAgent,
     Copy(String),
     ShowShortcuts,
+    /// The documentation website.
+    OpenDocs,
+    About,
     /// Panels back in their default places.
     ResetPanels,
 }
@@ -40,7 +43,6 @@ pub enum Cmd {
 /// Standard macOS entries, carried out by the system (native menu only).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum System {
-    About,
     Services,
     Hide,
     HideOthers,
@@ -145,7 +147,7 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
         out.push(menu(
             APP_NAME,
             vec![
-                Entry::System(System::About),
+                item(format!("About {APP_NAME}"), Cmd::About),
                 Entry::Separator,
                 action("Settings…", Action::Settings, true),
                 Entry::Separator,
@@ -318,7 +320,12 @@ pub fn menus(s: &MenuState) -> Vec<Menu> {
     if s.native {
         out.push(menu("Window", vec![Entry::System(System::Minimize), Entry::System(System::Zoom)]));
     }
-    out.push(menu("Help", vec![item("Keyboard shortcuts", Cmd::ShowShortcuts)]));
+    let mut help = vec![item("Documentation", Cmd::OpenDocs), item("Keyboard shortcuts", Cmd::ShowShortcuts)];
+    // On macOS About is in the app's menu.
+    if !s.native {
+        help.extend([Entry::Separator, item(format!("About {APP_NAME}"), Cmd::About)]);
+    }
+    out.push(menu("Help", help));
     out
 }
 
