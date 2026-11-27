@@ -12,7 +12,7 @@
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
-// File times are std's; there's no recovery in the browser (no config folder).
+// The real file system (file locks): there's no recovery in the browser (`root`).
 use std::time::{SystemTime, UNIX_EPOCH};
 use web_time::{Duration, Instant};
 
@@ -31,6 +31,10 @@ const NEXT: &str = "project.next";
 
 /// The recovery folder in the settings folder.
 pub fn root() -> Option<PathBuf> {
+    // It relies on file locks, which the browser's storage hasn't got.
+    if cfg!(target_arch = "wasm32") {
+        return None;
+    }
     crate::settings::config_dir().map(|d| d.join("recovery"))
 }
 

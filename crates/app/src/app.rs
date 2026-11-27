@@ -1157,7 +1157,7 @@ impl PcbApp {
         if !self.confirm_discard(Self::open) {
             return;
         }
-        let dialog = rfd::AsyncFileDialog::new().set_title("Open project folder");
+        let dialog = crate::file_dialog::FileDialog::new().set_title("Open project folder");
         self.show_file_dialog(dialog, Kind::PickFolder, Chosen::OpenProject);
     }
 
@@ -1181,8 +1181,9 @@ impl PcbApp {
         if !self.confirm_discard(Self::import_kicad_project) {
             return;
         }
-        let dialog =
-            rfd::AsyncFileDialog::new().set_title("Import KiCad project").add_filter("KiCad project", &["kicad_pro"]);
+        let dialog = crate::file_dialog::FileDialog::new()
+            .set_title("Import KiCad project")
+            .add_filter("KiCad project", &["kicad_pro"]);
         self.show_file_dialog(dialog, Kind::PickFile, Chosen::ImportKicadProject);
     }
 
@@ -1196,7 +1197,7 @@ impl PcbApp {
     /// File → Export KiCad project: into a folder named in a save dialog.
     fn export_kicad_project(&mut self) {
         let name = format!("{}-kicad", kicad::export::item_name(&self.doc().project().name));
-        let dialog = rfd::AsyncFileDialog::new().set_title("Export KiCad project folder").set_file_name(name);
+        let dialog = crate::file_dialog::FileDialog::new().set_title("Export KiCad project folder").set_file_name(name);
         self.show_file_dialog(dialog, Kind::Save, Chosen::ExportKicadProject);
     }
 
@@ -1334,7 +1335,7 @@ impl PcbApp {
     /// another app that crashed meanwhile).
     fn offer_recovery_of(&mut self, dir: &std::path::Path) {
         let Some(root) = recovery::root().filter(|_| self.recovery.is_some()) else { return };
-        let same = |p: &std::path::Path| std::fs::canonicalize(p).ok() == std::fs::canonicalize(dir).ok();
+        let same = |p: &std::path::Path| model::fs::canonicalize(p).ok() == model::fs::canonicalize(dir).ok();
         for e in recovery::left_over(&root) {
             if e.meta.project.as_deref().is_some_and(same) && !self.recover.iter().any(|r| r.dir == e.dir) {
                 self.recover.push(e);
@@ -1392,7 +1393,7 @@ impl PcbApp {
             Err(err) => return self.set_status(format!("Could not restore: {err}")),
         };
         let mut doc = Document::new(project);
-        doc.path = e.meta.project.clone().filter(|p| p.join(model::io::PROJECT_FILE).exists());
+        doc.path = e.meta.project.clone().filter(|p| model::fs::exists(p.join(model::io::PROJECT_FILE)));
         doc.mark_unsaved();
         self.replace_document(doc);
         e.discard();
@@ -1466,7 +1467,7 @@ impl PcbApp {
             }
             _ => {
                 let name = self.doc().project().name.clone();
-                let dialog = rfd::AsyncFileDialog::new().set_title("Save project folder").set_file_name(name);
+                let dialog = crate::file_dialog::FileDialog::new().set_title("Save project folder").set_file_name(name);
                 self.show_file_dialog(dialog, Kind::Save, Chosen::SaveProject(then));
                 false
             }
@@ -1525,7 +1526,7 @@ impl PcbApp {
         }
     }
 
-    fn show_file_dialog(&mut self, dialog: rfd::AsyncFileDialog, kind: Kind, then: Chosen) {
+    fn show_file_dialog(&mut self, dialog: crate::file_dialog::FileDialog, kind: Kind, then: Chosen) {
         // A script's `dialog` step answers it.
         let shown = match self.script.as_mut().and_then(Script::take_dialog) {
             Some(path) => self.file_dialog.answered(&self.egui_ctx, path, then),
@@ -1667,19 +1668,15 @@ impl PcbApp {
         let Some(dir) = self.outputs.dir.clone() else { return };
         let dirs = self.outputs.dirs();
         let names: Vec<String> = dirs.iter().map(|d| d.display().to_string()).collect();
-        let answer = rfd::MessageDialog::new()
-            .set_title("Delete outputs")
-            .set_description(format!("Delete {} and the Gerber zip?", names.join(" and ")))
-            .set_buttons(rfd::MessageButtons::OkCancelCustom("Delete".into(), "Cancel".into()))
-            .show();
-        if !matches!(answer, rfd::MessageDialogResult::Custom(ref b) if b == "Delete") {
+        let question = format!("Delete {} and the Gerber zip?", names.join(" and "));
+        if !crate::ask::confirm("Delete outputs", &question, "Delete") {
             return;
         }
         if let Some(zip) = self.outputs.manifest.as_ref().and_then(|m| dir.parent().map(|p| p.join(&m.zip))) {
-            let _ = std::fs::remove_file(zip);
+            let _ = model::fs::remove_file(zip);
         }
         for d in dirs {
-            if let Err(e) = std::fs::remove_dir_all(&d) {
+            if let Err(e) = model::fs::remove_dir_all(&d) {
                 self.set_status(format!("Could not delete {}: {e}", d.display()));
             }
         }
@@ -1969,8 +1966,8 @@ impl PcbApp {
     }
 
     /// A file dialog for library files, starting in the project folder.
-    fn library_dialog(&self, title: &str) -> rfd::AsyncFileDialog {
-        let dialog = rfd::AsyncFileDialog::new().set_title(title).add_filter("PCB library", &["pcblib"]);
+    fn library_dialog(&self, title: &str) -> crate::file_dialog::FileDialog {
+        let dialog = crate::file_dialog::FileDialog::new().set_title(title).add_filter("PCB library", &["pcblib"]);
         match &self.doc().path {
             Some(dir) => dialog.set_directory(dir),
             None => dialog,
@@ -3041,14 +3038,8 @@ impl PcbApp {
                 many.iter().map(|n| format!("\"{n}\"")).collect::<Vec<_>>().join(", ")
             ),
         };
-        let answer = rfd::MessageDialog::new()
-            .set_title("Delete sheet")
-            .set_description(format!(
-                "{what} Deleting removes everything on it and its sub-sheets (undo brings it back)."
-            ))
-            .set_buttons(rfd::MessageButtons::OkCancelCustom("Delete".into(), "Cancel".into()))
-            .show();
-        matches!(answer, rfd::MessageDialogResult::Custom(ref b) if b == "Delete")
+        let question = format!("{what} Deleting removes everything on it and its sub-sheets (undo brings it back).");
+        crate::ask::confirm("Delete sheet", &question, "Delete")
     }
 
     /// Handle an action for the focused item tab `tab`. Returns false for project-level
@@ -3808,15 +3799,11 @@ impl PcbApp {
                 };
                 let chosen: Vec<_> = statuses.into_iter().filter(wanted).collect();
                 if chosen.iter().any(|s| s.state == PartState::BothChanged) {
-                    let answer = rfd::MessageDialog::new()
-                        .set_title("Update from library")
-                        .set_description(format!(
-                            "\"{}\" was also changed in this project. Updating replaces those changes with the library's version.",
-                            chosen[0].name
-                        ))
-                        .set_buttons(rfd::MessageButtons::OkCancelCustom("Update".into(), "Cancel".into()))
-                        .show();
-                    if !matches!(answer, rfd::MessageDialogResult::Custom(ref b) if b == "Update") {
+                    let question = format!(
+                        "\"{}\" was also changed in this project. Updating replaces those changes with the library's version.",
+                        chosen[0].name
+                    );
+                    if !crate::ask::confirm("Update from library", &question, "Update") {
                         return;
                     }
                 }
@@ -4810,12 +4797,7 @@ fn tool_msg(l: &mut ItemEditor, tool: Tool) -> Option<String> {
 }
 
 fn ask_save(question: &str) -> rfd::MessageDialogResult {
-    rfd::MessageDialog::new()
-        .set_level(rfd::MessageLevel::Warning)
-        .set_title("Unsaved changes")
-        .set_description(question)
-        .set_buttons(rfd::MessageButtons::YesNoCancel)
-        .show()
+    crate::ask::save(question)
 }
 
 /// Width of the panel button bars (points).
@@ -5798,6 +5780,12 @@ impl eframe::App for PcbApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // What the last frame changed, stored (the browser has no quitting app).
+        #[cfg(target_arch = "wasm32")]
+        {
+            let unsaved = self.doc().is_modified() || self.libraries.iter().any(|l| l.lib.is_modified());
+            crate::web::after_frame(unsaved, || self.save_workspace());
+        }
         self.track_window(&ctx);
         canvas::set_crosshair(self.settings.crosshair);
         self.sync_tool_memory();
@@ -6147,14 +6135,14 @@ fn sheet_node(p: &Project, id: Id) -> TreeNode {
 }
 
 /// An example project. The LED demo gets a demo library file (written to the temp
-/// folder) in its External Libraries; not in the browser, which has no files.
+/// folder) in its External Libraries.
 fn example_document(example: view::demo::Example) -> Document {
     let mut project = example.project();
-    if example != view::demo::Example::Led || cfg!(target_arch = "wasm32") {
+    if example != view::demo::Example::Led {
         return Document::new(project);
     }
-    let path = std::env::temp_dir().join("pcb-designer-demo").join("Demo parts.pcblib");
-    let written = std::fs::create_dir_all(path.parent().unwrap())
+    let path = model::fs::temp_dir().join("pcb-designer-demo").join("Demo parts.pcblib");
+    let written = model::fs::create_dir_all(path.parent().unwrap())
         .map_err(|e| e.to_string())
         .and_then(|()| model::io::save_library(&view::demo::demo_library(), &path).map_err(|e| e.to_string()));
     match written {
@@ -6165,7 +6153,7 @@ fn example_document(example: view::demo::Example) -> Document {
 }
 
 fn same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
-    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
+    a == b || matches!((model::fs::canonicalize(a), model::fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
 }
 
 /// Schematic and board as tabs of one full-size area (schematic in front). Tabs can be

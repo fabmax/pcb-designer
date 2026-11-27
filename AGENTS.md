@@ -80,7 +80,9 @@ standalone, `gerber` sits on `editor-core` and `render` (under `view`), `sim` on
   they are placed and deleted on the board only, and their pads have no net.
 - The app also builds for the browser: keep `cargo clippy -p app --target
   wasm32-unknown-unknown` clean. There, `std::thread::spawn` and
-  `std::time::Instant::now()` panic: use `background::spawn` and `web_time`. The
+  `std::time::Instant::now()` panic: use `background::spawn` and `web_time`. Files go
+  through `model::fs` (not `std::fs` or `Path::exists`), dialogs through
+  `file_dialog::FileDialog`, message boxes through `ask`. The
   desktop has priority: ask before a change for the web makes the desktop worse.
 - Performance budget: about 10k footprints at 60 fps, and an edit → board → GPU update
   within one frame. Measure with `--release` and `--stress N`. Anything that scans all

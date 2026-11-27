@@ -37,8 +37,8 @@ menu bar and Dock; run with `cargo run`, macOS uses the binary's name, `pcb-desi
 
 ## Browser build (experimental)
 
-The app also runs in the browser (WebGPU: a recent Chrome, Edge, Safari or Firefox).
-It opens an example and edits it; it can't save, simulate or talk to agents yet.
+The app also runs in the browser (WebGPU: a recent Chrome, Edge, Safari or Firefox);
+how to use it is in [The browser version](web.md).
 
 ```sh
 rustup target add wasm32-unknown-unknown

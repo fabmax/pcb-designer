@@ -110,9 +110,9 @@ impl GerberView {
                 .map(|f| (f.name.clone(), Some(f.label.clone()), Some(f.kind)))
                 .collect(),
             None => {
-                let mut names: Vec<String> = std::fs::read_dir(dir)?
-                    .filter_map(|e| e.ok())
-                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                let mut names: Vec<String> = model::fs::list_dir(dir)?
+                    .iter()
+                    .filter_map(|p| Some(p.file_name()?.to_string_lossy().into_owned()))
                     .filter(|n| is_fab_file(n))
                     .collect();
                 names.sort();
@@ -124,7 +124,7 @@ impl GerberView {
         let copper_count =
             listed.iter().filter(|(_, _, k)| matches!(k, Some(FileKind::Layer(l)) if l.is_copper())).count();
         for (name, label, kind) in listed.drain(..) {
-            let text = match std::fs::read_to_string(dir.join(&name)) {
+            let text = match model::fs::read_to_string(dir.join(&name)) {
                 Ok(t) => t,
                 Err(e) => {
                     errors.push((name, e.to_string()));

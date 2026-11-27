@@ -217,6 +217,10 @@ fn group_items(g: Group) -> (&'static str, fn(u64) -> Act) {
     }
 }
 
+/// Whether "Open" opens output files in another app (in the browser that would be
+/// Download again).
+const OPEN_FILES: bool = !cfg!(target_arch = "wasm32");
+
 /// The context menu of a node.
 pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
     use Entry::{Act as A, Separator};
@@ -344,7 +348,9 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
             if info.flag
                 && let Some(p) = &info.path
             {
-                out.push(A("Open", Act::OpenFile(p.clone())));
+                if OPEN_FILES {
+                    out.push(A("Open", Act::OpenFile(p.clone())));
+                }
                 out.push(A("Re-export", Act::ExportSchematicPdf));
                 reveal(&mut out);
             } else {
@@ -352,7 +358,9 @@ pub fn menu(id: NodeId, info: &Info) -> Vec<Entry> {
             }
         }
         NodeId::DataFile(_) => {
-            if let Some(p) = &info.path {
+            if let Some(p) = &info.path
+                && OPEN_FILES
+            {
                 out.push(A("Open", Act::OpenFile(p.clone())));
             }
             reveal(&mut out);
@@ -594,10 +602,41 @@ pub fn categorized<T>(
 const REVEAL: &str = "Reveal in Finder";
 #[cfg(target_os = "windows")]
 const REVEAL: &str = "Show in Explorer";
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_arch = "wasm32")))]
 const REVEAL: &str = "Open containing folder";
+/// The browser has no file manager: files (and folders, as a zip) go to the computer.
+#[cfg(target_arch = "wasm32")]
+const REVEAL: &str = "Download";
+
+/// Hands a file, or a folder as a zip, to the browser (its reveal and open). The Gerber
+/// folder hands over the zip made for the manufacturer.
+#[cfg(target_arch = "wasm32")]
+fn download(path: &Path) -> std::io::Result<()> {
+    let manifest = model::fs::read_to_string(path.join(view::gerber::MANIFEST)).ok();
+    let zip = manifest
+        .and_then(|t| serde_json::from_str::<view::gerber::Manifest>(&t).ok())
+        .and_then(|m| Some(path.parent()?.join(m.zip)))
+        .filter(|z| model::fs::is_file(z));
+    let path = zip.as_deref().unwrap_or(path);
+    let (name, data) = crate::file_browser::download(path).map_err(std::io::Error::other)?;
+    crate::web::download(&name, &data);
+    Ok(())
+}
 
 /// Show a file in the system's file manager.
+#[cfg(target_arch = "wasm32")]
+pub fn reveal(path: &Path) -> std::io::Result<()> {
+    download(path)
+}
+
+/// Open a file in the system's default app.
+#[cfg(target_arch = "wasm32")]
+pub fn open_file(path: &Path) -> std::io::Result<()> {
+    download(path)
+}
+
+/// Show a file in the system's file manager.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn reveal(path: &Path) -> std::io::Result<()> {
     use std::process::Command;
     #[cfg(target_os = "macos")]
@@ -622,6 +661,7 @@ pub fn reveal(path: &Path) -> std::io::Result<()> {
 }
 
 /// Open a file in the system's default app.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn open_file(path: &Path) -> std::io::Result<()> {
     use std::process::Command;
     #[cfg(target_os = "macos")]

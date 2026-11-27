@@ -761,7 +761,7 @@ fn respond(request: Request, host: &mut dyn Host) -> Result<Reply, String> {
         Request::GerberScreenshot { layers, width, height } => {
             let dir = host.document().path.clone().ok_or("the project has no folder, so no export")?;
             let dir = view::gerber::gerber_dir(&dir);
-            if !dir.is_dir() {
+            if !model::fs::is_dir(&dir) {
                 return Err("no Gerber export yet: run export_gerber first".into());
             }
             let mut gv = view::GerberView::load(&dir).map_err(|e| e.to_string())?;

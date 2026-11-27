@@ -56,6 +56,7 @@ mod agent;
 mod agent_switch;
 mod app;
 mod array_form;
+mod ask;
 mod background;
 mod canvas;
 mod checks_ui;
@@ -65,6 +66,8 @@ mod color_edit;
 mod desktop;
 mod dock;
 mod fields;
+#[cfg(any(target_arch = "wasm32", test))]
+mod file_browser;
 mod file_dialog;
 mod icons;
 mod item_tabs;
@@ -104,6 +107,8 @@ mod tune_ui;
 mod units;
 #[cfg(target_arch = "wasm32")]
 mod web;
+#[cfg(target_arch = "wasm32")]
+mod web_store;
 #[cfg(any(target_arch = "wasm32", test))]
 mod wheel;
 mod workspace;

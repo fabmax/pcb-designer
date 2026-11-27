@@ -641,7 +641,7 @@ impl KicadImport {
                 .on_hover_text("A KiCad symbols or footprints folder, or a single library")
                 .clicked()
             {
-                let dialog = rfd::AsyncFileDialog::new().set_title("KiCad library folder");
+                let dialog = crate::file_dialog::FileDialog::new().set_title("KiCad library folder");
                 self.dialog.open(ui.ctx(), dialog, crate::file_dialog::Kind::PickFolder, ());
             }
             if ui.button("Rescan").clicked() {

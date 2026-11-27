@@ -2,9 +2,11 @@
 //
 //   node crates/app/web-shot.mjs URL OUT.png ["STEPS"]
 //
-// STEPS, separated by `;`: `click X,Y` (CSS pixels), `drag X,Y X2,Y2`, `wheel X,Y DY`
+// STEPS, separated by `;`: `click X,Y` (CSS pixels), `rclick X,Y` (right button), `drag X,Y X2,Y2`, `wheel X,Y DY`
 // (a mouse wheel; DY in pixels, positive scrolls down), `key KEY` (a
-// DOM key name: `r`, `Delete`, `Escape`), `wait MS`, `shot FILE.png`, `eval JS` (prints
+// DOM key name: `r`, `Delete`, `Escape`, with modifiers `Meta+s`, `Control+Shift+z`),
+// `type TEXT`, `reload` (the page; its storage stays), `downloads DIR` (where downloads
+// go), `upload FILE` (answers the next file chooser), `wait MS`, `shot FILE.png`, `eval JS` (prints
 // the result). The page's console is printed. The window is 1600×1000
 // at 2× (like the desktop screenshots). CHROME overrides the browser's path.
 
@@ -54,6 +56,7 @@ async function target() {
 const ws = new WebSocket(await target());
 await new Promise((r) => ws.addEventListener("open", r));
 let next = 0;
+const uploads = [];
 const waiting = new Map();
 ws.addEventListener("message", (e) => {
   const msg = JSON.parse(e.data);
@@ -62,6 +65,9 @@ ws.addEventListener("message", (e) => {
     waiting.delete(msg.id);
   } else if (msg.method === "Runtime.consoleAPICalled") {
     console.log(`console.${msg.params.type}:`, msg.params.args.map((a) => a.value ?? a.description).join(" "));
+  } else if (msg.method === "Page.fileChooserOpened") {
+    const files = uploads.splice(0, uploads.length);
+    send("DOM.setFileInputFiles", { files, backendNodeId: msg.params.backendNodeId }).catch((e) => console.log(e.message));
   } else if (msg.method === "Runtime.exceptionThrown") {
     console.log("exception:", msg.params.exceptionDetails.exception?.description ?? msg.params.exceptionDetails.text);
   }
@@ -88,10 +94,11 @@ try {
   for (const step of steps.split(";").map((s) => s.trim()).filter(Boolean)) {
     const [cmd, ...rest] = step.split(" ");
     const arg = rest.join(" ");
-    if (cmd === "click") {
+    if (cmd === "click" || cmd === "rclick") {
       const [x, y] = arg.split(",").map(Number);
+      const button = cmd === "click" ? "left" : "right";
       for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
-        await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
+        await send("Input.dispatchMouseEvent", { type, x, y, button, clickCount: 1 });
         await sleep(50);
       }
       await sleep(300);
@@ -112,11 +119,26 @@ try {
       await send("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY: Number(rest[1]) });
       await sleep(300);
     } else if (cmd === "key") {
-      const code = arg.length === 1 ? `Key${arg.toUpperCase()}` : arg;
-      for (const type of ["keyDown", "keyUp"]) {
-        await send("Input.dispatchKeyEvent", { type, key: arg, code, text: type === "keyDown" && arg.length === 1 ? arg : undefined });
-      }
+      const parts = arg.split("+");
+      const key = parts.pop();
+      const bits = { Alt: 1, Control: 2, Meta: 4, Shift: 8 };
+      const modifiers = parts.reduce((m, p) => m | (bits[p] ?? 0), 0);
+      const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
+      const text = key.length === 1 && !(modifiers & 6) ? key : undefined;
+      await send("Input.dispatchKeyEvent", { type: "keyDown", key, code, modifiers, text });
+      await send("Input.dispatchKeyEvent", { type: "keyUp", key, code, modifiers });
       await sleep(300);
+    } else if (cmd === "type") {
+      await send("Input.insertText", { text: arg });
+      await sleep(300);
+    } else if (cmd === "upload") {
+      uploads.push(arg);
+      await send("Page.setInterceptFileChooserDialog", { enabled: true });
+    } else if (cmd === "downloads") {
+      await send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: arg });
+    } else if (cmd === "reload") {
+      await send("Page.reload");
+      await sleep(4000);
     } else if (cmd === "wait") {
       await sleep(Number(arg));
     } else if (cmd === "shot") {

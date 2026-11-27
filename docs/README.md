@@ -12,4 +12,6 @@
 - [KiCad](kicad.md): importing KiCad libraries and projects, exporting to KiCad
 - [Agents (MCP)](agents.md): letting an AI agent use the app, in a window or headless
 - [Command line](command-line.md): options and commands without a window
+- [The browser version](web.md): what works there, projects in the browser's storage,
+  uploading and downloading files
 - [Development](development.md): building, testing, releases

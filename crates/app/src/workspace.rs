@@ -103,20 +103,20 @@ pub fn path(project: &Path) -> PathBuf {
 impl Workspace {
     /// The saved workspace of a project folder; `None` if there is none or it can't be read.
     pub fn load(project: &Path) -> Option<Workspace> {
-        let json = std::fs::read_to_string(path(project)).ok()?;
+        let json = model::fs::read_to_string(path(project)).ok()?;
         serde_json::from_str(&json).map_err(|e| log::warn!("ignoring workspace of {}: {e}", project.display())).ok()
     }
 
     pub fn save(&self, project: &Path) -> Result<(), String> {
         let file = path(project);
         let dir = file.parent().expect("in a folder");
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        model::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         let ignore = dir.join(".gitignore");
-        if !ignore.exists() {
-            std::fs::write(&ignore, "*\n").map_err(|e| format!("{}: {e}", ignore.display()))?;
+        if !model::fs::exists(&ignore) {
+            model::fs::write(&ignore, "*\n").map_err(|e| format!("{}: {e}", ignore.display()))?;
         }
         let json = serde_json::to_string_pretty(self).expect("workspace serializes");
-        std::fs::write(&file, json).map_err(|e| format!("{}: {e}", file.display()))
+        model::fs::write(&file, json).map_err(|e| format!("{}: {e}", file.display()))
     }
 }
 

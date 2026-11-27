@@ -659,7 +659,7 @@ impl SettingsWindow {
                 self.kicad_text = None;
             }
             if ui.button("Choose…").clicked() {
-                let dialog = rfd::AsyncFileDialog::new().set_title("KiCad library folder");
+                let dialog = crate::file_dialog::FileDialog::new().set_title("KiCad library folder");
                 self.dialog.open(ui.ctx(), dialog, Kind::PickFolder, PathField::Kicad);
             }
         });
@@ -754,7 +754,7 @@ fn path_row(
             *typing = None;
         }
         if ui.button("Choose…").clicked() {
-            dialog.open(ui.ctx(), rfd::AsyncFileDialog::new().set_title(label), Kind::PickFile, field);
+            dialog.open(ui.ctx(), crate::file_dialog::FileDialog::new().set_title(label), Kind::PickFile, field);
         }
     });
     out
