@@ -83,7 +83,7 @@ pub fn main() -> eframe::Result {
     }
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--demo" => opts.startup = Startup::Example(Example::Led),
+            "--demo" => opts.startup = Startup::Example(Example::Amp),
             "--example" => {
                 let name = args.next().unwrap_or_default();
                 let Some(example) = Example::parse(&name) else {

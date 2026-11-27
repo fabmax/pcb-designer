@@ -13,9 +13,9 @@ asks for a new folder (or an existing project's).
 **File → Open example** opens one as a new, unsaved project (`--example NAME` on the
 [command line](command-line.md)):
 
-- **LED demo** (`led`, also `--demo`): a few parts on two sheets, a routed board, a demo
+- **LED demo** (`led`): a few parts on two sheets, a routed board, a demo
   library of its own and a simulation test bench.
-- **Audio amplifier** (`amp`): a discrete class-AB amplifier for an 8 Ω speaker from
+- **Audio amplifier** (`amp`, also `--demo`; the browser version opens it the first time): a discrete class-AB amplifier for an 8 Ω speaker from
   12 V: a common-emitter driver, a diode-biased complementary output pair (SOT-223) and
   emitter resistors. Its two-layer board is routed with a ground pour on the bottom, and
   it simulates its bias point, a 1 kHz sine into the speaker and its frequency response

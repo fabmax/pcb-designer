@@ -1,7 +1,7 @@
 //! The browser entry: runs the app in the page's canvas (`index.html`, built with Trunk).
 //!
 //! Files live in the browser's storage (`model::fs`, kept by `web_store`), projects in
-//! [`HOME`]. It opens `?example=NAME`, else the last project, else the LED demo.
+//! [`HOME`]. It opens `?example=NAME`, else the last project, else the audio amplifier example.
 
 use std::cell::Cell;
 
@@ -53,7 +53,7 @@ pub fn start() {
     });
 }
 
-/// `?example=NAME`, else the last project opened, else the LED demo.
+/// `?example=NAME`, else the last project opened, else the audio amplifier.
 fn startup() -> Startup {
     if let Some(example) = query("example").and_then(|name| Example::parse(&name)) {
         return Startup::Example(example);
@@ -61,7 +61,7 @@ fn startup() -> Startup {
     let recent = crate::settings::Settings::load().recent;
     match recent.into_iter().find(|p| model::io::is_project_dir(p)) {
         Some(dir) => Startup::Open(dir),
-        None => Startup::Example(Example::Led),
+        None => Startup::Example(Example::Amp),
     }
 }
 

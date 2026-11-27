@@ -36,5 +36,5 @@ visits, until the site's data is cleared in the browser.
 - In the Project panel, **Download** (in the context menu of the project and of outputs)
   does the same; on the Gerber output it downloads the zip for the manufacturer.
 
-The page opens the last project again. `?example=amp` (or `led`) in the address opens
-an example instead. Leaving the page with unsaved changes asks first.
+The first visit opens the audio amplifier example, later ones the last project again.
+`?example=led` (or `amp`) in the address opens an example instead. Leaving the page with unsaved changes asks first.

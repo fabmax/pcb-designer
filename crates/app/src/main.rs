@@ -45,7 +45,7 @@
 //! imports them right away into a new library.
 //!
 //! Without a project or an example an empty, unsaved project is opened. `--demo` is
-//! `--example led`; the examples are `led` and `amp` (a discrete audio amplifier).
+//! `--example amp`; the examples are `led` and `amp` (a discrete audio amplifier).
 
 // Desktop-only code (command line, files, MCP server) is unused in the browser build;
 // the desktop build still checks for dead code.

@@ -1871,7 +1871,7 @@ User-facing behaviour is in [docs/simulation.md](docs/simulation.md); what's ahe
 
 Experimental. `crates/app` also builds for `wasm32-unknown-unknown` with Trunk
 (`index.html`, `Trunk.toml`; output in `target/web/`). It opens `?example=NAME`, else
-the last project, else the LED demo; projects are saved in the browser's storage, and
+the last project, else the audio amplifier; projects are saved in the browser's storage, and
 files come in and go out through the file dialog's Upload and Download.
 
 - **Loading screen:** `#loading` in `index.html`, its progress bar fed by Trunk's

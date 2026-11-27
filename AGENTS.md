@@ -136,9 +136,9 @@ Real-window screenshots (the window is 1600×1000 points and the PNG is 2×):
 
 ```sh
 cargo build -p app
-(PCB_DESIGNER_CONFIG=/tmp/pcbcfg ./target/debug/pcb-designer --demo \
+(PCB_DESIGNER_CONFIG=/tmp/pcbcfg ./target/debug/pcb-designer --example led \
    --screenshot /tmp/shots/x.png --frames 40 &)
-# Poll until the file exists, then: pkill -f "debug/pcb-designer --demo"
+# Poll until the file exists, then: pkill -f "debug/pcb-designer --example"
 sips -Z 1600 /tmp/shots/x.png --out /tmp/shots/x_small.png   # view at a readable size
 sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the full-size image
 ```
@@ -148,10 +148,11 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
   {"pcb": "dark"}` to give an editor its own (`schematic`, `pcb`, `simulation`).
 - More flags:
   - `--side-by-side`
-  - `--example amp` (instead of `--demo`, which is `--example led`): the audio amplifier
+  - `--example amp` (instead of `--example led`; `--demo` is `--example amp`): the audio
+    amplifier
   - `--select R1`
   - `--show footprint:SOT-23` (opens an item by name, searching the libraries from the
-    last loaded one: with `--demo` the demo parts, then the built-in library, e.g.
+    last loaded one: with `--example led` the demo parts, then the built-in library, e.g.
     `--show part:74HC00`; `--show gerber` opens the Gerber tab of a saved project with an
     export; `--show simulation:NAME` a simulation's output tab, `--show simulation` the first one's)
   - `--panel messages` (repeatable; shows a panel for this run only, see `dock.rs`)
@@ -170,7 +171,7 @@ sips -c H W --cropOffset Y X /tmp/shots/x.png --out crop.png  # close-up of the 
     (`key Cmd+D`); `key Cmd+C` / `Cmd+V` use the real system clipboard. Put a `wait 30` before a
     double-click: egui counts clicks less than 0.3 s apart as one triple-click.
   - World coordinates are in mm (schematic and board only; a sheet's origin is its page's
-    lower left corner, the demo's parts sit around 100,100); `ui-*` steps take screen
+    lower left corner, the LED demo's parts sit around 100,100); `ui-*` steps take screen
     points (use them in library and Gerber tabs).
   - A script brings the schematic tab to the front at its start (unless `--show` opened
     a tab) and on `board` / `schematic` steps; clicks may switch tabs afterwards.
