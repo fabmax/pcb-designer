@@ -2,7 +2,10 @@
 //!
 //! It opens an example: `?example=amp` picks one, the LED demo otherwise.
 
+use std::cell::Cell;
+
 use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 
 use crate::app::{self, Options, Startup};
 use view::demo::Example;
@@ -14,6 +17,7 @@ pub fn start() {
     eframe::WebLogger::init(log::LevelFilter::Info).ok();
     let example = query("example").and_then(|name| Example::parse(&name)).unwrap_or(Example::Led);
     let opts = Options::new(Startup::Example(example));
+    watch_wheel();
     wasm_bindgen_futures::spawn_local(async move {
         let document = web_sys::window().and_then(|w| w.document()).expect("a document");
         let canvas = document
@@ -37,6 +41,38 @@ pub fn start() {
             }
         }
     });
+}
+
+thread_local! {
+    /// The device of the last wheel event (see `wheel.rs`).
+    static WHEEL: Cell<egui::MouseWheelSource> = const { Cell::new(egui::MouseWheelSource::Unknown) };
+}
+
+/// The device of the last wheel event: eframe passes `Unknown`.
+pub fn wheel_source() -> egui::MouseWheelSource {
+    WHEEL.with(Cell::get)
+}
+
+/// Classifies wheel events before eframe's handler on the canvas sees them (the
+/// window's capture phase comes first).
+fn watch_wheel() {
+    let Some(window) = web_sys::window() else { return };
+    let listener = Closure::<dyn Fn(web_sys::WheelEvent)>::new(|e: web_sys::WheelEvent| {
+        let legacy = js_sys::Reflect::get(&e, &"wheelDeltaY".into()).ok().and_then(|v| v.as_f64());
+        let source = crate::wheel::classify(e.delta_mode(), e.delta_x(), e.delta_y(), legacy);
+        WHEEL.with(|w| w.set(source));
+    });
+    let options = web_sys::AddEventListenerOptions::new();
+    options.set_capture(true);
+    options.set_passive(true);
+    let added = window.add_event_listener_with_callback_and_add_event_listener_options(
+        "wheel",
+        listener.as_ref().unchecked_ref(),
+        &options,
+    );
+    if added.is_ok() {
+        listener.forget(); // for the page's lifetime
+    }
 }
 
 /// Whether the browser offers WebGPU (the only backend of the browser build).

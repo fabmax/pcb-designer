@@ -104,6 +104,8 @@ mod tune_ui;
 mod units;
 #[cfg(target_arch = "wasm32")]
 mod web;
+#[cfg(any(target_arch = "wasm32", test))]
+mod wheel;
 mod workspace;
 
 #[cfg(not(target_arch = "wasm32"))]

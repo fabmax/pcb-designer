@@ -1895,6 +1895,13 @@ Experimental. `crates/app` also builds for `wasm32-unknown-unknown` with Trunk
     an error in the browser (no `ureq`). `model` gets `uuid`'s `js` randomness.
   - Keys: eframe calls `preventDefault` on every event, so Cmd+S, Cmd+D … reach the
     app; Cmd+W, Cmd+N, Cmd+T, Cmd+Q stay the browser's.
+- **Wheel:** eframe passes every wheel event as `MouseWheelSource::Unknown`, and Chrome
+  and Safari report mouse wheels in pixels like trackpads (the canvas would pan). A
+  capture listener on the window (before eframe's on the canvas) classifies each event
+  (`wheel::classify`: lines are a wheel, sideways is a trackpad, a trackpad's legacy
+  `wheelDeltaY` is exactly −3× its pixels, a wheel's counts notches of 120);
+  `canvas.rs` takes it for `Unknown` (`web::wheel_source`, the last event's). A browser
+  mouse wheel zooms a step per event (pixels per notch vary by system).
 - **Window title:** eframe ignores `ViewportCommand::Title` on the web; `update_title`
   sets `document.title` instead.
 - **Seeing it:** `node crates/app/web-shot.mjs URL OUT.png "STEPS"` drives headless
