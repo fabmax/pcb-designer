@@ -8,9 +8,8 @@ Firefox). It's experimental: the desktop app comes first.
 Schematic, PCB and part editing, libraries, design checks, Gerber, assembly and
 schematic PDF export, KiCad import and export, and simulation, as on the desktop.
 
-Simulation runs ngspice inside the browser, a little slower than on the desktop. Not
-yet: parts whose models need ngspice's code models (many vendor op amp models, which
-use POLY sources, and the digital parts); running them reports an error.
+Simulation runs ngspice inside the browser, with its code models (POLY sources of
+vendor op amp models, digital parts), a little slower than on the desktop.
 
 Not in the browser (yet): the MCP server for agents,
 downloading KiCad's libraries (upload library folders instead, and choose them in the

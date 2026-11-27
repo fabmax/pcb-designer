@@ -12,6 +12,11 @@ import create from './ngspice.mjs';
 
 // Compiled once per worker; a new instance (after ngspice asked to exit) reuses it.
 let compiled = null;
+// The XSPICE code models (side modules beside it, as scripts/build-ngspice-wasm.sh
+// builds them; table.cm isn't shipped): fetched once, written into each instance's file
+// system for ngspice's `codemodel` (its dlopen) to load.
+const CODE_MODELS = ['spice2poly', 'analog', 'digital', 'xtradev', 'xtraevt', 'tlines'];
+let codeModels = null;
 let ng = null;
 // The run going: its id, log, batch of points.
 let run = null;
@@ -30,7 +35,14 @@ function flush() {
 
 async function start() {
   compiled ??= WebAssembly.compileStreaming(fetch(new URL('./ngspice.wasm', import.meta.url)));
+  codeModels ??= Promise.all(
+    CODE_MODELS.map(async (name) => {
+      const r = await fetch(new URL(`./${name}.cm`, import.meta.url));
+      return r.ok ? [name, new Uint8Array(await r.arrayBuffer())] : null;
+    }),
+  );
   const module = await compiled;
+  const models = (await codeModels).filter((m) => m);
   const m = await create({
     instantiateWasm: (imports, done) => {
       WebAssembly.instantiate(module, imports).then((i) => done(i, module));
@@ -106,6 +118,11 @@ async function start() {
     m._free(array);
     return r;
   };
+  m.FS.mkdir('/cm');
+  for (const [name, bytes] of models) {
+    m.FS.writeFile(`/cm/${name}.cm`, bytes);
+    s.command(`codemodel /cm/${name}.cm`);
+  }
   // LTspice and PSpice compatibility, as on the desktop.
   s.command('set ngbehavior=ltpsa');
   return s;
@@ -146,7 +163,8 @@ self.onmessage = (e) => {
     try {
       if (!ng || ng.exited) {
         ng = await start();
-        // Not the run's: what ngspice says starting (no spinit: there are no files).
+        // Not the run's: what ngspice says starting (no spinit: the code models are
+        // loaded by hand).
         run.stdout = run.stderr = '';
       }
       simulate(e.data.netlist);

@@ -560,7 +560,7 @@ pub fn label(value: f64, unit: &str) -> String {
             // Rounded first, so -0.001 isn't "-0".
             let v = (value * 100.0).round() / 100.0;
             let v = if v == 0.0 { 0.0 } else { v };
-            if v <= -300.0 {
+            if v <= NO_SIGNAL_DB {
                 return "−∞ dB".into();
             }
             let s = format!("{v:.2}");
@@ -656,14 +656,19 @@ pub fn decimate(
     out
 }
 
+/// A magnitude at or below this is no signal (a DC net in an AC analysis: 0 is −6000
+/// dB, from `Vector::db`'s floor): "−∞ dB", left out of the y fit.
+pub const NO_SIGNAL_DB: f64 = -300.0;
+
 /// The y range of the traces on `axis` between `lo` and `hi` in x, with 5 % margin.
-/// `hidden` traces (by label) don't count.
+/// `hidden` traces (by label) don't count, nor dB values of no signal.
 pub fn fit_y(data: &PlotData, axis: Axis, lo: f64, hi: f64, hidden: &HashSet<String>) -> Option<(f64, f64)> {
     let r = visible(&data.x, lo, hi);
     let mut range: Option<(f64, f64)> = None;
     for t in data.traces.iter().filter(|t| t.axis == axis && t.logic.is_none() && !hidden.contains(&t.label)) {
+        let db = t.unit == "dB";
         for &y in &t.y[r.clone()] {
-            if y.is_finite() {
+            if y.is_finite() && !(db && y <= NO_SIGNAL_DB) {
                 range = Some(match range {
                     None => (y, y),
                     Some((a, b)) => (a.min(y), b.max(y)),

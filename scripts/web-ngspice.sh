@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Trunk's post-build hook (crates/app/Trunk.toml): puts ngspice into the browser build,
-# as ngspice/ beside the app: the Emscripten module (scripts/build-ngspice-wasm.sh's,
-# built here the first time when Emscripten is there) and its Web Worker
-# (crates/sim/web/ngspice-worker.mjs). Without Emscripten the app is built without
-# simulation (it says so when one is run).
+# as ngspice/ beside the app: the Emscripten module and its code models
+# (scripts/build-ngspice-wasm.sh's, built here the first time when Emscripten is there)
+# and its Web Worker (crates/sim/web/ngspice-worker.mjs). Without Emscripten the app is
+# built without simulation (it says so when one is run).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out="${TRUNK_STAGING_DIR:?run by trunk}/ngspice"
@@ -17,4 +17,4 @@ if [ ! -f "$built/VERSION" ]; then
     fi
 fi
 mkdir -p "$out"
-cp "$built/ngspice.mjs" "$built/ngspice.wasm" "$built/COPYING" crates/sim/web/ngspice-worker.mjs "$out/"
+cp "$built/ngspice.mjs" "$built/ngspice.wasm" "$built"/*.cm "$built/COPYING" crates/sim/web/ngspice-worker.mjs "$out/"

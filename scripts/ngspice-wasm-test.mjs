@@ -5,7 +5,7 @@
 // exit: the instance is spent, and a fresh one (from the same compiled module) runs on.
 // Usage: node scripts/ngspice-wasm-test.mjs [DIR]   (DIR holds ngspice.mjs and .wasm)
 import { pathToFileURL } from 'node:url';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
 const dir = path.resolve(process.argv[2] ?? 'target/ngspice/wasm32-emscripten');
@@ -13,6 +13,12 @@ const { default: create } = await import(pathToFileURL(path.join(dir, 'ngspice.m
 let t = performance.now();
 const compiled = await WebAssembly.compile(await readFile(path.join(dir, 'ngspice.wasm')));
 console.log(`compile: ${(performance.now() - t).toFixed(0)} ms`);
+
+// The XSPICE code models (side modules), loaded into each instance's file system.
+const codeModels = [];
+for (const f of (await readdir(dir)).filter((f) => f.endsWith('.cm'))) {
+  codeModels.push([f, await readFile(path.join(dir, f))]);
+}
 
 let out = '';
 const fail = (msg) => { console.error(`FAIL: ${msg}\n--- ngspice output ---\n${out}`); process.exit(1); };
@@ -58,6 +64,13 @@ async function start() {
     m.FS.unlink('/tmp/out.raw');
     return { raw, ms };
   };
+  m.FS.mkdir('/cm');
+  for (const [name, bytes] of codeModels) {
+    m.FS.writeFile(`/cm/${name}`, bytes);
+    if (s.command(`codemodel /cm/${name}`) !== 0 || /Error/.test(out.split('\n').slice(-3).join('\n'))) {
+      fail(`code model ${name} not loaded`);
+    }
+  }
   s.command('set ngbehavior=ltpsa');
   return s;
 }
@@ -96,6 +109,24 @@ const expected = 1 - Math.exp(-time.at(-1) / 1e-3);
 if (Math.abs(vout.at(-1) - expected) > 1e-3) fail(`tran: v(out) at ${time.at(-1)} = ${vout.at(-1)}, expected ${expected}`);
 if (s.points < time.length) fail(`tran: ${s.points} streamed points, ${time.length} in the raw file`);
 console.log(`tran: ${time.length} points, v(out) at ${time.at(-1)} s = ${vout.at(-1).toFixed(4)} V (${tran.ms.toFixed(1)} ms)`);
+
+// Code models: a POLY source (spice2poly, as vendor op amp models use) and an XSPICE
+// gain block (analog.cm).
+const poly = s.run(['* poly', 'V1 in 0 1.5', 'R1 in 0 1k', 'E1 out 0 POLY(1) in 0 0.5 2', 'R2 out 0 1k', '.op', '.end']);
+const vpoly = vector(poly.raw, 'v(out)')[0];
+if (Math.abs(vpoly - 3.5) > 1e-9) fail(`poly: v(out) = ${vpoly}, expected 3.5`);
+const gain = s.run(['* gain', 'V1 in 0 0.7', 'R1 in 0 1k', 'A1 in out amp', '.model amp gain(gain=3)', 'R2 out 0 1k', '.op', '.end']);
+const vgain = vector(gain.raw, 'v(out)')[0];
+if (Math.abs(vgain - 2.1) > 1e-9) fail(`gain: v(out) = ${vgain}, expected 2.1`);
+// A digital inverter between bridges (digital.cm, xtradev's bridges are in digital).
+const inv = s.run([
+  '* inverter', 'V1 in 0 0', 'R1 in 0 1k', 'A1 [in] [d] adc', 'A2 d nd inv', 'A3 [nd] [out] dac', 'R2 out 0 1k',
+  '.model adc adc_bridge(in_low=0.5 in_high=0.5)', '.model inv d_inverter', '.model dac dac_bridge(out_low=0 out_high=3.3)',
+  '.op', '.end',
+]);
+const vinv = vector(inv.raw, 'v(out)')[0];
+if (Math.abs(vinv - 3.3) > 1e-6) fail(`inverter: v(out) = ${vinv}, expected 3.3`);
+console.log(`code models (${codeModels.length}): POLY ${vpoly} V, gain block ${vgain} V, inverter of 0: ${vinv} V`);
 
 // A line ngspice can't recover from: it asks to exit, the instance is spent.
 s.circ(['* broken', 'R1 a 0', '.op', '.end']);
