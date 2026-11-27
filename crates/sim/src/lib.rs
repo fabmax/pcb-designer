@@ -5,12 +5,16 @@
 //!   parts without a model).
 //! * [`shared`]: runs ngspice as a shared library (libngspice, loaded at run time; the
 //!   app bundles one), streaming results while it runs; [`worker`]: the same library in
-//!   a process of our own. [`Engine`] picks one.
+//!   a process of our own; [`browser`]: ngspice compiled to WebAssembly, in Web Workers.
+//!   [`Engine`] picks one.
 //! * [`raw`]: reads ngspice's raw result files.
 //! * [`results`]: a run's vectors by net and pin; [`report`]: them as text and CSV.
 //!
 //! Values with SI prefixes are parsed and formatted by `model::si`.
 
+// Its message decoding is used by the wasm build (and tests) only.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub mod browser;
 pub mod measure;
 pub mod netlist;
 pub mod ngspice;
@@ -71,12 +75,26 @@ pub struct Output {
     pub stopped: bool,
 }
 
-/// Runs a netlist: [`Libngspice`] (in-process) or a [`Worker`] (a process per run).
+/// A run going on elsewhere, polled rather than waited for ([`Backend::start`]).
+pub trait Pending {
+    /// The output once the run has ended. Cancelled, it ends at the next poll: with the
+    /// points so far (`stopped`) or [`SimError::Cancelled`].
+    fn poll(&mut self) -> Option<Result<Output, SimError>>;
+}
+
+/// Runs a netlist: [`Libngspice`] (in-process), a [`Worker`] (a process per run) or, in
+/// the browser, [`browser::Ngspice`].
 pub trait Backend {
     /// Runs `netlist`. Backends that stream put the points into `live` as they come.
     /// Cancelled, a backend returns what it has so far (`stopped`) or
     /// [`SimError::Cancelled`].
     fn run(&self, netlist: &str, cancel: &Cancel, live: &Live) -> Result<Output, SimError>;
+
+    /// Starts a run without blocking, for backends that can't block (the browser has no
+    /// threads to wait on). `None`: [`run`](Self::run) it on a thread.
+    fn start(&self, _netlist: &str, _cancel: &Cancel, _live: &Live) -> Option<Box<dyn Pending + Send>> {
+        None
+    }
 
     /// Whether several runs can go at once (a sweep's steps on several workers).
     fn parallel(&self) -> bool {
@@ -188,6 +206,8 @@ pub struct Engine {
     pub worker: Option<Worker>,
     /// Why there is no ngspice to run.
     pub error: Option<String>,
+    /// ngspice in Web Workers (the browser build, when it comes with it).
+    pub browser: bool,
 }
 
 impl Engine {
@@ -195,7 +215,10 @@ impl Engine {
     /// `process_only` with a worker.
     pub fn find(settings: &EngineSettings) -> Engine {
         if cfg!(target_arch = "wasm32") {
-            let error = "Simulation isn't available in the browser".to_string();
+            if browser::available() {
+                return Engine { browser: true, ..Engine::default() };
+            }
+            let error = "This build of the browser version doesn't include ngspice".to_string();
             return Engine { error: Some(error), ..Engine::default() };
         }
         let path = match Libngspice::locate(settings.library.as_deref()) {
@@ -204,11 +227,11 @@ impl Engine {
         };
         let worker = settings.worker.clone().map(|c| Worker::new(c, path.clone()));
         if settings.process_only && worker.is_some() {
-            return Engine { library: None, worker, error: None };
+            return Engine { worker, ..Engine::default() };
         }
         match Libngspice::load(&path) {
-            Ok(l) => Engine { library: Some(l), worker, error: None },
-            Err(e) => Engine { library: None, worker: None, error: Some(e.to_string()) },
+            Ok(l) => Engine { library: Some(l), worker, ..Engine::default() },
+            Err(e) => Engine { error: Some(e.to_string()), ..Engine::default() },
         }
     }
 
@@ -221,6 +244,9 @@ impl Engine {
         if let Some(e) = &self.error {
             return Err(e.clone());
         }
+        if self.browser {
+            return Ok(Arc::new(browser::Ngspice));
+        }
         if self.use_worker(analysis.step.is_some()) {
             return Ok(Arc::new(self.worker.clone().expect("worker")));
         }
@@ -230,6 +256,9 @@ impl Engine {
 
     /// What runs single analyses: "libngspice-47, shared library (bundled)".
     pub fn describe(&self) -> Option<String> {
+        if self.browser {
+            return Some(browser::Ngspice.describe());
+        }
         if self.use_worker(false) {
             return self.worker.as_ref().map(Worker::describe);
         }

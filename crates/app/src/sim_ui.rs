@@ -218,9 +218,9 @@ impl SimPanel {
     /// Why ngspice can't run (nothing found, a configured path that doesn't work).
     fn engine_error(&self) -> Option<String> {
         let e = self.engine.as_ref()?;
-        e.error
-            .clone()
-            .or_else(|| (e.library.is_none() && e.worker.is_none()).then(|| "ngspice is not available".to_string()))
+        e.error.clone().or_else(|| {
+            (e.library.is_none() && e.worker.is_none() && !e.browser).then(|| "ngspice is not available".to_string())
+        })
     }
 
     /// The simulation shown, if it still exists.

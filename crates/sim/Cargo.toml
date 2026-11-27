@@ -16,5 +16,10 @@ log.workspace = true
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 libloading.workspace = true
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["ErrorEvent", "MessageEvent", "Worker", "WorkerOptions", "WorkerType"] }
+
 [dev-dependencies]
 view.workspace = true
