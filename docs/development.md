@@ -48,6 +48,14 @@ cd crates/app && trunk serve --release    # http://127.0.0.1:8080, ?example=amp
 
 `trunk build --release` writes the static site to `target/web/`.
 
+Simulation doesn't run in the browser yet. ngspice for it is built with Emscripten
+(`emcc` on `PATH`, or `EMSDK` pointing at an activated [emsdk](https://emscripten.org)):
+
+```sh
+scripts/build-ngspice-wasm.sh          # into target/ngspice/wasm32-emscripten/
+node scripts/ngspice-wasm-test.mjs     # an operating point and a transient in Node
+```
+
 ## CI and releases
 
 GitHub Actions runs the tests on macOS, Linux and Windows for every push to `main` and

@@ -1932,6 +1932,21 @@ files come in and go out through the file dialog's Upload and Download.
     an error in the browser (no `ureq`). `model` gets `uuid`'s `js` randomness.
   - Keys: eframe calls `preventDefault` on every event, so Cmd+S, Cmd+D … reach the
     app; Cmd+W, Cmd+N, Cmd+T, Cmd+Q stay the browser's.
+- **ngspice (Emscripten), not yet in the app:** `scripts/build-ngspice-wasm.sh` builds
+  the pinned release into `target/ngspice/wasm32-emscripten/` (`ngspice.mjs` + `.wasm`:
+  5 MB, 1.1 MB brotli); `node scripts/ngspice-wasm-test.mjs` runs an op and a transient
+  through the shared API. Build gotchas: no `-pthread` (Emscripten's pthread functions
+  are stubs; ngspice's non-pthread branch is Windows-only, and only `bg_run` starts a
+  thread, so commands run synchronously: `run`, not `bg_run`); libtool can't make shared
+  libraries there, so `make STATIC= libngspice_la_CFLAGS= libngspice_la_LDFLAGS=` builds
+  a static `libngspice.a`, linked with `em++` (HICUM is C++); XSPICE stays on (47
+  doesn't compile without it); `cmpp` is built with the host compiler first; `ivlng`
+  is dropped. Results: `write` a raw file into Emscripten's `FS`, read it back
+  (`sim::raw`). `ControlledExit` (e.g. after "Missing token") spends the instance as on
+  the desktop; a new instance from the same compiled `WebAssembly.Module` takes ~2 ms,
+  so the browser replaces it instead of falling back to processes. Speed: ~1.4× native
+  (a 20k-point nonlinear transient, 190 vs 133 ms). It can't link into the Rust wasm
+  (different ABIs): it will run in a Web Worker of its own, talked to by messages.
 - **Wheel:** eframe passes every wheel event as `MouseWheelSource::Unknown`, and Chrome
   and Safari report mouse wheels in pixels like trackpads (the canvas would pan). A
   capture listener on the window (before eframe's on the canvas) classifies each event
@@ -2160,7 +2175,11 @@ defers.
 - Cache the project tree nodes if big libraries make the per-frame rebuild slow.
 
 **Web**
-- Simulation in the browser: ngspice built with Emscripten, run in a Web Worker.
+- Simulation in the browser (ngspice builds, above): a Web Worker running it, a
+  browser path in `sim::Session` (it runs `Backend::run` on a thread today) with live
+  points as messages; then XSPICE code models linked statically (dlopen'ed `.cm` files
+  on the desktop; needed for POLY sources of vendor op amps); then the tuner (one
+  instance kept warm) and parallel sweeps (several workers).
 - MCP for agents in the browser (no sockets: a WebSocket bridge, or an extension).
 - Hosting (GitHub Pages on a private repo needs a paid plan: Cloudflare Pages, Netlify).
 - Performance with `--stress`-sized boards; threads need COOP/COEP headers.
