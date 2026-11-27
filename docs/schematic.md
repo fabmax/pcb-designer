@@ -23,8 +23,9 @@ changed in **Settings → Keymap**.
 
 ## Sheets
 
-Sheets work as in KiCad: the Schematic node in the [Project panel](libraries.md#the-project-panel)
-is the root sheet, with its sub-sheets nested below it.
+Sheets are hierarchical: the Schematic node in the
+[Project panel](libraries.md#the-project-panel) is the root sheet, with its sub-sheets
+nested below it.
 
 - **New sheet…** (+ button, or **New sub-sheet…** on a sheet) asks for a name; then the
   new sheet's symbol follows the cursor on its parent sheet until you click.
@@ -57,7 +58,7 @@ field wraps in the panel; only its line breaks start new lines in the frame.
   to the grid only.
 - **Labels:** local labels connect on their sheet only (nets are named `/Sheet/NAME`),
   global and power labels everywhere.
-- **Power ports** (Power tool, ⌘P) are drawn like KiCad's power symbols: pick the glyph
+- **Power ports** (Power tool, ⌘P) show the usual power symbols: pick the glyph
   (bar, arrow, circle, ground, signal ground, chassis, protective earth) in the tool
   settings or Properties, or leave it on Auto, which goes by the name (GND, AGND, … get
   ground).

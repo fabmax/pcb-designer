@@ -17,8 +17,8 @@ in **Settings → Simulation**, or set the `NGSPICE_LIBRARY` environment variabl
 from source, the app uses the ngspice that `scripts/build-ngspice.sh` builds, else one
 that's installed (Homebrew's `libngspice`, `libngspice0` on Debian/Ubuntu).
 
-ngspice runs in its LTspice/PSpice compatibility mode (as in KiCad), so vendor models
-written for those simulators work.
+ngspice runs in its LTspice/PSpice compatibility mode, so vendor models written for
+those simulators work.
 
 ## A first run
 
