@@ -48,7 +48,8 @@ jobs:
           # The release profile's line tables are inside the binary on Linux (macOS and
           # Windows keep them beside it): drop them, keep the symbols for backtraces.
           strip --strip-debug "$pkg/pcb-designer"
-          ngspice=$(echo target/ngspice/*/)
+          # The host's build (rust-cache may bring others along, e.g. the browser's).
+          ngspice=target/ngspice/$(rustc -vV | sed -n 's/^host: //p')/
           cp "$ngspice"lib/libngspice.so.0 "$pkg/lib/"
           cp "$ngspice"lib/ngspice/*.cm "$pkg/lib/ngspice/"
           cp "$ngspice"COPYING "$pkg/ngspice-COPYING.txt"
@@ -65,7 +66,8 @@ jobs:
           Remove-Item -Recurse -Force $pkg -ErrorAction SilentlyContinue
           New-Item -ItemType Directory "$pkg/ngspice" | Out-Null
           Copy-Item target/release/pcb-designer.exe $pkg
-          $ngspice = (Get-ChildItem target/ngspice -Directory)[0].FullName
+          $triple = ((rustc -vV | Select-String '^host: ').Line -replace '^host: ', '')
+          $ngspice = "target/ngspice/$triple"
           Copy-Item "$ngspice/lib/*.dll" $pkg
           Copy-Item "$ngspice/lib/ngspice/*.cm" "$pkg/ngspice"
           Copy-Item "$ngspice/COPYING" "$pkg/ngspice-COPYING.txt"
